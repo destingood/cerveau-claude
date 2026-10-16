@@ -203,6 +203,13 @@ def on_session_start(data, cfg):
                 text = f"{text}\n\n{note}"
         except Exception as exc:
             log(f"rêve (démarrage) : {exc!r}")
+        try:
+            from . import optimize
+            tip = optimize.notice(cfg)
+            if tip:
+                text = f"{text}\n\n{tip}"
+        except Exception as exc:
+            log(f"optimize (démarrage) : {exc!r}")
     st["started"] = st.get("started") or now_iso()
     st["injected_at"] = now_iso()
     save_state(sid, st)

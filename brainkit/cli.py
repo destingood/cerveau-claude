@@ -1084,6 +1084,14 @@ def cmd_tokens(a):
     print(tokens.report(a.hours))
 
 
+def cmd_optimize(a):
+    from . import optimize
+    if a.apply:
+        print(optimize.apply())
+    else:
+        print(optimize.report(a.hours, show_all=a.all))
+
+
 def cmd_history(a):
     from . import history
     if a.diff:
@@ -1404,6 +1412,11 @@ def build_parser():
     s.add_argument("--quick", action="store_true", help="sans la mesure de vitesse")
     s = cmd("tokens", cmd_tokens, "où partent les tokens : contexte relu, 1res requêtes, habitudes coûteuses (transcripts)")
     s.add_argument("--hours", type=float, default=48, help="période mesurée (défaut 48 h)")
+    s = cmd("optimize", cmd_optimize, "optimiser le cerveau (tokens d'abord) : coût réel de l'injection/du rappel/du "
+            "corpus + ce qu'on peut alléger — --apply applique le sûr et réversible", ["optimise", "opti"])
+    s.add_argument("--apply", action="store_true", help="appliquer les actions sûres et réversibles (ménage du corpus, rappel d'habitude)")
+    s.add_argument("--all", action="store_true", help="tout détailler, sans troncature")
+    s.add_argument("--hours", type=float, default=48, help="période mesurée pour l'habitude la plus coûteuse (défaut 48 h)")
     s = cmd("history", cmd_history, "instantanés du cerveau (pour revenir en arrière) — --diff <n°|date>", ["historique"])
     s.add_argument("-n", type=int, default=15)
     s.add_argument("--diff", help="ce qui a changé depuis un instantané (n°) ou une date")
