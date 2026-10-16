@@ -1,0 +1,18 @@
+{
+  "name": "cerveau",
+  "owner": {
+    "name": "Lucas"
+  },
+  "metadata": {
+    "description": "Le cerveau persistant de Lucas pour Claude Code",
+    "version": "7.2.0"
+  },
+  "plugins": [
+    {
+      "name": "cerveau",
+      "source": "./",
+      "description": "Cerveau persistant pour Claude Code : souvenirs en graphe, rappel automatique à chaque message, cartes de projets, à-faire datés, serveur MCP. Tout reste sur ton PC.",
+      "version": "7.2.0"
+    }
+  ]
+}

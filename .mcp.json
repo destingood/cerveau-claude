@@ -1,0 +1,13 @@
+{
+  "mcpServers": {
+    "cerveau": {
+      "command": "python",
+      "args": [
+        "-I",
+        "-S",
+        "${CLAUDE_PLUGIN_ROOT}/brain.py",
+        "mcp"
+      ]
+    }
+  }
+}

@@ -1,0 +1,96 @@
+{
+  "description": "Cerveau : injection au démarrage, rappel à chaque message, mémorisation en fin de tâche",
+  "hooks": {
+    "SessionStart": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "python",
+            "args": [
+              "-I",
+              "-S",
+              "${CLAUDE_PLUGIN_ROOT}/brain.py",
+              "hook",
+              "session-start"
+            ],
+            "timeout": 20,
+            "statusMessage": "🧠 Chargement du cerveau…"
+          }
+        ]
+      }
+    ],
+    "UserPromptSubmit": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "python",
+            "args": [
+              "-I",
+              "-S",
+              "${CLAUDE_PLUGIN_ROOT}/brain.py",
+              "hook",
+              "prompt"
+            ],
+            "timeout": 8
+          }
+        ]
+      }
+    ],
+    "Stop": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "python",
+            "args": [
+              "-I",
+              "-S",
+              "${CLAUDE_PLUGIN_ROOT}/brain.py",
+              "hook",
+              "stop"
+            ],
+            "timeout": 10
+          }
+        ]
+      }
+    ],
+    "PreCompact": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "python",
+            "args": [
+              "-I",
+              "-S",
+              "${CLAUDE_PLUGIN_ROOT}/brain.py",
+              "hook",
+              "pre-compact"
+            ],
+            "timeout": 15
+          }
+        ]
+      }
+    ],
+    "SessionEnd": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "python",
+            "args": [
+              "-I",
+              "-S",
+              "${CLAUDE_PLUGIN_ROOT}/brain.py",
+              "hook",
+              "session-end"
+            ],
+            "timeout": 15
+          }
+        ]
+      }
+    ]
+  }
+}

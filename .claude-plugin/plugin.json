@@ -1,0 +1,18 @@
+{
+  "name": "cerveau",
+  "version": "7.2.0",
+  "description": "Cerveau persistant pour Claude Code : souvenirs en graphe, rappel automatique à chaque message, cartes de projets, à-faire datés, serveur MCP. Tout reste sur ton PC.",
+  "author": {
+    "name": "Lucas"
+  },
+  "keywords": [
+    "mémoire",
+    "memory",
+    "souvenirs",
+    "rappel",
+    "hooks",
+    "mcp"
+  ],
+  "homepage": "https://github.com/destingood/cerveau-claude",
+  "repository": "https://github.com/destingood/cerveau-claude"
+}
