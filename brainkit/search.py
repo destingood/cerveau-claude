@@ -433,19 +433,29 @@ def _fuse(brain, query, bm25, limit, project, types, include_archived, only_proj
             for es in ents.values():
                 for e in es:
                     df[e] = df.get(e, 0) + 1
-        cands = {}
+        cands, strength = {}, {}
         for m, rel, _ in brain.neighbors(nid):
             if rel in TYPED and m["id"] in ents:
                 cands[m["id"]] = (2.0, rel.replace("_", " "))
-        for e in ents.get(nid, ()):
+        for e in sorted(ents.get(nid, ())):  # trié : un ensemble se parcourt dans un ordre qui change à chaque lancement
             if df.get(e, 0) in (2, 3):
                 for other, es in ents.items():
                     if other != nid and e in es:
                         sc = 1.5 if df[e] == 2 else 0.7
+                        strength[other] = strength.get(other, 0.0) + sc
                         if sc > cands.get(other, (0, ""))[0]:
                             cands[other] = (sc, e)
+        # Ex aequo (départagés avant par l'ordre d'insertion : le lien changeait d'un lancement à l'autre pour 42 questions
+        # sur 62) : le plus de noms rares partagés, puis le même projet, puis le plus proche de la question, puis l'id.
+        home = brain.nodes[nid].get("project") or (nid if brain.nodes[nid]["type"] == "project" else None)
+
+        def tie(x):
+            other = brain.nodes.get(x[1]) or {}
+            same = bool(home) and home in (other.get("project"), x[1])
+            return -x[0], -strength.get(x[1], 0.0), not same, -(by_id[x[1]]["score"] if x[1] in by_id else 0.0), x[1]
+
         best = sorted(((sc, other, why) for other, (sc, why) in cands.items()
-                       if other not in final and other not in ranked[:limit]), key=lambda x: -x[0])
+                       if other not in final and other not in ranked[:limit]), key=tie)
         if best and best[0][0] >= 0.7:
             final.append(best[0][1])
             via[best[0][1]] = f"lien ({best[0][2]})"

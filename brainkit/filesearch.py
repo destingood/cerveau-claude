@@ -109,7 +109,8 @@ def recall_files(pid, query, rc, exclude=()):
     """Fichiers à suggérer pour un message : filtre anti-bruit + une seule fois un même fichier copié ailleurs."""
     out, seen = [], set()
     for r in search_files(pid, query, 12, fuzzy=False, kind="recall"):
-        if r["key"] in exclude or not accept_recall(r, rc["min_cov_files"]):
+        # un seul mot utile (« Réessayer », « donne moi le lien ») ne désigne aucun fichier : 0 perte sur 32 vrais messages
+        if r["key"] in exclude or r["nq"] < 2 or not accept_recall(r, rc["min_cov_files"]):
             continue
         sig = (posixpath.basename(r["key"]).lower(), r["desc"])
         if sig in seen:

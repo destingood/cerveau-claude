@@ -18,7 +18,7 @@ import sys
 import time
 
 from . import search
-from .common import BRAIN_PY, CLAUDE_HOME, STOPWORDS, fold, load_config, tokenize
+from .common import BRAIN_PY, CLAUDE_HOME, STOPWORDS, est_tokens, fold, load_config, tokenize
 from .store import Brain
 
 OFF_TOPIC = ["quelle heure est-il à Tokyo maintenant ?", "donne moi une recette de crêpes", "traduis ce texte en anglais stp",
@@ -157,7 +157,7 @@ def latency(brain, reps=5):
 def token_costs(brain):
     from . import index as idx
     from .install import CLAUDE_BLOCK, SKILL
-    tok = lambda s: math.ceil(len(s) / 3.6)  # noqa: E731
+    tok = est_tokens
     desc = re.search(r"(?m)^description: (.*)$", SKILL)
     fixed = tok(CLAUDE_BLOCK) + tok(desc.group(1) if desc else "")
     rows = [("hors projet", tok(idx.session_context(brain, os.path.expanduser("~"))[0]))]

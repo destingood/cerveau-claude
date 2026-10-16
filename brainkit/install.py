@@ -22,7 +22,7 @@ S'en servir AVANT d'explorer ou de redemander. Outil : `{CMD} <cmd>` (Bash/Power
    learning (piège, solution), reference, todo (`--due`) — après un `q` anti-doublon.
 3. Jamais : secrets, mots de passe, paiement, santé ou vie privée de tiers, ce que le code ou git disent déjà.
 4. Fait qui change → `add … --replaces <id>` ; erreur → `edit`/`rm` ; vérifier un souvenir ancien avant d'agir.
-Tokens : lectures ciblées, pas de relecture, recherches larges → agent Explore ; réponses courtes, résultat vérifié.
+Tokens : filtrer les sorties Bash (`| tail -n 30`, `grep -c`, `-q`) ; gros fichier → `explain`/Grep puis Read offset/limit ; web : get_page_text/find plutôt que read_page entier ou capture ; sous-agent (repart de ~90 k) seulement pour une très large recherche ; pas de relecture ; réponses courtes, résultat vérifié.
 <!-- BRAIN:END -->
 """
 
@@ -122,7 +122,8 @@ variables d'env, documents, cycles, TODO, fichiers sensibles jamais lus).
 ## Entretien
 `journal [-p projet]` sessions passées · `journal -s "mots"` chercher dans leur texte · `context` ce qui est injecté ici · `recall "message"` tester le rappel ·
 `consolidate [--dry-run]` fusion doublons/obsolètes · `dream` rêve (entretien : conflits, doublons, corrections entendues ; `--done`) · `stats` · `doctor` diagnostic (`doctor --fix` répare tout) ·
-`bench` banc d'essai (qualité du rappel, faux rappels, tokens par démarrage, vitesse des hooks) · `report` rapport du graphe ·
+`bench` banc d'essai (qualité du rappel, faux rappels, tokens par démarrage, vitesse des hooks) · `tokens [--hours 48]` où partent les tokens (contexte relu, habitudes coûteuses, mesuré sur les transcripts) · `report` rapport du graphe ·
+`pc` état du PC (RAM/CPU/GPU) et ce qu'on peut libérer (sessions inactives, serveurs MCP) · `pc --clean` ferme les serveurs MCP orphelins (parent mort) · `pc --history [h]` mesures de la veille ·
 `viz --open` vue 3D (`~/.claude/brain/cerveau.html`, régénérée en fin de session) · `export` (MEMOIRES.md lisible) ·
 `config recall.enabled false` · `install` réparer.
 """
@@ -132,6 +133,7 @@ EVENTS = [
     ("UserPromptSubmit", "prompt", 8, None),
     ("Stop", "stop", 10, None),
     ("PreCompact", "pre-compact", 15, None),
+    ("PostCompact", "post-compact", 10, None),
     ("SessionEnd", "session-end", 15, None),
 ]
 

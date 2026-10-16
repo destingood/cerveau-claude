@@ -1,4 +1,4 @@
-"""Points d'accroche Claude Code : SessionStart, UserPromptSubmit, Stop, PreCompact, SessionEnd.
+"""Points d'accroche Claude Code : SessionStart, UserPromptSubmit, Stop, PreCompact, PostCompact, SessionEnd.
 
 Règle d'or : un hook ne doit JAMAIS casser ni ralentir une session → tout est protégé, rapide et silencieux.
 Le travail lourd (cartographie) part en arrière-plan dans un processus détaché."""
@@ -13,8 +13,8 @@ from pathlib import Path
 
 from . import index as idx
 from . import journal, search
-from .common import (BRAIN_DIR, BRAIN_PY, CMD, SESSIONS_DIR, fold, load_config, log, now_iso, read_json,
-                     read_stdin_json, short, tokenize, write_json)
+from .common import (BRAIN_DIR, BRAIN_PY, CMD, SESSIONS_DIR, STATE_DIR, budget_chars, fold, load_config, log, now_iso,
+                     read_json, read_stdin_json, short, tokenize, write_json)
 from .store import TYPES, Brain, bump_hits, bump_used
 
 OBS_HOW = (f"une ligne courte chacune, priorisées (🔴 décision, blocage, préférence · 🟡 avancée, constat · 🟢 détail) : "
@@ -86,9 +86,10 @@ def spawn_background(args) -> bool:
         if os.name == "nt" and (exe.parent / "pythonw.exe").exists():
             exe = exe.parent / "pythonw.exe"
         kw = dict(stdin=subprocess.DEVNULL, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL,
-                  close_fds=True, cwd=str(BRAIN_DIR))
+                  close_fds=True, cwd=str(BRAIN_DIR), env={**os.environ, "BRAIN_BG": "1"})
         if os.name == "nt":
-            kw["creationflags"] = 0x00000008 | 0x00000200  # DETACHED_PROCESS | CREATE_NEW_PROCESS_GROUP
+            # DETACHED_PROCESS | CREATE_NEW_PROCESS_GROUP | BELOW_NORMAL_PRIORITY_CLASS : invisible, priorité basse
+            kw["creationflags"] = 0x00000008 | 0x00000200 | 0x00004000
         else:
             kw["start_new_session"] = True
         subprocess.Popen([str(exe), str(BRAIN_PY), *args], **kw)
@@ -104,6 +105,53 @@ def _project_path(proj):
 
 
 # ------------------------------------------------------------------------------------------ SessionStart
+COMPACT_MAX_AGE = 600  # s : un résumé gardé plus vieux n'est pas celui de cette compaction
+COMPACT_MIN_SCORE, COMPACT_MIN_COV, COMPACT_ITEMS = 20, 0.10, 3
+
+
+def _recent(ts, seconds) -> bool:
+    """Horodatage ISO (local sans fuseau, ou UTC « Z » des transcripts) vieux de moins de `seconds` ?"""
+    import datetime as dt
+    try:
+        t = dt.datetime.fromisoformat(str(ts).replace("Z", "+00:00"))
+    except (TypeError, ValueError):
+        return False
+    now = dt.datetime.now(t.tzinfo) if t.tzinfo else dt.datetime.now()
+    return abs((now - t).total_seconds()) <= seconds
+
+
+def compact_recall(brain, st, data, cfg, proj):
+    """Après une compaction : les souvenirs liés au travail en cours, d'après la section « Current Work » du résumé.
+    Règle stricte mesurée sur 5 vrais résumés : 3 au plus, score ≥ 20 et couverture ≥ 0,10, hors souvenirs déjà
+    visibles → 12 pertinents sur 15 (le résumé entier, lui, faisait remonter les longs souvenirs génériques)."""
+    budget = budget_chars(cfg["inject"], "compact_recall_tokens")
+    query = st.get("compact_summary") if _recent(st.get("compacted_at"), COMPACT_MAX_AGE) else None
+    if not query and data.get("transcript_path"):  # PostCompact pas encore passé : l'ordre des hooks n'est pas garanti
+        text, ts = journal.last_compact_summary(data["transcript_path"])
+        if text and _recent(ts, COMPACT_MAX_AGE):
+            query = journal.summary_part(text, stop="optional next step", limit=2500)
+    if budget <= 0 or not query:
+        return "", []
+    injected = set(st.get("injected", []))
+    picks = [r["node"] for r in search.search_memories(brain, query, limit=10, project=proj["id"] if proj else None,
+                                                        expand=False)
+             if r["node"]["id"] not in injected and r["node"]["type"] != "project"
+             and r["score"] >= COMPACT_MIN_SCORE and r.get("cov", 0) >= COMPACT_MIN_COV][:COMPACT_ITEMS]
+    lines, shown = ["🧠 Souvenirs liés au travail en cours (d'après le résumé de compaction) :"], []
+    used = len(lines[0]) + 1
+    for n in picks:
+        line = f"- [{TYPES.get(n['type'], n['type'])}] {n['title']} — {short(n.get('body', ''), 220)} `{n['id']}`"
+        if used + len(line) + 1 > budget:
+            break
+        lines.append(line)
+        used += len(line) + 1
+        shown.append(n["id"])
+    if not shown:
+        return "", []
+    bump_hits(shown)
+    return "\n".join(lines), shown
+
+
 def on_session_start(data, cfg):
     from . import filesearch, importer
     sid = data.get("session_id")
@@ -125,17 +173,38 @@ def on_session_start(data, cfg):
     path = _project_path(proj)
     if path and cfg["auto_map"]["enabled"] and filesearch.needs_refresh(proj["id"], cfg["auto_map"]["refresh_minutes"]):
         spawn_background(["map", path, "-p", proj["id"], "--quiet"])
-    text, ids, _ = idx.session_context(brain, cwd, cfg, session_id=sid)
-    try:
-        from . import dream
-        note = dream.notice()
-        if note:
-            text = f"{text}\n\n{note}"
-    except Exception as exc:
-        log(f"rêve (démarrage) : {exc!r}")
     st = load_state(sid)
-    st.update({"cwd": cwd, "project": proj["id"] if proj else None, "started": st.get("started") or now_iso()})
-    st["injected"] = sorted(set(st.get("injected", [])) | set(ids))
+    source = data.get("source") or "startup"
+    st.update({"cwd": cwd, "project": proj["id"] if proj else None})
+    if source == "resume" and st.get("started"):
+        # Reprise : l'injection de départ est encore dans l'historique (7 reprises sur 7) → les nouveautés seulement.
+        text = idx.resume_delta(brain, st.get("injected_at") or st["started"], cfg)
+        st["injected_at"] = now_iso()
+        save_state(sid, st)
+        if text:
+            emit("SessionStart", text)
+        return
+    text, ids, _ = idx.session_context(brain, cwd, cfg, session_id=sid)
+    if source in ("compact", "clear"):
+        # L'injection précédente et les rappels ont quitté le contexte : on repart de ce qui est visible maintenant
+        # (avant : « déjà injectés » gardés, donc plus jamais rappelés après une compaction).
+        st["injected"], st["files"], st["recalled"] = sorted(ids), [], 0
+        if source == "compact":
+            extra, shown = compact_recall(brain, st, data, cfg, proj)
+            if extra:
+                text = f"{text}\n\n{extra}"
+                st["injected"] = sorted(set(ids) | set(shown))
+    else:
+        st["injected"] = sorted(set(st.get("injected", [])) | set(ids))
+        try:
+            from . import dream
+            note = dream.notice()
+            if note:
+                text = f"{text}\n\n{note}"
+        except Exception as exc:
+            log(f"rêve (démarrage) : {exc!r}")
+    st["started"] = st.get("started") or now_iso()
+    st["injected_at"] = now_iso()
     save_state(sid, st)
     from .common import PLUGIN
     if PLUGIN:  # plugin : lanceur stable à jour, et les consignes du bloc CLAUDE.md passent par l'injection
@@ -148,12 +217,31 @@ def on_session_start(data, cfg):
     emit("SessionStart", text)
 
 
+# ------------------------------------------------------------------------------------------ veille PC
+def pc_watch(cfg):
+    """Veille PC (Windows) : au plus une mesure toutes les check_minutes. On lit « checked » dans pc.json pour
+    éviter d'importer tout le module entre deux. Renvoie une ligne pour Claude seulement si le PC est saturé."""
+    pcfg = cfg.get("pc") or {}
+    if os.name != "nt" or not pcfg.get("enabled", True):
+        return ""
+    checked = (read_json(STATE_DIR / "pc.json", {}) or {}).get("checked", 0)
+    if time.time() - checked < pcfg.get("check_minutes", 10) * 60:
+        return ""
+    try:
+        from . import pc
+        return pc.watch(cfg)
+    except Exception as exc:
+        log(f"veille PC : {exc!r}")
+        return ""
+
+
 # ------------------------------------------------------------------------------------------ UserPromptSubmit
 def on_prompt(data, cfg):
     rc = cfg["recall"]
     raw = (data.get("prompt") or "").strip()
     if not rc["enabled"] or len(raw) < 6 or raw.startswith("/"):
         return
+    pcline = pc_watch(cfg)
     query = recall_query(raw)
     sid = data.get("session_id")
     st = load_state(sid)
@@ -206,6 +294,8 @@ def on_prompt(data, cfg):
         if block:
             out += [title] + block
             used += cost
+    if pcline:  # la veille PC passe toujours, avant les souvenirs
+        out = [pcline] + out
     if not out:
         return
     ctx = "\n".join(out)
@@ -350,11 +440,36 @@ def on_session_end(data, cfg, event="session-end"):
             log(f"viz fin de session : {exc!r}")
 
 
+# ------------------------------------------------------------------------------------------ PostCompact
+def on_post_compact(data, cfg):
+    """Après une compaction : le résumé est gardé, dans l'état de session (rappel du SessionStart « compact ») et au
+    journal (« où on en était »). Muet : la sortie de ce hook ne s'affiche qu'à l'utilisateur."""
+    sid = data.get("session_id")
+    summary = data.get("compact_summary")
+    if not summary and data.get("transcript_path"):
+        summary, _ = journal.last_compact_summary(data["transcript_path"])
+    if not sid or not summary:
+        return
+    st = load_state(sid)
+    st["compact_summary"] = journal.summary_part(summary, stop="optional next step", limit=2500)
+    st["compacted_at"] = now_iso()
+    tx = st.get("tx") or {}
+    if tx:
+        tx["summary"] = journal.summary_part(summary, limit=800)
+        st["tx"] = tx
+    save_state(sid, st)
+    if tx and cfg["journal"]["enabled"]:
+        brain = Brain.load()
+        proj = brain.project_for_path(tx.get("cwd") or data.get("cwd") or st.get("cwd") or "")
+        journal.upsert(sid, tx, proj["id"] if proj else None, cfg["journal"]["keep"])
+
+
 HANDLERS = {
     "session-start": on_session_start,
     "prompt": on_prompt,
     "stop": on_stop,
     "pre-compact": lambda d, c: on_session_end(d, c, "pre-compact"),
+    "post-compact": on_post_compact,
     "session-end": on_session_end,
 }
 

@@ -13,7 +13,11 @@ BLOCK_RE = re.compile(r"<(system-reminder|local-command-stdout|local-command-std
 CMD_RE = re.compile(r"<command-(?:name|message|args)>(.*?)</command-(?:name|message|args)>", re.S)
 TAG_RE = re.compile(r"</?[a-zA-Z][\w\-]*(?:\s[^<>]*)?>")
 AUTO_RE = re.compile(r"^(None of the sessions you started|Background \(from the session|<side-sessions|"
-                     r"The user hasn't heard|\[Request interrupted)", re.I)
+                     r"The user hasn't heard|\[Request interrupted|This session is being continued from)", re.I)
+# Sections du résumé de compaction de Claude Code (« 8. Current Work », « 9. Optional Next Step »…)
+SUMMARY_HEAD_RE = re.compile(r"^\s*(?:#+\s*)?(?:\d+\.\s*)?(?:\*\*)?\s*(Primary Request|Pending Tasks|Current Work|"
+                             r"Optional Next Step)\b", re.I | re.M)
+CODE_BLOCK_RE = re.compile(r"```.*?```", re.S)
 EDIT_TOOLS = {"Edit", "Write", "MultiEdit", "NotebookEdit"}
 SAVE_RE = re.compile(r"brain\.py[\"']?\s+(?:add|save|retiens|edit|obs|observe)\b")
 OBS_RE = re.compile(r"brain\.py[\"']?\s+(?:obs|observe)\b[^|;&\n]*?[\"']")  # observations notées (pas une simple lecture)
@@ -31,7 +35,7 @@ def clean_prompt(text, n=200) -> str:
 def new_state() -> dict:
     return {"offset": 0, "tools": 0, "edits": [], "prompts": 0, "first": None, "last": None, "title": None,
             "brief": None, "cwd": None, "start": None, "end": None, "last_save_tools": 0, "last_obs_tools": 0,
-            "recent": [], "answer": None}
+            "recent": [], "answer": None, "summary": None}
 
 
 def parse_transcript(path, state=None) -> dict:
@@ -84,6 +88,9 @@ def _consume(st, o):
                 return
             content = " ".join(b.get("text", "") for b in content if isinstance(b, dict) and b.get("type") == "text")
         if not isinstance(content, str) or not content.strip():
+            return
+        if o.get("isCompactSummary"):  # résumé de compaction (parfois marqué « human ») : où on en était, pas une demande
+            st["summary"] = summary_part(content, limit=800)
             return
         text = clean_prompt(content)
         if not text:
@@ -150,19 +157,61 @@ def load() -> dict:
     return j
 
 
+def summary_part(text, start="current work", stop=None, limit=1500) -> str:
+    """Morceau d'un résumé de compaction : de la section `start` jusqu'à la section `stop` (exclue), sans blocs de
+    code. Sans sections reconnues : la fin du résumé (là où il décrit le travail en cours)."""
+    text = str(text or "")
+    heads = list(SUMMARY_HEAD_RE.finditer(text))
+    part = None
+    for i, m in enumerate(heads):
+        if m.group(1).lower() == start:
+            end = next((h.start() for h in heads[i + 1:] if stop and h.group(1).lower() == stop), len(text))
+            part = text[m.start():end]
+            break
+    if part is None:
+        part = text[-limit:]
+    return short(" ".join(CODE_BLOCK_RE.sub(" ", part).split()), limit)
+
+
+def last_compact_summary(path, tail=2_000_000):
+    """Dernier résumé de compaction d'un transcript, lu par la fin → (texte, horodatage) ou (None, None)."""
+    try:
+        size = os.path.getsize(path)
+        with open(path, "rb") as fh:
+            fh.seek(max(0, size - tail))
+            lines = fh.read().splitlines()
+    except (OSError, TypeError, ValueError):
+        return None, None
+    for raw in reversed(lines):
+        if b"isCompactSummary" not in raw:
+            continue
+        try:
+            o = json.loads(raw)
+        except Exception:
+            continue
+        if not isinstance(o, dict) or not o.get("isCompactSummary"):
+            continue
+        content = (o.get("message") or {}).get("content")
+        if isinstance(content, list):
+            content = " ".join(b.get("text", "") for b in content if isinstance(b, dict) and b.get("type") == "text")
+        if isinstance(content, str) and content.strip():
+            return content, o.get("timestamp")
+    return None, None
+
+
 def upsert(session_id, st, project_id, keep=500):
     if not session_id or not st or not (st.get("prompts") or st.get("brief")):
         return
     from .privacy import redact_contacts
     clean = lambda v: redact_contacts(v) if v else v  # noqa: E731 — jamais de coordonnées de tiers ni de secret au journal
     st = dict(st, title=clean(st.get("title")), first=clean(st.get("first")), last=clean(st.get("last")),
-              brief=clean(st.get("brief")), answer=clean(st.get("answer")))
+              brief=clean(st.get("brief")), answer=clean(st.get("answer")), summary=clean(st.get("summary")))
     entry = {
         "id": session_id, "project": project_id, "cwd": st.get("cwd"), "title": st.get("title"),
         "first": st.get("first"), "last": st.get("last"), "brief": st.get("brief"), "prompts": st.get("prompts", 0),
         "tools": st.get("tools", 0), "edits": list(st.get("edits") or [])[:40],
         "saved": bool(st.get("last_save_tools")), "start": st.get("start"), "end": st.get("end"),
-        "answer": st.get("answer"),
+        "answer": st.get("answer"), "summary": st.get("summary"),
     }
     with FileLock(LOCK, timeout=3):
         j = load()

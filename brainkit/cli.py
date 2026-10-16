@@ -13,8 +13,8 @@ from . import __version__
 from . import index as idx
 from . import journal, search
 from .common import (BRAIN_DIR, CLAUDE_HOME, CMD, CONFIG_FILE, EXPORT_FILE, GRAPH_FILE, INDEX_FILE, JOURNAL_FILE,
-                     LOG_FILE, PROJECTS_DIR, REPORT_FILE, VIZ2D_FILE, VIZ_FILE, days_since, est_tokens, fmt_date, fold,
-                     load_config, log, set_config, setup_io, short, write_text)
+                     LOG_FILE, PROJECTS_DIR, REPORT_FILE, VIZ2D_FILE, VIZ_FILE, budget_chars, days_since, est_tokens, fmt_date,
+                     fold, load_config, log, set_config, setup_io, short, write_text)
 from .store import GLOBAL_REFS, TYPES, Brain, bump_hits, clean_tags, normalize_type, priority
 
 
@@ -928,7 +928,8 @@ def cmd_doctor(a):
     ok(sys.version_info >= (3, 9), f"Python {sys.version.split()[0]} ({sys.executable})")
     b = Brain.load()
     dangling = sum(1 for e in b.edges if e["from"] not in b.nodes or e["to"] not in b.nodes)
-    ok(GRAPH_FILE.exists() and not dangling, f"graphe : {len(b.nodes)} nœuds, {len(b.edges)} liens"
+    ok((GRAPH_FILE.exists() or not b.nodes) and not dangling,  # cerveau neuf (ami) : pas encore de graph.json
+       (f"graphe : {len(b.nodes)} nœuds, {len(b.edges)} liens" if b.nodes else "graphe : vide (aucun souvenir pour l'instant)")
        + (f", {dangling} liens cassés (→ consolidate)" if dangling else ""))
     if INDEX_FILE.exists():
         text = INDEX_FILE.read_text(encoding="utf-8")
@@ -943,7 +944,7 @@ def cmd_doctor(a):
         hooks = (json.loads(settings.read_text(encoding="utf-8")).get("hooks") or {}) if settings.exists() else {}
     except Exception:
         hooks = {}
-    wanted = ("SessionStart", "UserPromptSubmit", "Stop", "PreCompact", "SessionEnd")
+    wanted = ("SessionStart", "UserPromptSubmit", "Stop", "PreCompact", "PostCompact", "SessionEnd")
     present = [ev for ev in wanted if "brain.py" in json.dumps(hooks.get(ev, []))]
     import re as _re
     exes = {m.group(1) for ev in wanted for h in hooks.get(ev, []) for x in h.get("hooks", [])
@@ -990,8 +991,23 @@ def cmd_doctor(a):
     except Exception as exc:
         ok(False, f"fiches / observations : {exc!r}")
     text, _, proj = idx.session_context(b, os.getcwd())
-    ok(len(text) <= load_config()["inject"]["max_chars"],
+    ok(len(text) <= budget_chars(load_config()["inject"], "max_tokens"),
        f"injection au démarrage ici : {len(text)} car. ≈ {est_tokens(text)} tokens (projet : {proj['id'] if proj else 'aucun'})")
+    import time as _time
+    from .common import STATE_DIR, read_json
+    pcfg, pcst = load_config().get("pc", {}), read_json(STATE_DIR / "pc.json", {}) or {}
+    if os.name != "nt":
+        ok(True, "veille PC : Windows seulement (inactive ici)")
+    elif not pcfg.get("enabled", True):
+        ok(True, "veille PC : désactivée (config pc.enabled)")
+    else:
+        last, lm = pcst.get("checked", 0), pcst.get("last") or {}
+        when = _time.strftime("%d/%m %H:%M", _time.localtime(last)) if last else "pas encore (au prochain prompt)"
+        ram = f" · RAM libre {lm['avail'] / (1 << 30):.1f} Go".replace(".", ",") if lm.get("avail") else ""
+        stale = bool(last) and (_time.time() - last > 86400)
+        ok(not stale, f"veille PC : {('dernière mesure ' + when) if last else when}{ram} · "
+           f"{pcst.get('killed_total', 0)} serveur(s) MCP orphelin(s) fermé(s) au total"
+           + (" · hooks inactifs depuis plus de 24 h ?" if stale else ""))
     if LOG_FILE.exists():
         errs = [l for l in LOG_FILE.read_text(encoding="utf-8", errors="replace").splitlines() if "ERREUR" in l][-3:]
         ok(not errs, "journal d'erreurs des hooks : " + ("vide" if not errs else " | ".join(short(e, 160) for e in errs)))
@@ -1063,6 +1079,11 @@ def cmd_bench(a):
     print(bench.run(quick=a.quick))
 
 
+def cmd_tokens(a):
+    from . import tokens
+    print(tokens.report(a.hours))
+
+
 def cmd_history(a):
     from . import history
     if a.diff:
@@ -1096,6 +1117,16 @@ def cmd_history(a):
         day, hms, _, reason = history.parse(p)
         print(f"{i:3}. {day[6:8]}/{day[4:6]}/{day[:4]} {hms[:2]}:{hms[2:4]}:{hms[4:6]} · {reason:20} · "
               f"{d['active']} souvenirs actifs · {d['edges']} liens · {p.stat().st_size // 1024 or 1} Ko")
+
+
+def cmd_pc(a):
+    from . import pc
+    if a.clean:
+        print(pc.clean())
+    elif a.history is not None:
+        print(pc.history(a.history))
+    else:
+        print(pc.report(a.seconds, show_all=a.all))
 
 
 def cmd_restore(a):
@@ -1197,6 +1228,11 @@ def cmd_mcp(a):
 def cmd_publish(a):
     from . import publish
     sys.exit(publish.run(a.dir, owner=a.owner, repo=a.repo, push=a.push, check=not a.no_check))
+
+
+def cmd_selfupdate(a):
+    from . import selfupdate
+    sys.exit(selfupdate.run(a.source, force=a.force, verify=not a.no_verify, dry_run=a.dry_run))
 
 
 def cmd_install(a):
@@ -1366,6 +1402,8 @@ def build_parser():
     s.add_argument("--auto", action="store_true", help=argparse.SUPPRESS)
     s = cmd("bench", cmd_bench, "banc d'essai : qualité du rappel, faux rappels, tokens, vitesse des hooks")
     s.add_argument("--quick", action="store_true", help="sans la mesure de vitesse")
+    s = cmd("tokens", cmd_tokens, "où partent les tokens : contexte relu, 1res requêtes, habitudes coûteuses (transcripts)")
+    s.add_argument("--hours", type=float, default=48, help="période mesurée (défaut 48 h)")
     s = cmd("history", cmd_history, "instantanés du cerveau (pour revenir en arrière) — --diff <n°|date>", ["historique"])
     s.add_argument("-n", type=int, default=15)
     s.add_argument("--diff", help="ce qui a changé depuis un instantané (n°) ou une date")
@@ -1390,6 +1428,12 @@ def build_parser():
     s.add_argument("--force", action="store_true", help="recalculer l'analyse")
     s = cmd("viz", cmd_viz, "générer cerveau.html (graphe 3D interactif) et cerveau-2d.html")
     s.add_argument("--open", action="store_true")
+    s = cmd("pc", cmd_pc, "RAM/CPU/GPU + ce qu'on peut libérer (sessions, serveurs MCP) — --clean, --history, --all", ["ram"])
+    s.add_argument("--all", action="store_true", help="tout détailler, sans troncature")
+    s.add_argument("--clean", action="store_true", help="fermer maintenant les serveurs MCP orphelins (parent mort)")
+    s.add_argument("--history", nargs="?", type=float, const=24, metavar="H",
+                   help="historique des mesures de la veille sur H heures (défaut 24)")
+    s.add_argument("--seconds", type=float, default=2.0, help="durée de mesure du CPU/GPU (défaut 2 s)")
     cmd("stats", cmd_stats, "statistiques")
     s = cmd("doctor", cmd_doctor, "diagnostic complet de l'installation (--fix : tout réparer)")
     s.add_argument("--fix", action="store_true", help="réinstaller, reconstruire, nettoyer et sauvegarder")
@@ -1400,7 +1444,7 @@ def build_parser():
     s.add_argument("key", nargs="?")
     s.add_argument("value", nargs="?")
     s = cmd("hook", cmd_hook, "point d'entrée des hooks Claude Code (usage interne)")
-    s.add_argument("event", choices=["session-start", "prompt", "stop", "pre-compact", "session-end"])
+    s.add_argument("event", choices=["session-start", "prompt", "stop", "pre-compact", "post-compact", "session-end"])
     s = cmd("install", cmd_install, "installer/réparer : CLAUDE.md, skill /brain, hooks (--mcp : serveur MCP de l'app)")
     s.add_argument("--dry-run", action="store_true")
     s.add_argument("--uninstall", action="store_true")
@@ -1413,11 +1457,24 @@ def build_parser():
     s.add_argument("--owner", help="nom affiché de l'auteur (défaut : Lucas)")
     s.add_argument("--push", action="store_true", help="envoyer sur GitHub après le commit (publication)")
     s.add_argument("--no-check", action="store_true", help="sans validation ni essai chez un ami fictif")
+    s = cmd("self-update", cmd_selfupdate, "déployer le code (brain.py, brainkit/, tests/) de l'arbre de "
+            "développement vers ~/.claude/brain : sauvegarde, vérifie, revient en arrière si besoin — jamais les "
+            "données (souvenirs, config…)", ["autodeploy", "deploy", "maj-code"])
+    s.add_argument("source", nargs="?", help="dossier de l'arbre de développement (retenu ensuite)")
+    s.add_argument("--force", action="store_true", help="déployer même une version plus ancienne, identique, ou qui retire des fichiers")
+    s.add_argument("--no-verify", action="store_true", help="ne pas lancer la suite de tests après la copie")
+    s.add_argument("--dry-run", action="store_true", help="montrer ce qui serait fait, sans rien toucher")
     return p
 
 
 def main(argv=None):
     setup_io()
+    if os.environ.get("BRAIN_BG") == "1":  # tâche de fond lancée par un hook : CPU/disque/mémoire en priorité basse
+        try:
+            from . import pc
+            pc.background_mode()
+        except Exception as exc:
+            log(f"mode arrière-plan : {exc!r}")
     parser = build_parser()
     args = parser.parse_args(argv)
     if not getattr(args, "func", None):

@@ -32,11 +32,19 @@ CMD = 'python "$HOME/.claude/brain/brain.py"'
 if PLUGIN and BRAIN_DIR != Path.home() / ".claude" / "brain":  # plugin avec un autre dossier Claude (CLAUDE_CONFIG_DIR)
     CMD = f'python "{BRAIN_DIR.as_posix()}/brain.py"'
 
+# Mesuré le 16/10/2026 sur 427 paires de requêtes réelles (contexte n+1 − contexte n autour d'un seul gros résultat
+# d'outil) : 2,06 car./token en médiane ; Markdown FR 2,23, Python 2,27, sorties Bash 2,01. L'ancien 3,7 sous-estimait ×1,7.
+CHARS_PER_TOKEN = 2.2
+
 DEFAULT_CONFIG = {
-    # Taille max de ce qui est injecté au démarrage d'une session (caractères ≈ tokens × 3,7).
-    "inject": {"max_chars": 8800, "index_chars": 4200, "index_chars_project": 3000, "project_chars": 4400},
+    # Budgets de ce qui est injecté, en tokens (relus à chaque requête jusqu'à la compaction) : total au démarrage,
+    # index hors projet / dans un projet, fiche du projet, résumé de carte, ajout après compaction, nouveautés à la reprise.
+    # Les anciennes clés en caractères (max_chars, index_chars…) restent prioritaires si elles sont dans config.json.
+    "inject": {"max_tokens": 2600, "index_tokens": 1650, "index_tokens_project": 1150, "project_tokens": 1250,
+               "digest_tokens": 330, "compact_recall_tokens": 450, "resume_items": 5},
     # Rappel automatique à chaque message : souvenirs + fichiers pertinents, seulement si vraiment liés.
-    "recall": {"enabled": True, "max_items": 3, "min_cov": 0.5, "min_score": 1.0, "files": True, "max_files": 4,
+    # min_score 5 : sur 27 vrais messages (72 h), les faux rappels notaient 2,4–4,8 et le plus faible vrai 9,3.
+    "recall": {"enabled": True, "max_items": 3, "min_cov": 0.5, "min_score": 5.0, "files": True, "max_files": 4,
                "min_cov_files": 0.4, "max_chars": 1200, "session_cap_items": 12, "session_cap_files": 20},
     # Rappel en fin de tâche : « mémorise ce qui est durable » (une fois, seulement si la session a travaillé).
     "stop_reminder": {"enabled": True, "min_tool_calls": 15, "min_edits": 3, "repeat_after": 60},
@@ -52,6 +60,13 @@ DEFAULT_CONFIG = {
     "vault": {"path": None},
     # Rêve : entretien quotidien hors conversation ; ligne au démarrage s'il y a au moins min_items points à trancher.
     "dream": {"notice": True, "min_items": 3},
+    # PC (`brain pc`) : veille légère pendant les hooks (au plus toutes les check_minutes), fermeture seule des orphelins
+    # sûrs (serveurs MCP et sessions Claude dont le parent est mort depuis orphan_min_minutes), une ligne pour Claude
+    # seulement si la RAM est critique ou si une session tourne à vide (au plus toutes les alert_repeat_minutes).
+    "pc": {"enabled": True, "check_minutes": 10, "auto_clean": True, "orphan_min_minutes": 10,
+           "orphan_patterns": ["mcp", "\\claude\\", "\\.claude\\plugins", "claude_pzs8sxrjxfjjc", "npm-cache\\_npx"],
+           "idle_hours": 3, "spin_cores": 0.5, "ram_alert_gb": 2.5, "ram_alert_pct": 92, "alert_repeat_minutes": 60,
+           "history_days": 14},
 }
 
 
@@ -305,7 +320,15 @@ def first_line(text, n=140) -> str:
 
 
 def est_tokens(text) -> int:
-    return int(len(text or "") / 3.7)
+    return int(len(text or "") / CHARS_PER_TOKEN)
+
+
+def budget_chars(section: dict, key: str) -> int:
+    """Budget en caractères d'une clé `<nom>_tokens` ; l'ancienne clé `<nom>_chars` gagne si l'utilisateur l'a fixée."""
+    legacy = key.replace("_tokens", "_chars")
+    if isinstance(section.get(legacy), (int, float)):
+        return int(section[legacy])
+    return int(section.get(key, 0) * CHARS_PER_TOKEN)
 
 
 # ------------------------------------------------------------------------------------------ chemins

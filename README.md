@@ -53,4 +53,4 @@ Rien à faire : parle normalement à Claude. Pour aller plus loin, demande-lui �
 
 `/plugin uninstall cerveau@cerveau`. Tes souvenirs restent dans `~/.claude/brain` (supprime ce dossier pour tout effacer).
 
-Version 7.2.0.
+Version 7.5.0.

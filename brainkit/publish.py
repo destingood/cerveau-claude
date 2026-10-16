@@ -185,14 +185,36 @@ def smoke(dest: Path) -> list:
             problems.append(f"démarrage : code {c}, sortie {o[:200]!r} {e[:300]!r}")
         if not (data / "brain.py").exists() or "runpy" not in (data / "brain.py").read_text(encoding="utf-8"):
             problems.append("lanceur stable ~/.claude/brain/brain.py absent")
-        c, o, e = subprocess.run([sys.executable, "-I", "-S", str(data / "brain.py"), "add", "-t", "fact", "-T",
-                                  "Mon chat s'appelle Pixel", "-b", "Chat tigré de 3 ans.", "-p", "none"],
-                                 capture_output=True, env=env, cwd=tmp, timeout=60).returncode, "", ""
-        if c:
-            problems.append(f"add par le lanceur : code {c}")
+        lanceur = [sys.executable, "-I", "-S", str(data / "brain.py")]
+
+        def ajoute(t, titre, corps):
+            return subprocess.run(lanceur + ["add", "-t", t, "-T", titre, "-b", corps, "-p", "none"],
+                                  capture_output=True, env=env, cwd=tmp, timeout=60).returncode
+
+        # Un vrai cerveau d'ami contient plusieurs souvenirs. Le rappel note chaque terme par sa rareté (IDF) : dans un
+        # cerveau d'un seul souvenir, même une correspondance parfaite reste sous le seuil et ne remonterait jamais —
+        # ce qui ne reflète pas l'usage réel. On sème donc quelques souvenirs sur d'autres sujets avant de vérifier que
+        # « Pixel » remonte bien : c'est tout le trajet du hook de rappel qui est éprouvé, dans des conditions réalistes.
+        graine = [
+            ("fact", "Boutique Shopify de thé", "Vente de matcha en ligne, coffrets et mousseurs."),
+            ("fact", "Voiture grise", "Une citadine de 2018, entretien chez le garage du coin."),
+            ("learning", "Sauvegarde hebdomadaire", "Exporter la base avant chaque grosse mise à jour."),
+            ("reference", "Doc de l'API du site", "Les webhooks produits arrivent en JSON sur l'endpoint configuré."),
+            ("fact", "Ficus du salon", "Près de la fenêtre, arrosage une fois par semaine."),
+            ("decision", "Choix de l'hébergeur", "Rester sur l'offre actuelle jusqu'à la fin de l'année."),
+            ("fact", "Vélo de route", "Cadre aluminium, pneus à regonfler avant les sorties longues."),
+            ("learning", "Historique du terminal", "Ctrl+R cherche dans les commandes déjà tapées."),
+            ("fact", "Café du matin", "Un expresso serré, sans sucre."),
+            ("reference", "Rapport de ventes", "Le bilan mensuel se télécharge en CSV depuis l'admin."),
+            ("decision", "Langue du site", "Le site reste en français pour l'instant."),
+            ("learning", "Nettoyage du disque", "Vider le cache du navigateur libère plusieurs giga."),
+        ]
+        semes = sum(ajoute(t, ti, b) == 0 for t, ti, b in graine)
+        if ajoute("fact", "Mon chat s'appelle Pixel", "Chat tigré de 3 ans.") != 0:
+            problems.append("add par le lanceur : code non nul")
         c, o, e = run(["hook", "prompt"], {"session_id": "ami-1", "cwd": tmp, "prompt": "comment s'appelle mon chat ?"})
         if "Pixel" not in o:
-            problems.append(f"rappel d'un message : {o[:200]!r} {e[:200]!r}")
+            problems.append(f"rappel d'un message ({semes + 1} souvenirs) : {o[:200]!r} {e[:200]!r}")
         req = "\n".join(json.dumps(x) for x in (
             {"jsonrpc": "2.0", "id": 1, "method": "initialize", "params": {"protocolVersion": "2024-11-05",
                                                                           "capabilities": {}, "clientInfo": {"name": "t"}}},
@@ -254,7 +276,7 @@ def run(dest=None, owner=None, repo=None, push=False, check=True) -> int:
             subprocess.run(git + ["reset", "-q"])
             return 1
         subprocess.run(git + ["commit", "-q", "-m", f"cerveau {__version__}"], check=True)
-        subprocess.run(git + ["tag", tag], check=True)
+        subprocess.run(git + ["tag", "-a", tag, "-m", f"cerveau {__version__}"], check=True)  # annoté : --follow-tags
         print(f"✓ commit et tag {tag} prêts")
     if push:
         r = subprocess.run(git + ["push", "--follow-tags", "origin", "HEAD"])
