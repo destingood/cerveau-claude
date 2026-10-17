@@ -1,0 +1,3 @@
+# Normalise line endings in the repository; shell scripts run inside Linux containers.
+* text=auto
+*.sh text eol=lf
