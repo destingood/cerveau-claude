@@ -1,0 +1,60 @@
+# Licences des composants — CERVEAU
+
+- Relevé du 2026-10-17 (phase 0), mis à jour à chaque nouvelle dépendance (R14)
+- Sources : métadonnées PyPI et npm, fichiers `LICENSE` des dépôts, pages Docker Hub
+
+## Dépendances Python directes (`pyproject.toml`)
+| Composant | Version | Licence | Usage |
+|---|---|---|---|
+| pydantic | 2.14.1 | MIT | schémas de configuration |
+| jsonschema | 4.26.0 | MIT | validation des manifestes (Annexe C.1) |
+| PyYAML | 6.0.3 | MIT | lecture des `config/*.yaml` |
+| Typer | 0.27.3 | MIT | CLI `cerveau` |
+
+## Outils de développement (groupe `dev`, non distribués)
+| Composant | Version | Licence | Usage |
+|---|---|---|---|
+| pytest / pytest-cov | 9.1.1 / 7.1.0 | MIT | tests |
+| Hypothesis | 6.170.1 | MPL-2.0 | tests par propriétés |
+| ruff | 0.17.1 | MIT | lint et formatage |
+| pip-audit | 2.10.1 | Apache-2.0 | audit des vulnérabilités |
+| pre-commit | 4.7.0 | MIT | hooks git |
+| promptfoo (npx) | 0.124.1 | MIT | évals |
+| gitleaks | 8.30.1 | MIT | détection de secrets |
+| uv | 0.13.1 | Apache-2.0 ou MIT (au choix, selon son README) | Python et dépendances |
+| GNU make | 4.4.1 | GPL-3.0 | outil local seulement, rien n'est lié |
+| Node.js | v26 local, v24 LTS en CI | MIT | exécution de promptfoo |
+
+Les dépendances transitives ne sont pas toutes listées ici ; `uv.lock` les fige. Leur relevé
+automatique (par exemple `pip-licenses` en CI) est au backlog.
+
+## Services Docker (`infra/docker-compose.yml`)
+| Composant | Image | Licence | Usage |
+|---|---|---|---|
+| PostgreSQL + pgvector | `pgvector/pgvector:0.8.7-pg17-trixie` | PostgreSQL License | base `cerveau` et base `langfuse` |
+| Langfuse web et worker | `docker.langfuse.com/langfuse/*:4` | MIT, sauf dossiers `ee/` (commercial) | observabilité |
+| ClickHouse | `clickhouse/clickhouse-server:25.12` | Apache-2.0 | stockage des traces Langfuse |
+| MinIO | `cgr.dev/chainguard/minio` | AGPL-3.0 (dépôt d'images Chainguard : Apache-2.0) | stockage objet Langfuse |
+| Redis | `redis:7` (7.4.11) | RSALv2 / SSPLv1 | file d'attente Langfuse |
+| Docker Desktop | — | gratuit pour un usage personnel | exécution locale |
+
+## Licences restrictives ou à surveiller
+- **Redis 7.4 (RSALv2 / SSPLv1, depuis le 2024-03-20)** : interdit surtout de revendre Redis comme
+  service. Usage interne non modifié : sans effet. Alternative libre à évaluer : Valkey (backlog).
+- **MinIO (AGPL-3.0)** : utilisé tel quel comme service local, non modifié, non exposé à des
+  tiers : pas d'obligation de publication. Dépôt amont archivé depuis 2026-04 : remplacement au
+  backlog (ADR à venir).
+- **Langfuse `ee/`** : sous licence commerciale ; aucune fonction `ee` n'est activée (aucune clé de
+  licence configurée).
+- **Hypothesis (MPL-2.0)** : copyleft faible par fichier, outil de test non modifié ni distribué.
+- **GNU make (GPL-3.0)** : outil de construction, sans lien avec le code de CERVEAU.
+
+## Points à trancher avant les phases suivantes (Annexe A)
+Licences annoncées par l'Annexe A, à revérifier au moment de l'intégration :
+- vectorbt : Apache-2.0 + Commons Clause, usage personnel uniquement (Annexe A, ligne 326) ;
+- NautilusTrader : LGPL-3.0 (utilisé comme bibliothèque non modifiée, à confirmer) ;
+- OpenBB : Apache-2.0 ; Arize Phoenix : Elastic License 2.0, alternative non retenue (ADR-004) ;
+- `openbq-org/OpenBB` : l'Annexe A indique « redirection vérifiée » depuis
+  `OpenBB-finance/OpenBB`, mais le nom « openbq » ressemble à une faute de frappe ou à un dépôt
+  homonyme. Avant tout clonage (phase 2), repartir de l'URL donnée par https://docs.openbb.co et
+  vérifier la redirection (section 13).

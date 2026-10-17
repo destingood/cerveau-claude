@@ -1,0 +1,41 @@
+# Backlog — CERVEAU
+
+Tout ce qui sort du périmètre de la phase en cours (« Méthode de travail imposée »). Chaque élément indique
+son origine et la phase visée ; « ? » signifie « à décider par Lucas ».
+
+## Sécurité et gouvernance
+| # | Élément | Origine | Phase |
+|---|---|---|---|
+| B1 | Chargeur : refuser `live.enabled: true` si `config/live.yaml` n'appartient pas aux Administrateurs (Windows) ou à root (VPS) | ADR-003, limite de l'ACL | 1 |
+| B2 | Étendre l'ACL de `protect-live.ps1` à `governance/approvals/` | R3 | 1 |
+| B3 | Décider s'il faut protéger `.claude/settings.json` et `.claude/hooks/` contre Claude | threat-model §5.8 | ? |
+| B4 | Garde-fou shell : analyser les scripts lancés (`bash x.sh`, `pwsh -File`, `python x.py`) et les extractions d'archives | threat-model §5.1, §5.4 | 1 |
+| B5 | Garde-fou shell : refuser `git stash`, `git pull`, `git checkout <branche>` quand `live.yaml` diffère entre les états | threat-model §5.3 | 1 |
+| B6 | Garde-fou shell : refuser `docker compose config` sans `--quiet`, `docker inspect`, `docker compose exec … env` | threat-model §5.6 | 1 |
+| B7 | Contrôle des outils MCP dans les hooks dès le premier serveur MCP | threat-model §5.7 | 2 |
+| B8 | Copie du journal d'audit hors machine et ancre externe du dernier hash | R11, section 13 | déploiement |
+| B9 | Durcissement du VPS : SSH par clé, pare-feu, mises à jour automatiques, réseau privé (`A_DEFINIR`), sauvegardes chiffrées, restauration testée | section 13 | déploiement |
+
+## Chaîne de livraison
+| # | Élément | Origine | Phase |
+|---|---|---|---|
+| B10 | Épingler les actions GitHub par SHA ; Dependabot ou Renovate | T6 | 1 |
+| B11 | Épingler les images Docker par digest | T6, ADR-004 | 1 |
+| B12 | Version de promptfoo définie à un seul endroit (Makefile et CI) | phase 0 | 1 |
+| B13 | Audit npm de promptfoo ; relevé automatique des licences transitives (ex. `pip-licenses`) | ADR-001, R14 | 1 |
+| B14 | Vérifier le passage de la CI sur `ubuntu-latest` au premier push (non exécutée en local) | phase 0 | 1 |
+
+## Infrastructure
+| # | Élément | Origine | Phase |
+|---|---|---|---|
+| B15 | Remplacer MinIO (dépôt archivé depuis 2026-04) : ADR comparant les stockages objet compatibles S3 | ADR-004 | 1 |
+| B16 | Évaluer Valkey à la place de Redis 7.4 (RSALv2 / SSPLv1) | licences | 1 |
+| B17 | Fermer les inscriptions Langfuse après le premier compte ; initialisation sans interface (variables à vérifier dans la doc Langfuse) | ADR-004 | 1 |
+| B18 | Mesurer la RAM et le temps de démarrage du profil `observability` | ADR-004 | 1 |
+| B19 | Montée vers PostgreSQL 18 : ADR (nouvel emplacement des données dans l'image) | ADR-001 | ? |
+
+## Fonctionnel
+| # | Élément | Origine | Phase |
+|---|---|---|---|
+| B20 | Évaluer le Claude Agent SDK comme plugin du pack Code | ADR-002 | pack Code |
+| B21 | Vérifier le dépôt OpenBB depuis https://docs.openbb.co (nom `openbq-org` suspect) | Annexe A, licences | 2 |
