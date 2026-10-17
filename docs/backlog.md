@@ -12,7 +12,7 @@ son origine et la phase visée ; « ? » signifie « à décider par Lucas ».
 | B4 | Garde-fou shell : analyser les scripts lancés (`bash x.sh`, `pwsh -File`, `python x.py`) et les extractions d'archives | threat-model §5.1, §5.4 | 1 |
 | B5 | Garde-fou shell : refuser `git stash`, `git pull`, `git checkout <branche>` quand `live.yaml` diffère entre les états | threat-model §5.3 | 1 |
 | B6 | Garde-fou shell : refuser `docker compose config` sans `--quiet`, `docker inspect`, `docker compose exec … env` | threat-model §5.6 | 1 |
-| B7 | Contrôle des outils MCP dans les hooks dès le premier serveur MCP | threat-model §5.7 | 2 |
+| B7 | Contrôle des outils MCP dans les hooks dès le premier serveur MCP (outils web de la phase 1) | threat-model §5.7 | 1 |
 | B8 | Copie du journal d'audit hors machine et ancre externe du dernier hash | R11, section 13 | déploiement |
 | B9 | Durcissement du VPS : SSH par clé, pare-feu, mises à jour automatiques, réseau privé (`A_DEFINIR`), sauvegardes chiffrées, restauration testée | section 13 | déploiement |
 
