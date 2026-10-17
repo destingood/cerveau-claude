@@ -12,8 +12,10 @@ import hashlib
 import re
 from collections.abc import Iterator
 from dataclasses import dataclass
+from datetime import date
+from decimal import Decimal
 from pathlib import Path
-from typing import Any, Literal
+from typing import Annotated, Any, Literal
 
 import yaml
 from pydantic import BaseModel, ConfigDict, Field, ValidationError, model_validator
@@ -58,6 +60,14 @@ class ModelTier(_Strict):
     provider: Literal["anthropic", "ollama"]
     model: str
     status: Literal["A_VERIFIER", "verifie"] | None = None
+    verified_on: date | None = None
+    source: str | None = None
+
+    @model_validator(mode="after")
+    def _verified_needs_date_and_source(self) -> ModelTier:
+        if self.status == "verifie" and (self.verified_on is None or not self.source):
+            raise ValueError("status 'verifie' requires verified_on and source")
+        return self
 
 
 class Judge(_Strict):
@@ -191,9 +201,17 @@ class PerRequest(_Strict):
 
 class BudgetsConfig(_Strict):
     llm_budget_eur: LlmBudget
-    alerts_pct: list[int]
+    alerts_pct: list[Annotated[int, Field(gt=0, le=100)]] = Field(min_length=1)
     per_request: PerRequest
-    on_exceeded: list[str]
+    on_exceeded: list[
+        Literal["refuse_new_requests", "downgrade_to_fast_or_local", "stop_non_critical_tasks"]
+    ] = Field(min_length=1)
+
+    @model_validator(mode="after")
+    def _alerts_sorted_up_to_100(self) -> BudgetsConfig:
+        if self.alerts_pct != sorted(set(self.alerts_pct)) or self.alerts_pct[-1] != 100:
+            raise ValueError("alerts_pct must be strictly increasing and end at 100")
+        return self
 
 
 class Fiscal(_Strict):
@@ -265,6 +283,75 @@ class RiskConfig(_Strict):
     infra: Infra
 
 
+# --- pricing.yaml (ADR-005) -------------------------------------------------------------------
+
+Price = Annotated[Decimal, Field(ge=0)] | Marker
+
+
+class PriceTier(_Strict):
+    """USD per million tokens; applies while the prompt is at most ``max_prompt_tokens``."""
+
+    max_prompt_tokens: int | None = Field(default=None, gt=0)
+    input: Price
+    cache_write_5m: Price
+    cache_write_1h: Price
+    cache_read: Price
+    output: Price
+
+
+class ModelPricing(_Strict):
+    tiers: list[PriceTier] = Field(min_length=1)
+
+    @model_validator(mode="after")
+    def _tiers_ascending_and_unbounded_last(self) -> ModelPricing:
+        bounds = [tier.max_prompt_tokens for tier in self.tiers]
+        if bounds[-1] is not None or None in bounds[:-1]:
+            raise ValueError("only the last price tier is unbounded (no max_prompt_tokens)")
+        finite = [b for b in bounds if b is not None]
+        if finite != sorted(set(finite)):
+            raise ValueError("max_prompt_tokens must be strictly increasing")
+        return self
+
+
+class AnthropicPricing(_Strict):
+    source: str
+    verified_on: date
+    models: dict[str, ModelPricing]
+
+
+class SearchPrice(_Strict):
+    usd_per_1000_requests: Price
+    source: str
+    verified_on: date
+
+
+class Fx(_Strict):
+    usd_per_eur: Annotated[Decimal, Field(gt=0)] | Marker
+    rate_date: date
+    source: str
+    read_on: date
+
+
+class PricingConfig(_Strict):
+    anthropic: AnthropicPricing
+    search: dict[str, SearchPrice]
+    fx: Fx
+
+
+# --- guardrails.yaml (ADR-010) ----------------------------------------------------------------
+
+
+class PiiConfig(_Strict):
+    language: Literal["fr"]
+    spacy_model: str
+    score_threshold: Annotated[float, Field(ge=0, le=1)] | Marker
+    entities: dict[str, Annotated[str, Field(pattern=r"^[A-Z][A-Z_]*$")]] = Field(min_length=1)
+
+
+class GuardrailsConfig(_Strict):
+    pii: PiiConfig
+
+
 FILES: dict[str, tuple[str, type[BaseModel]]] = {
     "models": ("models.yaml", ModelsConfig),
     "autonomy": ("autonomy.yaml", AutonomyConfig),
@@ -275,6 +362,8 @@ FILES: dict[str, tuple[str, type[BaseModel]]] = {
     "data_sources": ("data_sources.yaml", DataSourcesConfig),
     "evals": ("evals.yaml", EvalsConfig),
     "risk": ("risk.yaml", RiskConfig),
+    "pricing": ("pricing.yaml", PricingConfig),
+    "guardrails": ("guardrails.yaml", GuardrailsConfig),
 }
 
 
@@ -327,6 +416,8 @@ FEATURES: dict[str, Feature] = {
     ),
     "compliance.fiscal": Feature("Règles fiscales", ("compliance:fiscal",)),
     "compliance.crypto": Feature("Plateformes crypto autorisées", ("compliance:crypto",)),
+    "costs": Feature("Calcul déterministe des coûts (prix, taux de change)", ("pricing:",)),
+    "guardrails.pii": Feature("Pseudonymisation Presidio (seuil, entités)", ("guardrails:pii",)),
 }
 
 
@@ -393,6 +484,8 @@ class Config:
     data_sources: DataSourcesConfig
     evals: EvalsConfig
     risk: RiskConfig
+    pricing: PricingConfig
+    guardrails: GuardrailsConfig
     markers: tuple[MarkerHit, ...]
     digest: str
 
@@ -431,6 +524,19 @@ def config_digest(directory: Path) -> str:
     return "sha256:" + h.hexdigest()
 
 
+def _cross_file_errors(parsed: dict[str, BaseModel]) -> list[str]:
+    """Every Anthropic tier must have a price, otherwise its cost could not be computed."""
+    models: ModelsConfig = parsed["models"]  # type: ignore[assignment]
+    pricing: PricingConfig = parsed["pricing"]  # type: ignore[assignment]
+    return [
+        f"pricing.yaml › anthropic.models : prix absent pour {tier.model} (tier {name})"
+        for name, tier in models.tiers.items()
+        if tier.provider == "anthropic"
+        and tier.model not in MARKERS
+        and tier.model not in pricing.anthropic.models
+    ]
+
+
 def load_config(directory: Path) -> Config:
     errors: list[str] = []
     parsed: dict[str, BaseModel] = {}
@@ -456,6 +562,8 @@ def load_config(directory: Path) -> Config:
             for err in exc.errors():
                 loc = ".".join(str(p) for p in err["loc"])
                 errors.append(f"{filename} › {loc} : {err['msg']}")
+    if not errors:
+        errors.extend(_cross_file_errors(parsed))
     if errors:
         raise ConfigError("\n".join(errors))
     return Config(
@@ -469,6 +577,8 @@ def load_config(directory: Path) -> Config:
         data_sources=parsed["data_sources"],  # type: ignore[arg-type]
         evals=parsed["evals"],  # type: ignore[arg-type]
         risk=parsed["risk"],  # type: ignore[arg-type]
+        pricing=parsed["pricing"],  # type: ignore[arg-type]
+        guardrails=parsed["guardrails"],  # type: ignore[arg-type]
         markers=tuple(markers),
         digest=config_digest(directory),
     )
