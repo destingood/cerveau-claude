@@ -1,0 +1,25 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "type": "object",
+  "properties": {
+    "query": {
+      "description": "Requête",
+      "maxLength": 400,
+      "minLength": 1,
+      "title": "Query",
+      "type": "string"
+    },
+    "max_results": {
+      "default": 5,
+      "description": "Nombre de résultats (1 à 10)",
+      "maximum": 10,
+      "minimum": 1,
+      "title": "Max Results",
+      "type": "integer"
+    }
+  },
+  "required": [
+    "query"
+  ],
+  "title": "web_searchArguments"
+}

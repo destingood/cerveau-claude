@@ -1,0 +1,68 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "additionalProperties": false,
+  "properties": {
+    "url": {
+      "description": "URL demandée",
+      "title": "Url",
+      "type": "string"
+    },
+    "final_url": {
+      "description": "URL lue après les redirections",
+      "title": "Final Url",
+      "type": "string"
+    },
+    "content_type": {
+      "title": "Content Type",
+      "type": "string"
+    },
+    "title": {
+      "anyOf": [
+        {
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "title": "Title"
+    },
+    "published": {
+      "anyOf": [
+        {
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "description": "Date trouvée dans la page, non vérifiée",
+      "title": "Published"
+    },
+    "text": {
+      "title": "Text",
+      "type": "string"
+    },
+    "truncated": {
+      "description": "Texte coupé à la limite de caractères",
+      "title": "Truncated",
+      "type": "boolean"
+    },
+    "retrieved_at": {
+      "title": "Retrieved At",
+      "type": "string"
+    }
+  },
+  "required": [
+    "url",
+    "final_url",
+    "content_type",
+    "title",
+    "published",
+    "text",
+    "truncated",
+    "retrieved_at"
+  ],
+  "title": "PageText",
+  "type": "object"
+}

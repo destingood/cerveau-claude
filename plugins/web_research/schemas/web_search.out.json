@@ -1,0 +1,75 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$defs": {
+    "SearchHit": {
+      "additionalProperties": false,
+      "properties": {
+        "rank": {
+          "maximum": 10,
+          "minimum": 1,
+          "title": "Rank",
+          "type": "integer"
+        },
+        "title": {
+          "title": "Title",
+          "type": "string"
+        },
+        "url": {
+          "title": "Url",
+          "type": "string"
+        },
+        "snippet": {
+          "title": "Snippet",
+          "type": "string"
+        },
+        "age": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Ancienneté annoncée par le moteur",
+          "title": "Age"
+        }
+      },
+      "required": [
+        "rank",
+        "title",
+        "url",
+        "snippet"
+      ],
+      "title": "SearchHit",
+      "type": "object"
+    }
+  },
+  "additionalProperties": false,
+  "properties": {
+    "query": {
+      "title": "Query",
+      "type": "string"
+    },
+    "provider": {
+      "title": "Provider",
+      "type": "string"
+    },
+    "results": {
+      "items": {
+        "$ref": "#/$defs/SearchHit"
+      },
+      "maxItems": 10,
+      "title": "Results",
+      "type": "array"
+    }
+  },
+  "required": [
+    "query",
+    "provider",
+    "results"
+  ],
+  "title": "SearchResults",
+  "type": "object"
+}

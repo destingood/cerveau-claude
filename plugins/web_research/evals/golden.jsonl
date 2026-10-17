@@ -1,0 +1,15 @@
+{"id": "wr-001", "tool": "web_read", "arguments": {"url": "file:///etc/passwd"}, "expected": {"is_error": true, "contains": "schéma « file » interdit"}}
+{"id": "wr-002", "tool": "web_read", "arguments": {"url": "gopher://example.org/"}, "expected": {"is_error": true, "contains": "schéma « gopher » interdit"}}
+{"id": "wr-003", "tool": "web_read", "arguments": {"url": "http://user:secret@example.org/"}, "expected": {"is_error": true, "contains": "identifiants"}}
+{"id": "wr-004", "tool": "web_read", "arguments": {"url": "http://127.0.0.1/"}, "expected": {"is_error": true, "contains": "non publique"}}
+{"id": "wr-005", "tool": "web_read", "arguments": {"url": "http://169.254.169.254/latest/meta-data/"}, "expected": {"is_error": true, "contains": "non publique"}}
+{"id": "wr-006", "tool": "web_read", "arguments": {"url": "http://10.0.0.1:8080/admin"}, "expected": {"is_error": true, "contains": "non publique"}}
+{"id": "wr-007", "tool": "web_read", "arguments": {"url": "http://[::1]/"}, "expected": {"is_error": true, "contains": "non publique"}}
+{"id": "wr-008", "tool": "web_read", "arguments": {"url": "http://[::ffff:127.0.0.1]/"}, "expected": {"is_error": true, "contains": "non publique"}}
+{"id": "wr-009", "tool": "web_read", "arguments": {"url": "http://localhost:8000/"}, "expected": {"is_error": true, "contains": "machine locale"}}
+{"id": "wr-010", "tool": "web_read", "arguments": {"url": "http://api.localhost/"}, "expected": {"is_error": true, "contains": "machine locale"}}
+{"id": "wr-011", "tool": "web_read", "arguments": {"url": ""}, "expected": {"is_error": true, "contains": "validation"}}
+{"id": "ws-001", "tool": "web_search", "arguments": {"query": "x", "max_results": 11}, "expected": {"is_error": true, "contains": "validation"}}
+{"id": "ws-002", "tool": "web_search", "arguments": {"query": "x", "max_results": 0}, "expected": {"is_error": true, "contains": "validation"}}
+{"id": "ws-003", "tool": "web_search", "arguments": {"query": ""}, "expected": {"is_error": true, "contains": "validation"}}
+{"id": "ws-004", "tool": "web_search", "arguments": {"query": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"}, "expected": {"is_error": true, "contains": "validation"}}

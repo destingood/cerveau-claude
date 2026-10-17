@@ -39,3 +39,7 @@ son origine et la phase visée ; « ? » signifie « à décider par Lucas ».
 |---|---|---|---|
 | B20 | Évaluer le Claude Agent SDK comme plugin du pack Code | ADR-002 | pack Code |
 | B21 | Vérifier le dépôt OpenBB depuis https://docs.openbb.co (nom `openbq-org` suspect) | Annexe A, licences | 2 |
+| B22 | `web_read` : cache de `robots.txt` entre deux lectures (durée de vie bornée, RFC 9309 §2.4 : 24 h au plus) | ADR-006, plugin `web_research` | 2 |
+| B23 | `web_read` : encodages `br` et `deflate` (aujourd'hui refusés ; seul `gzip` est décodé, avec garde anti-bombe) | plugin `web_research` | ? |
+| B24 | `web_read` : limiter les ports joignables (80 et 443 seulement ?) | plugin `web_research`, anti-SSRF | ? |
+| B25 | `web_search` : confirmer dans la doc Brave le champ `age` et la longueur maximale de requête (400 caractères retenus, `A_VERIFIER`) | plugin `web_research` | 1 |
