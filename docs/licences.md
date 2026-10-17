@@ -1,6 +1,8 @@
 # Licences des composants — CERVEAU
 
-- Relevé du 2026-10-17 (phase 0), mis à jour à chaque nouvelle dépendance (R14)
+- Relevé du 2026-10-17 (phase 0), mis à jour le 2026-10-18 (phase 1) ; à jour à chaque nouvelle
+  dépendance (R14)
+- Phase 1 : licences lues dans les métadonnées des paquets installés (`*.dist-info/METADATA`)
 - Sources : métadonnées PyPI et npm, fichiers `LICENSE` des dépôts, pages Docker Hub
 
 ## Dépendances Python directes (`pyproject.toml`)
@@ -10,11 +12,23 @@
 | jsonschema | 4.26.0 | MIT | validation des manifestes (Annexe C.1) |
 | PyYAML | 6.0.3 | MIT | lecture des `config/*.yaml` |
 | Typer | 0.27.3 | MIT | CLI `cerveau` |
+| langgraph | 1.2.16 | MIT | graphe de l'orchestrateur (phase 1) |
+| langchain-core | 1.6.12 | MIT | messages, outils, modèles factices des tests |
+| langchain-anthropic | 1.7.6 | MIT | appels aux modèles Claude |
+| mcp | 2.3.0 | MIT | serveur et client MCP (stdio) |
+| httpx | 0.28.1 | BSD-3-Clause | requêtes HTTP du plugin `web_research` |
+| trafilatura | 2.3.1 | Apache-2.0 | extraction du texte des pages web |
+| presidio-analyzer | 2.2.364 | MIT | détection des données personnelles |
+| spaCy | 3.8.16 | MIT | moteur NLP de Presidio |
+| fr_core_news_md | 3.8.0 | LGPL-LR | modèle spaCy français (personnes, lieux) |
+| langfuse | 5.0.2 | MIT | traces optionnelles (serveur ≥ 4.59.0) |
+| tldextract | 5.4.0 | BSD-3-Clause | domaine enregistrable (liste PSL embarquée, hors ligne) |
 
 ## Outils de développement (groupe `dev`, non distribués)
 | Composant | Version | Licence | Usage |
 |---|---|---|---|
 | pytest / pytest-cov | 9.1.1 / 7.1.0 | MIT | tests |
+| pytest-socket | 0.8.1 | MIT | blocage du réseau dans les tests |
 | Hypothesis | 6.170.1 | MPL-2.0 | tests par propriétés |
 | ruff | 0.17.1 | MIT | lint et formatage |
 | pip-audit | 2.10.1 | Apache-2.0 | audit des vulnérabilités |
@@ -25,7 +39,11 @@
 | GNU make | 4.4.1 | GPL-3.0 | outil local seulement, rien n'est lié |
 | Node.js | v26 local, v24 LTS en CI | MIT | exécution de promptfoo |
 
-Les dépendances transitives ne sont pas toutes listées ici ; `uv.lock` les fige. Leur relevé
+Les dépendances transitives ne sont pas toutes listées ici ; `uv.lock` les fige. Exception notable :
+`cryptography` 50.0.2 (Apache-2.0 ou BSD-3-Clause), tirée par `pyjwt[crypto]` via `mcp`.
+`presidio-anonymizer` 2.2.364 n'est **pas** retenu : il impose `cryptography<49`, version touchée
+par PYSEC-2026-3554 et PYSEC-2026-3552 (correctifs en 49.0.0 et 50.0.0). La pseudonymisation est
+faite dans `core/guardrails/` à partir des résultats de `presidio-analyzer` (ADR-007). Leur relevé
 automatique (par exemple `pip-licenses` en CI) est au backlog.
 
 ## Services Docker (`infra/docker-compose.yml`)
@@ -48,6 +66,10 @@ automatique (par exemple `pip-licenses` en CI) est au backlog.
   licence configurée).
 - **Hypothesis (MPL-2.0)** : copyleft faible par fichier, outil de test non modifié ni distribué.
 - **GNU make (GPL-3.0)** : outil de construction, sans lien avec le code de CERVEAU.
+- **fr_core_news_md (LGPL-LR, licence LGPL pour ressources linguistiques)** : modèle de données
+  chargé tel quel par spaCy, non modifié, non redistribué hors de `uv.lock` (téléchargé depuis
+  les releases GitHub d'Explosion, empreinte figée). Une version modifiée du modèle devrait rester
+  sous LGPL-LR.
 
 ## Points à trancher avant les phases suivantes (Annexe A)
 Licences annoncées par l'Annexe A, à revérifier au moment de l'intégration :
