@@ -55,14 +55,21 @@ def anthropic_factory(request: ModelRequest) -> BaseChatModel:
     ``ANTHROPIC_API_KEY``; CERVEAU never reads, stores or logs it (R6)."""
     from langchain_anthropic import ChatAnthropic
 
-    return ChatAnthropic(
-        model=request.model,
-        max_tokens=request.max_output_tokens,  # None: the model's own output limit
-        timeout=request.timeout_s,
-        base_url=ANTHROPIC_BASE_URL,
-        anthropic_proxy=None,
-        callbacks=list(request.callbacks),
-    )
+    def build(max_tokens: int | None) -> ChatAnthropic:
+        return ChatAnthropic(
+            model=request.model,
+            max_tokens=max_tokens,  # None: the output limit of the model's profile
+            timeout=request.timeout_s,
+            base_url=ANTHROPIC_BASE_URL,
+            anthropic_proxy=None,
+            callbacks=list(request.callbacks),
+        )
+
+    model = build(None)
+    cap = request.max_output_tokens
+    if cap is not None and (model.max_tokens is None or cap < model.max_tokens):
+        model = build(cap)
+    return model
 
 
 class ModelRouter:
@@ -95,7 +102,9 @@ class ModelRouter:
     ) -> BaseChatModel:
         """A chat model for ``role`` whose every call is priced into ``meter``.
 
-        Raises ``BlockedFeatureError`` when the tier still holds a marker (R7).
+        ``max_output_tokens`` is an upper bound (usually what is left of the request's token
+        budget); the model's own output limit applies when it is lower. Raises
+        ``BlockedFeatureError`` when the tier still holds a marker (R7).
         """
         if timeout_s <= 0:
             raise ValueError("délai d'appel nul ou négatif")

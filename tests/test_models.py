@@ -291,3 +291,12 @@ def test_real_factory_ignores_redirecting_environment(
     assert model.default_request_timeout == 30  # type: ignore[attr-defined]
     assert any(isinstance(c, MeterCallback) for c in model.callbacks)  # type: ignore[union-attr]
     assert anthropic_factory is not None
+
+
+def test_real_factory_keeps_the_lower_output_limit(config: Config) -> None:
+    router = ModelRouter(config)
+    meter = router.new_meter()
+    default = router.chat("reader", meter, timeout_s=10)
+    assert default.max_tokens  # type: ignore[attr-defined]  # from the model profile
+    capped = router.chat("reader", meter, timeout_s=10, max_output_tokens=10**9)
+    assert capped.max_tokens == default.max_tokens  # type: ignore[attr-defined]

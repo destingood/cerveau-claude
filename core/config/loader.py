@@ -189,8 +189,9 @@ class LiveConfig(_Strict):
 
 
 class LlmBudget(_Strict):
-    daily: float | Marker
-    monthly: float | Marker
+    # Money is a decision figure (R1): exact decimals, never floats.
+    daily: Annotated[Decimal, Field(gt=0)] | Marker
+    monthly: Annotated[Decimal, Field(gt=0)] | Marker
 
 
 class PerRequest(_Strict):
