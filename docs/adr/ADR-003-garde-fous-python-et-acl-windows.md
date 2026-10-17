@@ -1,6 +1,6 @@
 # ADR-003 — Garde-fous Claude Code en Python et ACL Windows pour `config/live.yaml`
 
-- Statut : proposé
+- Statut : accepté (Lucas, 2026-10-18, décision D13 du plan de phase 1)
 - Date : 2026-10-17
 - Phase : 0
 

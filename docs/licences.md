@@ -39,12 +39,12 @@
 | GNU make | 4.4.1 | GPL-3.0 | outil local seulement, rien n'est lié |
 | Node.js | v26 local, v24 LTS en CI | MIT | exécution de promptfoo |
 
-Les dépendances transitives ne sont pas toutes listées ici ; `uv.lock` les fige. Exception notable :
+Les dépendances transitives ne sont pas toutes listées ici ; `uv.lock` les fige, et leur relevé
+automatique (par exemple `pip-licenses` en CI) est au backlog. Exception notable :
 `cryptography` 50.0.2 (Apache-2.0 ou BSD-3-Clause), tirée par `pyjwt[crypto]` via `mcp`.
 `presidio-anonymizer` 2.2.364 n'est **pas** retenu : il impose `cryptography<49`, version touchée
 par PYSEC-2026-3554 et PYSEC-2026-3552 (correctifs en 49.0.0 et 50.0.0). La pseudonymisation est
-faite dans `core/guardrails/` à partir des résultats de `presidio-analyzer` (ADR-007). Leur relevé
-automatique (par exemple `pip-licenses` en CI) est au backlog.
+faite dans `core/guardrails/` à partir des résultats de `presidio-analyzer` (ADR-010).
 
 ## Services Docker (`infra/docker-compose.yml`)
 | Composant | Image | Licence | Usage |

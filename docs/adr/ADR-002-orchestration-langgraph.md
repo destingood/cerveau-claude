@@ -1,6 +1,6 @@
 # ADR-002 — Orchestration : LangGraph plutôt que le Claude Agent SDK
 
-- Statut : proposé
+- Statut : accepté (Lucas, 2026-10-18, décision D13 du plan de phase 1)
 - Date : 2026-10-17
 - Phase : 0 (mise en œuvre en phase 1)
 
