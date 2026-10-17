@@ -1,0 +1,10 @@
+sources:
+  openbb:   { enabled: true,  url: A_VERIFIER, categories: [equity, news, economy], terms: A_VERIFIER }
+            # défaut documenté : `openbb-mcp` écoute sur 127.0.0.1:8001 en streamable HTTP
+  yfinance: { enabled: true,  usage: personnel, terms: A_VERIFIER }
+  ccxt:     { enabled: false }
+  fred:     { enabled: false, terms: A_VERIFIER }
+  ecb:      { enabled: false, terms: A_VERIFIER }
+quality:
+  max_staleness_minutes: A_DEFINIR
+  min_quality_score_above_N1: A_DEFINIR

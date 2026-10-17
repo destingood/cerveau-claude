@@ -1,0 +1,4 @@
+llm_budget_eur: { daily: A_DEFINIR, monthly: A_DEFINIR }
+alerts_pct: [50, 80, 100]
+per_request: { max_tool_calls: 25, max_tokens: A_DEFINIR, max_seconds: 120 }
+on_exceeded: [downgrade_to_fast_or_local, stop_non_critical_tasks]

@@ -1,0 +1,6 @@
+thresholds:
+  generaliste_golden_min_score: A_DEFINIR
+  finance_golden_min_score: A_DEFINIR
+  behavior_suites_R1_to_R5_pass_rate: 1.0   # tolérance zéro
+  regression_block_delta: A_DEFINIR
+judge_human_review_sample_weekly: 20

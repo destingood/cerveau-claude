@@ -1,0 +1,11 @@
+# Identifiants à confirmer dans la documentation Anthropic au moment de l'implémentation.
+tiers:
+  deep:     { provider: anthropic, model: "claude-opus-5-5",   status: A_VERIFIER }
+  standard: { provider: anthropic, model: "claude-sonnet-5-5", status: A_VERIFIER }
+  fast:     { provider: anthropic, model: "claude-haiku-5-5",  status: A_VERIFIER }
+  local:    { provider: ollama,    model: A_DEFINIR }
+judge:
+  tier: deep
+  prefer_different_from_evaluated: true
+routing:
+  max_tools_to_planner: 25

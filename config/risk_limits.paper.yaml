@@ -1,0 +1,12 @@
+# Limites du paper trading. Ce ne sont pas des recommandations d'investissement :
+# Lucas fixe chaque valeur avant le démarrage de la Phase 4.
+capital_reference_eur: A_DEFINIR
+max_order_pct: A_DEFINIR
+max_position_pct: A_DEFINIR
+max_sector_pct: A_DEFINIR
+max_daily_loss_pct: A_DEFINIR
+max_drawdown_pct: A_DEFINIR
+max_orders_per_hour: A_DEFINIR
+limit_price_collar_pct: A_DEFINIR
+min_avg_daily_volume: A_DEFINIR
+allow: { leverage: false, short_selling: false, derivatives: false }

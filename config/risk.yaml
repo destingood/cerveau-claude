@@ -1,0 +1,11 @@
+# Paramètres de risque opérationnel cités dans le corps du méga-prompt (sections 3, 6.5, 8.5, 8.6, 13)
+# et absents de l'Annexe B. Regroupés ici pour respecter R7 : une valeur inconnue bloque la fonction.
+kill_switch:
+  target_seconds: A_DEFINIR              # R4 : cible documentée 5 s
+  data_loss_timeout_seconds: A_DEFINIR   # 8.5 : perte de connexion aux données
+plugin_health:
+  slo_breach_days_before_disable: A_DEFINIR   # 6.5 : défaut documenté 2 jours
+keys:
+  rotation_days: A_DEFINIR               # 8.6
+infra:
+  private_network: A_DEFINIR             # 13 : réseau privé de type WireGuard
