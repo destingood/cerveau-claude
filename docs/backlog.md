@@ -46,3 +46,7 @@ son origine et la phase visée ; « ? » signifie « à décider par Lucas ».
 | B26 | Déclarer dans le manifeste C.1 le démarrage d'un plugin (module, variables d'environnement, outils payants) ; aujourd'hui constante `RUNTIMES` de `core/mcp/adapter.py` | ADR-007, annexe C.1 | 2 |
 | B27 | Client MCP : transport HTTP (Streamable HTTP) pour un plugin distant ; seul stdio est couvert | ADR-007 | ? |
 | B28 | Coût Brave : ne compter une recherche que si elle a atteint Brave (aujourd'hui comptée dès l'envoi au serveur, même sans clé : prudence) | ADR-005, `core/mcp` | 3 |
+| B29 | Pseudonymisation : recognizers SIREN / SIRET (clé de Luhn) et plaques d'immatriculation | ADR-010, section 13 | 2 |
+| B30 | Revenir à `presidio-anonymizer` quand sa borne `cryptography<49` sera levée | ADR-010 | 3 |
+| B31 | URL fournies : remplacer l'URL par un jeton `<URL_n>` côté LLM (une URL peut contenir un nom) | ADR-010, R5 | 3 |
+| B32 | Mesurer rappel et précision de la NER `fr_core_news_md` sur un corpus français annoté avant de passer au modèle `lg` | ADR-010, D10 | 2 |
