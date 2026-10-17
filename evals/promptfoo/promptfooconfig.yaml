@@ -1,0 +1,35 @@
+# yaml-language-server: $schema=https://promptfoo.dev/config-schema.json
+# Witness test of the eval harness (phase 0): no LLM, no API key, fully deterministic.
+# The `echo` provider returns the rendered prompt, so these cases check that the harness,
+# templating and assertions run end to end. Real suites (golden sets, behaviours, red team)
+# arrive in phase 1. Run with `make eval`.
+description: "CERVEAU — test témoin du harness d'évals (phase 0, sans LLM)"
+
+prompts:
+  - |-
+    Question de Lucas : {{question}}
+    Consigne : distingue faits sourcés, estimations, hypothèses et opinions (R12).
+
+providers:
+  - id: echo
+    label: echo-temoin
+
+tests:
+  - description: "le gabarit est rendu avec la question"
+    vars:
+      question: "Quel est le niveau d'autonomie par défaut ?"
+    assert:
+      - type: contains
+        value: "Quel est le niveau d'autonomie par défaut ?"
+      - type: icontains
+        value: "R12"
+
+  - description: "aucune variable de gabarit ne reste non rendue"
+    vars:
+      question: "Résume le dernier compte rendu de phase."
+    assert:
+      # Built with repeat(): a literal double brace would itself be parsed as a template.
+      - type: javascript
+        value: "!output.includes('{'.repeat(2))"
+      - type: javascript
+        value: "output.split('\\n').length === 2"
