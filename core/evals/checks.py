@@ -19,7 +19,7 @@ from core.orchestrator.answer import render_markdown
 from core.orchestrator.prompts import PACKS_DIR, PROMPTS_DIR, strip_header
 from core.orchestrator.state import MARKER, Answer
 from core.verification.citations import citation_numbers, units
-from core.verification.numbers import unmatched_numbers
+from core.verification.trace import Evidence, ToolOutput, trace
 
 Mode = Literal["offline", "live"]
 
@@ -51,6 +51,8 @@ class Outcome:
     requested: tuple[tuple[str, dict[str, Any]], ...] = ()  # tool calls the planner asked for
     read_texts: tuple[str, ...] = ()  # texts of the pages served, for the number check
     search_texts: tuple[str, ...] = ()  # titles and snippets of the search results
+    tool_outputs: tuple[ToolOutput, ...] = ()  # figures and texts of the other tools
+    now: str | None = None  # the date of the day the models were given
     tool_calls: int = 0  # calls charged to the budget; reads the planner refused are not
 
     @property
@@ -289,20 +291,24 @@ def _check_calibration(outcome: Outcome, checks: _Checks) -> None:
 
 
 def _check_numbers(outcome: Outcome, checks: _Checks) -> None:
-    """R1: a number that no source supports is marked where it stands."""
+    """R1: a number or a date that no source supports, or with the contrary sign, is marked."""
     if outcome.answer.statut not in ("complete", "partielle"):
         return
-    haystack = [outcome.case.question, *outcome.read_texts, *outcome.search_texts]
+    texts = [("question", outcome.case.question)]
+    if outcome.now is not None:
+        texts.append(("date du jour", outcome.now))
+    texts += [("source", text) for text in (*outcome.read_texts, *outcome.search_texts)]
+    known = Evidence(texts, outcome.tool_outputs)
     unmarked = [
         unit
         for text in _drafted(outcome.answer)
         for unit in units(text)
-        if MARKER not in unit and unmatched_numbers(unit, haystack)
+        if MARKER not in unit and not all(row.traced for row in trace(unit, known))
     ]
     checks.add(
         "chiffres sourcés ou marqués",
         not unmarked,
-        f"{len(unmarked)} passage(s) avec un chiffre sans source ni marque",
+        f"{len(unmarked)} passage(s) avec un chiffre ou une date sans source ni marque",
         "R1",
     )
 

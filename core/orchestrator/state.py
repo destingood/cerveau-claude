@@ -10,6 +10,8 @@ from typing import Any, Literal
 
 from pydantic import BaseModel, ConfigDict, Field
 
+from core.verification.trace import ToolOutput, TraceKind
+
 MAX_CLAIM_CHARS = 300
 MARKER = "[VERIFICATION REQUIRED]"
 
@@ -136,6 +138,7 @@ class Draft(_Node):  # node 4
     sources: tuple[Source, ...] = ()
     pages: dict[int, str] = Field(default_factory=dict)  # stored page text, by source number
     search_texts: tuple[str, ...] = ()  # titles and snippets of the search results
+    tool_outputs: tuple[ToolOutput, ...] = ()  # the figures and texts of the other tool calls
     searches: int = 0
     refused_urls: int = 0  # web_read refused: URL from neither a search nor the question
     turns: int = 0
@@ -146,12 +149,29 @@ class Issue(_Node):
     detail: str
 
 
+class TraceRow(_Node):
+    """One number or date of the answer: where it comes from, without its text (R1, R11)."""
+
+    field: str  # synthese, developpement or contre_arguments
+    n: int  # its rank in the field, from 1
+    kind: TraceKind
+    origin: str | None  # "<tool>#<n> › <figure id>", "<tool>#<n>", "question", "source [n]"…
+    contrary: bool = False  # a source gives the value with the contrary sign
+
+    @property
+    def traced(self) -> bool:
+        return self.origin is not None and not self.contrary
+
+
 class VerificationReport(_Node):  # node 5
     answer: DraftAnswer  # with the markers inserted
     issues: tuple[Issue, ...] = ()
     quotes_checked: int = 0
     quotes_failed: int = 0
-    numbers_unmatched: int = 0
+    numbers_unmatched: int = 0  # contrary signs included
+    numbers_contrary: int = 0
+    dates_unmatched: int = 0
+    trace: tuple[TraceRow, ...] = ()
     uncited_marked: int = 0
     cited_domains: tuple[str, ...] = ()
     confidence: Confidence

@@ -42,12 +42,13 @@ from core.orchestrator.runtime import (
     ToolboxOpener,
     mcp_toolbox,
 )
-from core.orchestrator.state import Answer, CerveauState, required
+from core.orchestrator.state import Answer, CerveauState, TraceRow, required
 from core.orchestrator.verify import verify_node
 from core.policy.engine import decide, kill_switch_engaged
 
 Node = Callable[[Run, CerveauState], Awaitable[dict[str, Any]]]
 RECURSION_LIMIT = 20  # 8 nodes, no cycle in the graph
+MAX_TRACE_ROWS = 200  # the counts stay whole beyond it
 POLICY_REFUSAL = "Réponse retenue par le moteur de politique"
 
 
@@ -89,6 +90,25 @@ def trace_metadata(run: Run, status: str) -> dict[str, str | int]:
         "elapsed_s": f"{run.budget.elapsed_s:.3f}",
         "models": run_versions["model"],
         "plugin": run_versions["plugin"],
+    }
+
+
+def trace_payload(rows: Sequence[TraceRow]) -> dict[str, Any]:
+    """Where each number and date of the answer comes from, without the numbers (R1, R11)."""
+    numbers = [row for row in rows if row.kind == "nombre"]
+    dates = [row for row in rows if row.kind != "nombre"]
+    return {
+        "numbers_checked": len(numbers),
+        "numbers_traced": sum(row.traced for row in numbers),
+        "numbers_contrary": sum(row.contrary for row in numbers),
+        "dates_checked": len(dates),
+        "dates_unmatched": sum(not row.traced for row in dates),
+        "trace": [
+            {"field": row.field, "n": row.n, "kind": row.kind, "origin": row.origin}
+            | ({"contrary": True} if row.contrary else {})
+            for row in rows[:MAX_TRACE_ROWS]
+        ],
+        "trace_truncated": len(rows) > MAX_TRACE_ROWS,
     }
 
 
@@ -151,6 +171,7 @@ def audit_payload(run: Run, state: CerveauState, *, status: str | None = None) -
             "cited_domains": len(report.cited_domains),
             "confidence": report.confidence,
             "issues": dict(sorted(Counter(issue.kind for issue in report.issues).items())),
+            **trace_payload(report.trace),
         }
     if answer is not None:
         digest = hashlib.sha256(answer.model_dump_json().encode()).hexdigest()
@@ -239,6 +260,7 @@ class RunResult:
     tool_calls: int
     elapsed_s: float
     budget_alerts: tuple[str, ...] = ()  # highest daily / monthly threshold reached, for display
+    now: str | None = None  # the date of the day the models were given
 
     def markdown(self) -> str:
         return render_markdown(self.answer)
@@ -337,4 +359,5 @@ class Orchestrator:
             tool_calls=budget.tool_calls,
             elapsed_s=round(budget.elapsed_s, 3),
             budget_alerts=alerts,
+            now=final.context.now if final.context is not None else None,
         )

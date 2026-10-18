@@ -177,6 +177,7 @@ def _outcome(
         requested=tuple(recorder.requested),
         read_texts=tuple(text for _url, text in _pages_read(log, reader)),
         search_texts=tuple(f"{hit.title} {hit.snippet}" for hit in hits),
+        now=result.now,
         tool_calls=result.tool_calls,
     )
 

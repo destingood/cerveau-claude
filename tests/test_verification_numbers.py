@@ -8,7 +8,7 @@ import pytest
 from hypothesis import given
 from hypothesis import strategies as st
 
-from core.verification.numbers import SMALL_COUNT_MAX, extract_numbers, unmatched_numbers
+from core.verification.numbers import extract_numbers, unmatched_numbers
 
 
 def values(text: str) -> list[set[Decimal]]:
@@ -104,22 +104,17 @@ def test_the_sign(text: str, negative: bool) -> None:
     assert extract_numbers(text)[-1].negative is negative
 
 
+@pytest.mark.parametrize("text", ["3 options", "2 étapes", "0 erreur", "3 %", "€3", "-3"])
+def test_small_counts_are_checked_too(text: str) -> None:
+    """B33: a count in digits is a claim like any other; the prompt writes its own in letters."""
+    assert len(unmatched_numbers(f"Il y a {text}.", ["rien"])) == 1
+
+
 @pytest.mark.parametrize(
-    ("text", "checked"),
-    [
-        ("3 options", False),
-        (f"{SMALL_COUNT_MAX} étapes", False),
-        (f"{SMALL_COUNT_MAX + 1} étapes", True),
-        ("3 %", True),
-        ("3 €", True),
-        ("€3", True),
-        ("3 millions", True),
-        ("3,5 options", True),
-        ("-3", True),
-    ],
+    "text", ["trois options", "la 2e étape", "1er point", "le 3ᵉ", "CAC40", "1. Lire", "M2"]
 )
-def test_small_bare_counts_are_not_checked(text: str, checked: bool) -> None:
-    assert [m.checked for m in extract_numbers(text)] == [checked]
+def test_words_ordinals_and_glued_numbers_are_not_read(text: str) -> None:
+    assert unmatched_numbers(text, ["rien"]) == []
 
 
 @pytest.mark.parametrize(
@@ -129,7 +124,7 @@ def test_small_bare_counts_are_not_checked(text: str, checked: bool) -> None:
         ("12,3 %", "12,34 %"),
         ("1,5 million", "1 512 000"),
         ("1 500 000", "1,5 million"),
-        ("-3 %", "un recul de 3 %"),  # the sign is the claim check's job
+        ("-3 %", "un recul de 3 %"),  # the same sign, written or said
         ("12 %", "un taux de 0,12"),
         ("1,234", "1 234"),
         ("2,1 Md€", "2 100 millions d'euros"),
@@ -155,7 +150,7 @@ def test_a_draft_number_without_support(draft: str, source: str) -> None:
 
 
 def test_the_question_and_several_sources_count() -> None:
-    draft = "En 2026, 3 sources donnent 12 % [1] et 7,5 Md€ [2]."
+    draft = "En 2026, trois sources donnent 12 % [1] et 7,5 Md€ [2]."
     sources = ["Quel taux en 2026 ?", "taux : 12 %", "budget de 7,5 milliards"]
     assert unmatched_numbers(draft, sources) == []
     assert [m.text for m in unmatched_numbers(draft, sources[1:])] == ["2026"]

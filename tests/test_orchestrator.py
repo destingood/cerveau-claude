@@ -474,6 +474,41 @@ def test_unsourced_number_and_inexact_quote_are_marked(rig: Rig) -> None:
     assert verification["quotes_checked"] == verification["quotes_failed"] == 1
 
 
+def test_numbers_and_dates_are_traced_without_their_text(rig: Rig) -> None:
+    developpement = "Au 18/10/2026, rien ne change ; le recensement de 2031 se prépare."
+    _read_insee(rig, final(developpement=developpement))
+    answer = rig.ask("Quelle est la population de la France ?").answer
+    assert f"de 2031 {MARKER} se prépare" in answer.developpement
+    verification = rig.payload()["verification"]
+    assert verification["trace"] == [
+        {"field": "synthese", "n": 1, "kind": "date", "origin": "source [1]"},
+        {"field": "synthese", "n": 2, "kind": "nombre", "origin": "source [1]"},
+        {"field": "developpement", "n": 1, "kind": "date", "origin": "date du jour"},
+        {"field": "developpement", "n": 2, "kind": "nombre", "origin": None},
+    ]
+    counts = ("numbers_checked", "numbers_traced", "numbers_contrary", "dates_checked")
+    assert [verification[key] for key in counts] == [2, 1, 0, 2]
+    assert (verification["dates_unmatched"], verification["trace_truncated"]) == (0, False)
+    assert verification["issues"] == {"chiffre_non_source": 1}
+    assert not any(text in json.dumps(verification) for text in ("2031", "68,4", "18/10"))
+
+
+def test_a_contrary_sign_and_an_unsourced_date_are_marked(rig: Rig) -> None:
+    rig.world.pages[INSEE] += " Le solde migratoire recule de 0,2 % en 2025."
+    wrong = "Le solde migratoire progresse de 0,2 % [1] depuis le 12/03/2025 [1]."
+    _read_insee(rig, final(developpement=wrong))
+    answer = rig.ask("Quelle est la population de la France ?").answer
+    assert f"0,2 % {MARKER} [1] depuis le 12/03/2025 {MARKER} [1]." in answer.developpement
+    verification = rig.payload()["verification"]
+    assert verification["issues"] == {"date_non_sourcee": 1, "sens_contraire": 1}
+    assert (verification["numbers_contrary"], verification["dates_unmatched"]) == (1, 1)
+    assert verification["numbers_unmatched"] == 1  # the contrary number counts as unmatched
+    assert {"field": "developpement", "n": 1, "kind": "nombre", "origin": "source [1]"} | {
+        "contrary": True
+    } in verification["trace"]
+    assert "développement : « 0,2 % » : sens contraire à source [1]" in answer.points_a_verifier
+
+
 def test_high_stakes_answer_needs_two_independent_domains(tmp_path: Path, config_dir: Path) -> None:
     config = _config(config_dir)
     rigs = {}

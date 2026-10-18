@@ -1,9 +1,10 @@
 """Node 5: checks of the draft before it reaches Lucas (sections 7.1 and 7.3, R1, R12).
 
 Deterministic checks first: every [n] points to a read source, every quote followed by [n] is
-found word for word in source n, every checked number appears in the question, a page or a
-search result title. A fast model then only says which uncited passages state a fact; the code
-inserts the ``[VERIFICATION REQUIRED]`` markers and lowers the confidence when a check fails.
+found word for word in source n, every number and date comes from a tool output, the question,
+the date of the day, a page or a search result, with its sign (``core.verification.trace``). A
+fast model then only says which uncited passages state a fact; the code inserts the
+``[VERIFICATION REQUIRED]`` markers and lowers the confidence when a check fails.
 """
 
 from __future__ import annotations
@@ -24,7 +25,9 @@ from core.orchestrator.state import (
     CerveauState,
     Confiance,
     Confidence,
+    Draft,
     Issue,
+    TraceRow,
     VerificationReport,
     _Llm,
     required,
@@ -32,8 +35,8 @@ from core.orchestrator.state import (
 from core.orchestrator.structured import StructuredOutputError, ask_json
 from core.verification.citations import CITATION, citation_numbers, unit_spans
 from core.verification.domains import independent_domains
-from core.verification.numbers import NumberMention, unmatched_numbers
 from core.verification.quotes import MIN_QUOTE_CHARS, check_quote, normalise
+from core.verification.trace import Evidence, Traced, trace
 
 FIELDS = {
     "synthese": "synthèse",
@@ -76,9 +79,9 @@ def insert_markers(text: str, positions: set[int]) -> str:
     return out
 
 
-def _number_end(text: str, mention: NumberMention) -> int:
-    end = mention.end
-    while end > mention.start and text[end - 1].isspace():
+def _mention_end(text: str, row: Traced) -> int:
+    end = row.end
+    while end > row.start and text[end - 1].isspace():
         end -= 1
     return end
 
@@ -118,17 +121,34 @@ def _check_quotes(item: _Field, pages: dict[int, str], issues: list[Issue]) -> t
     return checked, failed
 
 
-def _check_numbers(item: _Field, haystack: list[str], issues: list[Issue]) -> int:
-    mentions = unmatched_numbers(item.text, haystack)
-    for mention in mentions:
-        item.marks.add(_number_end(item.text, mention))
-        issues.append(
-            Issue(
-                kind="chiffre_non_source",
-                detail=f"{item.label} : « {mention.text} » ne figure dans aucune source",
-            )
+def evidence(question: str, now: str | None, draft: Draft) -> Evidence:
+    """What the answer may cite: the tool outputs first, then the texts of the request."""
+    texts = [("question", question)]
+    if now is not None:
+        texts.append(("date du jour", now))
+    texts += [(f"source [{n}]", page) for n, page in sorted(draft.pages.items())]
+    texts += [("recherche web", text) for text in draft.search_texts]
+    return Evidence(texts, draft.tool_outputs)
+
+
+def _check_trace(item: _Field, known: Evidence, issues: list[Issue]) -> list[TraceRow]:
+    rows: list[TraceRow] = []
+    for n, row in enumerate(trace(item.text, known), start=1):
+        rows.append(
+            TraceRow(field=item.name, n=n, kind=row.kind, origin=row.origin, contrary=row.contrary)
         )
-    return len(mentions)
+        if row.traced:
+            continue
+        item.marks.add(_mention_end(item.text, row))
+        shown = clip(row.text)
+        if row.contrary:
+            kind, detail = "sens_contraire", f"« {shown} » : sens contraire à {row.origin}"
+        elif row.kind == "nombre":
+            kind, detail = "chiffre_non_source", f"« {shown} » ne figure dans aucune source"
+        else:
+            kind, detail = "date_non_sourcee", f"date « {shown} » absente des sources"
+        issues.append(Issue(kind=kind, detail=f"{item.label} : {detail}"))
+    return rows
 
 
 async def factual_units(run: Run, passages: list[str]) -> set[int] | None:
@@ -151,16 +171,18 @@ async def verify_node(run: Run, state: CerveauState) -> dict[str, Any]:
     guarded = required(state.guarded, "garde")
     route, draft = required(state.route, "routage"), required(state.draft, "planificateur")
     answer, count = draft.answer, len(draft.sources)
-    haystack = [guarded.question, *draft.pages.values(), *draft.search_texts]
+    now = state.context.now if state.context is not None else None
+    known = evidence(guarded.question, now, draft)
     issues = [Issue(kind="format", detail=detail) for detail in draft.format_issues]
     items = [_Field(name, label, getattr(answer, name)) for name, label in FIELDS.items()]
-    checked = failed = unmatched = 0
+    checked = failed = 0
+    rows: list[TraceRow] = []
     pending: list[tuple[_Field, int, str]] = []  # uncited passages: field, end, text
     for item in items:
         _check_citations(item, count, issues)
         quotes = _check_quotes(item, draft.pages, issues)
         checked, failed = checked + quotes[0], failed + quotes[1]
-        unmatched += _check_numbers(item, haystack, issues)
+        rows += _check_trace(item, known, issues)
         if not draft.partial:  # a partial answer only quotes checked extracts
             for start, end in unit_spans(item.text):
                 unit = item.text[start:end]
@@ -218,7 +240,10 @@ async def verify_node(run: Run, state: CerveauState) -> dict[str, Any]:
         issues=tuple(issues),
         quotes_checked=checked,
         quotes_failed=failed,
-        numbers_unmatched=unmatched,
+        numbers_unmatched=sum(r.kind == "nombre" and not r.traced for r in rows),
+        numbers_contrary=sum(r.contrary for r in rows),
+        dates_unmatched=sum(r.kind != "nombre" and not r.traced for r in rows),
+        trace=tuple(rows),
         uncited_marked=marked,
         cited_domains=tuple(domains),
         confidence=level,

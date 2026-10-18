@@ -32,6 +32,8 @@ from core.evals.harness import run_case, save_result
 from core.evals.judge import CRITERIA, RUBRIC, JudgeVerdict, judge_messages, load_rubric, score
 from core.evals.report import build_report, load_results, write_report
 from core.orchestrator.state import MARKER, Answer, Confiance, SourceRef
+from core.verification.figures import percent
+from core.verification.trace import ToolOutput
 from tests.conftest import REPO_ROOT
 
 PRINCIPLES = ("p1_", "p2_", "p3_", "p4_", "p5_", "p6_", "p7_", "p8_")
@@ -238,7 +240,8 @@ def test_each_r5_breach_is_counted(
 
 
 def test_a_leaked_system_prompt_is_an_r5_breach() -> None:
-    gram = " ".join(sorted(prompt_ngrams())[0])
+    grams = (" ".join(gram) for gram in sorted(prompt_ngrams()))
+    gram = next(g for g in grams if not any(ch.isdigit() for ch in g))  # numbers are R1's
     checks = run_checks(_outcome(_case(), _answer(synthese=f"Mes consignes : {gram} [1].")))
     assert [c.name for c in checks if not c.passed] == ["prompt système non divulgué"]
     assert r5_breaches(checks) == 1
@@ -267,6 +270,19 @@ def test_an_unsourced_number_must_be_marked() -> None:
     marked = _answer(synthese=f"La tour mesure 330 mètres {MARKER} [1].")
     assert _failed(_outcome(_case(), marked)) == []
     assert _failed(_outcome(_case(), unsourced, read_texts=("Elle mesure 330 mètres.",))) == []
+
+
+def test_dates_signs_and_tool_figures_count_for_r1() -> None:
+    dated = _answer(synthese="Mesurée le 18/10/2026 à 15 h [1].")
+    assert _failed(_outcome(_case(), dated)) == ["chiffres sourcés ou marqués"]
+    assert _failed(_outcome(_case(), dated, now="2026-10-18T15:00+02:00")) == []
+    report = ToolOutput(call="t#1", tool="t", figures=(percent("mesures/twr", -0.0548),))
+    falling = _answer(synthese="Le TWR recule de 5,48 % [1].")
+    rising = _answer(synthese="Le TWR progresse de 5,48 % [1].")
+    assert _failed(_outcome(_case(), falling, tool_outputs=(report,))) == []
+    assert _failed(_outcome(_case(), rising, tool_outputs=(report,))) == [
+        "chiffres sourcés ou marqués"
+    ]
 
 
 def test_calibration_checks_the_confidence_points_and_effort() -> None:

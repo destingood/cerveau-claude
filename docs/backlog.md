@@ -65,9 +65,9 @@ son origine et la phase visée ; « ? » signifie « à décider par Lucas ».
 | B30 | Revenir à `presidio-anonymizer` quand sa borne `cryptography<49` sera levée | ADR-010 | 3 |
 | B31 | URL fournies : remplacer l'URL par un jeton `<URL_n>` côté LLM (une URL peut contenir un nom) | ADR-010, R5 | 3 |
 | B32 | Mesurer rappel et précision de la NER `fr_core_news_md` sur un corpus français annoté avant de passer au modèle `lg` | ADR-010, D10 | 2 |
-| B33 | Vérification des chiffres : contrôler aussi les dates, les heures et les petits entiers nus (≤ 10), ignorés aujourd'hui | `core/verification`, R1 | 2 |
+| B33 | ~~Vérification des chiffres : contrôler aussi les dates, les heures et les petits entiers nus (≤ 10), ignorés aujourd'hui~~ : fait en phase 2 (`core/verification/dates.py`, `trace.py` ; le prompt écrit en lettres les dénombrements propres à la réponse) | `core/verification`, R1 | 2 |
 | B34 | Vérification des chiffres : lire les nombres écrits en lettres (« douze pour cent ») ; le prompt système impose les chiffres en attendant | `core/verification`, R1 | 3 |
-| B35 | Vérification des chiffres : comparer le signe (hausse / baisse) au lieu de le laisser au contrôle des affirmations | `core/verification`, R1 | 2 |
+| B35 | ~~Vérification des chiffres : comparer le signe (hausse / baisse) au lieu de le laisser au contrôle des affirmations~~ : fait en phase 2 (signe écrit ou mot de sens, B92 pour la limite restante) | `core/verification`, R1 | 2 |
 | B36 | Liens : liste blanche par URL exacte plutôt que par domaine (un lien vers un domaine autorisé peut encore porter des données dans sa requête) ; retirer aussi les adresses e-mail nues. Fait en partie en phase 1 : un lien qui porte un pseudonyme doit être exactement une URL autorisée (revue, E1) | `core/verification`, R5 | 2 |
 | B72 | `web_read` : extraction trafilatura dans `asyncio.to_thread` avec un délai (elle est synchrone et hors du délai de 15 s) | `plugins/web_research/fetcher.py`, revue (F7) | 2 |
 | B44 | Budgets : actions `downgrade_to_fast_or_local` et `stop_non_critical_tasks` de `on_exceeded` ; seul le refus existe (D9) | `core/budget/gate.py`, ADR-005 | ? |
@@ -92,6 +92,9 @@ son origine et la phase visée ; « ? » signifie « à décider par Lucas ».
 | B89 | Rapprocher les identifiants d'un courtier (ISIN, code interne) du référentiel par `map_source_id`, avec l'adaptateur de son export (D4) | ADR-012, ADR-017 | 2 |
 | B90 | Plus-values : confirmer avec leur source les règles de l'article 150-0 D du CGI que l'export n'applique pas (PMP par compte ou tous comptes de même nature, change du jour d'achat pour le prix de revient, régime du PEA) ; `compliance.fiscal.regime_plus_values` reste `A_VERIFIER` | plan §7 F9, ADR-020 | ? |
 | B91 | Plus-values : cessions nées d'une opération sur titres (fusion, échange, rachat) et gains de change sur les liquidités en devises, absents de l'export | plan §7 F9, ADR-020 | ? |
+| B92 | Sens des nombres : « le TWR a baissé de 8,80 % » face à un chiffre positif est accepté, le mot de sens d'un texte pouvant décrire autre chose que le chiffre (un coût, un écart) ; seul le signe écrit (« -8,80 % ») contredit un chiffre d'outil. À lever par une lecture de la phrase ou par le contrôle des affirmations | `core/verification/numbers.py`, B35, R1 | 3 |
+| B93 | Dates : aucune conversion de fuseau (une heure UTC d'un outil réécrite en heure de Paris n'est pas retrouvée) ; dates sans chiffres (« le premier mars ») non lues ; une durée « 2 h » est lue comme une heure et signalée si aucune source ne la donne | `core/verification/dates.py`, B33, R1 | 3 |
+| B94 | Chiffres d'outil : seules les devises et le % sont comparés (« 3 options » est retrouvé dans « 3 séances ») ; le signe de « -€3 » (symbole entre le signe et le nombre) n'est pas lu | `core/verification`, R1 | 3 |
 
 ## Évaluations
 | # | Élément | Origine | Phase |
