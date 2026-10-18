@@ -9,13 +9,14 @@ new revision, and a read at ``as_of`` returns, for each key, the latest revision
 from __future__ import annotations
 
 import sqlite3
-from collections.abc import Iterable, Iterator, Sequence
+from collections.abc import Callable, Iterable, Iterator, Sequence
 from contextlib import contextmanager
 from dataclasses import dataclass
 from datetime import date, datetime
+from decimal import Decimal
 from pathlib import Path
 from types import TracebackType
-from typing import Any
+from typing import Any, Literal
 
 import pandas as pd
 
@@ -27,6 +28,8 @@ from core.finance.model import (
     MarketRecord,
     PriceRow,
     RateObservation,
+    StatementLine,
+    Transaction,
     from_utc_text,
     local_date,
     utc_text,
@@ -66,6 +69,12 @@ _TABLES: dict[type[MarketRecord], _Table] = {
     RateObservation: _Table("rates", ("series_id", "session"), ("value_pct",), "session"),
 }
 _INSTRUMENT_COLUMNS = tuple(Instrument.model_fields)
+# Portfolio rows (ADR-018): one column per field, in model order, after the file and the line.
+_LEDGER_TABLES: dict[type[Transaction | StatementLine], str] = {
+    Transaction: "transactions",
+    StatementLine: "statement_lines",
+}
+FileKind = Literal["transactions", "statement"]
 
 
 @dataclass(frozen=True)
@@ -88,6 +97,18 @@ class IngestReport:
         return self.inserted + self.revised + self.unchanged
 
 
+@dataclass(frozen=True)
+class PortfolioFile:
+    """An imported file of transactions or a broker's statement, known by its fingerprint."""
+
+    sha256: str
+    kind: FileKind
+    file_name: str
+    format: str
+    rows: int
+    imported_at: datetime
+
+
 def default_store_path(project_root: Path) -> Path:
     return project_root / "var" / "finance" / "finance.db"
 
@@ -97,6 +118,8 @@ def _sql(value: Any) -> Any:
         return utc_text(value)
     if isinstance(value, date):
         return value.isoformat()
+    if isinstance(value, Decimal):
+        return str(value)  # exact: a REAL column would round it
     return value
 
 
@@ -104,6 +127,7 @@ def _connect(target: str, *, uri: bool) -> sqlite3.Connection:
     conn = sqlite3.connect(target, uri=uri, autocommit=True)
     conn.row_factory = sqlite3.Row
     conn.execute("PRAGMA busy_timeout = 5000")
+    conn.execute("PRAGMA foreign_keys = ON")
     return conn
 
 
@@ -564,6 +588,100 @@ class FinanceStore:
             "SELECT * FROM quality_scores WHERE series_id = ? ORDER BY as_of", (series_id,)
         ).fetchall()
         return [dict(row) for row in rows]
+
+    # Portfolio files (ADR-018) --------------------------------------------------------------
+
+    def add_portfolio_file(
+        self,
+        file: PortfolioFile,
+        rows: Sequence[tuple[int, Transaction]] | Sequence[tuple[int, StatementLine]],
+        *,
+        check: Callable[[], None] | None = None,
+    ) -> bool:
+        """Record a file and its rows in one transaction; False if it is already there.
+
+        ``check`` runs after the rows are written and before the commit: it reads the store as
+        it would be with this file, and an exception from it cancels everything.
+        """
+        if len(rows) != file.rows:
+            raise FinanceStoreError(f"{file.file_name} : {len(rows)} lignes, {file.rows} annoncées")
+        with self._write():
+            known = self._conn.execute(
+                "SELECT kind FROM portfolio_files WHERE sha256 = ?", (file.sha256,)
+            ).fetchone()
+            if known is not None:
+                if known["kind"] != file.kind:
+                    raise FinanceStoreError(f"{file.file_name} : déjà importé sous un autre type")
+                return False
+            self._conn.execute(
+                "INSERT INTO portfolio_files (sha256, kind, file_name, format, rows, imported_at) "
+                "VALUES (?, ?, ?, ?, ?, ?)",
+                (
+                    file.sha256,
+                    file.kind,
+                    file.file_name,
+                    file.format,
+                    file.rows,
+                    utc_text(file.imported_at),
+                ),
+            )
+            expected = Transaction if file.kind == "transactions" else StatementLine
+            for line, row in rows:
+                if not isinstance(row, expected):
+                    raise FinanceStoreError(f"{file.file_name} : ligne {line} d'un autre type")
+                fields = type(row).model_fields
+                columns = ("file_sha256", "line", *fields)
+                self._conn.execute(
+                    f"INSERT INTO {_LEDGER_TABLES[type(row)]} "  # noqa: S608 - constant names
+                    f"({', '.join(columns)}) VALUES ({', '.join('?' * len(columns))})",
+                    [file.sha256, line, *(_sql(getattr(row, f)) for f in fields)],
+                )
+            if check is not None:
+                check()
+        return True
+
+    def portfolio_files(
+        self, kind: FileKind, *, imported_by: datetime | None = None
+    ) -> list[PortfolioFile]:
+        """The imported files of ``kind``, in import order (strict mode: imported by then)."""
+        rows = self._conn.execute(
+            "SELECT * FROM portfolio_files WHERE kind = ? ORDER BY imported_at, sha256", (kind,)
+        ).fetchall()
+        files = [
+            PortfolioFile(
+                sha256=row["sha256"],
+                kind=row["kind"],
+                file_name=row["file_name"],
+                format=row["format"],
+                rows=row["rows"],
+                imported_at=from_utc_text(row["imported_at"]),
+            )
+            for row in rows
+        ]
+        return [f for f in files if imported_by is None or f.imported_at <= imported_by]
+
+    def transactions(self, sha256: str) -> list[tuple[int, Transaction]]:
+        return self._ledger_rows(Transaction, sha256)
+
+    def statement(self, sha256: str) -> list[tuple[int, StatementLine]]:
+        return self._ledger_rows(StatementLine, sha256)
+
+    def _ledger_rows[L: (Transaction, StatementLine)](
+        self, row_type: type[L], sha256: str
+    ) -> list[tuple[int, L]]:
+        fields = tuple(row_type.model_fields)
+        rows = self._conn.execute(
+            f"SELECT line, {', '.join(fields)} FROM {_LEDGER_TABLES[row_type]} "  # noqa: S608
+            "WHERE file_sha256 = ? ORDER BY line",
+            (sha256,),
+        ).fetchall()
+        return [
+            (
+                row["line"],
+                row_type.model_validate({f: row[f] for f in fields if row[f] is not None}),
+            )
+            for row in rows
+        ]
 
 
 def _key_values(table: _Table, record: MarketRecord) -> tuple[list[Any], list[Any]]:

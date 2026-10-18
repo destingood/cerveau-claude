@@ -18,6 +18,7 @@ import random
 from collections.abc import Iterator
 from dataclasses import dataclass
 from datetime import date, datetime, time, timedelta
+from decimal import Decimal
 from pathlib import Path
 from zoneinfo import ZoneInfo
 
@@ -287,12 +288,19 @@ def instruments_csv() -> str:
     return _csv("identifiant,nom,classe,devise,place,secteur,pays,debut,duration", rows)
 
 
-def closes_csv() -> str:
+def all_closes() -> dict[str, dict[date, float]]:
+    """Every instrument's closes, before the bad print and the gap are put in the file."""
     market = market_returns()
+    return {
+        s.instrument_id: bond_closes(s) if s.kind == "obligation" else stock_closes(s, market)
+        for s in SPECS
+    }
+
+
+def closes_csv(closes: dict[str, dict[date, float]]) -> str:
     rows = []
     for spec in SPECS:
-        closes = bond_closes(spec) if spec.kind == "obligation" else stock_closes(spec, market)
-        for day, close in closes.items():
+        for day, close in closes[spec.instrument_id].items():
             if (spec.instrument_id, day) == GAP:
                 continue
             if (spec.instrument_id, day) == OUTLIER[:2]:
@@ -334,14 +342,206 @@ def ecb_estr_csv() -> str:
     return _csv("KEY,FREQ,TIME_PERIOD,OBS_VALUE", rows)
 
 
+# The portfolio ---------------------------------------------------------------------------------
+
+PEA, CTO = "PEA-FICTIF", "CTO-FICTIF"
+ORDER_FEES = {"EUR": Decimal("4.90"), "USD": Decimal("1.00"), "GBP": Decimal("3.00")}
+WITHHOLDING = {"USD": Decimal("0.15")}  # a fictitious rate withheld at source
+PAYMENT_DELAY = timedelta(days=14)  # a dividend is paid about two weeks after its ex-date
+CENT = Decimal("0.01")
+TRANSACTIONS_HEADER = "date,compte,type,identifiant,quantite,prix,devise,frais,montant,libelle"
+STATEMENT_HEADER = "date,compte,nature,identifiant,quantite"
+Balances = dict[tuple[str, str], Decimal]  # (account, currency) -> cash
+
+
+@dataclass(frozen=True)
+class Trade:
+    """One line of ``transactions.csv``; amounts are in ``currency``."""
+
+    day: date
+    account: str
+    kind: str  # CSV type
+    asset: str  # the instrument, the currency bought, or empty
+    quantity: Decimal
+    currency: str = "EUR"
+    price: Decimal | None = None
+    fees: Decimal = Decimal(0)
+    amount: Decimal | None = None  # the cash the broker debited
+    label: str = ""
+
+    def row(self) -> str:
+        def text(value: Decimal | None) -> str:
+            return "" if value is None else f"{value:f}"
+
+        fees = text(self.fees) if self.fees else ""
+        return ",".join(
+            [
+                self.day.isoformat(),
+                self.account,
+                self.kind,
+                self.asset,
+                text(self.quantity),
+                text(self.price),
+                self.currency,
+                fees,
+                text(self.amount),
+                self.label,
+            ]
+        )
+
+    def flows(self) -> list[tuple[tuple[str, str], Decimal]]:
+        """The cash it moves, by (account, currency); positive when cash comes in."""
+        own = (self.account, self.currency)
+        gross = self.quantity if self.price is None else self.quantity * self.price
+        if self.kind in ("achat", "change"):
+            debit = self.amount if self.amount is not None else gross + self.fees
+            bought = [((self.account, self.asset), self.quantity)] if self.kind == "change" else []
+            return [(own, -debit), *bought]
+        inflow = {"vente": gross - self.fees, "dividende": gross - self.fees, "depot": gross}
+        return [(own, inflow.get(self.kind, -gross))]  # frais, retrait: cash out
+
+
+def orders(closes: dict[str, dict[date, float]]) -> list[Trade]:
+    """Every transaction but the dividends, in trade order; shares trade at the day's close."""
+    currencies = {s.instrument_id: s.currency for s in SPECS}
+
+    def at_close(day: date, account: str, kind: str, instrument_id: str, units: int) -> Trade:
+        if day not in closes[instrument_id]:
+            raise ValueError(f"{instrument_id} : pas de séance le {day}")
+        price = Decimal(f"{closes[instrument_id][day]:.2f}")
+        currency = currencies[instrument_id]
+        fees = ORDER_FEES[currency]
+        return Trade(day, account, kind, instrument_id, Decimal(units), currency, price, fees)
+
+    def exchange(day: date, account: str, bought: str, amount: str) -> Trade:
+        """Euros changed at the ECB rate of the day as published; the broker rounds the debit."""
+        _, start, vol, decimals = next(fx for fx in FX if fx[0] == bought)
+        rate = Decimal(f"{fx_rates(bought, start, vol)[day]:.{decimals}f}")
+        price = (1 / rate).quantize(Decimal("0.000001"))
+        debit = (Decimal(amount) / rate).quantize(CENT)
+        return Trade(day, account, "change", bought, Decimal(amount), price=price, amount=debit)
+
+    def cash(day: date, account: str, kind: str, amount: str, label: str) -> Trade:
+        return Trade(day, account, kind, "", Decimal(amount), label=label)
+
+    pea = (("FICT-ACME", 100), ("FICT-BOREAL", 150), ("FICT-CYGNE", 80), ("FICT-DELTA", 200))
+    cto = (("FICT-GLOBEX", 60), ("FICT-EMERG", 200), ("FICT-HELIOS", 180), ("FICT-OAT35", 100))
+    return [
+        cash(FIRST, PEA, "depot", "60000.00", "Versement initial (fictif)"),
+        cash(FIRST, CTO, "depot", "45000.00", "Versement initial (fictif)"),
+        *(at_close(date(2023, 10, 17), PEA, "achat", i, n) for i, n in pea),
+        at_close(date(2023, 10, 17), PEA, "achat", "FICT-MONDE", 150),
+        exchange(date(2023, 10, 17), CTO, "USD", "22000.00"),
+        exchange(date(2023, 10, 17), CTO, "GBP", "5000.00"),
+        *(at_close(date(2023, 10, 18), CTO, "achat", i, n) for i, n in cto),
+        at_close(date(2023, 10, 18), CTO, "achat", "FICT-OR", 100),
+        cash(date(2024, 12, 31), CTO, "frais", "30.00", "Droits de garde 2024 (fictifs)"),
+        at_close(date(2025, 3, 10), PEA, "vente", "FICT-DELTA", 40),
+        cash(date(2025, 12, 31), CTO, "frais", "30.00", "Droits de garde 2025 (fictifs)"),
+        cash(date(2026, 3, 2), PEA, "depot", "2000.00", "Versement (fictif)"),
+        at_close(date(2026, 3, 3), PEA, "achat", "FICT-MONDE", 20),
+        cash(date(2026, 6, 15), CTO, "retrait", "1000.00", "Retrait (fictif)"),
+        # « Pourquoi la VaR a-t-elle augmenté depuis lundi ? » : GLOBEX reinforced on Monday.
+        at_close(date(2026, 10, 12), CTO, "achat", "FICT-GLOBEX", 20),
+    ]
+
+
+def units(trades: list[Trade], account: str, instrument_id: str, day: date) -> Decimal:
+    """Shares held at the start of ``day``: each earlier trade times the splits since."""
+    total = Decimal(0)
+    for t in trades:
+        if t.kind not in ("achat", "vente") or t.day >= day:
+            continue
+        if (t.account, t.asset) != (account, instrument_id):
+            continue
+        factor = math.prod(
+            Decimal(int(a.value))
+            for a in ACTIONS
+            if a.kind == "split" and a.instrument_id == instrument_id and t.day < a.ex_date <= day
+        )
+        total += (t.quantity if t.kind == "achat" else -t.quantity) * factor
+    return total
+
+
+def dividends(trades: list[Trade]) -> list[Trade]:
+    """Each dividend received on the shares held at its ex-date, withholding deducted."""
+    currencies = {s.instrument_id: s.currency for s in SPECS}
+    paid = []
+    for action in ACTIONS:
+        payment = action.ex_date + PAYMENT_DELAY
+        while not is_target_day(payment):  # paid on a TARGET business day
+            payment += timedelta(days=1)
+        if action.kind != "dividende" or payment > LAST:
+            continue
+        currency = currencies[action.instrument_id]
+        for account in (PEA, CTO):
+            held = units(trades, account, action.instrument_id, action.ex_date)
+            if not held:
+                continue
+            gross = (Decimal(f"{action.value:.2f}") * held).quantize(CENT)
+            withheld = (gross * WITHHOLDING.get(currency, Decimal(0))).quantize(CENT)
+            paid.append(
+                Trade(
+                    payment,
+                    account,
+                    "dividende",
+                    action.instrument_id,
+                    gross,
+                    currency,
+                    None,
+                    withheld,
+                )
+            )
+    return paid
+
+
+def transactions(closes: dict[str, dict[date, float]]) -> list[Trade]:
+    """The ledger in trade order; within a day, the orders come before the dividends."""
+    placed = orders(closes)
+    return sorted([*placed, *dividends(placed)], key=lambda t: t.day)
+
+
+def balances(trades: list[Trade]) -> Balances:
+    """The cash of each account and currency, never negative along the way."""
+    cash: Balances = {}
+    for t in trades:
+        for key, flow in t.flows():
+            cash[key] = cash.get(key, Decimal(0)) + flow
+            if cash[key] < 0:
+                raise ValueError(f"{t.day} : cash négatif sur {key}")
+    return cash
+
+
+def statement(trades: list[Trade]) -> list[str]:
+    """The broker's statement on the last day: shares, then cash, account by account."""
+    rows = []
+    cash = balances(trades)
+    for account in (PEA, CTO):
+        held = sorted({t.asset for t in trades if t.account == account and t.kind == "achat"})
+        for instrument_id in held:
+            quantity = units(trades, account, instrument_id, LAST + timedelta(days=1))
+            if quantity < 0:
+                raise ValueError(f"{instrument_id} : vente à découvert")
+            if quantity:
+                rows.append(f"{LAST.isoformat()},{account},titre,{instrument_id},{quantity:f}")
+        for (owner, currency), balance in sorted(cash.items()):
+            if owner == account and balance:
+                rows.append(f"{LAST.isoformat()},{account},especes,{currency},{balance:f}")
+    return rows
+
+
 def build() -> dict[str, str]:
     """Every generated file, by name."""
+    closes = all_closes()
+    trades = transactions(closes)
     return {
         "instruments.csv": instruments_csv(),
-        "cours.csv": closes_csv(),
+        "cours.csv": closes_csv(closes),
         "operations.csv": actions_csv(),
         "bce_change.csv": ecb_fx_csv(),
         "bce_estr.csv": ecb_estr_csv(),
+        "transactions.csv": _csv(TRANSACTIONS_HEADER, [t.row() for t in trades]),
+        "releve.csv": _csv(STATEMENT_HEADER, statement(trades)),
     }
 
 

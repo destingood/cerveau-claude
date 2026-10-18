@@ -1,4 +1,4 @@
-"""`cerveau` command line: ask, feedback, eval, audit, config, registry, finance."""
+"""`cerveau` command line: ask, feedback, eval, audit, config, registry, finance, portfolio."""
 
 from __future__ import annotations
 
@@ -35,6 +35,7 @@ from interfaces.cli.common import blocked as _blocked
 from interfaces.cli.common import fail as _fail
 from interfaces.cli.common import load as _load
 from interfaces.cli.finance import finance_app
+from interfaces.cli.portfolio import portfolio_app
 
 if TYPE_CHECKING:
     from core.config.loader import Config
@@ -49,6 +50,7 @@ app.add_typer(audit_app, name="audit")
 app.add_typer(config_app, name="config")
 app.add_typer(registry_app, name="registry")
 app.add_typer(finance_app, name="finance")
+app.add_typer(portfolio_app, name="portfolio")
 
 
 @app.callback()

@@ -14,6 +14,8 @@ fournisseur. Ces données ne disent rien d'un vrai marché.
 | `operations.csv` | 34 opérations : 1 split, 33 dividendes | `date_ex,identifiant,type,valeur,devise,date_annonce` |
 | `bce_change.csv` | change de référence USD et GBP contre l'euro | réponse `csvdata` de la BCE (flux EXR) |
 | `bce_estr.csv` | €STR du 16/10/2023 au 15/10/2026 | réponse `csvdata` de la BCE (flux EST) |
+| `transactions.csv` | 54 transactions de deux comptes fictifs, du 16/10/2023 au 12/10/2026 | format CERVEAU (ADR-018) |
+| `releve.csv` | relevé de positions au 16/10/2026 : 10 titres, 4 soldes d'espèces | relevé CERVEAU (ADR-018) |
 | `generate.py` | le générateur, à graine fixe | Python : bibliothèque standard et `core.finance.calendars` |
 
 Devises : EUR, USD (FICT-GLOBEX, FICT-EMERG) et GBP (FICT-HELIOS). Places : XPAR, XETR, XNYS,
@@ -46,9 +48,23 @@ ligne LF sur toutes les plateformes (`.gitattributes`).
 | Pic de volatilité | actions, ETF et or, du mardi 13 au vendredi 16/10/2026 (choc de marché, volatilité propre doublée) | « pourquoi la VaR a-t-elle augmenté depuis lundi ? » |
 | Obligation à duration connue | FICT-OAT35, zéro coupon, échéance 12/03/2035, duration 8,4 | la sensibilité aux taux |
 
-Le renforcement d'une position pendant la semaine de stress (lundi 12/10/2026) et la trésorerie
-en EUR et en USD viendront avec l'import du portefeuille : il n'y a pas encore de fichier de
-transactions.
+## Portefeuille
+
+Deux comptes fictifs, `PEA-FICTIF` (5 titres en EUR) et `CTO-FICTIF` (5 titres en EUR, USD et
+GBP, trésorerie en trois devises).
+
+- Versements le 16/10/2023, achats au cours de clôture les 17 et 18/10/2023, frais d'ordre fixes
+  par devise ; au CTO, change de USD et de GBP au taux BCE du 17/10/2023.
+- Les 33 dividendes des opérations, versés 14 jours après le jour ex (reportés au jour TARGET
+  suivant), pour les titres détenus au jour ex ; retenue de 15 % sur l'USD.
+- Frais de garde au 31/12/2024 et au 31/12/2025, une vente partielle (40 FICT-DELTA, le
+  10/03/2025), un versement et un renforcement de FICT-MONDE en mars 2026, un retrait en juin
+  2026 et le renforcement de FICT-GLOBEX le lundi 12/10/2026, pendant la semaine de stress.
+- Le split de FICT-ACME n'a pas de ligne : il s'applique au début de son jour ex (ADR-018).
+
+`releve.csv` est calculé par le générateur lui-même, en décimaux et sans passer par
+`core.finance.portfolio` : c'est un calcul indépendant. Le rapprochement de la référence doit
+tomber juste au centime, ce que vérifie `tests/test_finance_reference.py`.
 
 ## Dates de connaissance
 

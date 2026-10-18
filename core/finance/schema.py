@@ -93,6 +93,48 @@ MIGRATIONS: tuple[tuple[int, tuple[str, ...]], ...] = (
             ) STRICT""",
         ),
     ),
+    (
+        2,
+        # Lucas's ledger and his broker's statements (ADR-018): every imported file is kept, so
+        # the effective history can be replayed as it was known at any time. Decimals are text.
+        (
+            """CREATE TABLE portfolio_files (
+                sha256 TEXT PRIMARY KEY CHECK (length(sha256) = 64),
+                kind TEXT NOT NULL CHECK (kind IN ('transactions', 'statement')),
+                file_name TEXT NOT NULL,
+                format TEXT NOT NULL,
+                rows INTEGER NOT NULL CHECK (rows >= 0),
+                imported_at TEXT NOT NULL
+            ) STRICT""",
+            """CREATE TABLE transactions (
+                file_sha256 TEXT NOT NULL REFERENCES portfolio_files (sha256),
+                line INTEGER NOT NULL,
+                trade_date TEXT NOT NULL,
+                account TEXT NOT NULL,
+                kind TEXT NOT NULL CHECK (
+                    kind IN ('buy', 'sell', 'dividend', 'fee', 'deposit', 'withdrawal', 'fx')
+                ),
+                asset TEXT,
+                quantity TEXT NOT NULL,
+                price TEXT,
+                currency TEXT NOT NULL,
+                fees TEXT NOT NULL,
+                amount TEXT,
+                label TEXT,
+                PRIMARY KEY (file_sha256, line)
+            ) STRICT""",
+            """CREATE TABLE statement_lines (
+                file_sha256 TEXT NOT NULL REFERENCES portfolio_files (sha256),
+                line INTEGER NOT NULL,
+                statement_date TEXT NOT NULL,
+                account TEXT NOT NULL,
+                nature TEXT NOT NULL CHECK (nature IN ('security', 'cash')),
+                asset TEXT NOT NULL,
+                quantity TEXT NOT NULL,
+                PRIMARY KEY (file_sha256, line)
+            ) STRICT""",
+        ),
+    ),
 )
 LATEST_VERSION = MIGRATIONS[-1][0]
 # The four sub-scores of ``quality_scores``, in column order (ADR-016).

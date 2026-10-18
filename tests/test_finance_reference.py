@@ -7,6 +7,7 @@ import math
 import sys
 from collections.abc import Iterator
 from datetime import UTC, date, datetime
+from decimal import Decimal
 from itertools import pairwise
 from types import ModuleType
 
@@ -22,6 +23,7 @@ from core.finance.fixtures import (
     load_reference,
 )
 from core.finance.model import CorporateAction, FxRate, PriceRow, RateObservation
+from core.finance.portfolio import Book, build_book, import_transactions, reconcile, value
 from core.finance.store import FinanceStore
 from core.finance.sync import SyncResult
 
@@ -221,3 +223,57 @@ def test_ecb_rates_keep_their_publication_times(store: FinanceStore) -> None:
     early = store.rates("estr", as_of=utc(2026, 10, 16, 6, 59))
     assert early.index[-1].date() == date(2026, 10, 14)
     assert estr.min() > 0 and estr.max() < 5
+
+
+# The portfolio -------------------------------------------------------------------------------
+
+
+@pytest.fixture(scope="module")
+def book() -> Iterator[tuple[FinanceStore, Book]]:
+    """A store of its own: the transactions and the statement, on top of the market data."""
+    store = FinanceStore.memory()
+    load_reference(store, quality=SETTINGS, window_sessions=WINDOW)
+    imported = import_transactions(
+        store, REFERENCE_DIR / "transactions.csv", "cerveau", imported_at=NOW
+    )
+    assert (imported.added, imported.warnings) == (54, [])
+    reconciled = reconcile(store, REFERENCE_DIR / "releve.csv", at=NOW)
+    assert reconciled.gaps == []
+    assert {a.account: a.status for a in reconciled.reconciliation} == {
+        "CTO-FICTIF": "ok",
+        "PEA-FICTIF": "ok",
+    }
+    yield store, build_book(store, as_of=NOW)
+    store.close()
+
+
+def test_the_statement_reconciles_to_the_cent(book: tuple[FinanceStore, Book]) -> None:
+    _, positions = book
+    assert positions.day == date(2026, 10, 18)
+    quantities = {(h.account, h.instrument_id): h.quantity for h in positions.holdings}
+    assert len(quantities) == 10
+    assert quantities[("PEA-FICTIF", "FICT-ACME")] == 200  # 100 bought, split 2 for 1
+    assert quantities[("CTO-FICTIF", "FICT-GLOBEX")] == 80
+    assert positions.cash[("CTO-FICTIF", "USD")] == Decimal("66.35")
+
+
+def test_the_delta_sale_and_the_globex_basis(book: tuple[FinanceStore, Book]) -> None:
+    _, positions = book
+    [sale] = positions.realized
+    # 200 bought at 38.73 + 4.90 of fees; 40 sold at 26.10 - 4.90; a fifth of the basis leaves.
+    assert (sale.proceeds, sale.cost, sale.gain) == (
+        Decimal("1039.10"),
+        Decimal("1550.18"),
+        Decimal("-511.08"),
+    )
+    basis = {(h.account, h.instrument_id): h.cost for h in positions.holdings}
+    assert basis[("PEA-FICTIF", "FICT-DELTA")] == Decimal("6200.72")
+    assert basis[("CTO-FICTIF", "FICT-GLOBEX")] == Decimal("8794.00") + Decimal("5324.20")
+
+
+def test_the_whole_portfolio_has_a_value(book: tuple[FinanceStore, Book]) -> None:
+    store, positions = book
+    valuation = value(store, positions)
+    assert valuation.missing == []
+    assert valuation.total_eur is not None and valuation.total_eur > 0
+    assert {line.close_date for line in valuation.lines if line.close_date} == {date(2026, 10, 16)}

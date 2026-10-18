@@ -7,7 +7,9 @@ fixed format, so that text comparison in SQLite is time comparison.
 
 from __future__ import annotations
 
+import re
 from datetime import UTC, date, datetime, time, timedelta
+from decimal import Decimal
 from typing import Annotated, Literal
 from zoneinfo import ZoneInfo
 
@@ -54,6 +56,15 @@ class _Record(BaseModel):
     model_config = ConfigDict(extra="forbid", frozen=True)
 
 
+def plain_text(value: str) -> str:
+    """A name or a label from a file or a provider: external content, never instructions (R5)."""
+    if any(not char.isprintable() for char in value):
+        raise ValueError("caractères de contrôle interdits")
+    if injection_signals(value):
+        raise ValueError("texte refusé : il ressemble à une consigne (R5)")
+    return value
+
+
 class Instrument(_Record):
     """One version of an instrument's reference data, valid from ``valid_from`` (included)."""
 
@@ -73,12 +84,7 @@ class Instrument(_Record):
     @field_validator("name", "sector")
     @classmethod
     def _plain_data(cls, value: str) -> str:
-        # Names come from CSV files or providers: external content, never instructions (R5).
-        if any(not char.isprintable() for char in value):
-            raise ValueError("caractères de contrôle interdits")
-        if injection_signals(value):
-            raise ValueError("texte refusé : il ressemble à une consigne (R5)")
-        return value
+        return plain_text(value)
 
     @model_validator(mode="after")
     def _consistent(self) -> Instrument:
@@ -175,3 +181,96 @@ class RateObservation(_Published):
 
 
 MarketRecord = PriceRow | CorporateAction | FxRate | RateObservation
+
+
+# Portfolio (ADR-018) ----------------------------------------------------------------------------
+
+TransactionKind = Literal["buy", "sell", "dividend", "fee", "deposit", "withdrawal", "fx"]
+AccountId = Annotated[str, Field(pattern=r"^[A-Za-z0-9][A-Za-z0-9 ._-]{0,31}$")]
+# Exact decimals, read from the file's text: a rebuilt balance is the sum of its amounts.
+Quantity = Annotated[Decimal, Field(gt=0, allow_inf_nan=False)]
+Fees = Annotated[Decimal, Field(ge=0, allow_inf_nan=False)]
+_CURRENCY = re.compile(r"^[A-Z]{3}$")
+# What each kind requires (True), forbids (False) or allows (None).
+_KIND_FIELDS: dict[str, dict[str, bool | None]] = {
+    "buy": {"asset": True, "price": True, "amount": None},
+    "sell": {"asset": True, "price": True, "amount": None},
+    "fx": {"asset": True, "price": True, "amount": None},
+    "dividend": {"asset": True, "price": False, "amount": False},
+    "fee": {"asset": None, "price": False, "amount": False},
+    "deposit": {"asset": False, "price": False, "amount": False},
+    "withdrawal": {"asset": False, "price": False, "amount": False},
+}
+_COLUMNS = {"asset": "identifiant", "price": "prix", "amount": "montant"}  # the CERVEAU format
+
+
+class Transaction(_Record):
+    """One line of Lucas's ledger in the CERVEAU format; amounts are in ``currency``."""
+
+    trade_date: date
+    account: AccountId
+    kind: TransactionKind
+    asset: InstrumentId | None = None  # the instrument, or the currency bought (fx)
+    quantity: Quantity  # units (buy, sell), amount bought (fx), cash amount (the others)
+    price: Quantity | None = None  # one unit of ``asset`` in ``currency``
+    currency: Currency
+    fees: Fees = Decimal(0)  # for a dividend: the withholding tax and fees
+    amount: Quantity | None = None  # the cash actually booked, fees included, when known
+    label: str | None = Field(default=None, min_length=1, max_length=MAX_NAME_CHARS)
+
+    @field_validator("label")
+    @classmethod
+    def _plain_label(cls, value: str | None) -> str | None:
+        return None if value is None else plain_text(value)
+
+    @model_validator(mode="after")
+    def _kind_fields(self) -> Transaction:
+        for name, rule in _KIND_FIELDS[self.kind].items():
+            given = getattr(self, name) is not None
+            if rule is True and not given:
+                raise ValueError(f"{_COLUMNS[name]} requis pour ce type")
+            if rule is False and given:
+                raise ValueError(f"{_COLUMNS[name]} interdit pour ce type")
+        if self.kind in ("fee", "deposit", "withdrawal") and self.fees:
+            raise ValueError("frais interdits pour ce type : le montant est la quantité")
+        if self.kind == "dividend" and self.fees > self.quantity:
+            raise ValueError("retenue supérieure au dividende brut")
+        if self.kind == "fx" and (
+            self.asset is None or not _CURRENCY.match(self.asset) or self.asset == self.currency
+        ):
+            raise ValueError("un change achète une autre devise que celle qu'il débite")
+        return self
+
+    @property
+    def cash_flow(self) -> Decimal:
+        """The change of the ``currency`` balance; positive when cash comes in."""
+        gross = self.quantity * self.price if self.price is not None else self.quantity
+        match self.kind:
+            case "buy" | "fx":
+                return -(self.amount if self.amount is not None else gross + self.fees)
+            case "sell":
+                return self.amount if self.amount is not None else gross - self.fees
+            case "dividend":
+                return self.quantity - self.fees
+            case "deposit":
+                return self.quantity
+            case _:  # fee, withdrawal
+                return -self.quantity
+
+
+class StatementLine(_Record):
+    """One line of a broker's position statement: units held, or a cash balance."""
+
+    statement_date: date
+    account: AccountId
+    nature: Literal["security", "cash"]
+    asset: InstrumentId  # the instrument, or the currency of the balance
+    quantity: Annotated[Decimal, Field(allow_inf_nan=False)]  # a cash balance may be negative
+
+    @model_validator(mode="after")
+    def _consistent(self) -> StatementLine:
+        if self.nature == "cash" and not _CURRENCY.match(self.asset):
+            raise ValueError("une ligne d'espèces porte un code de devise")
+        if self.nature == "security" and self.quantity <= 0:
+            raise ValueError("une ligne de titres porte une quantité positive")
+        return self

@@ -19,7 +19,7 @@ JournalOpt = Annotated[
 ConfigDirOpt = Annotated[
     Path | None, typer.Option("--config-dir", help="Dossier de configuration (défaut : config/).")
 ]
-EXIT_ERROR, EXIT_BLOCKED, EXIT_BUDGET = 1, 2, 3
+EXIT_ERROR, EXIT_BLOCKED, EXIT_BUDGET, EXIT_GAP = 1, 2, 3, 4
 
 
 def project_root() -> Path:
