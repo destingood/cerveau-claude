@@ -95,3 +95,22 @@ son origine et la phase visée ; « ? » signifie « à décider par Lucas ».
 | B62 | Golden set : passer de 37 à 300 cas (objectif section 9), validés par Lucas puis gelés (R9) | section 9, plan §9 | 2 |
 | B63 | Mode réel : le « petit lot en web réel » de l'ADR-009 n'est pas implémenté (le mode réel lit les pages fixtures) ; à ajouter sans stocker les résultats Brave (droits de stockage) | ADR-009, plan §9 | ? |
 | B73 | Juge : refuser aussi un cas dont `payload.guard.pii` n'est pas vide, pas seulement ceux marqués `expect.pii` (le juge reçoit la question brute et la réponse ré-identifiée) | `core/evals/judge.py`, revue (F4), R6 | 2 |
+
+## Auto-amélioration et ouverture publique (ADR-011)
+Décision de Lucas du 18/10/2026 : CERVEAU s'améliore seul, sans validation humaine, derrière deux
+verrous automatiques (porte d'évals et de red team avant chaque mise en ligne, noyau verrouillé). La
+phase 1 pose les premières briques : entrées `ERROR` et `FEEDBACK` du journal et `cerveau feedback`.
+
+| # | Élément | Origine | Phase |
+|---|---|---|---|
+| B74 | Boucle d'apprentissage : lire les entrées `ERROR` et `FEEDBACK` et les notes de `var/feedback/`, regrouper les erreurs par type et par version de prompt, proposer une variante de prompt ou de paramètre (couche apprise uniquement) | ADR-011 | 7 |
+| B75 | Porte de mise en ligne automatique : golden set, comportements et red team complets sur la variante, adoption seulement si aucun seuil ne baisse et si le gain dépasse la marge `A_DEFINIR` ; sinon rejet journalisé ; retour arrière automatique sur régression en production | ADR-011, R9 | 7 |
+| B76 | Emplacement et format de la couche apprise (prompts et paramètres modifiables) : `A_DEFINIR` ; jamais `config/` ni les fichiers du noyau | ADR-011 | 7 |
+| B77 | Verrouillage technique du noyau : l'apprentissage ne peut écrire ni dans les règles R1–R16, ni dans les limites de risque et de budget, ni dans l'autonomie, ni dans les golden sets, ni dans les garde-fous (ACL, contrôle de hash au démarrage, test qui échoue sinon) | ADR-011, ADR-003 | 7 |
+| B78 | Défenses contre l'empoisonnement : retours d'un même utilisateur plafonnés, un retour seul ne change rien, la red team rejoue les retours suspects ; métrique de Goodhart (évals tenues hors de la boucle, jamais vues par elle) | ADR-011, R5 | 7 |
+| B79 | Acteur `user` (ou identifiant par utilisateur) dans le journal ; en phase 1 un retour est signé `lucas` | ADR-011, R11 | 8 |
+| B80 | Mémoire longue apprise : décider si des leçons apprises automatiquement peuvent coexister avec la règle de la section 11 (mémoire validée par Lucas) ou rester dans la seule couche apprise | ADR-011, section 11 | ? |
+| B81 | Ouverture publique : comptes et authentification, isolation multi-locataire (journal, retours, mémoire, budgets par utilisateur) | ADR-011 | 8 |
+| B82 | Ouverture publique : notice RGPD, base légale, durée de conservation, droit d'accès et oubli par utilisateur des retours (notes déjà hors du journal pour le permettre) ; anonymisation avant tout usage pour l'apprentissage | ADR-011, RGPD | 8 |
+| B83 | Ouverture publique : quotas et budgets par utilisateur, limitation de débit, traitement des abus (signalement, blocage, retours écartés de l'apprentissage) | ADR-011, D9 | 8 |
+| B84 | Ouverture publique : relire R16 (pas de conseil à des tiers) et les CGU des fournisseurs (Anthropic, Brave) avant tout accès d'un tiers | ADR-011, R15, R16 | 8 |
