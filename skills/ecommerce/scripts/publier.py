@@ -1,11 +1,17 @@
 #!/usr/bin/env python3
 """Publication par API officielle, sur les comptes de l'utilisateur, après une configuration unique.
 
-Plateformes : Pinterest (épingle image), page Facebook (post, avec lien), Instagram professionnel (image ou Reel).
-YouTube et la boutique Shopify passent par leurs connecteurs officiels (module 14 du skill), pas par ce script.
+- Page Facebook (post, lien, programmation jusqu'à 75 jours) et Instagram professionnel (image JPEG ou Reel) : API
+  Graph de Meta, accès « Standard » d'une app dont l'utilisateur a un rôle (pas d'App Review pour ses propres comptes).
+- Pinterest : `pinterest-csv` prépare le fichier de l'import en masse de Pinterest (fonction officielle et gratuite,
+  l'utilisateur dépose le fichier) ; l'API v5 (`pinterest`) ne publie en public qu'avec l'accès « Standard » accordé
+  par Pinterest (en accès d'essai, les épingles restent privées, dans un bac à sable).
+- YouTube et la boutique Shopify : leurs connecteurs officiels (module 14 du skill), pas ce script.
 
-Avant chaque envoi : relecture du texte par relire_texte.py (un 🔴 bloque), plafond quotidien par plateforme (jamais
-plus qu'un humain ne publierait), journal local de chaque publication. `--essai` montre la requête sans rien envoyer.
+Les règles des plateformes veulent que l'utilisateur ait vu chaque publication : Claude lui présente le lot (le
+calendrier de la semaine), puis publie ce qu'il a approuvé. Avant chaque envoi : relecture par relire_texte.py (un 🔴
+bloque), plafond quotidien (jamais plus qu'un humain ne publierait), journal local. `--essai` montre la requête sans
+rien envoyer.
 
 Accès : saisis une seule fois par l'utilisateur, dans SON terminal, à une invite masquée (`acces <plateforme>`) — ils
 ne passent jamais par la conversation ni par la ligne de commande. Ils sont gardés dans ~/.claude/brain/acces/ (hors
@@ -14,12 +20,13 @@ sauvegardes et hors cerveau commun) ; une variable d'environnement (PINTEREST_TO
 Bibliothèque standard uniquement. Usage :
   python scripts/publier.py acces pinterest|meta            (une fois, dans un terminal : invite masquée)
   python scripts/publier.py etat                            (accès présents, publications du jour)
-  python scripts/publier.py pinterest-tableaux
-  python scripts/publier.py pinterest --tableau <id> --titre "…" --texte "…" --lien <url> --image <url> [--essai]
-  python scripts/publier.py facebook --page <id> --texte "…" [--lien <url>] [--essai]
-  python scripts/publier.py instagram --compte <id> --texte "…" (--image <url> | --video <url>) [--essai]"""
+  python scripts/publier.py facebook --page <id> --texte "…" [--lien <url>] [--quand 2026-10-20T18:00] [--essai]
+  python scripts/publier.py instagram --compte <id> --texte "…" (--image <url.jpg> | --video <url>) [--essai]
+  python scripts/publier.py pinterest-csv --entree epingles.json --sortie epingles.csv
+  python scripts/publier.py pinterest-tableaux · pinterest --tableau <id> --titre … --texte … --lien … --image …"""
 from __future__ import annotations
 
+import csv
 import datetime as _dt
 import getpass
 import json
@@ -179,10 +186,24 @@ def pinterest(token: str, tableau: str, titre: str, texte: str, lien: str, image
     return {**r, "id": pin, "url": f"https://www.pinterest.com/pin/{pin}/" if pin else None}
 
 
-def facebook(token: str, page: str, texte: str, lien: str | None, essai: bool) -> dict:
+def quand_vers_unix(quand: str, maintenant: float | None = None) -> int:
+    """« 2026-10-20T18:00 » (heure locale) → horodatage ; Facebook accepte de 10 minutes à 75 jours plus tard."""
+    try:
+        t = _dt.datetime.fromisoformat(quand.strip()).timestamp()
+    except ValueError:
+        raise ValueError(f"--quand illisible : {quand} (forme 2026-10-20T18:00)") from None
+    now = maintenant if maintenant is not None else time.time()
+    if not now + 600 <= t <= now + 75 * 86400:
+        raise ValueError("--quand doit être entre 10 minutes et 75 jours plus tard (règle de Facebook)")
+    return int(t)
+
+
+def facebook(token: str, page: str, texte: str, lien: str | None, essai: bool, quand: int | None = None) -> dict:
     form = {"message": texte}
     if lien:
         form["link"] = lien
+    if quand:
+        form.update({"published": "false", "scheduled_publish_time": str(quand)})
     url = f"{GRAPH}/{urllib.parse.quote(page)}/feed"
     if essai:
         return {"essai": True, "requete": {"POST": url, "form": form}}
@@ -192,8 +213,9 @@ def facebook(token: str, page: str, texte: str, lien: str | None, essai: bool) -
 
 
 def instagram(token: str, compte: str, texte: str, image: str | None, video: str | None, essai: bool,
-              attente: float = 5, essais_max: int = 60) -> dict:
-    """Conteneur, attente du traitement (vidéo), puis publication : la séquence de l'API de publication Instagram."""
+              attente: float = 60, essais_max: int = 5) -> dict:
+    """Conteneur, attente du traitement (vidéo : une interrogation par minute, cinq au plus, comme le demande Meta),
+    puis publication : la séquence de l'API de publication Instagram."""
     form = {"caption": texte}
     if video:
         form.update({"media_type": "REELS", "video_url": video})
@@ -219,6 +241,33 @@ def instagram(token: str, compte: str, texte: str, image: str | None, video: str
     r = appel("POST", f"{base}/media_publish", form={"creation_id": cid, "access_token": token})
     mid = (r.get("json") or {}).get("id") if not r["erreur"] else None
     return {**r, "id": mid}
+
+
+CSV_PINTEREST = ["Title", "Media URL", "Pinterest board", "Thumbnail", "Description", "Link", "Publish date",
+                 "Keywords"]  # [À VÉRIFIER : comparer au modèle de Pinterest › Créer › Épingles en masse]
+
+
+def pinterest_csv(entrees: list, sortie: str) -> dict:
+    """Fichier de l'import en masse de Pinterest (200 épingles au plus) ; chaque texte relu, les 🔴 écartés."""
+    lignes, ecartees = [], []
+    for k, e in enumerate(entrees, 1):
+        titre, texte = str(e.get("titre") or "").strip(), str(e.get("texte") or "").strip()
+        manque = [n for n in ("titre", "image", "tableau") if not str(e.get(n) or "").strip()]
+        bad = [b for b in (_https(e.get("image"), "image"), _https(e.get("lien"), "lien")) if b]
+        stop = None if manque or bad else controler("pinterest", f"{titre} {texte}", True)
+        if manque or bad or stop:
+            ecartees.append((k, titre or "?", "manque " + ", ".join(manque) if manque else (bad[0] if bad else stop)))
+            continue
+        quand = str(e.get("date") or "").strip()
+        lignes.append([titre[:100], e["image"], e["tableau"], e.get("miniature") or "", texte[:500], e.get("lien") or "",
+                       quand, ", ".join(e.get("mots_cles") or [])])
+    if len(lignes) > 200:
+        raise ValueError(f"{len(lignes)} épingles : 200 au plus par fichier, découpe en plusieurs fichiers")
+    with open(sortie, "w", encoding="utf-8", newline="") as fh:
+        w = csv.writer(fh)
+        w.writerow(CSV_PINTEREST)
+        w.writerows(lignes)
+    return {"fichier": sortie, "epingles": len(lignes), "ecartees": ecartees}
 
 
 # ------------------------------------------------------------------------------------------------ ligne de commande
@@ -256,6 +305,23 @@ def main(argv=None) -> int:
             print("Erreur : acces pinterest|meta", file=sys.stderr)
             return 2
         return enregistrer_acces(pos[0])
+    if action == "pinterest-csv":
+        if not opts.get("entree") or not opts.get("sortie"):
+            print("Erreur : --entree epingles.json --sortie epingles.csv", file=sys.stderr)
+            return 2
+        try:
+            entrees = json.loads(Path(opts["entree"]).read_text(encoding="utf-8"))
+            if not isinstance(entrees, list):
+                raise ValueError("une liste d'épingles est attendue")
+            r = pinterest_csv(entrees, opts["sortie"])
+        except (OSError, ValueError) as exc:
+            print(f"Erreur : {exc}", file=sys.stderr)
+            return 2
+        print(f"✓ {r['epingles']} épingle(s) → {r['fichier']} : Pinterest › Créer › Épingles en masse (👤 dépôt du "
+              "fichier ; en-têtes à comparer au modèle de Pinterest la première fois)")
+        for k, titre, why in r["ecartees"]:
+            print(f"  écartée n° {k} ({titre}) : {why}")
+        return 0 if r["epingles"] else 1
     if action == "etat":
         for nom in ENV:
             print(f"{'✓' if lire_acces(nom) else '·'} accès {nom}"
@@ -294,6 +360,17 @@ def main(argv=None) -> int:
         if bad:
             print(f"Erreur : {bad}", file=sys.stderr)
             return 2
+    if action == "instagram" and opts.get("image") and not urllib.parse.urlsplit(opts["image"]).path.lower().endswith(
+            (".jpg", ".jpeg")):
+        print("Erreur : Instagram n'accepte que des images JPEG (adresse en .jpg ou .jpeg)", file=sys.stderr)
+        return 2
+    quand = None
+    if action == "facebook" and opts.get("quand"):
+        try:
+            quand = quand_vers_unix(opts["quand"])
+        except ValueError as exc:
+            print(f"Erreur : {exc}", file=sys.stderr)
+            return 2
     stop = controler(action, " ".join(x for x in (opts.get("titre"), texte) if x), essai)
     if stop:
         print(f"✗ {stop}", file=sys.stderr)
@@ -301,7 +378,7 @@ def main(argv=None) -> int:
     if action == "pinterest":
         r = pinterest(token, opts["tableau"], opts["titre"], texte, opts["lien"], opts["image"], essai)
     elif action == "facebook":
-        r = facebook(token, opts["page"], texte, opts.get("lien"), essai)
+        r = facebook(token, opts["page"], texte, opts.get("lien"), essai, quand)
     else:
         r = instagram(token, opts["compte"], texte, opts.get("image"), opts.get("video"), essai)
     if r.get("essai"):
@@ -314,7 +391,8 @@ def main(argv=None) -> int:
         print(f"✗ {action} : {r.get('erreur') or 'réponse sans identifiant'} (rien de publié ; journalisé)",
               file=sys.stderr)
         return 1
-    print(f"✓ publié sur {action} : {r.get('url') or r.get('id')}")
+    print(f"✓ {'programmé' if quand else 'publié'} sur {action} : {r.get('url') or r.get('id')}"
+          + ("" if action != "instagram" else " (première fois : vérifie qu'il est visible déconnecté)"))
     return 0
 
 

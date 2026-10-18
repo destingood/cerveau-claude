@@ -79,8 +79,10 @@ décisions et de ce qu'il a appris, d'une session à l'autre.
 - **Nouveau — le cerveau e-commerce** (skill `/cerveau:ecommerce`) : un expert pour lancer ou faire décoller une
   boutique en ligne sans publicité et avec des outils gratuits — diagnostic, offre et marges, site et tunnel de vente,
   premiers clients, vidéo courte et algorithmes, SEO, GEO (ChatGPT, Perplexity, AI Overviews), e-mails, gestion,
-  conformité. Claude peut piloter ton navigateur pour préparer le travail ; rien n'est publié sans ton accord. Le
-  contexte de chaque boutique reste dans ta mémoire, chez toi.
+  conformité. Il agit lui-même sur ta boutique et tes outils Google (fiches, SEO, flux), puis te dit ce qu'il a fait
+  et comment l'annuler ; il te demande seulement pour l'argent (prix, promos) et les envois aux clients. Il publie sur
+  ta page Facebook, ton Instagram pro ou YouTube une fois l'accès officiel branché, après ton « oui » sur le lot de la
+  semaine ; ailleurs, il prépare et tu cliques. Le contexte de chaque boutique reste dans ta mémoire, chez toi.
 
 - **Nouveau — le suivi de tes boutiques** : le cerveau suit chaque boutique comme un copilote. Un plan décollage daté
   (72 h, 14 jours, 30-60-90) dont les échéances te sont rappelées ; chaque lundi, les chiffres de la semaine avec un

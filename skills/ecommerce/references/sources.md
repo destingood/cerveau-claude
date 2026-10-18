@@ -91,11 +91,19 @@ sont marqués [À VÉRIFIER] ou [NON VÉRIFIÉ] dans les modules ; à la premiè
 **[FAIT\*]** (version 2.1.0) : valeur lue dans un extrait de moteur de recherche filtré sur le domaine officiel (page
 non ouverte directement), parfois recoupée par une copie archivée (Open Terms Archive) ou par la spécification
 publique de l'API Stripe. Fiable pour décider, à relire sur la page officielle avant de l'affirmer à un client.
+Publication par API (vérifiée le 18/10/2026, version 2.2.0) : YouTube (verrouillage en privé des projets non audités,
+quotas), Pinterest v5 (accès d'essai en bac à sable, accès Standard, règle du choix de chaque épingle), API de
+publication Instagram et API des Pages (accès Standard, limite de 100 posts sur 24 h, règle de pré-remplissage),
+TikTok (outils personnels exclus), LinkedIn (politique IA), X (fin de l'offre gratuite, prix à l'usage), Google
+Business Profile (accès sur demande, boutiques en ligne non éligibles), Shopify (apps du Dev Dashboard, jeton de 24 h)
+[FAIT* — extraits des domaines officiels].
+
 Restent ouverts au 18/10/2026 : taux de Shopify Payments en France (à lire dans l'admin), taux Stripe des cartes
 premium de l'EEE (2,8 % ou 1,9 %), montant de la Protection acheteurs Pro de Vinted, taux eBay de la catégorie Maison
 (9 % ou 11 %), fiches gratuites Microsoft sans campagne, acceptation d'une page de paiement externe par Merchant
 Center, promulgation de la loi de transposition de la directive (UE) 2024/825, présence de la France dans les filtres
-du Creative Center de TikTok.
+du Creative Center de TikTok, visibilité publique des posts publiés par une app Meta sans revue, audit YouTube ou
+accès Standard Pinterest pour un outil personnel, clause des conditions de l'API LinkedIn sur l'automatisation.
 
 ## Journal des versions
 
@@ -105,7 +113,7 @@ du Creative Center de TikTok.
 | 1.1.0 | 18/10/2026 | Passe de vérification juridique et Shopify ; robots IA ; grille de citabilité ; modèles |
 | 2.0.0 | 18/10/2026 | Intégré au cerveau (mémoire de chaque boutique, livré à tous par le plugin, générique) ; nouveaux modules 00 (décollage), 13 (boutique à 0 €), 14 (navigateur), 15 (recherche produit), 16 (marketplaces) ; algorithmes prouvés par le code (X 2026, Monolith, Reddit) ; Aperçus IA et Mode IA en France, contrôle « IA générative », livraison et retours en Search Console ; commerce agentique (ACP, UCP, AP2 : États-Unis seulement) ; conformité 2026 (bouton de rétractation, allégations environnementales, avis harmonisé, influence art. 5-2, mention CIBS) ; valeurs 2026 de la micro-entreprise ; scripts Python (marge corrigée : cotisations nettes des remboursements, port facturé, ventes pour se payer ; audit SEO/GEO express) |
 | 2.1.0 | 18/10/2026 | Des outils qui produisent des résultats : suivi de chaque boutique dans le cerveau (`brain boutique` : plan daté de J0 à J90, relevé hebdomadaire avec test statistique, goulot, marge par heure par canal, audits en historique, bilan) ; `audit_site.py` étendu (conformité légale, pages du sitemap, Core Web Vitals via PageSpeed Insights, rapport Markdown) ; `audit_catalogue.py` (tout le catalogue, flux Merchant Center) ; `relire_texte.py` (allégations interdites, fausse urgence, partenariats) ; `unit_economics.py` (comparaison des canaux, prix testés) ; modèles de textes ; frais 2026 vérifiés (Stripe, Shopify, Etsy, Vinted Pro, Leboncoin, eBay, TikTok Shop, Amazon) ; références juridiques précisées (L121-4 10°, 13°, 21°, 27°, 28° ; L310-3 et L442-5 ; L223-1 ; art. 5-2 et 8 de la loi influence ; D221-5) |
-| 2.2.0 | 18/10/2026 | Autonomie : le cerveau agit puis rend compte sur les outils du marchand (journal avant → après, retour arrière), ne pose de questions que pour l'introuvable (hypothèses écrites), publie par API officielle branchée une fois (`publier.py` : Pinterest, page Facebook, Instagram professionnel ; YouTube et Shopify par leurs connecteurs) ; niveaux 🟢🤖🟠👤🔴 |
+| 2.2.0 | 18/10/2026 | Autonomie : le cerveau agit puis rend compte sur les outils du marchand (journal avant → après, retour arrière), ne pose de questions que pour l'introuvable (hypothèses écrites), publie par API officielle branchée une fois, après un « oui » sur le lot de la semaine (`publier.py` : page Facebook programmable, Instagram professionnel, fichier d'import en masse Pinterest ; YouTube et Shopify par leurs connecteurs ; TikTok exclu : API fermée aux outils personnels) ; niveaux 🟢🤖🟠👤🔴 |
 
 ## Protocole de mise à jour
 

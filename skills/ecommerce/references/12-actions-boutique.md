@@ -12,7 +12,7 @@ alors au mode « proposer, puis appliquer les numéros validés ».
 | Niveau | Règle | Boutique (connecteur, admin) | Navigateur, réseaux, consoles |
 |---|---|---|---|
 | 🟢 Agir, puis rendre compte | Exécuter seul, journaliser (avant → après, retour arrière), puis résumer ce qui a été fait | Lire tout (produits, commandes en agrégats, stocks, rapports) ; créer, compléter, publier ou dépublier des produits, pages, articles et collections ; titres, descriptions, images, textes alternatifs, métadonnées SEO, données structurées ; navigation et redirections ; thème (toujours sur une copie, publiée seulement après relecture de la page) ; flux et corrections Merchant Center | Lire, rechercher, auditer à un rythme humain ; dans les consoles du marchand (Search Console, Merchant Center, Bing Webmaster Tools, Microsoft Merchant Center) : soumettre un sitemap, corriger un flux refusé, déclarer livraison et retours, demander une indexation |
-| 🤖 Publier par API officielle | Publier seul le contenu relu (`relire_texte.py` sans 🔴), au rythme prévu, puis journaliser | — | Plateformes dont l'API officielle de publication est branchée une fois par l'utilisateur (connecteur ou accès enregistré) : section 6 |
+| 🤖 Publier par API officielle | Publier seul, aux dates prévues, le lot que l'utilisateur a vu et approuvé (un « oui » par semaine : règle des plateformes), relu sans 🔴, puis journaliser | Articles et pages de la boutique (connecteur) | Page Facebook, Instagram professionnel, YouTube par son connecteur ; Pinterest par fichier d'import en masse : section 6 |
 | 🟠 Demander d'abord | Présenter le lot chiffré ; exécuter après le « oui » | Prix et promotions qui ne découlent pas d'une décision déjà prise (jamais sous le prix plancher, jamais un prix barré non conforme : art. L112-1-1) ; envoi ou activation d'e-mails et de SMS vers des clients ; stock (sauf chiffres donnés par l'utilisateur) ; plus de 100 objets modifiés d'un coup ; boutique d'un client en mode agence hors du périmètre autorisé par écrit | Publier sur une plateforme sans API officielle branchée → 👤 |
 | 👤 Dernier clic humain | Claude prépare tout et ouvre la page ; l'utilisateur relit et clique | — | Réseaux et marketplaces sans API officielle de publication (ou non branchée) : post, vidéo, annonce ; partout : message privé, commentaire, J'aime, abonnement, ajout de contact (leurs conditions interdisent les robots : module 14) |
 | 🔴 Interdit | Ne jamais faire ; expliquer comment le faire | Paiements, remboursements, virements ; réglages de paiement et de versement ; suppression définitive (archiver ou passer en brouillon à la place) ; domaines et DNS ; comptes, accès, clés API ; achat d'apps ou d'abonnements ; export de données clients vers des tiers ; acceptation de CGU | Mot de passe ou code reçu par SMS ; CAPTCHA ; création de compte ; actions en série ; collecte automatisée de données ; achat ; acceptation de conditions ; automatisation de l'engagement (J'aime, abonnements, commentaires, messages) ; tout ce que les CGU interdisent |
@@ -86,7 +86,8 @@ Sans connecteur : même protocole dans l'admin, ouverte par l'utilisateur dans s
 ## 6. Publication par API officielle (🤖)
 
 Quand l'utilisateur a branché une fois l'accès officiel d'une plateforme (connecteur de claude.ai ou accès enregistré
-dans le cerveau), Claude publie seul le contenu planifié : texte relu sans 🔴, mention « Publicité » si le contenu est
-rémunéré, divulgation de l'auto-promotion là où la plateforme l'exige, rythme du calendrier (jamais plus que ce
-qu'un humain publierait), puis journal (lien du contenu, date, UTM). Ce qui reste humain sur toutes les plateformes :
-répondre en privé, commenter, aimer, s'abonner. Plateformes, configuration unique et limites : module 14, section 6.
+par `scripts/publier.py acces`), Claude lui présente le lot de la semaine, puis publie seul ce qu'il a approuvé : texte
+relu sans 🔴, mention « Publicité » si le contenu est rémunéré, divulgation de l'auto-promotion là où la plateforme
+l'exige, rythme du calendrier (jamais plus qu'un humain ne publierait), puis journal (lien du contenu, date, UTM).
+Ce qui reste humain sur toutes les plateformes : répondre en privé, commenter, aimer, s'abonner. Plateformes,
+configuration unique et limites : module 14, section 6.

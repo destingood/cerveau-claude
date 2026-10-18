@@ -632,6 +632,29 @@ c, out = run(*PUB, "pinterest-tableaux", env=env_sans)
 check(c == 3 and "acces pinterest" in out, "sans accès : l'utilisateur le saisit une fois dans son terminal", out)
 c, out = run(*PUB, "acces", "pinterest", env=penv)
 check(c == 2 and "terminal" in out, "accès jamais saisi hors d'un vrai terminal (pas par la conversation)", out)
+quand = (publier._dt.datetime.now() + publier._dt.timedelta(days=2)).replace(microsecond=0).isoformat(timespec="minutes")
+c, out = run(*PUB, "facebook", "--page", "p1", "--texte", "Atelier ouvert samedi", "--quand", quand, "--essai", env=penv)
+check(c == 0 and '"published": "false"' in out and "scheduled_publish_time" in out,
+      "Page Facebook : publication programmée (published=false + horodatage)", out)
+c, out = run(*PUB, "facebook", "--page", "p1", "--texte", "Trop tôt", "--quand",
+             publier._dt.datetime.now().isoformat(timespec="minutes"), "--essai", env=penv)
+check(c == 2 and "10 minutes et 75 jours" in out, "programmation hors des bornes de Facebook refusée", out)
+c, out = run(*PUB, "instagram", "--compte", "ig1", "--texte", "Bougie", "--image", "https://cdn.example/i.png",
+             env=penv)
+check(c == 2 and "JPEG" in out, "Instagram : image non JPEG refusée avant l'envoi", out)
+EPI = TMP / "epingles.json"
+EPI.write_text(json.dumps([
+    {"titre": "Bougie lavande 200 g", "texte": "Coulée à la main en cire de colza.", "image": "https://cdn.example/1.jpg",
+     "tableau": "Bougies", "lien": "https://boutique.example/p/1", "date": "2026-10-25T18:00:00",
+     "mots_cles": ["bougie", "lavande"]},
+    {"titre": "Bougie miracle", "texte": "Elle guérit l'insomnie.", "image": "https://cdn.example/2.jpg",
+     "tableau": "Bougies"},
+    {"titre": "Sans image", "texte": "…", "tableau": "Bougies"}]), encoding="utf-8")
+c, out = run(*PUB, "pinterest-csv", "--entree", EPI, "--sortie", TMP / "epingles.csv", env=penv)
+rows = list(csv.reader((TMP / "epingles.csv").open(encoding="utf-8"))) if (TMP / "epingles.csv").exists() else []
+check(c == 0 and len(rows) == 2 and rows[0][:3] == ["Title", "Media URL", "Pinterest board"]
+      and rows[1][2] == "Bougies" and rows[1][7] == "bougie, lavande" and "écartée n° 2" in out and "écartée n° 3" in out,
+      "Pinterest : fichier d'import en masse (relu ; allégation de santé et épingle sans image écartées)", out)
 api.shutdown()
 os.environ.pop("PINTEREST_TOKEN", None)
 os.environ.pop("META_TOKEN", None)

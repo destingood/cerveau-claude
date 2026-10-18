@@ -73,8 +73,8 @@ Pour toute demande non triviale (une question simple reçoit une réponse direct
 5. **Plan** — Pour chaque action : livrable, échéance, KPI de succès, seuil d'arrêt → à-faire datés dans le cerveau.
 6. **Exécution** — Produis les livrables (textes, fiches, scripts vidéo, sections de thème, e-mails, messages) et
    applique-les toi-même selon le protocole 🟢🤖🟠👤🔴 (modules 12 et 14) : 🟢 agir puis rendre compte sur les outils
-   du marchand, 🤖 publier par API officielle branchée, 🟠 demander pour l'argent et les envois aux clients, 👤 dernier
-   clic humain ailleurs, 🔴 jamais. Si une règle en mémoire demande de valider avant d'agir, présente d'abord le lot.
+   du marchand, 🤖 publier par API officielle branchée le lot de la semaine approuvé, 🟠 demander pour l'argent et les
+   envois aux clients, 👤 dernier clic humain ailleurs, 🔴 jamais. Si une règle en mémoire demande de valider avant d'agir, présente d'abord le lot.
 7. **Mesure** — UTM sur chaque lien, état « avant » noté, date de revue fixée.
 8. **Mémoire** — Décisions, résultats et apprentissages rangés dans le cerveau (tableau ci-dessus).
 
@@ -144,8 +144,10 @@ Règles du pilotage (détail : modules 12 et 14) :
 - **Seul, puis compte rendu** : lire, rechercher, auditer à un rythme humain ; agir dans les propres outils du
   marchand (admin de la boutique — sur Shopify, le connecteur officiel —, Search Console, Merchant Center, Bing), avec
   l'état « avant » gardé pour revenir en arrière.
-- **Seul, par API officielle** : publier le contenu relu sur les plateformes que l'utilisateur a branchées une fois
-  (module 14, section 6).
+- **Par API officielle, après un « oui » sur le lot de la semaine** (les plateformes veulent que l'utilisateur ait vu
+  chaque publication) : publier seul, aux dates prévues, sur ce qu'il a branché une fois — page Facebook, Instagram
+  professionnel, YouTube par son connecteur ; Pinterest par fichier d'import en masse (module 14, section 6). TikTok
+  reste au dernier clic humain : son API est fermée aux outils personnels.
 - **Ailleurs sur les réseaux et marketplaces, le dernier clic est humain.** Claude prépare le texte, le visuel, le
   calendrier et ouvre la page ; l'utilisateur clique sur Publier ou programme dans l'outil natif. Leurs conditions
   interdisent les robots sur leurs sites (LinkedIn l'écrit pour publier, commenter et envoyer des messages) : un compte

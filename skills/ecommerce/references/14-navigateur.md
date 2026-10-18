@@ -83,6 +83,35 @@ publier par logiciel. Un compte suspendu coûte bien plus cher que trois seconde
 | Shopify | Accès ou surveillance du service par robot, spider, scraper ou tout autre moyen automatisé interdits (copie archivée antérieure à 10/2024) → passer par le connecteur officiel ou l'export de l'admin [FAIT* ; version 2026 à relire] |
 | Leboncoin | [À VÉRIFIER] |
 
+## 6. Publication par API officielle (état au 18/10/2026)
+
+Règle commune : les plateformes veulent que l'utilisateur ait vu chaque publication. Pinterest l'écrit pour la
+programmation ; Meta interdit de pré-remplir un texte que l'utilisateur n'a pas fait sien. Claude présente donc le lot
+de la semaine (texte, visuel, date) ; l'utilisateur répond « oui » ou corrige ; Claude publie ensuite seul aux dates
+prévues et journalise. Les accès se branchent une fois, par l'utilisateur ; Claude ne voit jamais les jetons.
+
+| Plateforme | Voie officielle | Configuration unique (utilisateur) | Ensuite, Claude seul | Limites | Statut |
+|---|---|---|---|---|---|
+| Boutique Shopify (produits, articles, pages) | Connecteur Shopify de claude.ai (ou app du Dev Dashboard, jeton de 24 h) | Brancher le connecteur | Tout le 🟢 du module 12 | Limites de coût de l'API | [FAIT*] |
+| Page Facebook | API Graph : `scripts/publier.py facebook` (programmation `--quand`, de 10 minutes à 75 jours) | App Meta (cas d'usage « gérer une Page »), rôle sur l'app, jeton de Page (sans expiration), puis `publier.py acces meta` dans son terminal | Publier et programmer le lot approuvé | App en mode développement : posts visibles seulement des personnes qui ont un rôle → passer l'app en mode Live (ou type Business) et vérifier un post déconnecté | [FAIT* ; visibilité à vérifier une fois] |
+| Instagram professionnel | API de publication Instagram : `publier.py instagram` (image JPEG publique, ou Reel) | Même app Meta (connexion Instagram ou Facebook), compte ajouté comme testeur, jeton longue durée (60 jours, renouvelable) | Publier le lot approuvé | 100 publications par API sur 24 h ; images JPEG seulement | [FAIT* ; visibilité à vérifier une fois] |
+| YouTube (Shorts : vidéo verticale de 3 minutes au plus) | Connecteur YouTube de claude.ai (`upload_video`) ou API Data v3 | Brancher le connecteur | Mettre en ligne le lot approuvé | Un projet d'API non audité verrouille les vidéos en privé : premier envoi en « non répertorié », vérifier ; s'il est verrouillé → 👤 YouTube Studio | [FAIT* pour la règle ; connecteur À VÉRIFIER] |
+| Pinterest | Import en masse officiel : `publier.py pinterest-csv` (200 épingles au plus par fichier) ; API v5 seulement avec l'accès Standard | Compte professionnel | Préparer le fichier relu et daté ; 👤 l'utilisateur le dépose (Créer › Épingles en masse) | Accès d'essai de l'API : épingles privées (bac à sable) ; accès Standard après revue avec vidéo de démonstration | [FAIT*] |
+| TikTok | API de publication | — | Rien : 👤 | Outils personnels exclus de la revue de TikTok ; sans audit, publications privées seulement | [FAIT*] |
+| LinkedIn (profil) | API Posts | Jeton de 60 jours, à redonner à la main | Rien d'automatique : 👤 | Politique IA de LinkedIn : l'utilisateur modifie avant publication ; clause des conditions sur l'automatisation à relire | [À VÉRIFIER] |
+| X | API payante (0,015 $ le post, 0,20 $ avec un lien) | — | Hors du chemin 0 € | Plus d'offre gratuite depuis 2026 | [FAIT*] |
+| Google Business Profile | API des posts, sur demande d'accès | — | — | Boutique 100 % en ligne non éligible ; accès accordé après examen (environ 14 jours) | [FAIT*] |
+
+**Brancher Meta (Facebook et Instagram) une fois**, fait par l'utilisateur (création de compte et acceptation de
+conditions : 🔴 pour Claude, qui guide écran par écran) :
+1. developers.facebook.com › créer une app (cas d'usage : gérer une Page, publier sur Instagram).
+2. Se donner un rôle sur l'app ; relier le compte Instagram professionnel à la Page ; l'ajouter comme testeur.
+3. Générer le jeton : jeton utilisateur longue durée, puis jeton de la Page (`/me/accounts`).
+4. Dans **son** terminal : `python "<dossier du skill>/scripts/publier.py" acces meta`, puis coller le jeton à
+   l'invite masquée (jamais dans la conversation).
+5. `python scripts/publier.py etat`, puis un premier post en `--essai`, puis un vrai, vérifié depuis un navigateur
+   déconnecté.
+
 ## 7. Routines (Claude fait, l'utilisateur tourne et clique là où c'est humain)
 
 **Chaque jour (20 à 30 minutes pour l'utilisateur)**

@@ -15,6 +15,7 @@ import os
 import re
 import shutil
 import time
+from pathlib import Path
 
 from .common import BRAIN_DIR, CLAUDE_HOME, CODE_DIR, PLUGIN, load_config, log, now_iso, read_json, set_config, \
     write_json, write_text
@@ -56,14 +57,28 @@ def _classic_version() -> str:
 
 
 def _marketplace():
-    """(nom, source) du marketplace d'où vient ce plugin : cache/<marketplace>/<plugin>/<version>/ et le registre des
-    marketplaces connus de Claude Code. → (None, None) si introuvable."""
-    parts = CODE_DIR.parts
-    if "cache" not in parts or len(parts) < parts.index("cache") + 3:
-        return None, None
-    name = parts[parts.index("cache") + 1]
+    """(nom, source) du marketplace d'où vient ce plugin, d'après son dossier (plugins/cache/<marketplace>/<plugin>/
+    <version>/, ou plugins/marketplaces/<marketplace>/…) et le registre des marketplaces connus de Claude Code
+    (plugins/known_marketplaces.json). → (None, None) si introuvable."""
     known = read_json(CLAUDE_HOME / "plugins" / "known_marketplaces.json", {}) or {}
-    entry = known.get(name) if isinstance(known, dict) else None
+    known = known if isinstance(known, dict) else {}
+    parts, name = CODE_DIR.parts, None
+    for anchor in ("cache", "marketplaces"):
+        if anchor in parts and len(parts) > parts.index(anchor) + 1 and parts[parts.index(anchor) - 1] == "plugins":
+            name = parts[parts.index(anchor) + 1]
+            break
+    if name is None:  # autre emplacement : le marketplace dont le dossier contient ce plugin
+        for key, entry in known.items():
+            loc = entry.get("installLocation") if isinstance(entry, dict) else None
+            try:
+                if loc and CODE_DIR.resolve().is_relative_to(Path(loc).resolve()):
+                    name = key
+                    break
+            except (OSError, ValueError):
+                continue
+    if name is None:
+        return None, None
+    entry = known.get(name)
     source = entry.get("source") if isinstance(entry, dict) else None
     return name, source if isinstance(source, dict) else None
 
