@@ -20,7 +20,7 @@ Deux sens, toujours :
 | Publicités des concurrents (transparence) | facebook.com/ads/library · adstransparency.google.com · library.tiktok.com |
 | Pinterest (compte pro, catalogue) | business.pinterest.com |
 | TikTok Shop (vendeurs France) | seller-fr.tiktok.com |
-| Fiche de marque Apple | Apple Business [À VÉRIFIER : adresse du portail] |
+| Fiche de marque Apple | business.apple.com (Apple Business, depuis le 14/04/2026) [FAIT*] |
 | Cotisations, plafonds | autoentrepreneur.urssaf.fr (simulateur) |
 | Audit express sans navigateur | `python scripts/audit_site.py <url>` |
 
@@ -78,7 +78,8 @@ envoyer des messages ou ajouter des contacts. Un compte suspendu coûte bien plu
 | Vinted | Copie de contenus, data mining, scraping, crawling, collecte de données d'utilisateurs interdits |
 | Pinterest | Extraction ou accès automatisé interdit sans autorisation expresse |
 | Google | Seul l'accès automatisé contraire aux instructions robots.txt est visé |
-| Leboncoin, Shopify (version 2026) | [À VÉRIFIER] |
+| Shopify | Accès ou surveillance du service par robot, spider, scraper ou tout autre moyen automatisé interdits (copie archivée antérieure à 10/2024) → passer par le connecteur officiel ou l'export de l'admin [FAIT* ; version 2026 à relire] |
+| Leboncoin | [À VÉRIFIER] |
 
 ## 6. Routines (Claude prépare, l'utilisateur publie)
 

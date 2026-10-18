@@ -38,15 +38,18 @@ lis-le avant de redemander quoi que ce soit.
 
 | Moment | Ce que tu fais |
 |---|---|
-| Début d'une demande boutique | `brain q "boutique <nom>"` (ou `brain q "boutique"`) : fiche contexte, décisions, tests en cours, à-faire |
-| Boutique inconnue du cerveau | Après le diagnostic, crée la fiche : `brain add -t fact -T "Boutique <Nom> — fiche contexte" -b "<fiche condensée>" --tags boutique,ecommerce -i 5 --keys "<nom>, ma boutique, mon site" --commun non` (modèle : `assets/modele-contexte-boutique.md`) |
-| Chiffres (30 derniers jours) | Un souvenir à part, remplacé à chaque relevé : `brain add -t fact -T "Boutique <Nom> — chiffres au <date>" -b "…" --replaces <ancien> --commun non` |
+| Début d'une demande boutique | `brain boutique` (boutiques suivies : dernière semaine, plan, dernier audit) puis `brain q "boutique <nom>"` (fiche contexte, décisions, tests en cours) |
+| Boutique inconnue du cerveau | `brain boutique ajouter "<Nom>" --url https://… --type physique\|mode\|createur\|occasion\|niche\|prevente\|local\|numerique\|b2b --chemin plateforme\|0euro --marge-commande <€>` : fichier de suivi et fiche contexte, privés ; complète la fiche après le diagnostic (modèle : `assets/modele-contexte-boutique.md`, `brain add … --replaces <id> --commun non`) |
+| Plan décollage | `brain boutique plan <boutique> [--debut <date>] [--court]` : 22 à-faire datés (72 h, 14 jours, 30-60-90) adaptés au type ; actions en plus : `brain add -t todo -T "<action>" -b "livrable, KPI, seuil d'arrêt" --due <date>` |
+| Chiffres de la semaine (chaque lundi) | `brain boutique kpi <boutique> --sessions … --ajouts … --checkouts … --commandes … --ca … --heures … [--canal nom:sessions:commandes:heures]` : taux, test statistique contre les semaines d'avant (« variation réelle » ou « bruit »), marge par heure par canal, goulot probable |
+| Audit | `brain boutique audit <boutique> [--complet]` : audit gardé en historique (corrigé, nouveau) |
+| Revue | `brain boutique bilan <boutique> [--md bilan.md]` : chiffres, plan tenu ou en retard, audits, trois priorités |
 | Décision | `brain add -t decision -T "<Nom> : <décision>" -b "pourquoi, KPI, date de revue" --commun non` |
-| Plan d'action | Une tâche datée par action : `brain add -t todo -T "<action>" -b "livrable, KPI, seuil d'arrêt" --due <date>` (les échéances proches remontent au démarrage) |
 | Résultat d'un test | `brain obs "🔴 …" "🟡 …"` pendant la session ; leçon durable et générale → `brain add -t learning …` |
 
-**Vie privée** : chiffres d'affaires, marges, fournisseurs, données de clients restent privés (`--commun non`) ; aucune
-donnée personnelle de client final n'entre dans le cerveau. Un apprentissage général sans chiffre privé ni nom (« sur
+**Vie privée** : chiffres d'affaires, marges, fournisseurs, données de clients restent privés (`--commun non` ; le suivi
+`brain boutique` ne quitte jamais l'ordinateur et entre dans les sauvegardes) ; aucune donnée personnelle de client
+final n'entre dans le cerveau. Un apprentissage général sans chiffre privé ni nom (« sur
 Pinterest, les épingles verticales avec texte convertissent mieux que les photos produit seules ») peut nourrir le
 cerveau commun des amis si l'utilisateur l'a rejoint : laisse alors la règle par défaut. Sans cerveau installé (chat
 claude.ai), affiche la fiche condensée en tête de réponse et propose de la sauvegarder.
@@ -73,14 +76,16 @@ Pour toute demande non triviale (une question simple reçoit une réponse direct
 | Demande | Ce que tu fais | Modules |
 |---|---|---|
 | « Lance ma boutique » (rien n'existe) | Choix du chemin (plateforme ou 0 €), produit et offre validés, boutique minimale conforme, plan 14 jours | 15, 02, 03 ou 13, 10, 00 |
-| « Fais décoller ma boutique », « ça ne vend pas » | Audit express (15 min dans le navigateur) → goulot → plan décollage 72 h puis 14 jours | 01, 00 |
+| « Fais décoller ma boutique », « ça ne vend pas » | `brain boutique ajouter` si elle est nouvelle → audit express (`audit_site.py --complet`, `audit_catalogue.py`, 15 min dans le navigateur) → goulot → `brain boutique plan` (72 h, 14 jours, 30-60-90) | 01, 00 |
+| « Fais le point », « la semaine », « est-ce que ça marche ? » | `brain boutique kpi` avec les chiffres de la semaine complète → `brain boutique bilan` → arrêter, itérer ou amplifier | 09, 00 |
 | « Trouve-moi des clients vite, sans pub » | Sprint 72 h sur le trafic emprunté (réseau, communautés, marketplaces, fiches gratuites) + capture d'e-mails | 00, 04, 16, 14 |
 | « Je veux des vues, des impressions » | Ce que récompensent les algorithmes → plan vidéo 30 jours, Pinterest, fiches gratuites Google | 05, 04 |
 | « Crée mon site / mon tunnel de vente » | Architecture, pages, fiche produit, tunnel organique, conformité | 03 ou 13, 10 |
 | « SEO », « Google », « référencement » | Indexation → architecture → pages → contenu → liens | 06 |
 | « ChatGPT / les IA parlent-elles de moi ? », « GEO » | Robots, données produit, contenu citable, présence chez les tiers, commerce agentique | 07 |
 | « Quel produit vendre ? », « ma niche ? » | Recherche gratuite dans le navigateur, validation avant d'investir | 15, 02 |
-| « Mes marges, ma trésorerie, mon stock » | Économie unitaire, tableau de bord, décisions | 02, 09 |
+| « Mes marges, ma trésorerie, mon stock », « quel prix ? », « Etsy ou mon site ? » | Économie unitaire, `unit_economics.py --canal … --prix-test …`, tableau de bord, décisions | 02, 16, 09 |
+| « Écris ma fiche produit / mes e-mails / mon message » | Modèle adapté (`assets/modeles-textes.md`) → relecture `relire_texte.py` → publication 👤 | 03, 08, 04 |
 | « Trouver des clients pour mon service », boutique d'un tiers | Mode agence | 11, 14 |
 
 ## Routeur de modules
@@ -107,12 +112,16 @@ Charge seulement les modules utiles ; combine-les si la demande est transversale
 | Trouver et valider un produit, une niche, étudier la concurrence | `references/15-recherche-produit-marche.md` |
 | Marketplaces : Vinted, Leboncoin, eBay, Etsy, TikTok Shop… | `references/16-marketplaces.md` |
 | Sources, dépôts GitHub, dates de vérification, versions | `references/sources.md` |
-| Marge de contribution, prix plancher, seuil de rentabilité | `python scripts/unit_economics.py --aide` |
-| Audit SEO/GEO express d'une page (titres, données structurées, robots IA, sitemap) | `python scripts/audit_site.py <url>` |
+| Marge de contribution, prix plancher, seuil de rentabilité ; comparer les canaux (`--canal "Etsy;commission=6,5;…"`) ; tester un prix (`--prix-test "34,90/44,90"`) | `python scripts/unit_economics.py --aide` |
+| Audit SEO/GEO d'une page ; `--conformite` (pages légales, rétractation, médiateur, cookies, urgence, avis), `--pages 10` (sitemap : erreurs, doublons, noindex), `--vitesse` (Core Web Vitals), `--complet`, `--rapport audit.md` | `python scripts/audit_site.py <url> --complet --rapport audit.md` |
+| Audit de tout le catalogue (titres, descriptions, images, GTIN, prix barrés, allégations) et flux Merchant Center | `python scripts/audit_catalogue.py --url <boutique>` ou `--csv export.csv --flux flux.tsv` |
+| Relire un texte avant publication (allégations interdites, fausse urgence, partenariat sans mention, tics d'IA) | `python scripts/relire_texte.py texte.txt --type fiche\|email\|post\|annonce` |
+| Textes prêts à adapter : fiche produit, séquences d'e-mails, messages aux créateurs et partenaires, presse, demande d'avis, annonces de marketplace | `assets/modeles-textes.md` |
 | Modèles : fiche contexte, journal, rapport d'audit client | `assets/modele-contexte-boutique.md`, `assets/modele-journal.md`, `assets/modele-rapport-audit.md` |
 | Version autonome du prompt maître, à coller dans un Projet claude.ai ou un autre assistant | `assets/prompt-maitre.md` |
 
-Les scripts n'utilisent que Python (déjà requis par le cerveau) : lance-les depuis le dossier du skill.
+Les scripts n'utilisent que Python (déjà requis par le cerveau) : lance-les depuis le dossier du skill. **Tout texte de
+vente passe par `relire_texte.py` avant publication** : un 🔴 bloque, un ⚠ demande la preuve.
 
 ## Le navigateur
 
@@ -158,13 +167,13 @@ proche.
 
 | Interdit | Pourquoi | Alternative légale |
 |---|---|---|
-| Fausse urgence, faux compte à rebours, faux stock limité | Pratique réputée trompeuse (C. conso., art. L121-4, 7°) | Vraie date limite, vrai stock, vraie édition limitée |
+| Fausse urgence, faux compte à rebours, faux stock limité | Pratique réputée trompeuse (C. conso., art. L121-4, 7° ; faux stock : L121-2, 2° a) | Vraie date limite, vrai stock, vraie édition limitée |
 | Faux avis, avis modifiés ou triés, acteurs ou contenus IA présentés comme de vrais clients | Art. L121-4, 27° et 28° | Avis vérifiés, contenu client réel avec accord, démonstration par le vendeur |
 | Prix barré sans prix de référence conforme | Art. L112-1-1 (prix le plus bas des 30 jours précédents) | Prix de lancement annoncé comme tel, comparaison correctement libellée |
 | E-mails de prospection vers des particuliers sans consentement | CPCE, art. L34-5 | Capture d'e-mails avec consentement |
-| Collaboration créateur sans mention « Publicité » ou « Collaboration commerciale » ; vidéo d'auto-promotion sans divulgation sur TikTok | Loi n° 2023-451, art. 5 et 5-2 ; règles de TikTok | Mention claire pendant toute la promotion ; réglage de divulgation activé |
+| Collaboration créateur sans mention « Publicité » ou « Collaboration commerciale » ; vidéo d'auto-promotion sans divulgation sur TikTok | Loi n° 2023-451, art. 5-2 ; règles de TikTok | Mention claire pendant toute la promotion ; réglage de divulgation activé |
 | « Écologique », « vert », « neutre en carbone » sans preuve ; label non certifié | Directive (UE) 2024/825, applicable depuis le 27/09/2026 | Allégation précise, prouvée, datée |
-| Vendre comme professionnel avec un compte de particulier | CGU des marketplaces ; se présenter comme particulier est trompeur | Compte professionnel |
+| Vendre comme professionnel avec un compte de particulier | CGU des marketplaces ; se présenter comme particulier est trompeur (C. conso., art. L121-4, 21°) | Compte professionnel |
 | Achat d'abonnés, pods d'engagement, robots, actions automatiques en masse, ré-upload de vidéos tierces, variantes en rafale, fiches fournisseur traduites en masse | Règles anti-spam des plateformes et de Google ; CGU | Contenu original, 1 idée = 1 contenu, interactions faites à la main |
 | Collecte en masse de données personnelles (profils, e-mails) sur les réseaux | RGPD, CGU des plateformes | Prospection B2B ciblée, opt-in, partenariats |
 | Publication d'un produit sans contrôle de conformité | Sécurité des produits (règlement UE 2023/988), droit de la consommation | Gate du module 10 |

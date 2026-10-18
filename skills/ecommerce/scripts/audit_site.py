@@ -4,19 +4,36 @@
 Lit la page comme un robot : titre, description, canonique, noindex, langue, Open Graph, titres H1, images sans
 texte alternatif, données structurées (Product, Offer, livraison, retours, avis, Organization, fil d'Ariane), puis
 le robots.txt (robots des moteurs et des assistants IA autorisés ou non, règles de la RFC 9309), le sitemap et
-llms.txt. Ne mesure pas la vitesse réelle : pour les Core Web Vitals, PageSpeed Insights (lien donné).
+llms.txt.
 
-Bibliothèque standard uniquement. Usage : python scripts/audit_site.py <url> [--json] [--timeout 20] [--ua "…"]"""
+Options :
+  --conformite   pages légales (mentions, CGV, retours, confidentialité, contact) lues et contrôlées : rétractation de
+                 14 jours et formulaire, fonction « renoncer au contrat ici », garanties légales, médiateur, lien
+                 périmé vers la plateforme européenne de litiges, identité et hébergeur, traceurs sans bandeau de
+                 consentement, minuteurs d'urgence, avis sans information sur leur contrôle, allégations à risque
+  --pages N      N pages du sitemap lues (produits, collections, pages) : erreurs, redirections, noindex, titres et
+                 descriptions absents ou en double, H1, fiches produit sans données Product
+  --vitesse      Core Web Vitals via l'API PageSpeed Insights (mobile) : visiteurs réels (28 jours) et mesure de
+                 laboratoire, avec les 3 gains les plus importants ; clé facultative dans PAGESPEED_API_KEY
+  --complet      les trois à la fois (--conformite --pages 10 --vitesse)
+  --rapport f.md rapport Markdown prêt à envoyer (au client ou à soi-même)
+  --pause S      pause entre deux pages lues (défaut 1 s, par politesse envers le serveur)
+
+Bibliothèque standard uniquement. Usage : python scripts/audit_site.py <url> [--conformite] [--pages N] [--vitesse]
+[--complet] [--rapport fichier.md] [--json] [--timeout 20] [--ua "…"]"""
 from __future__ import annotations
 
 import json
+import os
 import re
 import sys
 import time
 import urllib.error
 import urllib.parse
 import urllib.request
+from html import unescape
 from html.parser import HTMLParser
+from pathlib import Path
 
 UA = "Mozilla/5.0 (compatible; cerveau-audit/2.0; audit SEO lancé par le propriétaire du site)"
 MAX_BYTES = 4_000_000
@@ -92,9 +109,14 @@ class PageParser(HTMLParser):
         self.jsonld = []
         self.scripts = 0
         self.links = []
+        self.anchors = []  # (adresse, texte du lien)
+        self.buttons = []
+        self.script_srcs = []
         self.itemtypes = []
         self._in = None
         self._buf = []
+        self._a = None
+        self._btn = None
 
     def handle_starttag(self, tag, attrs):
         a = {k.lower(): (v or "") for k, v in attrs}
@@ -123,8 +145,14 @@ class PageParser(HTMLParser):
                 self._in, self._buf = "jsonld", []
             elif a.get("src"):
                 self.scripts += 1
+                self.script_srcs.append(a["src"])
         elif tag == "a" and a.get("href"):
             self.links.append(a["href"])
+            self._a = (a["href"], [a.get("title", ""), a.get("aria-label", "")])
+        elif tag == "button":
+            self._btn = [a.get("aria-label", "")]
+        elif tag == "input" and a.get("type", "").lower() in ("submit", "button") and a.get("value"):
+            self.buttons.append(a["value"])
         if a.get("itemtype"):
             self.itemtypes.append(a["itemtype"])
 
@@ -138,10 +166,20 @@ class PageParser(HTMLParser):
         elif self._in == "jsonld" and tag == "script":
             self.jsonld.append("".join(self._buf))
             self._in = None
+        if tag == "a" and self._a:
+            self.anchors.append((self._a[0], " ".join(" ".join(self._a[1]).split())))
+            self._a = None
+        elif tag == "button" and self._btn is not None:
+            self.buttons.append(" ".join(" ".join(self._btn).split()))
+            self._btn = None
 
     def handle_data(self, data):
         if self._in:
             self._buf.append(data)
+        if self._a:
+            self._a[1].append(data)
+        if self._btn is not None:
+            self._btn.append(data)
 
 
 def _types(obj) -> list:
@@ -259,7 +297,10 @@ def allowed(groups: list, token: str, path: str) -> tuple:
 
 
 # ------------------------------------------------------------------------------------------------ audit
-def audit(url: str, timeout: float = 20, ua: str = UA) -> dict:
+def audit(url: str, timeout: float = 20, ua: str = UA, legal: bool = False, pages: int = 0, vitesse: bool = False,
+          pause: float = 1.0) -> dict:
+    """Audit d'une page ; legal : pages légales et conformité, pages : nombre de pages du sitemap à lire,
+    vitesse : Core Web Vitals via PageSpeed Insights."""
     if not re.match(r"^https?://", url, re.I):
         url = "https://" + url
     page = fetch(url, timeout, ua)
@@ -400,7 +441,7 @@ def audit(url: str, timeout: float = 20, ua: str = UA) -> dict:
     path = (parts.path or "/") + (f"?{parts.query}" if parts.query else "")
     rob = fetch(root + "/robots.txt", timeout, ua)
     rep["robots"] = {"statut": rob["status"]}
-    sitemaps = []
+    sitemaps, groups = [], None
     if rob["status"] and rob["status"] < 400:
         groups = parse_robots(rob["body"])
         sitemaps = re.findall(r"(?im)^\s*sitemap\s*:\s*(\S+)", rob["body"])
@@ -449,7 +490,537 @@ def audit(url: str, timeout: float = 20, ua: str = UA) -> dict:
     rep["pagespeed"] = "https://pagespeed.web.dev/analysis?url=" + urllib.parse.quote(page["url"], safe="")
     rep["test_resultats_enrichis"] = ("https://search.google.com/test/rich-results?url="
                                       + urllib.parse.quote(page["url"], safe=""))
+    if legal:
+        conformite(rep, point, html, p, page["url"], root, plateforme, timeout, ua)
+    if pages:
+        explorer(rep, point, root, page["url"], sitemaps, groups, pages, timeout, ua, pause)
+    if vitesse:
+        rep["vitesse"] = mesurer_vitesse(page["url"], timeout, ua)
+        points_vitesse(point, rep["vitesse"], rep["pagespeed"])
     return rep
+
+
+# ------------------------------------------------------------------------------------------------ texte visible
+def visible(html_text: str) -> str:
+    """Texte lisible d'une page (sans scripts, styles ni balises), une ligne par bloc."""
+    t = re.sub(r"(?is)<(script|style|noscript|template|svg)\b.*?</\1>", " ", html_text or "")
+    t = re.sub(r"(?i)<br\s*/?>|</(?:p|div|li|h[1-6]|tr|td|section|footer|header|nav)>", "\n", t)
+    t = unescape(re.sub(r"<[^>]+>", " ", t))
+    return "\n".join(" ".join(x.split()) for x in t.splitlines() if x.strip())
+
+
+def _relire():
+    """relire_texte.py, rangé à côté de ce script (allégations à risque)."""
+    here = str(Path(__file__).resolve().parent)
+    if here not in sys.path:
+        sys.path.insert(0, here)
+    import relire_texte
+    return relire_texte
+
+
+def _court(u: str) -> str:
+    parts = urllib.parse.urlsplit(u or "")
+    path = (parts.path or "/") + (f"?{parts.query}" if parts.query else "")
+    return path if len(path) <= 60 else path[:57] + "…"
+
+
+def _sans_query(u: str) -> str:
+    return (u or "").split("#")[0].split("?")[0].rstrip("/")
+
+
+# ------------------------------------------------------------------------------------------------ conformité
+# Pages légales : clé, libellé, motif du texte du lien, motif de l'adresse, page standard de Shopify
+LEGAL = [
+    ("mentions", "Mentions légales", r"mentions? l[ée]gales?|legal notice|impressum|informations? l[ée]gales?",
+     r"mentions|legal", "/policies/legal-notice"),
+    ("cgv", "Conditions générales de vente", r"\bcgv\b|conditions? g[ée]n[ée]rales?|terms of (?:service|sale)",
+     r"cgv|conditions-generales|terms-of-(?:service|sale)", "/policies/terms-of-service"),
+    ("retours", "Retours et remboursements", r"rembours|r[ée]tractation|refund|politique de retours?|^retours?$|"
+     r"retours? (?:et|&|/)|retours? (?:gratuits?|produits?)", r"refund|retours?|rembours|retractation",
+     "/policies/refund-policy"),
+    ("confidentialite", "Politique de confidentialité", r"confidentialit|privacy|donn[ée]es personnelles|\brgpd\b",
+     r"confidentialite|privacy|donnees-personnelles|rgpd", "/policies/privacy-policy"),
+    ("livraison", "Livraison", r"livraisons?\b|exp[ée]ditions?\b|shipping", r"livraison|expedition|shipping",
+     "/policies/shipping-policy"),
+    ("contact", "Contact", r"^contact|nous contacter|contactez|nous [ée]crire|service client", r"/contact",
+     "/policies/contact-information"),
+]
+PAGE_LEGALE = {  # niveau si la page manque, ce qu'elle doit contenir
+    "mentions": ("✗", "obligatoires : identité, immatriculation, coordonnées, hébergeur (LCEN, art. 1-1 et 19)"),
+    "cgv": ("✗", "obligatoires pour vendre aux particuliers : prix, livraison, paiement, rétractation, garanties, "
+                 "médiateur (C. conso., L111-1 et L221-5)"),
+    "confidentialite": ("⚠", "dès qu'on collecte des données : finalités, durées, droits, contact (RGPD, art. 13)"),
+    "retours": ("⚠", "délai de rétractation, frais de retour, remboursement sous 14 jours (C. conso., L221-18 et "
+                     "L221-24)"),
+    "livraison": ("·", "délais et frais de livraison connus avant la commande (C. conso., L111-1 et L216-1)"),
+    "contact": ("⚠", "adresse postale, e-mail et téléphone (C. conso., R111-1 ; LCEN, art. 19)"),
+}
+TRACEURS = [
+    ("Google Analytics / Ads", r"googletagmanager\.com/gtag/js|google-analytics\.com/(?:analytics|g/collect)"),
+    ("Google Tag Manager", r"googletagmanager\.com/gtm\.js"),
+    ("Meta Pixel", r"connect\.facebook\.net/[^\"']*fbevents\.js|fbq\(\s*['\"]init"),
+    ("TikTok Pixel", r"analytics\.tiktok\.com"),
+    ("Pinterest Tag", r"s\.pinimg\.com/ct/|pintrk\("),
+    ("Snap Pixel", r"sc-static\.net/scevent"),
+    ("Microsoft Clarity / UET", r"clarity\.ms/tag|bat\.bing\.com"),
+    ("Hotjar", r"static\.hotjar\.com"),
+]
+CMP = (r"axeptio|didomi|cookiebot|onetrust|tarteaucitron|iubenda|complianz|cookieyes|usercentrics|sirdata|"
+       r"consentmanager|termly|cookie-script|klaro|orejime|quantcast|pandectes|consentmo|privacy-banner|"
+       r"customerprivacy|consent-tracking-api|cookie-?banner|cookie-?consent|gdpr-?cookie")
+URGENCE = (r"countdown|count-down|hurrify|compte[- ]à[- ]rebours|plus que \d+ (?:en stock|articles?|pièces?|exemplaires?)|"
+           r"\d+ personnes? (?:regardent|consultent)|offre (?:expire|se termine) dans")
+AVIS = (r"judge\.me|judgeme|loox\.io|yotpo|stamped\.io|okendo|trustpilot|avis-verifies|skeepers|reviews\.io|ekomi|"
+        r"trustedshops|ryviu|growave")
+AVIS_CONTROLE = (r"avis (?:v[ée]rifi|contr[ôo]l)|contr[ôo]le des avis|proc[ée]dure de contr[ôo]le|non v[ée]rifi|"
+                 r"(?:ne font|ne sont) pas l['’]objet d['’]un contr[ôo]le")
+
+
+def pages_legales(p: PageParser, page_url: str, root: str, plateforme) -> dict:
+    """Liens vers les pages légales repérés sur la page ; sur Shopify, pages standard en secours."""
+    host = urllib.parse.urlsplit(root).netloc.lower()
+    found = {}
+    for key, _, rx_text, rx_href, std in LEGAL:
+        for href, txt in p.anchors:
+            if href.startswith(("mailto:", "tel:", "javascript:", "#")):
+                continue
+            absu = urllib.parse.urljoin(page_url, href)
+            parts = urllib.parse.urlsplit(absu)
+            if parts.netloc.lower() != host or parts.path in ("", "/"):
+                continue
+            if re.search(r"accueil|haut de (?:la )?page|retour (?:à|au|aux|en arrière)\b|back to", txt, re.I):
+                continue
+            if re.search(rx_text, txt, re.I) or re.search(rx_href, urllib.parse.unquote(parts.path).lower()):
+                found[key] = {"url": absu.split("#")[0], "lien": True}
+                break
+        if key not in found and plateforme == "Shopify":
+            found[key] = {"url": root + std, "lien": False}
+    return found
+
+
+def conformite(rep: dict, point, html_text: str, p: PageParser, page_url: str, root: str, plateforme,
+               timeout: float, ua: str) -> None:
+    """Points de conformité (module 10 du skill) : pages légales et leur contenu, cookies, urgence, avis, allégations."""
+    found = pages_legales(p, page_url, root, plateforme)
+    textes, bruts = {}, {}
+    lus = {}
+    for key, info in found.items():
+        if info["url"] not in lus:
+            lus[info["url"]] = fetch(info["url"], timeout, ua)
+        r = lus[info["url"]]
+        info["statut"] = r["status"]
+        if r["status"] and r["status"] < 400 and not r["error"]:
+            bruts[key], textes[key] = r["body"], visible(r["body"])
+    rep["conformite"] = found
+    labels = {k: lbl for k, lbl, *_ in LEGAL}
+    for key, (niveau, contenu) in PAGE_LEGALE.items():
+        info = found.get(key)
+        sujet = f"Conformité : {labels[key].lower()}" if key != "mentions" else "Conformité : mentions légales"
+        if key in textes and info["lien"]:
+            point("✓", sujet, _court(info["url"]))
+        elif key in textes:
+            point("⚠", sujet, f"page présente ({_court(info['url'])}) mais aucun lien repéré sur la page auditée",
+                  "lien visible sur toutes les pages (pied de page)", "10")
+        else:
+            point(niveau, sujet, "page introuvable" + (f" ({_court(info['url'])} : HTTP {info.get('statut')})"
+                                                       if info and info["lien"] else " (aucun lien repéré)"),
+                  contenu, "10")
+
+    page_txt = visible(html_text)
+    tout = "\n".join([page_txt] + list(textes.values()))
+    juridique = "\n".join(textes.get(k, "") for k in ("cgv", "retours"))
+    if juridique.strip():
+        ok14 = re.search(r"r[ée]tractation", juridique, re.I) and re.search(r"\b14\b|quatorze", juridique, re.I)
+        point("✓" if ok14 else "✗", "Conformité : délai de rétractation",
+              "14 jours indiqués" if ok14 else "délai de rétractation de 14 jours introuvable (CGV, page retours)",
+              "" if ok14 else "« Vous disposez de 14 jours… » avec les exceptions (C. conso., L221-18 et L221-28)", "10")
+        form = re.search(r"formulaire (?:type |standard )?de r[ée]tractation|mod[eè]le de formulaire", juridique, re.I)
+        point("✓" if form else "⚠", "Conformité : formulaire de rétractation",
+              "présent" if form else "formulaire type de rétractation introuvable",
+              "" if form else "le joindre aux CGV (C. conso., L221-5 ; modèle en annexe de l'art. R221-1)", "10")
+        glc = re.search(r"garantie l[ée]gale de conformit[ée]", juridique, re.I)
+        point("✓" if glc else "✗", "Conformité : garantie légale de conformité",
+              "mentionnée" if glc else "introuvable dans les CGV",
+              "" if glc else "2 ans, réparation ou remplacement, encadré type (C. conso., L217-3 et suivants, D211-2)",
+              "10")
+        if not re.search(r"vices? cach[ée]s|\b1641\b", juridique, re.I):
+            point("⚠", "Conformité : garantie des vices cachés", "non mentionnée",
+                  "la citer dans les CGV (C. civ., art. 1641 et suivants)", "10")
+    med = re.search(r"m[ée]diat(?:eur|ion)", tout, re.I)
+    point("✓" if med else "✗", "Conformité : médiateur de la consommation",
+          "mentionné" if med else "introuvable sur les pages lues",
+          "" if med else "adhérer à un médiateur, afficher ses coordonnées et son site (C. conso., L612-1 et L616-1 ; "
+          "amende jusqu'à 3 000 € pour une personne physique)", "10")
+    if re.search(r"ec\.europa\.eu/(?:consumers/)?odr", html_text + "".join(bruts.values()), re.I):
+        point("⚠", "Conformité : plateforme européenne de litiges", "lien présent",
+              "plateforme fermée le 20/07/2025 (règlement (UE) 2024/3228) : retirer le lien", "10")
+    if "mentions" in textes:
+        ment = textes["mentions"]
+        ident = re.search(r"\bsire[nt]\b|\brcs\b|\brne\b|registre national des entreprises|\b\d{3} ?\d{3} ?\d{3}\b",
+                          ment, re.I)
+        point("✓" if ident else "✗", "Conformité : identité de l'entreprise",
+              "immatriculation indiquée" if ident else "SIREN ou immatriculation introuvable dans les mentions légales",
+              "" if ident else "nom, forme, adresse, SIREN (LCEN, art. 1-1)", "10")
+        if not re.search(r"h[ée]berg", ment, re.I):
+            point("⚠", "Conformité : hébergeur", "absent des mentions légales",
+                  "nom, adresse et téléphone de l'hébergeur (LCEN, art. 1-1)", "10")
+    coord_txt = "\n".join(textes.get(k, "") for k in ("contact", "mentions", "cgv")) + "\n" + page_txt
+    coord_raw = "".join(bruts.get(k, "") for k in ("contact", "mentions", "cgv")) + html_text
+    manque = []
+    if not (re.search(r"[\w.+-]+@[\w-]+(?:\.[\w-]+)+", coord_txt)
+            or re.search(r"data-cfemail|email-protection|mailto:", coord_raw, re.I)):
+        manque.append("e-mail")
+    if not re.search(r"(?:\+33\s?|\b0)[1-9](?:[\s.-]?\d{2}){4}\b|tel:", coord_txt + coord_raw, re.I):
+        manque.append("téléphone")
+    if manque:
+        point("⚠", "Conformité : coordonnées", f"introuvable(s) : {', '.join(manque)}",
+              "un formulaire ne suffit pas : e-mail et téléphone joignables (C. conso., R111-1 ; LCEN, art. 19)", "10")
+    libelles = " | ".join([t for _, t in p.anchors] + p.buttons)
+    renonce = (re.search(r"renoncer au contrat", libelles + "\n" + tout, re.I)
+               or re.search(r"(?:me |se |vous )?r[ée]tracter (?:du|de mon|de votre) contrat|r[ée]tractation en ligne",
+                            libelles, re.I))
+    point("✓" if renonce else "⚠", "Conformité : fonction de rétractation en ligne",
+          "« renoncer au contrat » repéré" if renonce else "introuvable sur les pages lues",
+          "" if renonce else "depuis le 19/06/2026 : fonction « renoncer au contrat ici » (ou formule analogue) "
+          "accessible facilement pendant tout le délai (pied de page, espace client) : nom, prénom, contrat, e-mail, "
+          "bouton « confirmer la rétractation », accusé de réception daté (C. conso., L221-21 et D221-5) — vérifier "
+          "dans le navigateur si elle est chargée par un script", "10")
+    vus = [nom for nom, rx in TRACEURS if re.search(rx, html_text, re.I)]
+    cmp = re.search(CMP, html_text, re.I)
+    if vus and not cmp:
+        point("⚠", "Conformité : cookies", f"traceurs repérés ({', '.join(vus)}) sans bandeau de consentement dans le "
+              "HTML", "aucun traceur publicitaire avant le choix du visiteur ; « Tout refuser » aussi simple que "
+              "« Tout accepter » (CNIL ; loi Informatique et Libertés, art. 82) — le bandeau peut venir d'un script : "
+              "vérifier dans le navigateur", "10")
+    elif vus:
+        point("✓", "Conformité : cookies", f"bandeau de consentement repéré ({cmp.group(0)}) ; traceurs : "
+              f"{', '.join(vus)}")
+    else:
+        point("✓", "Conformité : cookies", "aucun traceur publicitaire dans le HTML (ceux chargés par script ou par "
+              "les « web pixels » de Shopify ne sont pas vus ici)")
+    urg = re.search(URGENCE, html_text, re.I)
+    if urg:
+        point("⚠", "Conformité : urgence affichée", f"« {urg.group(0)} » repéré",
+              "légal seulement si c'est vrai : l'offre s'arrête à l'heure dite, stock et visiteurs affichés réels "
+              "(pratiques commerciales trompeuses : C. conso., L121-4, 7° ; faux stock : L121-2)", "10")
+    avis = re.search(AVIS, html_text, re.I)
+    if avis and not re.search(AVIS_CONTROLE, tout, re.I):
+        point("⚠", "Conformité : avis clients", f"widget d'avis repéré ({avis.group(0)}) sans information sur leur "
+              "contrôle", "dire près des avis s'ils sont contrôlés et comment, avec leurs dates (C. conso., L111-7-2 "
+              "et D111-17 ; L121-4, 27°) — vérifier dans le navigateur si le widget l'affiche", "10")
+    try:
+        rel = _relire().relire(page_txt, "page")
+    except Exception:  # relire_texte.py absent ou abîmé : le reste de l'audit tient
+        rel = {"points": []}
+    rouges = {}
+    for f in rel["points"]:
+        if f["niveau"] == "🔴":
+            rouges.setdefault(f["sujet"], {"conseil": f["conseil"], "extraits": []})["extraits"].append(f["extrait"])
+    for sujet, info in list(rouges.items())[:3]:
+        extraits = sorted({e.lower() for e in info["extraits"]})
+        point("✗", f"Conformité : {sujet[0].lower() + sujet[1:]}", "« " + " », « ".join(extraits[:4]) + " »",
+              info["conseil"], "10")
+
+
+# ------------------------------------------------------------------------------------------------ pages du sitemap
+def lire_sitemaps(depart: list, timeout: float = 20, ua: str = UA, maxi: int = 5000) -> tuple:
+    """Adresses des sitemaps (index compris, 12 fichiers au plus). → ([(sitemap, adresse)], sitemaps lus)."""
+    file, vus, urls, lus = list(depart), set(), [], []
+    while file and len(lus) < 12 and len(urls) < maxi:
+        sm = file.pop(0)
+        if sm in vus or sm.lower().endswith(".gz"):
+            continue
+        vus.add(sm)
+        r = fetch(sm, timeout, ua, limit=20_000_000)
+        if r["error"] or not r["status"] or r["status"] >= 400:
+            continue
+        lus.append(sm)
+        locs = [unescape(x.strip()) for x in re.findall(r"<loc>\s*(.*?)\s*</loc>", r["body"], re.S | re.I)]
+        if re.search(r"<sitemapindex", r["body"], re.I):
+            file += locs
+        else:
+            urls += [(sm, u) for u in locs]
+    return urls[:maxi], lus
+
+
+def echantillon(urls: list, n: int, host: str, exclure=()) -> list:
+    """n adresses du même site, prises à tour de rôle dans chaque sitemap (produits, collections, pages…)."""
+    par_sm = {}
+    for sm, u in urls:
+        if urllib.parse.urlsplit(u).netloc.lower() == host and _sans_query(u) not in exclure:
+            lst = par_sm.setdefault(sm, [])
+            if u not in lst:
+                lst.append(u)
+    out = []
+    while len(out) < n and any(par_sm.values()):
+        for sm in par_sm:
+            if par_sm[sm] and len(out) < n:
+                out.append(par_sm[sm].pop(0))
+    return out
+
+
+def resume_page(url: str, timeout: float = 20, ua: str = UA) -> dict:
+    r = fetch(url, timeout, ua)
+    d = {"url": url, "statut": r["status"], "url_finale": r["url"], "erreur": r["error"]}
+    if r["error"] or not r["status"] or r["status"] >= 400:
+        return d
+    p = PageParser()
+    try:
+        p.feed(r["body"])
+    except Exception:
+        pass
+    objs, broken = flatten_jsonld(p.jsonld)
+    types = {x for o in objs for x in _types(o)}
+    robots_meta = (p.meta.get("robots", "") + " " + p.meta.get("googlebot", "") + " "
+                   + r["headers"].get("x-robots-tag", "")).lower()
+    d.update(title=p.title or "", description=" ".join(p.meta.get("description", "").split()),
+             h1=len([h for h in p.h1 if h]), noindex="noindex" in robots_meta,
+             canonical=urllib.parse.urljoin(r["url"], p.canonical[0]) if p.canonical else None,
+             produit=bool(types & {"Product", "ProductGroup"}), jsonld_casse=broken,
+             images_sans_alt=p.images_no_alt)
+    return d
+
+
+def _doublons(pages: list, cle: str) -> list:
+    groupes = {}
+    for d in pages:
+        v = " ".join(str(d.get(cle) or "").lower().split())
+        if v:
+            groupes.setdefault(v, []).append(d)
+    return [g for g in groupes.values() if len(g) > 1]
+
+
+def explorer(rep: dict, point, root: str, page_url: str, sitemaps: list, groups, n: int, timeout: float, ua: str,
+             pause: float = 1.0) -> None:
+    """Lit n pages du sitemap et relève ce qui se répète d'une page à l'autre (module 06 du skill)."""
+    urls, lus = lire_sitemaps(sitemaps or [root + "/sitemap.xml"], timeout, ua)
+    host = urllib.parse.urlsplit(root).netloc.lower()
+    rep["site"] = {"sitemaps_lus": lus, "urls_sitemap": len(urls), "pages": [], "ignorees_robots": 0}
+    if not urls:
+        point("⚠", "Site : pages du sitemap", "aucune adresse lue dans le sitemap",
+              "vérifier que le sitemap est joignable et au bon format", "06")
+        return
+    pages = []
+    for u in echantillon(urls, n, host, {_sans_query(page_url)}):
+        path = urllib.parse.urlsplit(u).path or "/"
+        if groups is not None and not allowed(groups, "cerveau-audit", path)[0]:
+            rep["site"]["ignorees_robots"] += 1
+            continue
+        if pages and pause > 0:
+            time.sleep(pause)
+        pages.append(resume_page(u, timeout, ua))
+    rep["site"]["pages"] = pages
+    ok = [d for d in pages if d.get("statut") and d["statut"] < 400]
+    for d in pages:
+        rq = []
+        if not d.get("statut") or d["statut"] >= 400:
+            rq.append(f"erreur {d.get('statut') or d.get('erreur')}")
+        else:
+            if _sans_query(d["url_finale"]) != _sans_query(d["url"]):
+                rq.append("redirigée")
+            if d["noindex"]:
+                rq.append("noindex")
+            if not d["title"]:
+                rq.append("sans titre")
+            if not d["description"]:
+                rq.append("sans description")
+            if d["h1"] != 1:
+                rq.append(f"{d['h1']} H1")
+            if re.search(r"/products?/|/produits?/", urllib.parse.urlsplit(d["url"]).path) and not d["produit"]:
+                rq.append("fiche sans Product")
+            if d["jsonld_casse"]:
+                rq.append("JSON-LD illisible")
+        d["remarques"] = rq
+    point("·", "Site : pages lues", f"{len(pages)} page(s) du sitemap sur {len(urls)} adresse(s)"
+          + (f" ({rep['site']['ignorees_robots']} interdite(s) par robots.txt)" if rep["site"]["ignorees_robots"]
+             else ""))
+
+    def exemples(lst):
+        return ", ".join(_court(d["url"]) for d in lst[:4]) + (f" (+{len(lst) - 4})" if len(lst) > 4 else "")
+
+    regles = [
+        ("✗", "Site : pages en erreur", [d for d in pages if d not in ok],
+         "les retirer du sitemap ou les rediriger (301) vers la page la plus proche"),
+        ("✗", "Site : noindex dans le sitemap", [d for d in ok if d["noindex"]],
+         "une page du sitemap doit être indexable : retirer noindex ou la sortir du sitemap"),
+        ("⚠", "Site : pages redirigées", [d for d in ok if "redirigée" in d["remarques"]],
+         "le sitemap doit lister les adresses finales"),
+        ("⚠", "Site : titres absents", [d for d in ok if not d["title"]], "un titre unique par page"),
+        ("⚠", "Site : meta descriptions absentes", [d for d in ok if not d["description"]],
+         "une description unique d'environ 150 caractères par page"),
+        ("⚠", "Site : H1 absent ou multiple", [d for d in ok if d["h1"] != 1], "un seul H1 par page"),
+        ("⚠", "Site : fiches produit sans données Product", [d for d in ok if "fiche sans Product" in d["remarques"]],
+         "Product + Offer sur chaque fiche (thème ou application)"),
+        ("✗", "Site : JSON-LD illisible", [d for d in ok if d["jsonld_casse"]], "corriger la syntaxe du bloc"),
+    ]
+    for niveau, sujet, lst, conseil in regles:
+        if lst:
+            point(niveau, sujet, f"{len(lst)}/{len(pages)} : {exemples(lst)}", conseil, "06")
+    for cle, sujet in (("title", "Site : titres en double"), ("description", "Site : meta descriptions en double")):
+        groupes = _doublons(ok, cle)
+        if groupes:
+            g = groupes[0]
+            point("⚠", sujet, f"{sum(len(x) for x in groupes)} page(s) concernée(s), ex. « {g[0][cle][:70]} » sur "
+                  f"{exemples(g)}", "chaque page a son propre titre et sa propre description", "06")
+    if ok and not any(d["remarques"] for d in ok) and len(ok) == len(pages):
+        point("✓", "Site : pages du sitemap", f"{len(ok)} page(s) lue(s) sans défaut repéré")
+
+
+# ------------------------------------------------------------------------------------------------ vitesse
+PSI = "https://www.googleapis.com/pagespeedonline/v5/runPagespeed"
+
+
+def mesurer_vitesse(url: str, timeout: float = 90, ua: str = UA) -> dict:
+    """Core Web Vitals (mobile) via l'API PageSpeed Insights : terrain (CrUX, 28 jours) et laboratoire (Lighthouse)."""
+    q = {"url": url, "strategy": "mobile", "category": "performance", "locale": "fr"}
+    if os.environ.get("PAGESPEED_API_KEY"):
+        q["key"] = os.environ["PAGESPEED_API_KEY"]
+    r = fetch((os.environ.get("PSI_ENDPOINT") or PSI) + "?" + urllib.parse.urlencode(q), max(timeout, 90), ua,
+              limit=40_000_000)
+    if r["error"] or not r["status"] or r["status"] >= 400:
+        msg = r["error"] or f"HTTP {r['status']}"
+        try:
+            msg = json.loads(r["body"])["error"]["message"][:160]
+        except (ValueError, KeyError, TypeError):
+            pass
+        return {"erreur": msg}
+    try:
+        data = json.loads(r["body"])
+    except ValueError:
+        return {"erreur": "réponse illisible"}
+    lh = data.get("lighthouseResult") or {}
+    audits = lh.get("audits") or {}
+    perf = ((lh.get("categories") or {}).get("performance") or {}).get("score")
+
+    def num(k):
+        return (audits.get(k) or {}).get("numericValue")
+
+    labo = {"score": round(perf * 100) if isinstance(perf, (int, float)) else None,
+            "lcp_ms": num("largest-contentful-paint"), "cls": num("cumulative-layout-shift"),
+            "tbt_ms": num("total-blocking-time"), "fcp_ms": num("first-contentful-paint")}
+    gains = []
+    for k, a in audits.items():
+        if not isinstance(a, dict) or (isinstance(a.get("score"), (int, float)) and a["score"] >= 0.9):
+            continue
+        det = a.get("details") or {}
+        ms = det.get("overallSavingsMs") or 0
+        sav = a.get("metricSavings") or {}
+        ms = max(ms, sav.get("LCP") or 0, sav.get("FCP") or 0)
+        if ms > 0 and k not in ("largest-contentful-paint", "first-contentful-paint", "speed-index", "interactive"):
+            gains.append({"audit": k, "titre": a.get("title") or k, "gain_ms": ms, "detail": a.get("displayValue")})
+    gains.sort(key=lambda g: -g["gain_ms"])
+    terrain = None
+    for src, portee in (("loadingExperience", "cette page"), ("originLoadingExperience", "tout le site")):
+        le = data.get(src) or {}
+        m = le.get("metrics") or {}
+        if not m or (src == "loadingExperience" and le.get("origin_fallback")):
+            continue
+
+        def pc(k, m=m):
+            return (m.get(k) or {}).get("percentile")
+
+        def cat(k, m=m):
+            return (m.get(k) or {}).get("category")
+
+        cls = pc("CUMULATIVE_LAYOUT_SHIFT_SCORE")
+        terrain = {"portee": portee, "categorie": le.get("overall_category"),
+                   "lcp_ms": pc("LARGEST_CONTENTFUL_PAINT_MS"), "lcp": cat("LARGEST_CONTENTFUL_PAINT_MS"),
+                   "inp_ms": pc("INTERACTION_TO_NEXT_PAINT"), "inp": cat("INTERACTION_TO_NEXT_PAINT"),
+                   "cls": cls / 100 if isinstance(cls, (int, float)) else None,
+                   "cls_cat": cat("CUMULATIVE_LAYOUT_SHIFT_SCORE")}
+        break
+    return {"labo": labo, "terrain": terrain, "gains": gains[:3], "lighthouse": lh.get("lighthouseVersion")}
+
+
+def _s(ms) -> str:
+    return "?" if ms is None else (f"{ms / 1000:.1f} s".replace(".", ",") if ms >= 1000 else f"{ms:.0f} ms")
+
+
+def _cls(v) -> str:
+    return "?" if v is None else f"{v:.2f}".replace(".", ",")
+
+
+def points_vitesse(point, v: dict, lien: str) -> None:
+    if v.get("erreur"):
+        point("·", "Vitesse", f"PageSpeed Insights indisponible ({v['erreur']})", f"mesurer à la main : {lien}", "03")
+        return
+    t = v.get("terrain")
+    if t:
+        niveau = {"FAST": "✓", "AVERAGE": "⚠", "SLOW": "✗"}.get(t["categorie"], "·")
+        point(niveau, "Vitesse (visiteurs réels, 28 jours)",
+              f"LCP {_s(t['lcp_ms'])} · INP {_s(t['inp_ms'])} · CLS {_cls(t['cls'])} ({t['portee']}, 75e centile)",
+              "" if niveau == "✓" else "seuils « bons » : LCP ≤ 2,5 s, INP ≤ 200 ms, CLS ≤ 0,1 — commencer par les "
+              "gains ci-dessous", "03")
+    else:
+        point("·", "Vitesse (visiteurs réels, 28 jours)", "pas assez de visites Chrome pour des données terrain : se "
+              "fier à la mesure de laboratoire")
+    lab = v.get("labo") or {}
+    if lab.get("score") is not None:
+        sc = lab["score"]
+        gains = "; ".join(f"{g['titre']}" + (f" ({g['detail']})" if g.get("detail") else "") for g in v.get("gains", []))
+        point("✓" if sc >= 90 else "⚠" if sc >= 50 else "✗", "Vitesse (laboratoire, mobile)",
+              f"score {sc}/100 · LCP {_s(lab['lcp_ms'])} · TBT {_s(lab['tbt_ms'])} · CLS {_cls(lab['cls'])}",
+              ("gains possibles : " + gains) if gains and sc < 90 else "", "03")
+
+
+# ------------------------------------------------------------------------------------------------ rapport Markdown
+def markdown(rep: dict) -> str:
+    u = rep.get("url_finale") or rep["url"]
+    nb = {n: sum(p["niveau"] == n for p in rep["points"]) for n in ("✗", "⚠", "✓", "·")}
+    out = [f"# Audit du site — {urllib.parse.urlsplit(u).netloc}", "",
+           f"Page auditée : {u}  ", f"Date : {time.strftime('%d/%m/%Y')}"
+           + (f" · plateforme : {rep['plateforme']}" if rep.get("plateforme") else ""), "",
+           f"**{nb['✗']} point(s) bloquant(s) · {nb['⚠']} à améliorer · {nb['✓']} en place**", ""]
+    titres = {"✗": "À corriger d'abord", "⚠": "À améliorer", "✓": "Déjà en place", "·": "Pour information"}
+    for n in ("✗", "⚠", "✓", "·"):
+        pts = [p for p in rep["points"] if p["niveau"] == n]
+        if not pts:
+            continue
+        out += [f"## {n} {titres[n]}", ""]
+        for p in pts:
+            out.append(f"- **{p['sujet']}** — {p['constat']}")
+            if p["conseil"] and n != "✓":
+                out.append(f"  → {p['conseil']}")
+        out.append("")
+
+    def cell(x) -> str:
+        return str(x).replace("|", "/").replace("\n", " ")
+
+    v = rep.get("vitesse") or {}
+    if v and not v.get("erreur"):
+        out += ["## Vitesse (mobile)", "", "| Mesure | LCP | INP / TBT | CLS |", "|---|---|---|---|"]
+        t, lab = v.get("terrain"), v.get("labo") or {}
+        if t:
+            out.append(f"| Visiteurs réels ({t['portee']}) | {_s(t['lcp_ms'])} | INP {_s(t['inp_ms'])} | "
+                       f"{_cls(t['cls'])} |")
+        out.append(f"| Laboratoire (score {lab.get('score')}/100) | {_s(lab.get('lcp_ms'))} | TBT "
+                   f"{_s(lab.get('tbt_ms'))} | {_cls(lab.get('cls'))} |")
+        out.append("")
+        if v.get("gains"):
+            out += ["Gains les plus importants :", ""] + [f"1. {cell(g['titre'])}" for g in v["gains"]] + [""]
+    pages = (rep.get("site") or {}).get("pages") or []
+    if pages:
+        out += ["## Pages lues dans le sitemap", "", "| Page | HTTP | Titre | Remarques |", "|---|---|---|---|"]
+        for d in pages:
+            out.append(f"| {cell(_court(d['url']))} | {d.get('statut') or '—'} | {cell((d.get('title') or '')[:60])} | "
+                       f"{cell(', '.join(d.get('remarques') or []) or 'RAS')} |")
+        out.append("")
+    robots = (rep.get("robots") or {}).get("robots") or []
+    if robots:
+        out += ["## Robots des moteurs et des assistants IA (robots.txt)", "", "| Robot | Rôle | Autorisé |",
+                "|---|---|---|"]
+        out += [f"| {x['robot']} | {cell(x['role'])} | {'oui' if x['autorise'] else 'non'} |" for x in robots]
+        out.append("")
+    out += ["## Pour aller plus loin", ""]
+    if rep.get("pagespeed"):
+        out += [f"- Vitesse détaillée : {rep['pagespeed']}", f"- Test des résultats enrichis : "
+                f"{rep['test_resultats_enrichis']}"]
+    out += ["", "## Méthode et limites", "",
+            "Lecture automatique des pages publiques sans exécuter le JavaScript (comme un premier passage de robot) : "
+            "un élément ajouté par un script (bandeau cookies, widget d'avis, bouton) peut exister sans être vu ici. "
+            "Les points de conformité signalent quoi vérifier, ce n'est pas un avis juridique. Aucun résultat de vente "
+            "n'est garanti.", ""]
+    return "\n".join(out)
 
 
 def texte(rep: dict) -> str:
@@ -482,20 +1053,38 @@ def main(argv=None) -> int:
         print(__doc__)
         return 0 if args else 1
     as_json, timeout, ua, urls = False, 20.0, UA, []
+    legal, pages, vitesse, pause, rapport, complet = False, None, False, 1.0, None, False
     i = 0
     while i < len(args):
         a = args[i]
         if a == "--json":
             as_json = True
-        elif a in ("--timeout", "--ua") and i + 1 < len(args):
-            if a == "--timeout":
-                try:
-                    timeout = float(args[i + 1].replace(",", "."))
-                except ValueError:
-                    print(f"Erreur : --timeout attend un nombre de secondes, pas « {args[i + 1]} »", file=sys.stderr)
-                    return 1
+        elif a == "--conformite":
+            legal = True
+        elif a == "--vitesse":
+            vitesse = True
+        elif a == "--complet":
+            legal, vitesse, complet = True, True, True
+        elif a in ("--timeout", "--ua", "--pages", "--pause", "--rapport") and i + 1 < len(args):
+            val = args[i + 1]
+            if a == "--ua":
+                ua = val
+            elif a == "--rapport":
+                rapport = val
             else:
-                ua = args[i + 1]
+                try:
+                    n = float(val.replace(",", "."))
+                    if n < 0 or n != n:
+                        raise ValueError
+                except ValueError:
+                    print(f"Erreur : {a} attend un nombre positif, pas « {val} »", file=sys.stderr)
+                    return 1
+                if a == "--timeout":
+                    timeout = n
+                elif a == "--pause":
+                    pause = n
+                else:
+                    pages = min(int(n), 200)
             i += 1
         elif a.startswith("--"):
             print(f"Erreur : option inconnue {a}", file=sys.stderr)
@@ -506,8 +1095,18 @@ def main(argv=None) -> int:
     if len(urls) != 1:
         print("Erreur : donne une seule adresse à auditer (python scripts/audit_site.py <url>)", file=sys.stderr)
         return 1
-    rep = audit(urls[0], timeout, ua)
+    if pages is None:  # --complet : 10 pages, sauf nombre donné avec --pages
+        pages = 10 if complet else 0
+    rep = audit(urls[0], timeout, ua, legal=legal, pages=pages, vitesse=vitesse, pause=pause)
     print(json.dumps(rep, ensure_ascii=False, indent=2) if as_json else texte(rep))
+    if rapport:
+        try:
+            Path(rapport).write_text(markdown(rep), encoding="utf-8")
+        except OSError as exc:
+            print(f"Erreur : rapport non écrit ({exc})", file=sys.stderr)
+            return 1
+        if not as_json:
+            print(f"\n✓ rapport Markdown : {rapport}")
     return 0 if rep.get("statut") and rep["statut"] < 400 else 2
 
 

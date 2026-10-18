@@ -97,6 +97,57 @@ TOOLS = [
 ]
 
 
+TOOLS += [
+    {"name": "boutique_etat",
+     "description": "Boutiques en ligne suivies par le cerveau (sans argument : la liste, avec la dernière semaine, le "
+                    "plan et le dernier audit) ou le bilan complet d'une boutique (chiffres des dernières semaines, "
+                    "tendance testée, plan en retard ou à venir, audits, trois priorités). À appeler avant de conseiller "
+                    "une boutique.",
+     "inputSchema": {"type": "object", "properties": {
+         "boutique": {"type": "string", "description": "slug ou nom de la boutique (vide : la liste)"},
+         "semaines": {"type": "integer", "description": "semaines dans le bilan (défaut 4)"}}}},
+    {"name": "boutique_ajouter",
+     "description": "Faire suivre une boutique par le cerveau : fichier de suivi privé et fiche contexte en mémoire.",
+     "inputSchema": {"type": "object", "properties": {
+         "nom": {"type": "string"}, "url": {"type": "string"},
+         "plateforme": {"type": "string", "description": "shopify, woocommerce, site statique, marketplace…"},
+         "chemin": {"type": "string", "enum": ["plateforme", "0euro"]},
+         "type": {"type": "string", "enum": ["physique", "mode", "createur", "occasion", "niche", "prevente", "local",
+                                             "numerique", "b2b"]},
+         "marge_commande": {"type": "number", "description": "marge de contribution par commande (€)"}},
+         "required": ["nom"]}},
+    {"name": "boutique_plan",
+     "description": "Créer le plan décollage daté d'une boutique (72 h, 14 jours, 30-60-90) sous forme d'à-faire du "
+                    "cerveau, rappelés à l'approche de leur échéance.",
+     "inputSchema": {"type": "object", "properties": {
+         "boutique": {"type": "string"}, "debut": {"type": "string", "description": "premier jour (défaut aujourd'hui)"},
+         "court": {"type": "boolean", "description": "72 h et 14 jours seulement"}},
+         "required": ["boutique"]}},
+    {"name": "boutique_kpi",
+     "description": "Relever les chiffres d'une semaine complète (lundi-dimanche) d'une boutique : renvoie taux, panier "
+                    "moyen, marge par heure, comparaison testée statistiquement aux semaines d'avant et goulot probable.",
+     "inputSchema": {"type": "object", "properties": {
+         "boutique": {"type": "string"}, "sessions": {"type": "number"}, "ajouts": {"type": "number"},
+         "checkouts": {"type": "number"}, "commandes": {"type": "number"}, "ca": {"type": "number"},
+         "heures": {"type": "number"}, "marge": {"type": "number", "description": "marge totale de la semaine"},
+         "canaux": {"type": "array", "items": {"type": "string"},
+                    "description": "par canal : « nom:sessions:commandes[:heures] »"},
+         "semaine": {"type": "string", "description": "une date de la semaine (défaut : dernière semaine complète)"},
+         "note": {"type": "string"}},
+         "required": ["boutique", "sessions", "commandes"]}},
+    {"name": "boutique_audit",
+     "description": "Audit SEO/GEO express d'une boutique suivie ou d'une adresse : balises, données structurées, "
+                    "robots des moteurs et des assistants IA, sitemap ; en option conformité (pages légales, "
+                    "rétractation, médiateur, cookies…), pages du sitemap (doublons, erreurs, noindex) et vitesse "
+                    "(PageSpeed Insights) ; historique gardé (corrigé / nouveau).",
+     "inputSchema": {"type": "object", "properties": {
+         "boutique": {"type": "string", "description": "slug d'une boutique suivie, ou une URL"},
+         "conformite": {"type": "boolean", "description": "lire et contrôler les pages légales"},
+         "pages": {"type": "integer", "description": "nombre de pages du sitemap à lire (0 à 50)"},
+         "vitesse": {"type": "boolean", "description": "Core Web Vitals mobile (lent : 20 à 60 s)"}},
+         "required": ["boutique"]}},
+]
+
 PROMPT = {"name": "contexte", "description": "Injecter ce que le cerveau sait de moi (profil, règles, projets, "
                                             "échéances) au début de la conversation."}
 
@@ -180,6 +231,45 @@ def call_tool(name, args):
             return text, False
         except Exception as exc:
             return f"✗ {exc}", True
+    if name == "boutique_etat":
+        if not args.get("boutique"):
+            return _run_cli(["boutique", "liste"])
+        return _run_cli(["boutique", "bilan", str(args["boutique"]), "--semaines", str(int(args.get("semaines") or 4))])
+    if name == "boutique_ajouter":
+        argv = ["boutique", "ajouter", str(args.get("nom", ""))]
+        for key, flag in (("url", "--url"), ("plateforme", "--plateforme"), ("chemin", "--chemin"), ("type", "--type"),
+                          ("marge_commande", "--marge-commande")):
+            if args.get(key) not in (None, ""):
+                argv += [flag, str(args[key])]
+        return _run_cli(argv)
+    if name == "boutique_plan":
+        argv = ["boutique", "plan", str(args.get("boutique", ""))]
+        if args.get("debut"):
+            argv += ["--debut", str(args["debut"])]
+        if args.get("court"):
+            argv.append("--court")
+        return _run_cli(argv)
+    if name == "boutique_kpi":
+        argv = ["boutique", "kpi", str(args.get("boutique", ""))]
+        for key in ("sessions", "ajouts", "checkouts", "commandes", "ca", "heures", "marge", "semaine", "note"):
+            if args.get(key) not in (None, ""):
+                argv += [f"--{key}", str(args[key])]
+        for spec in args.get("canaux") or []:
+            argv += ["--canal", str(spec)]
+        return _run_cli(argv)
+    if name == "boutique_audit":
+        argv = ["boutique", "audit", str(args.get("boutique", ""))]
+        if args.get("conformite"):
+            argv.append("--conformite")
+        if args.get("vitesse"):
+            argv.append("--vitesse")
+        try:
+            pages = max(0, min(int(args.get("pages") or 0), 50))
+        except (TypeError, ValueError):
+            pages = 0
+        if pages:
+            argv += ["--pages", str(pages)]
+        return _run_cli(argv)
     if name == "wiki_lint":
         return _run_cli(["wiki", "lint"])
     if name == "wiki_log":

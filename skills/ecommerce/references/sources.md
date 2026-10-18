@@ -88,6 +88,15 @@ Le réseau de l'environnement de recherche bloquait l'accès direct à plusieurs
 été lues par extraits de moteur de recherche, et le quota de recherches a été atteint. Les points restés incertains
 sont marqués [À VÉRIFIER] ou [NON VÉRIFIÉ] dans les modules ; à la première utilisation, vérifie-les en direct.
 
+**[FAIT\*]** (version 2.1.0) : valeur lue dans un extrait de moteur de recherche filtré sur le domaine officiel (page
+non ouverte directement), parfois recoupée par une copie archivée (Open Terms Archive) ou par la spécification
+publique de l'API Stripe. Fiable pour décider, à relire sur la page officielle avant de l'affirmer à un client.
+Restent ouverts au 18/10/2026 : taux de Shopify Payments en France (à lire dans l'admin), taux Stripe des cartes
+premium de l'EEE (2,8 % ou 1,9 %), montant de la Protection acheteurs Pro de Vinted, taux eBay de la catégorie Maison
+(9 % ou 11 %), fiches gratuites Microsoft sans campagne, acceptation d'une page de paiement externe par Merchant
+Center, promulgation de la loi de transposition de la directive (UE) 2024/825, présence de la France dans les filtres
+du Creative Center de TikTok.
+
 ## Journal des versions
 
 | Version | Date | Changements |
@@ -95,6 +104,8 @@ sont marqués [À VÉRIFIER] ou [NON VÉRIFIÉ] dans les modules ; à la premiè
 | 1.0.0 | 18/10/2026 | Pack initial : maître + 12 modules + script de marge |
 | 1.1.0 | 18/10/2026 | Passe de vérification juridique et Shopify ; robots IA ; grille de citabilité ; modèles |
 | 2.0.0 | 18/10/2026 | Intégré au cerveau (mémoire de chaque boutique, livré à tous par le plugin, générique) ; nouveaux modules 00 (décollage), 13 (boutique à 0 €), 14 (navigateur), 15 (recherche produit), 16 (marketplaces) ; algorithmes prouvés par le code (X 2026, Monolith, Reddit) ; Aperçus IA et Mode IA en France, contrôle « IA générative », livraison et retours en Search Console ; commerce agentique (ACP, UCP, AP2 : États-Unis seulement) ; conformité 2026 (bouton de rétractation, allégations environnementales, avis harmonisé, influence art. 5-2, mention CIBS) ; valeurs 2026 de la micro-entreprise ; scripts Python (marge corrigée : cotisations nettes des remboursements, port facturé, ventes pour se payer ; audit SEO/GEO express) |
+
+| 2.1.0 | 18/10/2026 | Des outils qui produisent des résultats : suivi de chaque boutique dans le cerveau (`brain boutique` : plan daté de J0 à J90, relevé hebdomadaire avec test statistique, goulot, marge par heure par canal, audits en historique, bilan) ; `audit_site.py` étendu (conformité légale, pages du sitemap, Core Web Vitals via PageSpeed Insights, rapport Markdown) ; `audit_catalogue.py` (tout le catalogue, flux Merchant Center) ; `relire_texte.py` (allégations interdites, fausse urgence, partenariats) ; `unit_economics.py` (comparaison des canaux, prix testés) ; modèles de textes ; frais 2026 vérifiés (Stripe, Shopify, Etsy, Vinted Pro, Leboncoin, eBay, TikTok Shop, Amazon) ; références juridiques précisées (L121-4 10°, 13°, 21°, 27°, 28° ; L310-3 et L442-5 ; L223-1 ; art. 5-2 et 8 de la loi influence ; D221-5) |
 
 ## Protocole de mise à jour
 

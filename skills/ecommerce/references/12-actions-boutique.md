@@ -19,7 +19,8 @@ fait sans autorisation écrite préalable du client.
 ## 2. Déroulé
 
 1. Lire l'état actuel (et `brain q "boutique <nom>"` : décisions et contraintes déjà connues).
-2. Écrire le plan et le diff (avant → après).
+2. Écrire le plan et le diff (avant → après) ; tout nouveau texte de vente passe par `scripts/relire_texte.py`
+   (aucun 🔴).
 3. Exécuter les actions 🟢.
 4. Présenter les actions 🟠 en un seul lot : « Valide : 1, 3, 4 ».
 5. Exécuter les actions validées, une par une, en relisant le résultat de chacune.

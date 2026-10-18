@@ -27,8 +27,8 @@ plus vite :
 | « Autres questions posées » (Google) | Questions réelles | FAQ, angles de contenu, objections |
 | Amazon.fr : Meilleures ventes, Envolées des ventes, Nouveautés | Ce qui se vend maintenant, par catégorie | Repérer une catégorie, pas copier un produit ; lire les avis 1 à 3 étoiles |
 | Etsy (recherche, best-sellers d'une boutique) | Demande pour le fait main, le personnalisé, le cadeau | Niches de personnalisation |
-| Pinterest (recherche, Pinterest Trends) | Intentions visuelles et saisonnières, souvent en avance | Déco, mode, mariage, cadeaux, DIY [À VÉRIFIER : disponibilité de Pinterest Trends en France] |
-| TikTok (recherche, Creative Center : tendances, publicités les plus performantes) | Ce qui capte l'attention, formats et accroches | Angles vidéo, produits qui « se montrent » [À VÉRIFIER : rubriques ouvertes en France] |
+| Pinterest (recherche, Pinterest Trends) | Intentions visuelles et saisonnières, souvent en avance | Déco, mode, mariage, cadeaux, DIY [FAIT* : Pinterest Trends a des données France, sans la dernière version de l'outil] |
+| TikTok (recherche ; Creative Center, renommé « TikTok One Creative Suite » : Top Ads, Keyword Insights, Top Products, Trends) | Ce qui capte l'attention, formats et accroches | Angles vidéo, produits qui « se montrent » [À VÉRIFIER : France dans les filtres de région] |
 | Reddit, forums, groupes Facebook de la niche | Douleurs exprimées sans filtre | Voix du client (section 4) |
 | Search Console (si un site existe) | Requêtes qui donnent déjà des impressions | Produits ou pages à créer en priorité |
 
@@ -39,7 +39,7 @@ partout à prix cassé convertit mal (saturation).
 
 | Outil | Ce qu'il montre | Ce qu'on en tire |
 |---|---|---|
-| Bibliothèque publicitaire de Meta (Ad Library) | Publicités actives sur Facebook et Instagram ; pour l'UE, archive des publicités avec portée et ciblage (obligation des très grandes plateformes, règlement (UE) 2022/2065 « DSA », art. 39) | Une pub qui tourne depuis des semaines est probablement rentable : l'angle, l'accroche et l'offre sont validés par l'argent d'un autre — à transposer en organique, jamais à copier |
+| Bibliothèque publicitaire de Meta (Ad Library) | Publicités actives sur Facebook et Instagram ; pour toute publicité diffusée dans l'UE : visible pendant la diffusion puis 1 an après la dernière impression, avec portée estimée, ciblage (âge, sexe, lieux), bénéficiaire et payeur (règlement (UE) 2022/2065 « DSA », art. 39) [FAIT* — Meta] | Une pub qui tourne depuis des semaines est probablement rentable : l'angle, l'accroche et l'offre sont validés par l'argent d'un autre — à transposer en organique, jamais à copier |
 | Bibliothèque publicitaire de TikTok (UE) | Publicités diffusées dans l'UE (même obligation DSA) | Formats et accroches qui retiennent |
 | Centre de transparence des annonces Google | Annonces d'un annonceur (Search, Shopping, YouTube) | Positionnement prix et promesses des concurrents |
 | Le site du concurrent | Offre, prix, bundles, livraison, garanties, avis, pages qui se classent (`site:`) | Trous à exploiter : délai, preuve, service, contenu |

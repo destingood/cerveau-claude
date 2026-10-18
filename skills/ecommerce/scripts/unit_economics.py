@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 """Économie unitaire d'une commande : marge de contribution, prix d'équilibre et prix plancher, ventes nécessaires
-pour couvrir les coûts fixes (et se payer), marge par heure investie.
+pour couvrir les coûts fixes (et se payer), marge par heure investie. Compare aussi les canaux de vente (boutique,
+Etsy, Vinted, Amazon…) et plusieurs prix (combien de ventes en plus ou en moins pour gagner autant).
 
 Aucun taux fiscal ou social n'est codé en dur : ils changent, l'utilisateur les fournit (URSSAF, impots.gouv.fr).
 Les cotisations portent sur le chiffre d'affaires encaissé, port facturé compris, net des remboursements.
@@ -9,6 +10,7 @@ from __future__ import annotations
 
 import json
 import math
+import re
 import sys
 
 AIDE = """
@@ -32,16 +34,31 @@ Montants en euros, pourcentages en % (virgule ou point acceptés).
   --fixes-mois       Coûts fixes du mois (abonnement, domaine, apps) : donne le seuil de rentabilité (défaut 0)
   --remuneration-mois  Rémunération visée par mois : ventes nécessaires pour couvrir fixes + rémunération (défaut 0)
   --heures           Heures investies par vente (contenu, messages, préparation) : donne la marge par heure
+  --canal            Compare un canal de vente, répétable : "Nom;commission=…;paiement=…;paiement-fixe=…;fixe=…"
+                     commission = % du total payé (port compris), paiement = frais de paiement en % et paiement-fixe
+                     en € s'ils restent à ta charge, fixe = frais fixes par vente (mise en vente, abonnement réparti).
+                     Optionnels : prix=, port-client=, livraison=, emballage=, heures= (sinon ceux de la boutique).
+                     Les frais de paiement de la boutique ne s'appliquent pas au canal (la plateforme encaisse).
+  --prix-test        Teste d'autres prix TTC, séparés par / : "24,90/29,90/34,90" → marge à chaque prix et
+                     ventes en plus (ou en moins) nécessaires pour garder la même marge totale
   --json             Sortie JSON
   --aide             Afficher cette aide
 
-Exemple (valeurs fictives) :
+Exemples (valeurs fictives : relève les tarifs en vigueur de chaque plateforme) :
   python scripts/unit_economics.py --prix 39,90 --cout 12 --livraison 5,50 --frais-pct 2,9 --frais-fixe 0,30 \\
       --retours-pct 3 --cotisations-pct 12 --marge-cible 8 --fixes-mois 39 --heures 0,5
+  python scripts/unit_economics.py --prix 39,90 --cout 12 --livraison 5,50 --frais-pct 2,9 --frais-fixe 0,30 \\
+      --canal "Marketplace A;commission=6,5;paiement=4;paiement-fixe=0,30;fixe=0,20" \\
+      --canal "Revente B;commission=0;heures=0,75" --prix-test "34,90/44,90"
 """
 
 OPTIONS = {"prix", "cout", "port-client", "livraison", "emballage", "frais-pct", "frais-fixe", "commission-pct",
-           "retours-pct", "cotisations-pct", "tva-pct", "marge-cible", "fixes-mois", "remuneration-mois", "heures"}
+           "retours-pct", "cotisations-pct", "tva-pct", "marge-cible", "fixes-mois", "remuneration-mois", "heures",
+           "canal", "prix-test"}
+REPETABLES = {"canal"}
+CANAL = {"commission": "commission_pct", "paiement": "frais_pct", "paiement-fixe": "frais_fixe", "fixe": "fixe_vente",
+         "prix": "prix_ttc", "port-client": "port_client", "livraison": "livraison", "emballage": "emballage",
+         "heures": "heures"}
 
 
 def lire_args(argv: list) -> dict:
@@ -53,6 +70,9 @@ def lire_args(argv: list) -> dict:
             suivant = argv[i + 1] if i + 1 < len(argv) else None
             if suivant is None or suivant.startswith("--"):
                 args[cle] = True
+            elif cle in REPETABLES:
+                args.setdefault(cle, []).append(suivant)
+                i += 1
             else:
                 args[cle] = suivant
                 i += 1
@@ -60,16 +80,41 @@ def lire_args(argv: list) -> dict:
     return args
 
 
-def nombre(args: dict, cle: str, defaut=None) -> float:
-    if cle not in args:
-        return defaut
+def valeur(texte, libelle: str) -> float:
     try:
-        v = float(str(args[cle]).replace(",", ".").replace(" ", ""))
+        v = float(str(texte).replace(",", ".").replace(" ", "").replace("\u202f", "").replace("€", "").replace("%", ""))
     except ValueError:
         v = math.nan
     if not math.isfinite(v) or v < 0:
-        raise ValueError(f"valeur invalide pour --{cle} : {args[cle]}")
+        raise ValueError(f"valeur invalide pour {libelle} : {texte}")
     return v
+
+
+def nombre(args: dict, cle: str, defaut=None) -> float:
+    if cle not in args:
+        return defaut
+    return valeur(args[cle], f"--{cle}")
+
+
+def lire_canal(spec, base: dict) -> tuple:
+    """« Nom;commission=6,5;paiement=4 » → (nom, paramètres du canal). Séparateurs ; ou : (la virgule est décimale)."""
+    morceaux = [m.strip() for m in re.split(r"[;:]", str(spec)) if m.strip()]
+    if not morceaux or "=" in morceaux[0]:
+        raise ValueError(f"--canal commence par le nom du canal, ex. \"Etsy;commission=6,5\" (reçu : {spec})")
+    nom, p = morceaux[0], dict(base, commission_pct=0.0, frais_pct=0.0, frais_fixe=0.0, fixe_vente=0.0)
+    for m in morceaux[1:]:
+        cle, egal, val = (x.strip() for x in m.partition("="))
+        if not egal or cle.lower() not in CANAL:
+            raise ValueError(f"--canal {nom} : « {m} » inconnu (clés : {', '.join(CANAL)})")
+        p[CANAL[cle.lower()]] = valeur(val, f"--canal {nom} {cle}")
+    return nom, p
+
+
+def lire_prix(spec) -> list:
+    morceaux = [] if spec is True else [m.strip() for m in re.split(r"[/;]", str(spec)) if m.strip()]
+    if not morceaux:
+        raise ValueError("--prix-test attend des prix séparés par /, ex. \"34,90/44,90\"")
+    return [valeur(m, "--prix-test") for m in morceaux]
 
 
 def calculer(p: dict) -> dict:
@@ -81,7 +126,7 @@ def calculer(p: dict) -> dict:
     commission = encaisse_ttc * p["commission_pct"] / 100
     retours = ca_ht * r
     cotisations = ca_ht * (1 - r) * s  # un remboursement diminue le CA déclaré
-    couts_fixes = p["cout"] + p["livraison"] + p["emballage"]
+    couts_fixes = p["cout"] + p["livraison"] + p["emballage"] + p.get("fixe_vente", 0.0)
     marge = ca_ht - couts_fixes - frais_paiement - commission - retours - cotisations
     # CA HT pour une marge M : CA_HT × [1 − (1 + t)(frais% + commission%) − r − s(1 − r)]
     #                              = coûts par commande + frais fixes + M ; le prix produit = CA − port facturé
@@ -150,12 +195,40 @@ def main(argv=None) -> int:
     if "frais-pct" not in args and "frais-fixe" not in args:
         alertes.append("Frais de paiement non renseignés : reprends les tarifs actuels de ton prestataire.")
     r = calculer(p)
+    try:
+        specs = args.get("canal", [])
+        if specs is True:
+            raise ValueError("--canal attend une description de canal, ex. \"Etsy;commission=6,5\"")
+        canaux = [lire_canal(spec, p) for spec in specs]
+        prix_test = lire_prix(args["prix-test"]) if "prix-test" in args else []
+    except ValueError as exc:
+        print(f"Erreur : {exc}", file=sys.stderr)
+        return 1
+    comparaison = []
+    if canaux:
+        for nom, pc in [("Boutique", p)] + canaux:
+            rc = calculer(pc)
+            comparaison.append({"canal": nom, "prix_ttc": pc["prix_ttc"], "marge": rc["marge"],
+                                "taux_marge": rc["taux_marge"], "frais_canal": rc["commission"] + rc["frais_paiement"]
+                                + pc.get("fixe_vente", 0.0), "prix_plancher_ttc": rc["prix_plancher_ttc"],
+                                "commandes_par_mois": rc["commandes_par_mois"], "marge_par_heure": rc["marge_par_heure"]})
+        comparaison.sort(key=lambda c: -c["marge"])
+    essais = []
+    for prix in prix_test:
+        rt = calculer(dict(p, prix_ttc=prix))
+        ratio = r["marge"] / rt["marge"] if rt["marge"] > 0 and r["marge"] > 0 else None
+        essais.append({"prix_ttc": prix, "marge": rt["marge"], "taux_marge": rt["taux_marge"],
+                       "ventes_relatives": ratio, "commandes_par_mois": rt["commandes_par_mois"]})
 
     if args.get("json"):
         def propre(v):
             return None if isinstance(v, float) and not math.isfinite(v) else v
-        print(json.dumps({"entrees": p, "resultats": {k: propre(v) for k, v in r.items()}, "alertes": alertes},
-                         ensure_ascii=False, indent=2))
+        out = {"entrees": p, "resultats": {k: propre(v) for k, v in r.items()}, "alertes": alertes}
+        if comparaison:
+            out["canaux"] = [{k: propre(v) for k, v in c.items()} for c in comparaison]
+        if essais:
+            out["prix_test"] = [{k: propre(v) for k, v in e.items()} for e in essais]
+        print(json.dumps(out, ensure_ascii=False, indent=2))
         return 0
 
     lignes = [("Prix TTC", euros(r["prix_ttc"]))]
@@ -188,6 +261,43 @@ def main(argv=None) -> int:
         print(f"{libelle.ljust(largeur)}  {valeur}")
     if r["marge"] < 0:
         print("\n⚠ Marge négative : chaque vente fait perdre de l'argent.")
+    if comparaison:
+        print("\nComparaison des canaux (marge par commande, du meilleur au moins bon)\n")
+        tete = ["Canal", "Prix TTC", "Frais canal", "Marge", "Taux", "Prix plancher"]
+        if p["fixes_mois"] > 0 or p["remuneration_mois"] > 0:
+            tete.append("Cmd/mois")
+        if any(c["marge_par_heure"] is not None for c in comparaison):
+            tete.append("Marge/heure")
+        rangs = []
+        for c in comparaison:
+            ligne = [c["canal"], euros(c["prix_ttc"]), euros(c["frais_canal"]), euros(c["marge"]),
+                     pourcent(c["taux_marge"]), euros(c["prix_plancher_ttc"])]
+            if "Cmd/mois" in tete:
+                ligne.append(str(c["commandes_par_mois"]) if c["commandes_par_mois"] is not None else "jamais")
+            if "Marge/heure" in tete:
+                ligne.append(euros(c["marge_par_heure"]) if c["marge_par_heure"] is not None else "—")
+            rangs.append(ligne)
+        larg = [max(len(str(x[i])) for x in [tete] + rangs) for i in range(len(tete))]
+        for ligne in [tete] + rangs:
+            print("  ".join(str(x).ljust(larg[i]) if i == 0 else str(x).rjust(larg[i]) for i, x in enumerate(ligne)))
+        perte = [c["canal"] for c in comparaison if c["marge"] <= 0]
+        if perte:
+            print(f"⚠ Canal à perte à ce prix : {', '.join(perte)} (monter le prix sur ce canal ou l'écarter).")
+        print("Frais des plateformes : relève les tarifs en vigueur avant de décider (ils changent souvent).")
+    if essais:
+        print(f"\nAutres prix (référence {euros(p['prix_ttc'])} : marge {euros(r['marge'])})\n")
+        for e in essais:
+            if e["marge"] <= 0:
+                effet = "marge nulle ou négative : jamais rentable"
+            elif e["ventes_relatives"] is None:
+                effet = "le prix de référence ne dégage pas de marge : comparaison impossible"
+            else:
+                d = (e["ventes_relatives"] - 1) * 100
+                effet = ("autant de ventes suffisent" if abs(d) < 0.05 else
+                         f"il faut {d:+.0f} % de ventes pour gagner autant".replace("+", "+ ").replace("-", "− ")
+                         if d > 0 else f"{-d:.0f} % de ventes en moins suffisent pour gagner autant")
+            print(f"  {euros(e['prix_ttc']).rjust(10)}  marge {euros(e['marge']).rjust(9)}  "
+                  f"({pourcent(e['taux_marge'])})  → {effet}")
     if alertes:
         print("\nÀ vérifier :")
         for a in alertes:

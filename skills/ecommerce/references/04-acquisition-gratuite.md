@@ -27,16 +27,16 @@ Délais = ordres de grandeur indicatifs [HYPOTHÈSE], à recaler sur les donnée
 |---|---|---|---|---|
 | Réseau proche et clients existants | Jours | 0 € | Messages individuels, jamais en masse | — |
 | Fiches gratuites Google (Merchant Center) | Jours à semaines | 0 € | Recherche, Images, Lens, YouTube, Gemini, onglet Shopping ; livraison à paramétrer pour la France ; flux propre | [FAIT] |
-| Fiches gratuites Microsoft (Bing Shopping) | Semaines | 0 € | Importer le flux Google dans Microsoft Merchant Center ; alimente aussi Copilot | [FAIT, page non datée ; une source dit qu'une campagne serait requise : À VÉRIFIER] |
+| Fiches gratuites Microsoft (Bing Shopping) | Semaines | 0 € | Importer le flux Google dans Microsoft Merchant Center ; alimente aussi Copilot | [À VÉRIFIER : fiches gratuites annoncées pour la France en 2020 ; affichage sans campagne non confirmé (réponses Microsoft contradictoires) : tester] |
 | Vidéo courte (TikTok, Reels, Shorts) | 1 à 3 semaines | 0 € | Produit démontrable, régularité, originalité, divulgation de l'auto-promotion sur TikTok (module 05) | — |
-| TikTok Shop | Jours à semaines | Commission 9 % (7 % sur certaines catégories électroniques) depuis le 08/01/2026 ; 4 % pendant 60 jours pour un premier magasin dans l'UE (mission à accepter) | SIRET, IBAN européen ; affiliation de créateurs au taux fixé par le vendeur | [FAIT, aide vendeurs TikTok ; taux à revérifier] |
-| Pinterest (Pins, catalogue) | Semaines à mois | 0 € | Catalogue réservé aux marchands approuvés (politique de retour visible ; ni affiliés ni grossistes) ; nouvelles règles marchands au 12/11/2026 | [FAIT] |
+| TikTok Shop | Jours à semaines | Commission 9 % TVA comprise depuis le 08/01/2026 (7 % : électroménager, électronique et beauté éligibles) ; 4 % pendant 60 jours pour un premier magasin dans l'UE (mission acceptée et 5 produits en stock publiés sous 15 jours, expédition locale, non cumulable) | Entreprise active au RNE, compte bancaire de l'UE au même nom, stock et retours en France ; affiliation de créateurs au taux fixé par le vendeur | [FAIT* — seller-fr.tiktok.com, fiche du 28/05/2026] |
+| Pinterest (Pins, catalogue) | Semaines à mois | 0 € | Catalogue réservé aux marchands approuvés (politique de retour visible ; ni affiliés ni grossistes) ; nouvelles règles marchands au 12/11/2026 ; programme marchand vérifié ouvert en France, gratuit (compte de 3 mois ou plus, site revendiqué depuis 9 mois ou plus, 75 % du catalogue importé, balise Pinterest installée) | [FAIT ; programme vérifié : FAIT*, pages anciennes] |
 | Communautés (Reddit, groupes Facebook, Discord, forums) | Jours | 0 € | Valeur d'abord ; règles de chaque groupe ; publication répétitive = spam (section 4) | [FAIT] |
 | Marketplaces (Vinted Pro, Leboncoin Pro, eBay, Etsy) | Jours | Commissions variables | Statut professionnel obligatoire ; détails et pièges : module 16 | [FAIT] |
 | Catalogue WhatsApp Business | Jours | 0 € | Pour les clients qui écrivent déjà ; pas un support de prospection | [FAIT] |
 | Boutiques Facebook / Instagram | Semaines | 0 € | En France, la boutique renvoie vers le site (paiement intégré réservé aux États-Unis) | [FAIT] |
 | Google Business Profile | Semaines | 0 € | **Boutique 100 % en ligne non éligible** ; éligible avec accueil physique aux horaires affichés ou zone desservie | [FAIT] |
-| Apple Business (ex-Business Connect) | Semaines | 0 € | Fiche de marque possible sans lieu physique ; fiches de lieu avec lieu physique | [FAIT] |
+| Apple Business (business.apple.com, depuis le 14/04/2026, remplace Business Connect) | Semaines | 0 € | Gestion de marque possible sans lieu physique ; fiche dans Plans seulement avec un lieu physique | [FAIT* — newsroom et support Apple] |
 | Prévente en financement participatif (Ulule) | 2 à 6 semaines | 8 % TTC en cas de succès (frais de paiement à la charge des contributeurs depuis le 14/04/2025) | Production et logistique prêtes ; date de livraison tenue | [FAIT] |
 | Créateurs en affiliation | 2 à 4 semaines | Commission ou produit offert | Mention légale obligatoire (section 5) | — |
 | Partenariats B2B (boutiques complémentaires) | 2 à 4 semaines | 0 € | Même client, besoin différent | — |
@@ -69,7 +69,7 @@ Délais = ordres de grandeur indicatifs [HYPOTHÈSE], à recaler sur les donnée
 - Cibler des micro-créateurs dont l'audience correspond à la cible (vidéos récentes, commentaires réels).
 - Contrepartie : commission par code ou lien (TikTok Shop : affiliation intégrée), ou produit offert — un produit
   offert est une rémunération en nature : la mention « Publicité » ou « Collaboration commerciale » est obligatoire
-  (loi n° 2023-451, art. 5 et 5-2).
+  (loi n° 2023-451, art. 5-2 : « Publicité », « Collaboration commerciale » ou mention équivalente adaptée au format).
 - Un code promo et un lien UTM distincts par créateur ; droits de réutilisation des vidéos écrits avant.
 
 ## 6. Partenariats
@@ -121,8 +121,9 @@ recontacterai pas. »
 
 - **UTM** (minuscules et tirets, une seule orthographe par source, aucune donnée personnelle) : `utm_source` = la
   plateforme ou le partenaire (tiktok, instagram, pinterest, reddit, nom-du-createur) ; `utm_medium` = un médium
-  reconnu par les outils d'analyse : `social`, `email`, `affiliate`, `referral` (un médium inventé comme
-  « communaute » tombe dans « non attribué » sous Google Analytics 4 [CONSENSUS]) ; `utm_campaign` = produit-angle-date ;
+  reconnu par les outils d'analyse : `social`, `email`, `affiliate`, `referral` (ou `link`) ; un médium inventé tombe
+  dans « Unassigned » sous Google Analytics 4 si la source n'est pas reconnue non plus (avec `utm_source=reddit`, la
+  visite reste « Organic Social ») [FAIT — aide GA4] ; `utm_campaign` = produit-angle-date ;
   `utm_content` = la variante ou le créateur.
 - Un lien testé par emplacement ; un code promo distinct par partenaire.
 - Revue hebdomadaire (module 09) : sessions, ventes et **marge par heure** par source ; consignée dans le cerveau.

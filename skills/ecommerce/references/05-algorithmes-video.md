@@ -163,8 +163,9 @@ geste raté → réussi.
   commercial permis, sauf sa musique « populaire »).
 - **Planification** : outils natifs des plateformes (planificateurs de TikTok, Meta, Pinterest, YouTube Studio) ; le
   cerveau prépare légendes, mots-clés et calendrier (module 14).
-- **Lien en bio** : conditions variables selon la plateforme et la période [À VÉRIFIER dans « Modifier le profil »] ;
-  plan B : nom de domaine court affiché dans la vidéo.
+- **Lien en bio** : TikTok l'ouvre à partir de 1 000 abonnés ou avec un compte professionnel enregistré (Profil ›
+  Modifier le profil › Liens), pas dans tous les pays [FAIT* — aide TikTok, page non datée] ; ailleurs, conditions à
+  lire dans « Modifier le profil » ; plan B : nom de domaine court affiché dans la vidéo.
 
 ## 7. Boucle d'analyse (hebdomadaire)
 
@@ -197,8 +198,9 @@ nouvelles, même angle) ce qui génère le plus d'envois. Consigner chaque semai
 ## 9. Règles légales
 
 - Créateurs rémunérés (argent ou produit offert) : mention « Publicité » ou « Collaboration commerciale » claire
-  pendant toute la promotion (loi n° 2023-451, art. 5 et 5-2) ; « Images retouchées », « Images virtuelles » pour les
-  contenus générés par IA.
-- Personnes ou images générées par IA : jamais présentées comme de vrais clients (C. conso., art. L121-4).
+  (ou mention équivalente adaptée au format) pendant toute la promotion (loi n° 2023-451, art. 5-2) ; « Images
+  retouchées » (silhouette ou visage modifiés) et « Images virtuelles » (visage ou silhouette produits par IA) :
+  art. 5, I.
+- Personnes, avis ou images générées par IA : jamais présentés comme de vrais clients (C. conso., art. L121-4, 28°).
 - Musique et images : droits pour un usage commercial sur chaque plateforme (section 6).
 - Aucune automatisation des publications, J'aime, commentaires ou messages (conditions des plateformes, module 14).

@@ -52,7 +52,9 @@ Le SEO est un actif qui compose : lance-le dès le premier jour, n'en attends pa
 - Search Console (dès les premières impressions) : filtre requêtes de marque / hors marque, groupes de requêtes.
 - Autocomplétion de Google, YouTube, TikTok, Amazon, Pinterest ; « Autres questions posées ».
 - Google Trends (saisonnalité, comparaison de termes).
-- Planificateur de mots-clés de Google Ads, utilisable sans campagne active (volumes en fourchettes) [À VÉRIFIER].
+- Planificateur de mots-clés de Google Ads : gratuit en mode Expert, avec informations de facturation et une campagne
+  créée puis mise en pause, sans aucune dépense [FAIT — aide Google Ads] ; volumes en fourchettes sans dépense
+  [NON VÉRIFIÉ].
 - Vocabulaire des forums, de Reddit et des avis clients (module 15, voix du client).
 
 Priorisation : intention commerciale × faisabilité. La faisabilité se lit dans la page de résultats : si des forums,
@@ -104,7 +106,9 @@ moins sûrement par Google Shopping [CONSENSUS].
   uniquement `/sitemap.xml`.
 - robots.txt : laisser celui par défaut sauf besoin précis (module 07, section 3). Personnalisation via
   `templates/robots.txt.liquid` (non prise en charge par le support Shopify) : sauvegarder avant, puis comparer
-  `/robots.txt` en ligne.
+  `/robots.txt` en ligne. Attention [SECONDAIRE — forum des développeurs Shopify, 2026] : la boucle
+  `robots.default_groups` produirait un jeu de règles plus ancien que le fichier servi (qui réinterdit `/search` et
+  `/policies/`) → copier `/robots.txt` avant, comparer après ; au besoin, coller le contenu en dur dans le modèle.
 - Liens produits en `product.url` dans les vignettes et produits associés : les URL `/collections/x/products/y`
   (filtre `within: collection`) peuvent faire retenir la mauvaise canonique par Google.
 - Changement de handle : cocher « créer une redirection » ; produit retiré définitivement : 301 vers un produit
@@ -130,7 +134,7 @@ moins sûrement par Google Shopping [CONSENSUS].
 | Collection | « lampe de chevet tactile » | H1, intro de 80 à 150 mots, FAQ visible, liens vers les guides | Une intention par URL |
 | Guide | « comment choisir… » | Réponse en 2 phrases, critères mesurés, tableau | Données datées |
 | Comparatif | « A ou B pour [usage] » | Tableau de critères vérifiables, « pour qui », verdict | Unités métriques ; faits sourcés |
-| Alternative | « alternative à [produit connu] » | Pourquoi chercher une alternative, 4 à 7 options réelles, pour qui / pas pour qui | Publicité comparative (C. conso., art. L122-1 et suivants) [À VÉRIFIER] ; aucun dénigrement ; jamais de page « dupe de… » (présenter un produit comme l'imitation d'une marque est interdit) |
+| Alternative | « alternative à [produit connu] » | Pourquoi chercher une alternative, 4 à 7 options réelles, pour qui / pas pour qui | Publicité comparative licite si objective et vérifiable (C. conso., art. L122-1) ; aucun dénigrement ; imitation interdite (art. L122-2, 4°, et L121-4, 13°) ; jamais de page « dupe de… » (présenter un produit comme l'imitation d'une marque est interdit) |
 | Donnée originale | Sondage clients, test mesuré | Méthode, résultats, limites | Citable (GEO, liens) |
 
 Discipline de preuve pour toute page qui parle d'un concurrent : chaque fait daté ; « non constaté » n'est pas
@@ -160,11 +164,12 @@ c'est de l'abus de contenu à grande échelle, quelle que soit la façon dont le
 |---|---|
 | Google Search Console | Indexation, requêtes, rapport « IA générative » (impressions dans les Aperçus IA et le Mode IA, par page et par pays), filtre marque / hors marque, annotations, réglages Shopping (livraison, retours), propriétés de comptes TikTok, Instagram, X et YouTube (présence des vidéos dans Google) [FAIT — blogs Search Central 2025-2026] |
 | Bing Webmaster Tools | Index Bing (qui alimente Copilot) ; rapport « AI Performance » (citations dans Copilot et les résumés IA de Bing, pages citées, requêtes d'ancrage ; données échantillonnées, sans clics) [FAIT — blog Bing, 02/2026 et 06/2026] |
-| IndexNow | Signaler une URL nouvelle ou modifiée aux moteurs participants (Bing et d'autres ; pas Google) ; gratuit, sans garantie d'indexation [FAIT — indexnow.org] ; pas de prise en charge native repérée sur Shopify [NON VÉRIFIÉ] |
+| IndexNow | Signaler une URL nouvelle ou modifiée aux moteurs participants (Bing et d'autres ; pas Google) ; gratuit, sans garantie d'indexation [FAIT — indexnow.org] ; intégré nativement par Shopify selon Bing (19/05/2025) : aucune application nécessaire [FAIT*] |
 | Google Merchant Center, Microsoft Merchant Center | Fiches produits gratuites (module 07) |
 | PageSpeed Insights / Lighthouse | Core Web Vitals mobiles |
 | Test des résultats enrichis, validateur Schema.org | Données structurées |
-| `scripts/audit_site.py` | Audit express : balises, données structurées, robots des moteurs et des IA, sitemap |
+| `scripts/audit_site.py` | Audit express : balises, données structurées, robots des moteurs et des IA, sitemap ; `--pages 20` : pages du sitemap en erreur, redirigées, en noindex, titres et descriptions absents ou en double, fiches sans Product ; `--vitesse` : Core Web Vitals |
+| `scripts/audit_catalogue.py` | Tout le catalogue : titres, descriptions (doublons, texte fournisseur, anglais), images et textes alternatifs, GTIN, SEO de chaque fiche ; `--flux flux.tsv` : flux Merchant Center |
 | Google Trends | Saisonnalité |
 | Ahrefs Webmaster Tools, Screaming Frog (version gratuite) | Audit de site, liens [À VÉRIFIER : limites des plans gratuits] |
 

@@ -65,7 +65,8 @@ messageries).
 - **Même invitation pour tous les acheteurs** (jamais de tri pour écarter les mécontents) ; demande neutre, sans
   « 5 étoiles » ni texte pré-rédigé ; aucune contrepartie pour un avis Google ou Trustpilot ; jamais de remboursement
   conditionné à la modification d'un avis ; réponse publique sans aucune donnée personnelle ; réutilisation d'un avis
-  avec l'accord de son auteur, sans fusionner deux avis [CONSENSUS — règles des plateformes d'avis].
+  avec l'accord de son auteur, sans fusionner deux avis ; aucun tri préalable (satisfait → avis, mécontent →
+  « écrivez-nous ») [FAIT — règles de Google et de Trustpilot].
 - Ni sélection des seuls avis positifs, ni avis inventé, ni avis modifié, ni avis contre récompense présenté comme
   spontané (C. conso., art. L121-4, 27° et 28°).
 - Informations obligatoires [FAIT — C. conso., art. L111-7-2 et D111-17 à D111-19, décret n° 2017-1436] : à proximité

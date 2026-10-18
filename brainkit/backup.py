@@ -2,7 +2,7 @@
 
 Le 14/10/2026, une réinstallation de Windows a effacé le disque C: : le cerveau (~/.claude/brain) y vit aussi.
 Une archive est donc écrite chaque jour (en fin de session, en arrière-plan) sur un autre disque (D:, E:…) :
-graphe, journal, configuration, derniers instantanés, rapports et résumés de cartes. Les cartes complètes
+graphe, journal, configuration, suivi des boutiques, derniers instantanés, rapports et résumés de cartes. Les cartes complètes
 (map.json, search.json) ne sont pas copiées : elles se régénèrent avec `brain map`.
 
 Réparation : si graph.json est illisible (corrompu), le cerveau repart automatiquement du dernier instantané valide,
@@ -69,6 +69,8 @@ def run(dest=None, force=False, keep=None):
                   BRAIN_DIR / "journal" / "observations.json", BRAIN_DIR / "journal" / "observations-archive.jsonl"):
             if f.exists():
                 z.write(f, f.relative_to(BRAIN_DIR).as_posix())
+        for f in sorted((BRAIN_DIR / "boutiques").glob("*.json")):  # suivi des boutiques (chiffres, audits, plan)
+            z.write(f, f.relative_to(BRAIN_DIR).as_posix())
         for snap in history.snapshots()[:10]:
             z.write(snap, f"history/{snap.name}")
         for name in ("MAP.md", "DIGEST.md"):
@@ -101,7 +103,8 @@ def restore(zip_path):
         from .common import write_json
         from .store import replace_all
         replace_all(graph)  # mode wiki : les pages suivent
-        for rel in ("journal/sessions.json", "journal/observations.json", "config.json"):
+        boutiques = sorted(r for r in names if r.startswith("boutiques/") and r.endswith(".json") and "/" not in r[10:])
+        for rel in ("journal/sessions.json", "journal/observations.json", "config.json", *boutiques):
             if rel in names:
                 data = json.loads(z.read(rel).decode("utf-8"))
                 write_json(BRAIN_DIR / rel, data)

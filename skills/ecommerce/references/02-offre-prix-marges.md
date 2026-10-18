@@ -27,6 +27,11 @@ Note chaque critère de 0 à 2. En dessous de 9/16, ne lance pas sans corriger (
 
 Calcul sans erreur : `python scripts/unit_economics.py --aide` (options `--port-client`, `--remuneration-mois` pour
 savoir combien de ventes par mois paient les coûts fixes et une rémunération, `--heures` pour la marge par heure).
+Deux options décident d'un prix ou d'un canal en une commande :
+- `--prix-test "34,90/39,90/44,90"` : marge à chaque prix et **ventes en plus ou en moins nécessaires pour gagner
+  autant** (baisser de 39,90 € à 34,90 € peut exiger 30 % de ventes en plus : à mettre en face du gain attendu) ;
+- `--canal "Etsy;commission=6,5;paiement=4;paiement-fixe=0,30;fixe=0,18"` (répétable) : la même commande vendue sur
+  chaque canal, classée par marge, avec le prix plancher par canal (frais vérifiés : module 16).
 
 **Micro-entreprise, vente de marchandises — valeurs au 18/10/2026** (à revérifier chaque janvier sur
 autoentrepreneur.urssaf.fr) :
@@ -73,7 +78,7 @@ d'agir maintenant · nom de l'offre · prix et modalités (paiement, livraison, 
 | Levier | Ce qui marche | Garde-fou |
 |---|---|---|
 | Panier moyen | Bundles « prêts à l'emploi », accessoire compatible, seuil de livraison offerte fixé au-dessus du panier moyen actuel, barre « encore X € pour la livraison offerte » | Seuil calculé sur la marge |
-| Garantie commerciale | La preuve d'abord, la garantie ensuite ; 2 conditions au plus ; affichée près du bouton ; test : que se passe-t-il si 10 % des acheteurs l'invoquent ? | Facultative ; ne remplace jamais les garanties légales, présentées à part ; ne pas vendre la garantie légale ni le délai de rétractation comme un atout propre (C. conso., art. L121-4) [À VÉRIFIER : alinéa] |
+| Garantie commerciale | La preuve d'abord, la garantie ensuite ; 2 conditions au plus ; affichée près du bouton ; test : que se passe-t-il si 10 % des acheteurs l'invoquent ? | Facultative ; ne remplace jamais les garanties légales, présentées à part ; ne pas vendre la garantie légale ni le délai de rétractation comme un atout propre (C. conso., art. L121-4, 10°) |
 | Rareté et urgence | Seulement réelles : stock réel, série sans réassort, saison, bonus qui disparaît vraiment, hausse de prix annoncée puis appliquée ; contrainte vérifiable, appliquée, placée près du bouton | Fausse urgence réputée trompeuse (art. L121-4, 7°) ; inutile pour un achat d'impulsion (environ 5 à 30 €) et contre-productive pour un produit premium [CONSENSUS] |
 | Prix barré | Uniquement avec un prix de référence = prix le plus bas pratiqué pendant les 30 jours précédant la réduction (art. L112-1-1) ; un produit jamais vendu au prix barré ne peut pas afficher de réduction ; une comparaison avec un « prix conseillé » se présente comme une comparaison (fiche DGCCRF) | Black Friday et promotions : même règle ; « soldes » réservé aux périodes légales et revente à perte interdite (C. com., art. L310-3 et L442-5) [À VÉRIFIER] |
 | Ancrage honnête | « Pas le moins cher, mais… » ; coût par utilisation (« 0,30 € par jour d'usage ») ; comparaison avec l'alternative (réparer, racheter, faire soi-même) | Jamais un prix de référence fictif |

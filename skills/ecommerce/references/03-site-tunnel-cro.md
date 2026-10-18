@@ -128,12 +128,14 @@ Avec peu de visites, un test A/B ne conclut presque jamais (tailles d'échantill
 | Loi de Hick | Peu de variantes, un choix par défaut clair |
 
 Proscrits : option payante cochée par défaut ; ancrage sur un prix de référence non conforme (art. L112-1-1) ; faux
-compteurs de visiteurs ou de stock (art. L121-4, 7°) ; leurre sans offre réelle. Sans source fiable : « règle des 7
-contacts », « une perte pèse deux fois plus qu'un gain » appliqué tel quel.
+compteurs de visiteurs ou de stock (art. L121-4, 7° ; faux stock : L121-2, 2° a) ; leurre sans offre réelle. Sans
+source fiable : « règle des 7 contacts », « une perte pèse deux fois plus qu'un gain » appliqué tel quel.
 
 ## 10. Recette avant lancement
 
-- Mot de passe de la boutique retiré ; aucun noindex oublié ; `python scripts/audit_site.py <url>` sans ✗.
+- Mot de passe de la boutique retiré ; aucun noindex oublié ; `python scripts/audit_site.py <url> --complet` sans ✗.
+- Textes des fiches, de l'accueil et des e-mails relus par `python scripts/relire_texte.py` : aucun 🔴 (allégations
+  interdites, fausse urgence) ; structures prêtes à adapter dans `assets/modeles-textes.md`.
 - Commande test de bout en bout (paiement, e-mail de confirmation, remboursement test).
 - Image de partage (Open Graph) correcte : tester l'aperçu en envoyant le lien dans une messagerie.
 - Tunnel testé dans les navigateurs intégrés d'Instagram, de Facebook et de TikTok (les clics des vidéos y arrivent).

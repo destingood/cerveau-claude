@@ -21,15 +21,16 @@ Sommaire : 1. Collecte · 2. Audit express en 15 minutes · 3. Équation et arbr
    7. Heures disponibles par semaine ; aisance en vidéo face caméra.
    8. Objectif chiffré et échéance.
 
-Sur Shopify, le rapport de conversion des sessions détaille les étapes ajout au panier → checkout atteint → commande
-[À VÉRIFIER : libellé exact dans l'admin]. Méfiance avec les sessions de robots : filtrer le pays de vente avant de
-calculer un taux.
+Sur Shopify, le rapport « Conversion rate breakdown » (détail du taux de conversion) donne les sessions avec ajout au
+panier → ayant atteint le checkout → l'ayant finalisé [FAIT* — libellé français à lire dans l'admin]. Depuis fin
+septembre 2026, Shopify exclut par défaut les sessions de robots identifiées ; filtrer quand même le pays de vente avant
+de calculer un taux. Ces trois chiffres alimentent `brain boutique kpi` (module 09).
 
 ## 2. Audit express en 15 minutes (navigateur, 0 €)
 
 | Minute | Contrôle | Comment | Ce qu'on cherche |
 |---|---|---|---|
-| 0–2 | Audit technique | `python scripts/audit_site.py <accueil>` puis sur une fiche produit et une collection | noindex, titres, données Product/Offer (livraison, retours), robots des moteurs et des IA, sitemap |
+| 0–2 | Audit technique | `python scripts/audit_site.py <accueil> --conformite --pages 10` puis sur une fiche produit et une collection (`--vitesse` pour les Core Web Vitals) | noindex, titres, données Product/Offer (livraison, retours), robots des moteurs et des IA, sitemap ; pages du sitemap en erreur ou en double ; pages légales et points bloquants du module 10 |
 | 2–4 | Vitesse mobile | PageSpeed Insights, onglet mobile (données réelles si disponibles) | LCP ≤ 2,5 s, INP ≤ 200 ms, CLS ≤ 0,1 (seuils web.dev) |
 | 4–7 | Premier écran mobile d'une fiche produit | Ouvrir la page en largeur de téléphone | Bénéfice clair, preuve réelle, prix TTC, bouton visible, délai et frais de livraison avant le panier |
 | 7–9 | Tunnel | Ajouter au panier → aller jusqu'à la page de paiement (sans payer) | Frais découverts tard, compte obligatoire, champs inutiles, paiements express absents |
@@ -57,9 +58,9 @@ et demande les captures.
 | Visible sur Google mais jamais cité par les IA | Entité, contenu citable, présence chez les tiers | Robots IA, données produit, mentions externes | 07 |
 
 Repères externes, à citer avec leur source : le Baymard Institute publie une moyenne d'abandon de panier calculée sur
-une cinquantaine d'études (autour de 70 %) et les raisons déclarées (coûts supplémentaires en tête, création de compte
-obligatoire, délais) [À VÉRIFIER : valeurs du jour sur baymard.com/lists/cart-abandonment-rate]. La référence qui
-compte reste la base de mesure de la boutique.
+50 études (70,22 %) et les raisons déclarées par des acheteurs américains : coûts en plus (39 à 40 %), livraison trop
+lente (20 à 21 %), création de compte obligatoire (18 à 19 %) [FAIT* — baymard.com, 2026 ; légers écarts entre ses
+pages]. La référence qui compte reste la base de mesure de la boutique.
 
 Ne juge pas un taux sur un volume trop faible. Repère de travail [HYPOTHÈSE] : quelques centaines de sessions sur une
 page avant de conclure sur son taux d'ajout au panier ; en dessous, s'appuyer sur l'observation qualitative.
@@ -99,4 +100,9 @@ Mode agence : livrable client avec `assets/modele-rapport-audit.md`.
 - Produits sans image, images sans texte alternatif ou avec un texte recopié d'une image à l'autre.
 - Refus et avertissements de Merchant Center ; erreurs d'indexation de la Search Console.
 
-Résultat noté dans le cerveau (`brain obs`), corrections en lot 🟠 (module 12).
+En une commande pour tout le catalogue : `python scripts/audit_catalogue.py --url <boutique>` (catalogue public
+Shopify, si robots.txt l'autorise) ou `--csv <export de l'admin>` : chaque produit noté (titre, description, images,
+textes alternatifs, GTIN, prix barrés, ruptures, allégations à risque), les plus urgents d'abord.
+
+Résultat noté dans le cerveau (`brain boutique audit <boutique>` garde l'historique ; `brain obs` pour le reste),
+corrections en lot 🟠 (module 12).

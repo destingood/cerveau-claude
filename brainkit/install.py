@@ -138,9 +138,19 @@ Pages des amis : s'en servir, les citer ; pour compléter, écrire sa propre pag
 ## Skills métier livrées avec le cerveau
 **Cerveau e-commerce** (`/cerveau:ecommerce` en plugin, `/ecommerce` en installation classique) : faire décoller une
 boutique en ligne sans pub et avec des outils gratuits (diagnostic, offre et marges, site et tunnel de vente, premiers
-clients, vidéo et algorithmes, SEO, GEO, e-mails, gestion, conformité, pilotage du navigateur). Chaque boutique a sa
-fiche dans cette mémoire (`fact` « Boutique <nom> — fiche contexte », chiffres en `--commun non`, `decision`,
-`todo --due`) : `q "boutique <nom>"` la retrouve.
+clients, vidéo et algorithmes, SEO, GEO, e-mails, gestion, conformité, pilotage du navigateur). Chaque boutique est
+suivie par le cerveau : données privées (jamais dans le cerveau commun), comprises dans les sauvegardes.
+
+| But | Commande |
+|---|---|
+| Boutiques suivies (dernière semaine, plan, dernier audit) · en faire suivre une (fichier de suivi + fiche contexte privée) | `boutique` · `boutique ajouter "Nom" --url https://… [--type physique\\|mode\\|createur\\|occasion\\|niche\\|prevente\\|local\\|numerique\\|b2b] [--chemin plateforme\\|0euro] [--marge-commande 12,5]` |
+| Plan décollage en à-faire datés (72 h, 14 jours, 30-60-90, adapté au type), rappelés au démarrage | `boutique plan <boutique> [--debut 20/10] [--court] [--force]` |
+| Chiffres d'une semaine complète → taux, test statistique contre les semaines d'avant, marge par heure par canal, goulot probable | `boutique kpi <boutique> --sessions … --ajouts … [--checkouts …] --commandes … [--ca …] [--heures …] [--canal nom:sessions:commandes[:heures]] [--semaine 12/10] [--note "…"]` |
+| Audit SEO/GEO gardé en historique (corrigé, nouveau) ; conformité légale, pages du sitemap, vitesse | `boutique audit <boutique\\|url> [--conformite] [--pages 10] [--vitesse] [--complet] [--rapport audit.md]` |
+| Revue (chiffres, plan, audits, trois priorités) · réglages | `boutique bilan <boutique> [--md bilan.md]` · `boutique regler <boutique> url=… marge=… seuil.ajout=6` |
+
+Fiche « Boutique <nom> — fiche contexte » : `q "boutique <nom>"` ; décisions et apprentissages en `add` (chiffres en
+`--commun non`).
 
 ## Ailleurs que dans l'onglet Code
 | But | Commande |

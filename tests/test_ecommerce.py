@@ -2,6 +2,7 @@
 installation classique) — dans des dossiers temporaires, jamais sur la vraie mémoire.
 
 Lancement : python tests/test_ecommerce.py   (sortie : « N vérifications OK, M échec(s) »)"""
+import csv
 import http.server
 import json
 import os
@@ -214,6 +215,321 @@ check(c == 0 and "Robots (robots.txt, cette page)" in out and "pagespeed.web.dev
 c, out = run(SKILL_DIR / "scripts" / "audit_site.py", "--bidule", BASE)
 check(c == 1 and "inconnue" in out, "audit : option inconnue refusée", out)
 srv.shutdown()
+
+# ------------------------------------------------------------------ 3 bis. relecture des textes de vente
+import relire_texte  # noqa: E402
+
+r = relire_texte.relire("<p>Bougie écologique qui soigne vos migraines. La meilleure du marché !</p>", "fiche")
+sujets = {(f["niveau"], f["sujet"]) for f in r["points"]}
+check(("🔴", "Allégation environnementale générique") in sujets, "relecture : allégation verte générique 🔴", sujets)
+check(("🔴", "Promesse de santé") in sujets, "relecture : promesse de santé 🔴", sujets)
+check(("🔴", "Superlatif invérifiable") in sujets, "relecture : superlatif invérifiable 🔴", sujets)
+check(any(f["sujet"] == "Information attendue absente" and f["extrait"] == "prix" for f in r["points"]),
+      "relecture : fiche sans prix signalée")
+r = relire_texte.relire("Nos meilleures ventes. Traitement de la commande sous 24 h, bougie anti-stress. Prix : 24,90 €, "
+                        "livraison 48 h, retours 30 jours, 8 x 9 cm, en verre.", "fiche")
+check(r["rouges"] == 0 and not any(f["sujet"] == "Information attendue absente" for f in r["points"]),
+      "relecture : pas de faux positif (meilleures ventes, traitement de la commande, anti-stress)", r["points"])
+r = relire_texte.relire("Ma bougie préférée, code promo LUNA10 !", "post")
+check(any(f["sujet"] == "Partenariat sans mention" for f in r["points"]), "relecture : partenariat sans « Publicité »")
+r = relire_texte.relire("Publicité — ma bougie préférée, code promo LUNA10", "post")
+check(not any(f["sujet"] == "Partenariat sans mention" for f in r["points"]), "relecture : mention « Publicité » vue")
+(TMP / "fiche.txt").write_text("Crème 100 % naturelle qui guérit l'acné.", encoding="utf-8")
+c, out = run(SKILL_DIR / "scripts" / "relire_texte.py", TMP / "fiche.txt")
+check(c == 1 and "Promesse de santé" in out, "relecture en ligne de commande : code 1 s'il reste un 🔴", out[:300])
+modeles = relire_texte.relire((SKILL_DIR / "assets" / "modeles-textes.md").read_text(encoding="utf-8"), "email")
+check(modeles["rouges"] == 0, "modèles de textes : aucun risque juridique 🔴 (ils passent leur propre relecture)",
+      [f for f in modeles["points"] if f["niveau"] == "🔴"])
+(TMP / "mail.txt").write_text("Bonjour, votre commande est partie ce matin.", encoding="utf-8")
+c, out = run(SKILL_DIR / "scripts" / "relire_texte.py", TMP / "mail.txt", "--type", "email")
+check(c == 0 and "Information attendue" not in out, "relecture d'un e-mail : pas d'attentes de fiche produit", out)
+
+# ------------------------------------------------------------------ 3 ter. audit du catalogue et flux Merchant Center
+import audit_catalogue  # noqa: E402
+
+check(audit_catalogue.gtin_ok("3760000000000") and audit_catalogue.gtin_ok("036000291452")
+      and audit_catalogue.gtin_ok("96385074"), "GTIN : clés de contrôle EAN-13, UPC-A et EAN-8 valides")
+check(not audit_catalogue.gtin_ok("3760000000001") and not audit_catalogue.gtin_ok("2000000000008")
+      and not audit_catalogue.gtin_ok("0000000000000") and not audit_catalogue.gtin_ok("12345"),
+      "GTIN : mauvaise clé, code interne (préfixe 2), zéros et longueur refusés")
+CSV = TMP / "export.csv"
+CSV.write_text("""Handle,Title,Body (HTML),Vendor,Type,Published,Option1 Name,Option1 Value,Variant SKU,Variant Grams,\
+Variant Inventory Tracker,Variant Inventory Qty,Variant Price,Variant Compare At Price,Variant Requires Shipping,\
+Variant Barcode,Image Src,Image Alt Text,SEO Title,SEO Description,Status
+bougie-lavande,Bougie parfumée lavande 200 g,"<p>Bougie coulée à la main en cire de colza, mèche en coton, parfum lavande \
+de Provence. Durée de combustion : environ 40 heures. Dimensions : 8 x 9 cm. Livraison en 48 h, retours sous 14 jours. \
+Entretien : couper la mèche à 5 mm avant chaque allumage pour une flamme régulière. Matière : verre recyclé.</p>",\
+Atelier Test,Bougie,TRUE,Taille,200 g,BL-200,250,shopify,12,24.90,,TRUE,3760000000001,https://cdn.example/b1.jpg,\
+Bougie allumée,Bougie lavande 200 g,Bougie artisanale en cire de colza,active
+bougie-lavande,,,,,,,350 g,BL-350,400,shopify,0,32.90,,TRUE,3760000000000,https://cdn.example/b2.jpg,Vue de dessus,,,
+bougie-lavande,,,,,,,,,,,,,,,,https://cdn.example/b3.jpg,Dans un salon,,,
+coque-iphone,PROMO COQUE IPHONE ANTI CHOC -50% LIVRAISON GRATUITE,"<p>100% brand new and high quality. Package \
+includes: 1 x case. This case is the best for your phone and will protect it from the drops.</p>",,,TRUE,Title,\
+Default Title,,0,shopify,0,9.90,19.90,TRUE,,https://cdn.example/c1.jpg,,,,active
+creme-bio,Crème visage,<p>Crème écologique qui guérit l'acné. Produit neutre en carbone.</p>,Atelier Test,Cosmétique,\
+TRUE,Title,Default Title,CB-1,50,,,0,,TRUE,,,,,,active
+brouillon,Produit brouillon,,Atelier Test,,FALSE,Title,Default Title,BR-1,100,,,10.00,,TRUE,,,,,,draft
+""", encoding="utf-8")
+prods = audit_catalogue.depuis_csv(str(CSV), "https://boutique.example")
+check(len(prods) == 4 and len(prods[0]["variants"]) == 2 and len(prods[0]["images"]) == 3
+      and prods[0]["options"][0] == "Taille", "catalogue CSV : lignes regroupées par produit (variantes, images, options)",
+      [(p["handle"], len(p["variants"]), len(p["images"])) for p in prods])
+res = audit_catalogue.controler(prods)
+by = {x["handle"]: {pb["code"] for pb in x["problemes"]} for x in res["resultats"]}
+check(res["audites"] == 3 and res["brouillons"] == 1, "catalogue : brouillons ignorés", res["audites"])
+check({"gtin-invalide", "titre-variante"} <= by.get("bougie-lavande", set()),
+      "catalogue : code-barres invalide et valeur de variante dans le titre", by.get("bougie-lavande"))
+check({"titre-promo", "titre-majuscules", "texte-fournisseur", "description-anglais", "prix-barre", "rupture",
+       "sans-marque"} <= by.get("coque-iphone", set()), "catalogue : fiche importée d'un fournisseur repérée",
+      by.get("coque-iphone"))
+check({"texte-juridique", "images-absentes", "prix-zero"} <= by.get("creme-bio", set()),
+      "catalogue : allégations interdites, sans image, prix à 0", by.get("creme-bio"))
+check(res["resultats"][0]["handle"] == "creme-bio", "catalogue : produits classés du plus urgent au moins urgent")
+check(next(x for x in res["par_code"] if x["code"] == "texte-juridique")["produits"] == 1,
+      "catalogue : problèmes comptés par produit (3 allégations sur 1 produit = 1 produit)", res["par_code"])
+FLUX = TMP / "flux.tsv"
+fx = audit_catalogue.flux(prods, str(FLUX), "https://boutique.example")
+rows = list(csv.DictReader(FLUX.open(encoding="utf-8"), delimiter="\t"))
+row = {x["id"]: x for x in rows}
+check(fx["lignes"] == 3 and len(rows) == 3 and ("creme-bio", "aucune image") in fx["exclus"],
+      "flux : une ligne par variante en ligne, produit sans image écarté", fx)
+v = row.get("BL-350", {})
+check(v.get("item_group_id") == "bougie-lavande" and v.get("size") == "350 g" and v.get("title", "").endswith("– 350 g")
+      and v.get("availability") == "out_of_stock" and v.get("gtin") == "3760000000000",
+      "flux : variante (groupe, taille, titre, rupture, GTIN valide)", v)
+check(row.get("BL-200", {}).get("gtin") == "" and row.get("BL-200", {}).get("mpn") == "BL-200",
+      "flux : GTIN invalide jamais envoyé (référence vendeur en MPN)", row.get("BL-200"))
+cq = row.get("coque-iphone-1", {})
+check(cq.get("item_group_id") == "" and cq.get("identifier_exists") == "no" and cq.get("price") == "9.90 EUR",
+      "flux : produit simple sans groupe ; sans identifiant → identifier_exists=no ; prix réel (pas le prix barré)", cq)
+check(any(h == "coque-iphone" for h, _ in fx["a_revoir"]) and any(h == "bougie-lavande" for h, _ in fx["a_revoir"]),
+      "flux : titres promotionnels et prix de variantes à vérifier signalés", fx["a_revoir"])
+c, out = run(SKILL_DIR / "scripts" / "audit_catalogue.py", "--csv", CSV, "--site", "https://boutique.example", "--flux",
+             TMP / "flux2.tsv")
+check(c == 1 and "À corriger en premier" in out and "flux Merchant Center : 3 ligne(s)" in out,
+      "audit du catalogue en ligne de commande (code 1 : il reste un 🔴)", out[-400:])
+c, out = run(SKILL_DIR / "scripts" / "audit_catalogue.py", "--csv", CSV, "--url", "https://x.example")
+check(c == 2 and "l'un des deux" in out, "catalogue : --url et --csv ensemble refusés", out)
+
+ROBOTS = {"txt": "User-agent: *\nDisallow: /checkout\n"}
+
+
+class Catalogue(http.server.BaseHTTPRequestHandler):
+    def log_message(self, *a):
+        pass
+
+    def do_GET(self):
+        path, _, query = self.path.partition("?")
+        if path == "/robots.txt":
+            body, ctype = ROBOTS["txt"].encode(), "text/plain"
+        elif path == "/products.json":
+            page = int(dict(x.split("=") for x in query.split("&") if "=" in x).get("page", 1))
+            start, n = (page - 1) * 250, 250 if page == 1 else (10 if page == 2 else 0)
+            items = [{"handle": f"p{i}", "title": f"Plaid en lin lavé n° {i}", "body_html": "<p>Plaid en lin.</p>",
+                      "vendor": "Maison", "product_type": "Linge", "options": [{"name": "Couleur"}],
+                      "variants": [{"id": 1000 + i, "sku": f"S{i}-B", "price": "29.90", "available": True,
+                                    "option1": "Bleu", "grams": 300},
+                                   {"id": 5000 + i, "sku": f"S{i}-V", "price": "29.90", "available": False,
+                                    "option1": "Vert", "grams": 300}],
+                      "images": [{"src": f"https://cdn.example/{i}.jpg"}]} for i in range(start, start + n)]
+            body, ctype = json.dumps({"products": items}).encode(), "application/json"
+        else:
+            self.send_response(404)
+            self.end_headers()
+            return
+        self.send_response(200)
+        self.send_header("Content-Type", ctype)
+        self.send_header("Content-Length", str(len(body)))
+        self.end_headers()
+        self.wfile.write(body)
+
+
+cat_srv = http.server.ThreadingHTTPServer(("127.0.0.1", 0), Catalogue)
+threading.Thread(target=cat_srv.serve_forever, daemon=True).start()
+CAT = f"http://127.0.0.1:{cat_srv.server_address[1]}"
+prods, root, msg = audit_catalogue.depuis_url(CAT, 1000, 10)
+check(msg is None and len(prods) == 260 and prods[-1]["handle"] == "p259",
+      "catalogue public : /products.json lu page par page (250 + 10)", (msg, len(prods)))
+fx = audit_catalogue.flux(prods[:1], str(TMP / "flux3.tsv"))
+rows = list(csv.DictReader((TMP / "flux3.tsv").open(encoding="utf-8"), delimiter="\t"))
+check(len(rows) == 2 and rows[0]["link"].endswith("/products/p0?variant=1000") and rows[0]["color"] == "Bleu"
+      and rows[1]["availability"] == "out_of_stock", "flux depuis le catalogue public : lien de variante, couleur, "
+      "disponibilité", rows[:1])
+ROBOTS["txt"] = "User-agent: *\nDisallow: /products.json\n"
+prods, root, msg = audit_catalogue.depuis_url(CAT, 1000, 10)
+check(prods == [] and msg and "robots.txt" in msg, "catalogue public : interdit par robots.txt → respecté", msg)
+cat_srv.shutdown()
+
+# ------------------------------------------------------------------ 3 quater. marges par canal et prix testés
+c, out = run(UE, "--prix", "39,90", "--cout", "12", "--livraison", "5,50", "--frais-pct", "2,9", "--frais-fixe", "0,30",
+             "--canal", "Etsy;commission=6,5;paiement=4;paiement-fixe=0,30;fixe=0,18", "--canal", "Vinted:heures=0,75",
+             "--prix-test", "34,90/44,90", "--json")
+res = json.loads(out) if c == 0 else {}
+canaux = {x["canal"]: x for x in res.get("canaux", [])}
+check([x["canal"] for x in res.get("canaux", [])] == ["Vinted", "Boutique", "Etsy"],
+      "canaux classés par marge par commande", res.get("canaux"))
+check(abs(canaux.get("Etsy", {}).get("marge", 0) - (39.9 - 17.5 - 0.18 - 39.9 * 0.065 - 39.9 * 0.04 - 0.30)) < 1e-9
+      and abs(canaux["Etsy"]["frais_canal"] - (39.9 * 0.105 + 0.48)) < 1e-9,
+      "canal : commission, frais de paiement et frais fixes de la plateforme à la place de ceux de la boutique", canaux)
+check(abs(canaux.get("Vinted", {}).get("marge", 0) - 22.4) < 1e-9
+      and abs(canaux["Vinted"]["marge_par_heure"] - 22.4 / 0.75) < 1e-9 and canaux["Boutique"]["marge_par_heure"] is None,
+      "canal sans frais vendeur ; heures propres au canal (marge par heure)", canaux.get("Vinted"))
+base = 39.9 - 17.5 - (39.9 * 0.029 + 0.3)
+essai = 34.9 - 17.5 - (34.9 * 0.029 + 0.3)
+check(abs(res.get("prix_test", [{}])[0].get("ventes_relatives", 0) - base / essai) < 1e-9,
+      "prix testé : ventes nécessaires pour garder la même marge totale", res.get("prix_test"))
+c, out = run(UE, "--prix", "39,90", "--cout", "12", "--livraison", "5,50", "--frais-pct", "2,9", "--frais-fixe", "0,30",
+             "--canal", "Etsy;commission=6,5;paiement=4;paiement-fixe=0,30", "--prix-test", "34,90/44,90")
+check(c == 0 and "Comparaison des canaux" in out and "il faut + 30 % de ventes pour gagner autant" in out
+      and "19 % de ventes en moins suffisent" in out, "comparaison en texte : canaux et prix testés", out[-900:])
+c, out = run(UE, "--prix", "10", "--cout", "3", "--canal", "commission=5")
+check(c == 1 and "nom du canal" in out, "canal sans nom refusé", out)
+c, out = run(UE, "--prix", "10", "--cout", "3", "--canal", "X;taux=5")
+check(c == 1 and "inconnu" in out, "clé de canal inconnue refusée", out)
+c, out = run(UE, "--prix", "10", "--cout", "3", "--prix-test", "a/b")
+check(c == 1 and "invalide" in out, "prix testé illisible refusé", out)
+
+# ------------------------------------------------------------------ 3 quinquies. audit étendu : conformité, pages, vitesse
+S2 = TMP / "site2"
+(S2 / "products").mkdir(parents=True)
+(S2 / "pages").mkdir()
+(S2 / "policies").mkdir()
+(S2 / "index.html").write_text("""<!doctype html><html lang="fr"><head><meta charset="utf-8"><title>Maison Test – bougies
+artisanales</title><meta name="viewport" content="width=device-width"><link rel="canonical" href="/">
+<script src="https://www.googletagmanager.com/gtag/js?id=G-TEST"></script>
+<script>fbq('init','123');</script><script src="https://cdn.judge.me/widget.js"></script></head>
+<body><h1>Bougies</h1><div class="countdown-timer">Offre se termine dans 02:59:59</div>
+<p>Nos bougies écologiques, neutres en carbone.</p>
+<footer><a href="/pages/mentions.html">Mentions légales</a> <a href="/pages/cgv.html">CGV</a>
+<a href="/pages/retours.html">Retours et remboursements</a> <a href="/pages/confidentialite.html">Confidentialité</a>
+<a href="/pages/contact.html">Nous contacter</a> <a href="/">Retour à l'accueil</a>
+<a href="https://ec.europa.eu/consumers/odr">Plateforme RLL</a></footer></body></html>""", encoding="utf-8")
+(S2 / "pages" / "mentions.html").write_text("<p>Maison Test, EI, 75000 Paris.</p>", encoding="utf-8")
+(S2 / "pages" / "cgv.html").write_text("<p>Rétractation : vous disposez de 14 jours.</p><p>Garantie légale de "
+                                       "conformité : 2 ans.</p>", encoding="utf-8")
+(S2 / "pages" / "retours.html").write_text("<p>Retours sous 30 jours.</p>", encoding="utf-8")
+(S2 / "pages" / "confidentialite.html").write_text("<p>RGPD</p>", encoding="utf-8")
+(S2 / "pages" / "contact.html").write_text("<form action='/contact'></form>", encoding="utf-8")
+(S2 / "shopify.html").write_text('<html lang="fr"><head><title>Boutique Shopify de test</title><script '
+                                 'src="https://cdn.shopify.com/s/files/theme.js"></script></head><body><h1>Accueil</h1>'
+                                 '<p>Bienvenue. <a href="/renoncer">Renoncer au contrat ici</a></p></body></html>',
+                                 encoding="utf-8")
+(S2 / "policies" / "refund-policy").write_text("<p>Rétractation de 14 jours. Formulaire type de rétractation ci-dessous."
+                                               "</p>", encoding="utf-8")
+for name, title, desc, extra in [("a", "Bougie lavande", "Bougie parfumée",
+                                  '<script type="application/ld+json">{"@type":"Product","name":"A"}</script>'),
+                                 ("b", "Bougie lavande", "Bougie parfumée", ""),
+                                 ("c", "Bougie vanille", "", '<meta name="robots" content="noindex">')]:
+    (S2 / "products" / f"{name}.html").write_text(f"<html><head><title>{title}</title><meta name='description' "
+                                                  f"content='{desc}'>{extra}</head><body><h1>{title}</h1></body></html>",
+                                                  encoding="utf-8")
+PSI_JSON = json.dumps({
+    "lighthouseResult": {"lighthouseVersion": "13.0.0", "categories": {"performance": {"score": 0.42}}, "audits": {
+        "largest-contentful-paint": {"numericValue": 5230.0, "score": 0.1},
+        "cumulative-layout-shift": {"numericValue": 0.18, "score": 0.4},
+        "total-blocking-time": {"numericValue": 640.0, "score": 0.3},
+        "first-contentful-paint": {"numericValue": 2100.0, "score": 0.5},
+        "render-blocking-insight": {"title": "Requêtes de blocage de l'affichage", "score": 0,
+                                    "metricSavings": {"LCP": 1200, "FCP": 900}},
+        "image-delivery-insight": {"title": "Améliorer l'envoi des images", "score": 0,
+                                   "metricSavings": {"LCP": 2400}, "displayValue": "850 Kio"},
+        "uses-text-compression": {"title": "Compression", "score": 1, "details": {"type": "opportunity",
+                                                                               "overallSavingsMs": 0}}}},
+    "loadingExperience": {"origin_fallback": True, "metrics": {}},
+    "originLoadingExperience": {"overall_category": "AVERAGE", "metrics": {
+        "LARGEST_CONTENTFUL_PAINT_MS": {"percentile": 3100, "category": "AVERAGE"},
+        "INTERACTION_TO_NEXT_PAINT": {"percentile": 180, "category": "FAST"},
+        "CUMULATIVE_LAYOUT_SHIFT_SCORE": {"percentile": 5, "category": "FAST"}}}}).encode()
+
+
+class Site2(http.server.SimpleHTTPRequestHandler):
+    def __init__(self, *a, **kw):
+        super().__init__(*a, directory=str(S2), **kw)
+
+    def log_message(self, *a):
+        pass
+
+    def do_GET(self):
+        if self.path.startswith("/psi"):
+            self.send_response(200)
+            self.send_header("Content-Type", "application/json")
+            self.send_header("Content-Length", str(len(PSI_JSON)))
+            self.end_headers()
+            self.wfile.write(PSI_JSON)
+            return
+        if self.path.startswith("/policies/"):
+            self.path = self.path.split("?")[0]
+        return super().do_GET()
+
+
+srv2 = http.server.ThreadingHTTPServer(("127.0.0.1", 0), Site2)
+threading.Thread(target=srv2.serve_forever, daemon=True).start()
+B2 = f"http://127.0.0.1:{srv2.server_address[1]}"
+(S2 / "robots.txt").write_text(f"User-agent: *\nDisallow: /cart\n\nSitemap: {B2}/sitemap.xml\n", encoding="utf-8")
+(S2 / "sitemap.xml").write_text(f'<?xml version="1.0"?><sitemapindex><sitemap><loc>{B2}/sitemap_products_1.xml</loc>'
+                                f'</sitemap><sitemap><loc>{B2}/sitemap_pages_1.xml</loc></sitemap></sitemapindex>',
+                                encoding="utf-8")
+(S2 / "sitemap_products_1.xml").write_text(
+    '<?xml version="1.0"?><urlset>' + "".join(f"<url><loc>{B2}/products/{n}.html</loc></url>" for n in "abcz")
+    + "</urlset>", encoding="utf-8")
+(S2 / "sitemap_pages_1.xml").write_text(f'<?xml version="1.0"?><urlset><url><loc>{B2}/pages/cgv.html</loc></url>'
+                                        f'<url><loc>{B2}/</loc></url></urlset>', encoding="utf-8")
+os.environ["PSI_ENDPOINT"] = B2 + "/psi"
+rep = audit_site.audit(B2 + "/", timeout=10, legal=True, pages=10, vitesse=True, pause=0)
+pts = {p["sujet"]: p for p in rep["points"]}
+lvl = lambda s: pts.get(s, {}).get("niveau")  # noqa: E731
+texts = " | ".join(f"{p['niveau']} {p['sujet']} : {p['constat']}" for p in rep["points"])
+check(lvl("Conformité : médiateur de la consommation") == "✗" and lvl("Conformité : identité de l'entreprise") == "✗",
+      "conformité : médiateur et immatriculation absents → ✗", texts)
+check(lvl("Conformité : délai de rétractation") == "✓" and lvl("Conformité : garantie légale de conformité") == "✓"
+      and lvl("Conformité : formulaire de rétractation") == "⚠", "conformité : CGV lues (14 jours, garantie, formulaire)",
+      texts)
+check(lvl("Conformité : plateforme européenne de litiges") == "⚠", "conformité : lien vers la plateforme fermée signalé")
+check(lvl("Conformité : cookies") == "⚠" and "Meta Pixel" in pts["Conformité : cookies"]["constat"],
+      "conformité : traceurs sans bandeau de consentement", texts)
+check(lvl("Conformité : urgence affichée") == "⚠" and lvl("Conformité : avis clients") == "⚠",
+      "conformité : minuteur et widget d'avis sans information sur le contrôle", texts)
+check(lvl("Conformité : allégation environnementale générique") == "✗", "conformité : allégation verte sur la page",
+      texts)
+check(lvl("Conformité : fonction de rétractation en ligne") == "⚠" and lvl("Conformité : coordonnées") == "⚠",
+      "conformité : fonction « renoncer au contrat ici » et coordonnées introuvables", texts)
+check(rep["conformite"]["retours"]["url"].endswith("/pages/retours.html"),
+      "conformité : « Retour à l'accueil » n'est pas pris pour la page retours", rep["conformite"].get("retours"))
+check(lvl("Site : pages en erreur") == "✗" and "/products/z.html" in pts["Site : pages en erreur"]["constat"]
+      and lvl("Site : noindex dans le sitemap") == "✗", "pages du sitemap : erreur 404 et noindex", texts)
+check(lvl("Site : titres en double") == "⚠" and lvl("Site : fiches produit sans données Product") == "⚠",
+      "pages du sitemap : titres en double, fiches sans Product", texts)
+check(len(rep["site"]["pages"]) == 5 and rep["site"]["urls_sitemap"] == 6,
+      "pages du sitemap : index lu, page auditée non relue", rep.get("site", {}).get("urls_sitemap"))
+check(lvl("Vitesse (laboratoire, mobile)") == "✗" and "score 42/100" in pts["Vitesse (laboratoire, mobile)"]["constat"]
+      and "Améliorer l'envoi des images" in pts["Vitesse (laboratoire, mobile)"]["conseil"].split(";")[0],
+      "vitesse : score de laboratoire et plus gros gain d'abord", texts)
+check(lvl("Vitesse (visiteurs réels, 28 jours)") == "⚠" and "tout le site" in pts["Vitesse (visiteurs réels, 28 jours)"][
+    "constat"], "vitesse : données terrain du site quand la page n'en a pas", texts)
+md = audit_site.markdown(rep)
+check("## Vitesse (mobile)" in md and "| /products/z.html | 404 |" in md and "## ✗ À corriger d'abord" in md,
+      "rapport Markdown : priorités, vitesse, pages lues", md[:400])
+rep2 = audit_site.audit(B2 + "/shopify.html", timeout=10, legal=True)
+p2 = {p["sujet"]: p for p in rep2["points"]}
+check(p2.get("Conformité : retours et remboursements", {}).get("niveau") == "⚠"
+      and "aucun lien" in p2["Conformité : retours et remboursements"]["constat"],
+      "Shopify : page standard /policies/ trouvée sans lien sur la page → à relier", p2.get(
+          "Conformité : retours et remboursements"))
+check(p2.get("Conformité : fonction de rétractation en ligne", {}).get("niveau") == "✓"
+      and p2.get("Conformité : formulaire de rétractation", {}).get("niveau") == "✓",
+      "conformité : « Renoncer au contrat ici » et formulaire repérés", [k for k in p2 if "Conformité" in k])
+os.environ["PSI_ENDPOINT"] = B2 + "/absent"
+rep3 = audit_site.audit(B2 + "/products/a.html", timeout=10, vitesse=True)
+check(any(p["sujet"] == "Vitesse" and p["niveau"] == "·" and "pagespeed.web.dev" in p["conseil"] for p in rep3["points"]),
+      "vitesse : API indisponible → lien pour mesurer à la main, sans plantage")
+os.environ.pop("PSI_ENDPOINT", None)
+c, out = run(SKILL_DIR / "scripts" / "audit_site.py", B2 + "/", "--conformite", "--pages", "2", "--pause", "0",
+             "--rapport", TMP / "audit.md", "--timeout", "10")
+check(c == 0 and (TMP / "audit.md").exists() and "rapport Markdown" in out and "Site : pages lues" in out,
+      "audit étendu en ligne de commande avec rapport", out[-300:])
+c, out = run(SKILL_DIR / "scripts" / "audit_site.py", B2 + "/", "--pages", "beaucoup")
+check(c == 1 and "nombre" in out, "audit : --pages non numérique refusé", out)
+srv2.shutdown()
 
 # ------------------------------------------------------------------ 4. livraison : plugin (brain publish)
 dest = TMP / "plugin"

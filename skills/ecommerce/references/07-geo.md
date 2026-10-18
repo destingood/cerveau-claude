@@ -15,7 +15,7 @@ Sommaire : 0. État au 18/10/2026 · 1. Plan d'action · 2. Robots IA · 3. robo
 | ChatGPT (recherche) | OAI-SearchBot autorisé dans robots.txt (prise en compte en ~24 h) ; GPTBot (entraînement) se règle à part ; ChatGPT-User agit à la demande d'un utilisateur | Oui (réponses qui citent le web) | [FAIT — documentation des robots d'OpenAI] |
 | ChatGPT (résultats produits) | Résultats produits organiques, gratuits pour le marchand ; mis en avant selon disponibilité, prix, qualité, et fabricant ou vendeur principal. Programme marchands « live in the U.S. » ; OpenAI a renoncé au paiement autonome dans le chat (l'achat se termine chez le marchand) | Programme : États-Unis. Affichage pour un utilisateur en France : non documenté | [FAIT — chatgpt.com/merchants, billet OpenAI du 24/03/2026] ; affichage FR [NON VÉRIFIÉ] |
 | Publicités ChatGPT | Ouvertes dans 31 marchés européens depuis le 18/08/2026 | Oui | [FAIT] — hors périmètre 0 € |
-| Bing et Copilot | Copilot s'appuie sur l'index Bing ; Bing Webmaster Tools mesure les citations (« AI Performance ») ; fiches gratuites de Microsoft Merchant Center (la France figure dans la liste) | Oui pour les fiches ; Copilot Checkout : États-Unis | [FAIT — blog Bing 02/2026, aide Microsoft Advertising] |
+| Bing et Copilot | Copilot s'appuie sur l'index Bing ; Bing Webmaster Tools mesure les citations (« AI Performance ») ; fiches gratuites de Microsoft Merchant Center (la France figure dans la liste ; affichage sans campagne Shopping non confirmé [À VÉRIFIER]) | Oui pour les fiches ; Copilot Checkout : États-Unis | [FAIT — blog Bing 02/2026, aide Microsoft Advertising] |
 | Perplexity | PerplexityBot (recherche, sans entraînement) ; Shopping et achat intégré | Réponses : oui ; achat : États-Unis | [FAIT — documentation des robots de Perplexity, centre d'aide 07/2026] |
 | Shopify Agentic Storefronts | Catalogue proposé dans ChatGPT, Copilot, Mode IA, Gemini, Meta (canal ajouté le 08/09/2026), géré depuis l'admin. Conditions : vendre aux États-Unis (ChatGPT, Copilot) ; boutique basée aux États-Unis (Mode IA, Gemini) ; Shopify Catalog : produits expédiés vers les États-Unis ou le Canada | **Non** pour une boutique qui ne vend qu'en France ou dans l'UE | [FAIT — aide Shopify, rubrique Agentic Storefronts] |
 | Shopify, côté agents | Chaque boutique sert par défaut `/agents.md` (et `/llms.txt`, sa copie) et expose des outils WebMCP, dont la recherche dans les politiques et la FAQ (05/08/2026) | Oui | [FAIT — shopify.dev] |
@@ -25,7 +25,10 @@ Sommaire : 0. État au 18/10/2026 · 1. Plan d'action · 2. Robots IA · 3. robo
 
 1. **Être dans les index** — Googlebot, Bingbot, OAI-SearchBot, PerplexityBot, Claude-SearchBot et Applebot ne doivent
    être bloqués ni par robots.txt ni par un pare-feu ; contrôle « IA générative » de la Search Console sur Inclure ;
-   sitemap soumis à Google et à Bing. Contrôle en une commande : `python scripts/audit_site.py <url>`.
+   sitemap soumis à Google et à Bing. Contrôle en une commande : `python scripts/audit_site.py <url>`. Fiches
+   gratuites sans application de flux : `python scripts/audit_catalogue.py --url <boutique> --flux flux.tsv` produit
+   un flux propre (une ligne par variante, couleur et taille, GTIN seulement s'ils sont valides, prix réel) à importer
+   dans Merchant Center puis dans Microsoft Merchant Center (🟠).
 2. **Choisir pour l'entraînement** — autoriser (option A, par défaut : ne rien faire) ou refuser les robots
    d'entraînement sans toucher à la recherche (option B, section 3).
 3. **Données produit irréprochables** — Google Merchant Center (fiches gratuites) : titres explicites, GTIN ou

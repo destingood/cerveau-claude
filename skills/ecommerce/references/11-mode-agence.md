@@ -28,7 +28,9 @@ chiffre de ventes : engage-toi sur des livrables, une méthode et des indicateur
   - opérateurs : `"<niche>" "boutique en ligne" -amazon`, `site:myshopify.com <niche>`, `"<niche>" "livraison offerte" <ville>` ;
   - signaux de besoin : fiches copiées du fournisseur, aucun avis, site lent (PageSpeed), absence des fiches gratuites
     Google Shopping, réseaux inactifs, pas de données structurées, robots IA bloqués ;
-  - pré-audit en 2 minutes : `python scripts/audit_site.py <url>` puis PageSpeed Insights mobile.
+  - pré-audit en 2 minutes : `python scripts/audit_site.py <url> --complet --rapport pre-audit.md` (conformité,
+    10 pages du sitemap, vitesse mobile) et, sur une boutique Shopify, `python scripts/audit_catalogue.py --url <url>` ;
+    le premier message cite un constat précis tiré du rapport (modèle : `assets/modeles-textes.md`, section 10).
 - **Canaux** : réseau local (CCI, clubs d'entrepreneurs, commerçants de ta ville) ; LinkedIn (contenu utile + messages
   personnalisés écrits à la main ; les outils d'automatisation y sont interdits par les conditions d'utilisation) ;
   partenariats avec des créateurs de sites (ils construisent, tu fais croître) ; experts-comptables ayant des clients

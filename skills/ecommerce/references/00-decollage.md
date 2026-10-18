@@ -29,8 +29,10 @@ Rien n'existe encore ? Chemin plateforme (module 03) ou 0 € (module 13), puis 
 | **H4 – H24** | 20 à 50 messages **individuels** au réseau proche (script du module 04) ; 3 à 10 annonces sur **une** marketplace adaptée au produit (module 16) ; 3 premières vidéos sur 3 angles différents (démo, problème → solution, POV ; module 05) ; 1 contribution utile dans 2 communautés de la niche | Premiers visiteurs qualifiés, premiers retours |
 | **H24 – H72** | 3 à 6 vidéos de plus (une idée nouvelle chacune) ; réponses rapides à tous les commentaires, en vidéo pour les meilleures questions ; 5 micro-créateurs et 3 boutiques complémentaires contactés, un par un ; demande d'avis aux premiers acheteurs ; analyse : quelle source a envoyé les visiteurs qui ajoutent au panier ? | Premières ventes, ou un signal clair sur le goulot (module 01) |
 
-Fin des 72 heures : `brain obs` (ce qui s'est passé), `brain add -t decision` (le canal n° 1 retenu), à-faire du
-sprint datés.
+Dans le cerveau, tout ce plan devient des à-faire datés en une commande : `brain boutique plan <boutique>` (22 étapes
+de J0 à J90, canal n° 1 et n° 2 choisis selon le type de boutique ; `--court` pour 72 h et 14 jours seulement). Les
+échéances remontent au démarrage de chaque session. Fin des 72 heures : `brain obs` (ce qui s'est passé),
+`brain add -t decision` (le canal n° 1 retenu).
 
 ## 3. Sprint 14 jours
 
@@ -85,4 +87,7 @@ sprint datés.
 | Des ventes rentables sur 1 canal | Amplifier ce canal (module 09) ; second canal seulement quand le premier tourne |
 | Rien du tout malgré un effort régulier | Changer d'angle ou de produit (module 15) : c'est une économie, pas un échec |
 
-Chaque décision → `brain add -t decision …` avec sa date de revue ; chaque leçon générale → `brain add -t learning …`.
+Chaque lundi : `brain boutique kpi <boutique> …` (la semaine passée, testée contre les précédentes) puis
+`brain boutique bilan <boutique>` (plan tenu ou en retard, trois priorités) — c'est là que se décide arrêter, itérer
+ou amplifier. Chaque décision → `brain add -t decision …` avec sa date de revue ; chaque leçon générale →
+`brain add -t learning …`.

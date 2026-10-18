@@ -19,6 +19,17 @@ hebdomadaire · 6. Trésorerie · 7. Stocks · 8. Fournisseurs · 9. Procédures
 
 L'indicateur décisif sans pub : **marge de contribution par heure investie**, par canal.
 
+**Dans le cerveau, chaque lundi** (dernière semaine complète) :
+```
+brain boutique kpi <boutique> --sessions 1240 --ajouts 74 --checkouts 31 --commandes 18 --ca 703,50 --heures 9 \
+  --canal tiktok:450:6:5 --canal pinterest:300:5:1,5 --note "vidéo reprise par une créatrice"
+```
+Il calcule les taux et le panier moyen, compare la conversion aux 4 semaines d'avant avec un test de deux proportions
+(« variation réelle » ou « pas significatif, ne pas conclure »), classe les canaux par marge par heure et nomme le
+goulot probable. `brain boutique bilan <boutique> --md bilan.md` en fait la revue écrite (chiffres, plan, audits,
+trois priorités). Les seuils de diagnostic se recalent sur la boutique : `brain boutique regler <boutique>
+seuil.ajout=6`.
+
 Règles de lecture : semaines complètes (lundi-dimanche, fuseau de la boutique) ; chaque pourcentage accompagné de sa
 valeur absolue ; une valeur absente n'est pas un zéro ; CA et nombre de commandes recoupés avec les commandes réelles
 (un écart reste affiché « inexpliqué ») ; pas de verdict sur un petit volume.
