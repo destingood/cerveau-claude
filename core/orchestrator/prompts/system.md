@@ -1,7 +1,7 @@
 <!--
 CERVEAU orchestrator system prompt, version 1.0 (2026-10-17).
-Verbatim copy of annex D of docs/MEGA-PROMPT-CERVEAU.md. Not wired yet: the LangGraph graph
-loads it in phase 1, and each numbered principle gets its behaviour suite in evals/behaviors/.
+Verbatim copy of annex D of docs/MEGA-PROMPT-CERVEAU.md. core/orchestrator/prompts.py loads it for
+the planner (node 4), and each numbered principle gets its behaviour suite in evals/behaviors/.
 Any change bumps the version and reruns the evals (R9). This comment is stripped before use.
 -->
 <identite>

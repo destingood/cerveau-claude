@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+from itertools import pairwise
+
 import pytest
 from hypothesis import given
 from hypothesis import strategies as st
@@ -10,6 +12,7 @@ from core.verification.citations import (
     citation_numbers,
     dangling_citations,
     uncited_units,
+    unit_spans,
     units,
 )
 from core.verification.quotes import MAX_QUOTE_CHARS, QuoteCheck, check_quote, normalise
@@ -116,3 +119,14 @@ def test_units_are_paragraphs_and_list_items() -> None:
         "1. étape",
         "Dernier paragraphe.",
     ]
+
+
+@given(st.text(alphabet=st.sampled_from([*"ab1 .-*#[]", "\n"]), max_size=200))
+def test_unit_spans_locate_each_unit(text: str) -> None:
+    spans, found = unit_spans(text), units(text)
+    assert len(spans) == len(found)
+    assert all(a < b <= c for (a, b), (c, _) in pairwise(spans))
+    for (start, end), unit in zip(spans, found, strict=True):
+        lines = text[start:end].splitlines()
+        assert lines[0] == lines[0].lstrip() and lines[-1] == lines[-1].rstrip()
+        assert unit.startswith(lines[0].strip()) and unit.endswith(lines[-1].strip())
