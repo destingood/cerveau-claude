@@ -104,6 +104,7 @@ def test_links_to_sources_are_kept(text: str) -> None:
             "x et \n\n",
         ),
         ("[ref][]\n[ref]: <https://evil.example/a>\n", "ref\n"),
+        ("[ref][]\n[ref]: <https://fr.wikipedia.org/a b>\n", "ref\n"),  # a space
         ("<https://evil.example/a>", REMOVED),
         ("<mailto:a@evil.example>", REMOVED),
         ("voir https://evil.example/a?d=1.", f"voir {REMOVED}."),
@@ -132,6 +133,19 @@ def test_only_domains_are_reported() -> None:
 def test_urls_given_by_lucas_are_allowed() -> None:
     text = "D'après [le rapport](https://rapport.example/doc.pdf)."
     assert strip_foreign_links(text, [*SOURCES, "https://rapport.example/"]).text == text
+
+
+def test_a_url_with_exact_only_data_must_be_allowed_as_is() -> None:
+    secret = re.compile("SECRET")
+    given = "https://rapport.example/SECRET"
+    text = (
+        f"[r]({given}) [w](https://fr.wikipedia.org/wiki/Lyon?d=SECRET) "
+        "https://www.insee.fr/fr/statistiques/1?SECRET https://www.insee.fr/fr/statistiques/1"
+    )
+    result = strip_foreign_links(text, [*SOURCES, given], exact_only=secret)
+    assert result.text == f"[r]({given}) w {REMOVED} https://www.insee.fr/fr/statistiques/1"
+    assert result.removed_domains == ("insee.fr", "wikipedia.org")
+    assert strip_foreign_links(text, [*SOURCES, given]).text == text  # domains alone pass
 
 
 _TOKENS = st.sampled_from(

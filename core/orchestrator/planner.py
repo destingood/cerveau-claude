@@ -190,7 +190,10 @@ async def _read(
         return READ_REFUSED
     if url in session.read:
         return f"Source [{session.read[url]}] déjà lue : réutilise ses extraits."
-    page = Page.model_validate(await toolbox.call(READ, {**arguments, "url": given or url}))
+    sent = {**arguments, "url": given or url}
+    page = Page.model_validate(  # the journal keeps the masked address (R6)
+        await toolbox.call(READ, sent, journaled={**arguments, "url": url})
+    )
     if given is not None:  # an address Lucas wrote: the models only see its masked form
         page = page.model_copy(update={"final_url": run.pseudonymiser.pseudonymise(page.final_url)})
     number = len(session.sources) + 1

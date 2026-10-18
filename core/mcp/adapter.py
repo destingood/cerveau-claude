@@ -246,16 +246,27 @@ class McpPlugin:
             redactions=("result_content",),
         )
 
-    async def call(self, spec: ToolSpec, arguments: dict[str, Any]) -> tuple[str, dict[str, Any]]:
-        """One checked, counted, time-limited and journaled call; errors become ToolException."""
+    async def call(
+        self,
+        spec: ToolSpec,
+        arguments: dict[str, Any],
+        *,
+        journaled: Mapping[str, Any] | None = None,
+    ) -> tuple[str, dict[str, Any]]:
+        """One checked, counted, time-limited and journaled call; errors become ToolException.
+
+        ``journaled`` stands for ``arguments`` in the journal when these hold data about Lucas that
+        the journal must not keep (R6): an address he gave goes there in its masked form.
+        """
+        shown = arguments if journaled is None else journaled
         decision = self._decide(spec)
         if not decision.allowed:
-            self._journal(spec, arguments, status="refuse", policy=decision.to_payload())
+            self._journal(spec, shown, status="refuse", policy=decision.to_payload())
             raise ToolRefusedError(decision)
         try:
             self._scope.budget.charge_tool_call()
         except RequestBudgetExceeded as exc:
-            self._journal(spec, arguments, status="budget_depasse", limit=exc.limit)
+            self._journal(spec, shown, status="budget_depasse", limit=exc.limit)
             raise
         if self._client is None:
             raise McpAdapterError(f"plugin « {self.manifest.id} » : session fermée")
@@ -288,7 +299,7 @@ class McpPlugin:
                 size = len(json.dumps(result, ensure_ascii=False).encode("utf-8"))
         self._journal(
             spec,
-            arguments,
+            shown,
             status=status,
             duration_ms=round((self._clock() - start) * 1000),
             result_bytes=size,

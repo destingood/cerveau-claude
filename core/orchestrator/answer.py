@@ -3,6 +3,10 @@
 Every text the models wrote goes through ``strip_foreign_links``: a link or an image may only
 point to a source that was read or to an address Lucas gave (R5, no exfiltration through a
 URL). What was dropped, masked or refused on the way is listed under « Signalements ».
+
+The pseudonyms are put back only after the graph. A link that holds one (``…?d=<EMAIL_1>``) would
+then carry Lucas's data to a domain that a domain check allows: such a link survives only when it
+is exactly an address Lucas gave or a source that was read.
 """
 
 from __future__ import annotations
@@ -12,6 +16,7 @@ from collections.abc import Callable, Iterable
 from typing import Any
 
 from core.guardrails.injection import injection_signals
+from core.guardrails.pii import PSEUDONYM
 from core.orchestrator.intake import KILL_MESSAGE
 from core.orchestrator.planner import LIMIT_TEXT, MAX_PLANNER_TURNS
 from core.orchestrator.runtime import Run
@@ -34,6 +39,7 @@ CONFIDENCE_LABEL = {"faible": "faible", "moyen": "moyen", "eleve": "élevé"}
 CLARIFICATION = "Une précision est nécessaire avant d'analyser"
 DEFAULT_QUESTION = "Peux-tu préciser ce que tu cherches exactement ?"
 _TITLE_DROP = re.compile(r"[\[\]<>`]")
+_GLUED = re.compile("\ue000([A-Z][A-Z_]*_\\d+)\ue001")  # a pseudonym as one URL-safe word
 
 
 def clean_title(title: str | None) -> str | None:
@@ -44,17 +50,22 @@ def clean_title(title: str | None) -> str | None:
     return flat or None
 
 
+def _glue(text: str) -> str:
+    """Each pseudonym, escaped or not, as one word: the link filter then sees the URL whole."""
+    return PSEUDONYM.sub(lambda m: f"\ue000{m.group(1)}_{m.group(2)}\ue001", text)
+
+
 class _Links:
     def __init__(self, allowed: Iterable[str]) -> None:
-        self.allowed = tuple(dict.fromkeys(allowed))
+        self.allowed = tuple(dict.fromkeys(_glue(url) for url in allowed))
         self.removed = 0
         self.domains: list[str] = []
 
     def __call__(self, text: str) -> str:
-        result = strip_foreign_links(text, self.allowed)
+        result = strip_foreign_links(_glue(text), self.allowed, exact_only=_GLUED)
         self.removed += result.removed
         self.domains.extend(d for d in result.removed_domains if d not in self.domains)
-        return result.text
+        return _GLUED.sub(r"<\1>", result.text)
 
 
 def _limit_message(run: Run, limit: str) -> str:

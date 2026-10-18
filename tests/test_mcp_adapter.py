@@ -146,6 +146,19 @@ def test_a_search_returns_an_artifact_and_is_journaled(scope: RequestScope) -> N
     assert verify(scope.journal.path).ok
 
 
+def test_the_journal_keeps_the_masked_arguments(scope: RequestScope) -> None:
+    async def search(plugin: McpPlugin) -> tuple[str, dict[str, Any]]:
+        spec = next(spec for spec in plugin.manifest.tools if spec.name == "web_search")
+        masked = {"query": "thé chez <PERSON_1>"}
+        return await plugin.call(spec, {"query": "thé chez Jean Dupont"}, journaled=masked)
+
+    _content, result = session(scope, search)
+    assert result["query"] == "thé chez Jean Dupont"  # the plugin got the real arguments
+    (entry,) = entries(scope)
+    assert entry["payload"]["arguments"] == {"query": "thé chez <PERSON_1>"}
+    assert "Dupont" not in json.dumps(entry, ensure_ascii=False)
+
+
 def test_no_page_content_reaches_the_journal(scope: RequestScope) -> None:
     async def both(plugin: McpPlugin) -> None:
         await invoke(plugin, "web_search", {"query": "q"})

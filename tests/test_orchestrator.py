@@ -25,12 +25,14 @@ from core.config import BlockedFeatureError, load_config
 from core.config.loader import Config
 from core.mcp.adapter import McpAdapterError, RequestScope
 from core.models.router import ModelRequest, ModelRouter
+from core.orchestrator.answer import _Links
 from core.orchestrator.graph import Orchestrator, RunResult
 from core.orchestrator.intake import KILL_MESSAGE
 from core.orchestrator.prompts import PromptSet
 from core.orchestrator.runtime import OUTPUT_CAPS
 from core.orchestrator.state import MARKER
 from core.policy.engine import KILL_SWITCH_FILE
+from core.verification.domains import REMOVED
 
 REPO_CONFIG = Path(__file__).resolve().parents[1] / "config"
 NOW = datetime(2026, 10, 18, 12, 0, tzinfo=UTC)
@@ -213,6 +215,7 @@ class World:
     hits: list[str] = field(default_factory=lambda: [INSEE, INED])
     fail_open: bool = False
     calls: list[tuple[str, dict[str, Any]]] = field(default_factory=list)
+    journaled: list[tuple[str, dict[str, Any]]] = field(default_factory=list)
     opened: int = 0
     closed: int = 0
 
@@ -224,9 +227,12 @@ class FakeToolbox:
         self.skipped: dict[str, str] = {}
         self.version = "web_research@0.1.0"
 
-    async def call(self, name: str, arguments: dict[str, Any]) -> dict[str, Any]:
+    async def call(
+        self, name: str, arguments: dict[str, Any], *, journaled: Mapping[str, Any] | None = None
+    ) -> dict[str, Any]:
         self.scope.budget.charge_tool_call()  # as the MCP adapter does
         self.world.calls.append((name, dict(arguments)))
+        self.world.journaled.append((name, dict(arguments if journaled is None else journaled)))
         if name == "web_search":
             hits = [
                 {"rank": n, "title": f"Résultat {n}", "url": url, "snippet": SNIPPET, "age": None}
@@ -549,6 +555,67 @@ def test_injected_page_is_treated_as_data(rig: Rig) -> None:
     assert {"exfiltration", "ignorer_consignes"} <= set(injection["signals"])
     assert (injection["extracts_kept"], injection["extracts_flagged"]) == (1, 1)
     assert injection["extracts_rejected"] == 2
+
+
+def test_a_link_cannot_carry_lucas_data_back(rig: Rig) -> None:
+    _read_insee(
+        rig,
+        final(
+            developpement=(
+                f"L'Insee l'écrit ainsi : « {QUOTE} » [1]. "
+                f"Voir [le détail]({INSEE}?nom=<PERSON_1>), ![]({INSEE}/p.png?nom=<PERSON_1>)"
+                f" et {INSEE}?nom=\\<PERSON_1\\> pour <PERSON_1>."
+            )
+        ),
+    )
+    answer = rig.ask("Quelle est la population de la France ? Je suis Jean Dupont.").answer
+    assert "nom=" not in answer.developpement  # the domain is a source's, the data is Lucas's
+    assert answer.developpement.endswith(f"le détail,  et {REMOVED} pour Jean Dupont.")
+    assert answer.links_removed == 3
+    assert any("(insee.fr)" in note for note in answer.signalements)
+
+
+@pytest.mark.parametrize(
+    "text",
+    [
+        f"![]({INSEE}/p.png?d=<PERSON_1>)",
+        f"[x]({INSEE}?d=<PERSON_1>)",
+        f"[x](<{INSEE}?d= \\<PERSON_1\\>>)",
+        f"[x][r]\n[r]: <{INSEE}?d= \\<PERSON_1\\>>\n",
+        f"{INSEE}?d=<PERSON_1>",
+        f"<{INSEE}?d=<PERSON_1>>",
+        f'<img src="{INSEE}?d=<PERSON_1>">',
+        "https://<PERSON_1>.insee.fr/",
+    ],
+)
+def test_no_link_keeps_a_pseudonym(text: str) -> None:
+    assert "PERSON_1" not in _Links([INSEE])(text)
+
+
+def test_an_address_lucas_gave_is_read_but_journaled_masked(
+    rig: Rig, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.setattr(FakePseudonymiser, "NAMES", ("jean-dupont",))
+    given, masked = "https://blog.example/jean-dupont/cv", "https://blog.example/<PERSON_1>/cv"
+    rig.world.pages[given] = PAGES[INSEE]
+    rig.brain.planner = [tool_call("web_read", url=masked), final()]
+    rig.brain.extracts = [
+        {"affirmation": "La population atteint 68,4 millions.", "citation": QUOTE}
+    ]
+    answer = rig.ask(f"Que dit {given} ?").answer
+    assert rig.world.calls == [("web_read", {"url": given})]  # the plugin reads the real page
+    assert rig.world.journaled == [("web_read", {"url": masked})]
+    assert "jean-dupont" not in rig.brain.texts()
+    assert [source.url for source in answer.sources] == [given]  # shown as Lucas wrote it
+
+
+def test_an_address_lucas_gave_keeps_its_pseudonyms() -> None:
+    given = "https://blog.example/u/<PERSON_1>"
+    links = _Links([given])
+    text = f"[profil]({given}), {given}. Mais pas {given}?x=<EMAIL_2> ni <PERSON_1> seul."
+    expected = f"[profil]({given}), {given}. Mais pas {REMOVED} ni <PERSON_1> seul."
+    assert links(text) == expected
+    assert (links.removed, links.domains) == (1, ["blog.example"])
 
 
 # --- limits: honest partial answers ------------------------------------------------------------

@@ -10,6 +10,9 @@ renderer without any click. ``strip_foreign_links`` therefore removes every link
 domain is not allowed (the verified sources and the URLs Lucas gave). A foreign image disappears;
 a foreign link keeps its visible text; a bare foreign URL becomes ``(lien retiré)``. Links with
 any other scheme (``javascript:``, ``data:``, relative paths) are removed the same way.
+
+A domain match is not enough for a URL that carries data about Lucas: with ``exact_only``, a URL in
+which that pattern occurs survives only when it is one of the allowed URLs as is.
 """
 
 from __future__ import annotations
@@ -31,7 +34,8 @@ _INLINE = re.compile(
     rf"\(\s*(?:<(?P<angled>[^<>\n]*)>|(?P<url>[^\s()]*(?:\([^\s()]*\)[^\s()]*)*)){_TITLE}\s*\)"
 )
 _DEFINITION = re.compile(
-    rf"^[ \t]{{0,3}}\[(?P<label>[^\]\n]+)\]:[ \t]*<?(?P<url>[^\s>]*)>?{_TITLE}[ \t]*$\n?",
+    rf"^[ \t]{{0,3}}\[(?P<label>[^\]\n]+)\]:[ \t]*"
+    rf"(?:<(?P<angled>[^<>\n]*)>|<?(?P<url>[^\s>]*)>?){_TITLE}[ \t]*$\n?",
     re.MULTILINE,
 )
 _REFERENCE = re.compile(
@@ -92,8 +96,11 @@ class LinkFilter:
 
 
 class _Stripper:
-    def __init__(self, allowed: Iterable[str]) -> None:
-        self.allowed = set(independent_domains(allowed))
+    def __init__(self, allowed: Iterable[str], exact_only: re.Pattern[str] | None) -> None:
+        urls = [url.strip() for url in allowed]
+        self.allowed = set(independent_domains(urls))
+        self.exact = set(urls)
+        self.exact_only = exact_only
         self.removed: list[str] = []
         self.foreign_labels: set[str] = set()
 
@@ -103,7 +110,8 @@ class _Stripper:
         # A backslash or a space is read differently by browsers and urlsplit: never allowed.
         if web and not re.search(r"[\\\s]", url):
             domain = registrable_domain(url)
-            if domain in self.allowed:
+            tainted = self.exact_only is not None and self.exact_only.search(url) is not None
+            if domain in self.allowed and (not tainted or url in self.exact):
                 return True
             self.removed.append(domain or "inconnu")
             return False
@@ -115,7 +123,8 @@ class _Stripper:
         return False
 
     def definition(self, match: re.Match[str]) -> str:
-        if self.is_allowed(match.group("url")):
+        url = match.group("angled") if match.group("angled") is not None else match.group("url")
+        if self.is_allowed(url):
             return match.group(0)
         self.foreign_labels.add(match.group("label").casefold())
         return ""
@@ -153,13 +162,16 @@ def _strip_once(text: str, stripper: _Stripper) -> str:
     return _BARE.sub(stripper.bare, text)
 
 
-def strip_foreign_links(text: str, allowed_urls: Iterable[str]) -> LinkFilter:
+def strip_foreign_links(
+    text: str, allowed_urls: Iterable[str], *, exact_only: re.Pattern[str] | None = None
+) -> LinkFilter:
     """Remove raw HTML link and media tags, then every link whose domain is not allowed.
 
-    A removal can bring two pieces together into a new link: the passes repeat until the text no
-    longer changes. Past ``_MAX_PASSES``, every bracket goes, so that no Markdown link is left.
+    A URL in which ``exact_only`` occurs must also be one of ``allowed_urls`` as is. A removal can
+    bring two pieces together into a new link: the passes repeat until the text no longer changes.
+    Past ``_MAX_PASSES``, every bracket goes, so that no Markdown link is left.
     """
-    stripper = _Stripper(allowed_urls)
+    stripper = _Stripper(allowed_urls, exact_only)
     for _ in range(_MAX_PASSES):
         stripped = _strip_once(text, stripper)
         if stripped == text:

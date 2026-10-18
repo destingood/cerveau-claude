@@ -57,7 +57,9 @@ class Toolbox(Protocol):
     def skipped(self) -> Mapping[str, str]: ...
     @property
     def version(self) -> str: ...
-    async def call(self, name: str, arguments: dict[str, Any]) -> dict[str, Any]: ...
+    async def call(
+        self, name: str, arguments: dict[str, Any], *, journaled: Mapping[str, Any] | None = None
+    ) -> dict[str, Any]: ...
 
 
 ToolboxOpener = Callable[[RequestScope], AbstractAsyncContextManager[Toolbox]]
@@ -81,11 +83,13 @@ class McpToolbox:
     def version(self) -> str:
         return self._plugin.version
 
-    async def call(self, name: str, arguments: dict[str, Any]) -> dict[str, Any]:
+    async def call(
+        self, name: str, arguments: dict[str, Any], *, journaled: Mapping[str, Any] | None = None
+    ) -> dict[str, Any]:
         spec = self._specs.get(name)
         if spec is None:
             raise ToolException(f"{name} : outil indisponible pour cette requête")
-        _content, result = await self._plugin.call(spec, arguments)
+        _content, result = await self._plugin.call(spec, arguments, journaled=journaled)
         return result
 
 
