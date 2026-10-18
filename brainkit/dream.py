@@ -62,7 +62,7 @@ def pairs(brain, limit=8):
     """Conflits (même sujet, valeur différente) et doublons probables, dans le même projet."""
     from . import reconcile
     dups, conflicts, seen = [], [], set()
-    for n in [x for x in brain.active() if x["type"] != "project"]:
+    for n in [x for x in brain.active(own=True) if x["type"] != "project"]:
         for s, m in brain.similar(n["title"], n.get("body", ""), None, limit=4, threshold=0.5, exclude=n["id"]):
             key = tuple(sorted((n["id"], m["id"])))
             if key in seen or (n.get("project") or None) != (m.get("project") or None) or n["type"] != m["type"]:
@@ -84,7 +84,7 @@ def fix_relative_dates(brain):
     """Partie sûre : dates relatives d'un souvenir jamais retouché → dates réelles, d'après sa date d'écriture."""
     from .dates import absolutize, has_relative
     fixed = []
-    for n in brain.active():
+    for n in brain.active(own=True):
         if n["type"] in ("feedback", "user") or not has_relative(f"{n['title']}\n{n.get('body', '')}"):
             continue
         created = parse_iso(n.get("created"))
@@ -102,19 +102,19 @@ def unused(brain, min_shown=6):
     from .store import shown_since
     if not brain.data.get("usage_since"):
         return []  # mesure d'usage pas encore commencée
-    return [n for n in brain.active() if n["type"] not in ("project", "user")
+    return [n for n in brain.active(own=True) if n["type"] not in ("project", "user")
             and shown_since(n) >= min_shown and not n.get("used")]
 
 
 def no_why(brain):
-    return [n for n in brain.active(("decision", "feedback"))
+    return [n for n in brain.active(("decision", "feedback"), own=True)
             if not WHY_RX.search(n.get("body") or "") and len(n.get("body") or "") < 160]
 
 
 def overdue(brain):
     from .dates import days_until, due_of
     out = []
-    for n in brain.active(("todo",)):
+    for n in brain.active(("todo",), own=True):
         d = due_of(n)
         if d and (days_until(d) or 0) < 0:
             out.append((n, d))
@@ -124,7 +124,7 @@ def overdue(brain):
 def repeated_rules(brain, limit=4):
     """Règles proches entre elles : à fusionner en une seule règle forte (mémoire procédurale)."""
     groups, seen = [], set()
-    for n in brain.active(("feedback",)):
+    for n in brain.active(("feedback",), own=True):
         if n["id"] in seen:
             continue
         sims = [m for s, m in brain.similar(n["title"], n.get("body", ""), "feedback", limit=4, threshold=0.4,
@@ -147,7 +147,7 @@ def prepare(apply_safe=True):
     if apply_safe:
         b0 = Brain.load()
         if any(n["type"] not in ("feedback", "user") and has_relative(f"{n['title']}\n{n.get('body', '')}")
-               for n in b0.active()):
+               for n in b0.active(own=True)):
             from . import history
             history.snapshot("avant-reve", force=True)
             with Brain.edit() as b:

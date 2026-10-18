@@ -14,7 +14,7 @@ from . import index as idx
 from . import journal, search
 from .common import (BRAIN_DIR, CLAUDE_HOME, CMD, CONFIG_FILE, EXPORT_FILE, GRAPH_FILE, INDEX_FILE, JOURNAL_FILE,
                      LOG_FILE, PROJECTS_DIR, REPORT_FILE, VIZ2D_FILE, VIZ_FILE, budget_chars, days_since, est_tokens, fmt_date,
-                     fold, load_config, log, set_config, setup_io, short, slugify, write_text)
+                     fold, load_config, log, now_iso, set_config, setup_io, short, slugify, write_text)
 from .store import GLOBAL_REFS, TYPES, Brain, bump_hits, clean_tags, normalize_type, priority
 
 
@@ -69,7 +69,17 @@ def project_arg(b, ref, cwd=None):
 
 
 def wiki_meta(a, meta):
-    """--resume, --sources, --domaine (pages du wiki) → champs de meta ; « none » les retire."""
+    """--resume, --sources, --domaine (pages du wiki), --commun (cerveau commun) → champs de meta ; « none » les retire."""
+    share = fold(getattr(a, "commun", None) or "")
+    if share in ("oui", "yes", "partage", "partager", "public"):
+        meta["partage"] = True
+        meta.pop("prive", None)
+    elif share in ("non", "no", "prive", "privee"):
+        meta["prive"] = True
+        meta.pop("partage", None)
+    elif share == "auto":
+        meta.pop("partage", None)
+        meta.pop("prive", None)
     if getattr(a, "resume", None) is not None:
         if fold(a.resume) in ("none", "aucun", "-", ""):
             meta.pop("resume", None)
@@ -96,7 +106,9 @@ def wiki_meta(a, meta):
 def node_line(n, chars=110):
     body = short((n.get("meta") or {}).get("resume") or n.get("body", ""), chars)  # page du wiki : son résumé d'abord
     arch = " (archivé)" if n.get("status", "active") != "active" else ""
-    return f"[{TYPES.get(n['type'], n['type'])}] {n['title']}" + (f" — {body}" if body else "") + f"  `{n['id']}`{arch}"
+    who = (n.get("meta") or {}).get("commun_par")
+    return (f"[{TYPES.get(n['type'], n['type'])}{f' 🤝 {who}' if who else ''}] {n['title']}" + (f" — {body}" if body else "")
+            + f"  `{n['id']}`{arch}")
 
 
 # ================================================================================== mémoire
@@ -311,6 +323,9 @@ def cmd_add(a):
             target = b.get(a.replaces) if a.replaces else (dec["target"] if dec and dec["action"] == "update" else None)
             if a.replaces and not target:
                 print(f"(remplacement ignoré : `{a.replaces}` introuvable)")
+            elif target and target["id"].startswith("c--"):
+                print(f"(remplacement ignoré : `{target['id']}` est la page d'un ami, en lecture seule — la tienne est créée)")
+                target = None
             if target and b.supersede(created, target["id"]):
                 print(f"↻ remplace `{target['id']}` ({target['title']}" + (f" — {', '.join(why)}" if why else "")
                       + f") : archivé avec sa date de fin, consultable : `brain show {target['id']}`")
@@ -401,7 +416,7 @@ def cmd_edit(a):
             else:
                 meta["keys"] = " ".join(a.keys.split())
             fields["meta"] = meta
-        if a.resume is not None or a.sources is not None or a.domaine is not None:
+        if a.resume is not None or a.sources is not None or a.domaine is not None or a.commun is not None:
             fields["meta"] = wiki_meta(a, dict(fields.get("meta") or n.get("meta") or {}))
         if a.path:
             if n["type"] != "project":
@@ -447,6 +462,8 @@ def cmd_link(a):
         x, y = b.get(a.a), b.get(a.b)
         if not x or not y:
             die(f"introuvable : {a.a if not x else a.b}")
+        if x["id"].startswith("c--") or y["id"].startswith("c--"):
+            die("page d'un ami (cerveau commun) : pas de lien enregistré — cite-la dans ton texte ([[titre]])")
         ok = b.link(x["id"], y["id"], a.rel)
         print(f"✓ lien `{x['id']}` —{a.rel}→ `{y['id']}`" if ok else "(lien déjà présent)")
     refresh_views()
@@ -784,14 +801,15 @@ def cmd_consolidate(a):
     if not dry:
         history.snapshot("avant-consolidation", force=True)
     with Brain.edit() as b:
-        for n in list(b.active()):
+        for n in list(b.active(own=True)):
             leaks = find_secrets(f"{n['title']}\n{n.get('body', '')}")
             if leaks:
                 actions.append(f"secret masqué dans `{n['id']}` : {', '.join(sorted(set(leaks)))}")
                 if not dry:
                     b.update(n["id"], title=n["title"], body=n.get("body", ""))
-        for e in list(b.edges):  # « A remplace B » : B est archivé (il reste consultable)
-            if e["rel"] == "supersedes" and e["to"] in b.nodes and b.nodes[e["to"]].get("status", "active") == "active" \
+        for e in list(b.edges):  # « A remplace B » : B est archivé (il reste consultable) — jamais une page d'ami
+            if e["rel"] == "supersedes" and not e["to"].startswith("c--") and e["to"] in b.nodes \
+                    and b.nodes[e["to"]].get("status", "active") == "active" \
                     and e["from"] in b.nodes and b.nodes[e["from"]].get("status", "active") == "active":
                 actions.append(f"archivage (remplacé par `{e['from']}`) : `{e['to']}`")
                 if not dry:
@@ -799,7 +817,7 @@ def cmd_consolidate(a):
                     b.nodes[e["to"]].setdefault("meta", {})["superseded_by"] = e["from"]
                     b.dirty = True
         merged = set()
-        for n in [x for x in b.active() if x["type"] != "project"]:
+        for n in [x for x in b.active(own=True) if x["type"] != "project"]:
             if n["id"] in merged:
                 continue
             for score, m in b.similar(n["title"], n.get("body", ""), n["type"], limit=5, threshold=0.9 if strict else 0.82,
@@ -825,14 +843,14 @@ def cmd_consolidate(a):
                     b.dirty = True
                 if drop is n:
                     break
-        for n in list(b.active()):
+        for n in list(b.active(own=True)):
             if (n["type"] in ("learning", "reference", "todo", "entity") and n.get("importance", 3) <= 2
                     and not n.get("hits") and days_since(n.get("updated")) > 180):
                 actions.append(f"archivage (ancien, peu important, jamais rappelé) : `{n['id']}`")
                 if not dry:
                     n["status"] = "archived"
                     b.dirty = True
-        for n in b.active(("todo",)):
+        for n in b.active(("todo",), own=True):
             if days_since(n.get("updated")) > 45:
                 actions.append(f"à vérifier (tâche de plus de 45 j) : `{n['id']}` {n['title']}")
         seen, clean = set(), []
@@ -983,6 +1001,9 @@ def cmd_doctor(a):
             ok(False, f"wiki : synchronisation git en conflit depuis le {fmt_date(conflict)} (→ brain wiki status, git status)")
     elif mode == "missing":
         ok(False, f"wiki introuvable : {wroot} — le cerveau lit son cache sans écrire (→ rebrancher, ou config wiki.path)")
+    from . import commun as _commun
+    if _commun.member():
+        ok(not _commun.state().get("conflict"), _commun.status(b).replace("\n", " · "))
     from .common import PLUGIN
     if PLUGIN:
         _doctor_plugin(ok)
@@ -1315,6 +1336,49 @@ def cmd_wiki(a):
         die(f"action inconnue : {a.action} — init, add, pending, lint, index, log, status, sync, schema")
 
 
+def cmd_commun(a):
+    """Le cerveau commun : ce que chacun apprend nourrit le cerveau de tous, sans rien de privé."""
+    from . import commun
+    act = fold(a.action or "etat")
+    try:
+        if act in ("etat", "status"):
+            print(commun.status())
+        elif act in ("apercu", "preview"):
+            print(commun.apercu_text(Brain.load()))
+        elif act in ("rejoindre", "join"):
+            for line in commun.join(nom=a.nom, oui=a.oui):
+                print(line)
+        elif act in ("non", "refuser", "decline"):
+            print(commun.decline())
+        elif act in ("quitter", "leave"):
+            for line in commun.leave(keep=a.garder):
+                print(line)
+        elif act == "projet":
+            if not a.args:
+                die("projet manquant : brain commun projet <id> [--non]")
+            print(commun.set_project(a.args[0], share=not a.non))
+        elif act in ("sync", "synchro"):
+            if a.delai and os.environ.get("BRAIN_COMMUN_FG") != "1":
+                import time
+                time.sleep(min(float(a.delai), 600))  # envoi différé (après un ajout) : les ajouts suivants partent avec
+            for line in commun.sync(pull=True, push=not a.no_push, auto=a.auto):
+                print(line)
+        elif act in ("verifier", "check"):  # accès au dépôt commun (lancé en arrière-plan au démarrage)
+            ok = commun.check_access(commun.repo_url(commun.settings().get("repo")))
+            commun.save_state(access=ok, access_checked=now_iso())
+            print("✓ accès au cerveau commun" if ok else "· pas (encore) d'accès au cerveau commun")
+        elif act in ("liste", "list"):
+            b = Brain.load()
+            mine = [n for n in commun.preview(b)["shared"]]
+            print(f"Ce que tu partages ({len(mine)}) :")
+            for n in sorted(mine, key=lambda n: n["title"]):
+                print(f"- {node_line(n, 80)}")
+        else:
+            die(f"action inconnue : {a.action} — etat, apercu, rejoindre, non, quitter, projet, sync, liste")
+    except RuntimeError as exc:
+        die(str(exc))
+
+
 def cmd_import(a):
     from . import importer
     rep = importer.sync(force=a.force, dry=a.dry_run)
@@ -1428,6 +1492,8 @@ def build_parser():
     s.add_argument("--due", help="échéance (10/11, 10/11/2026, 3 novembre, demain, dans 2 semaines)")
     s.add_argument("--replaces", "--supersede", dest="replaces", help="id du souvenir que celui-ci remplace (l'ancien est archivé)")
     s.add_argument("--resume", help="page du wiki : une phrase qui dit l'essentiel (index, rappel)")
+    s.add_argument("--commun", choices=["oui", "non", "auto"], help="cerveau commun : oui = partager, non = garder privé, "
+                                                                 "auto = règles par défaut")
     s.add_argument("--sources", help="page du wiki : pages Sources qui l'appuient (« [[Titre]], [[Autre]] »)")
     s.add_argument("--domaine", help="page du wiki : domaines séparés par des virgules (business, recherche, perso, lecture…)")
     s = cmd("supersede", cmd_supersede, "« nouveau » remplace « ancien » : l'ancien est archivé avec sa date de fin", ["remplace"])
@@ -1450,6 +1516,8 @@ def build_parser():
     s.add_argument("--due", help="échéance (« none » pour l'enlever)")
     s.add_argument("--keys", help="mots-clés indexés (« none » pour les enlever)")
     s.add_argument("--resume", help="page du wiki : son résumé (« none » pour l'enlever)")
+    s.add_argument("--commun", choices=["oui", "non", "auto"], help="cerveau commun : oui = partager, non = garder privé, "
+                                                                 "auto = règles par défaut")
     s.add_argument("--sources", help="page du wiki : pages Sources à ajouter (« [[Titre]] » ; « none » pour vider)")
     s.add_argument("--domaine", help="page du wiki : domaines (« none » pour les enlever)")
 
@@ -1593,6 +1661,17 @@ def build_parser():
     s.add_argument("--no-push", action="store_true", help="init/sync : ne pas envoyer sur GitHub")
     s.add_argument("--no-pull", action="store_true", help="sync : ne pas récupérer")
     s.add_argument("--auto", action="store_true", help=argparse.SUPPRESS)
+    s = cmd("commun", cmd_commun, "cerveau commun avec les amis (jamais rien de privé) : etat · apercu · rejoindre --oui · "
+            "non · quitter · projet <id> · sync · liste", ["partage"])
+    s.add_argument("action", nargs="?", help="etat (défaut), apercu, rejoindre, non, quitter, projet, sync, liste")
+    s.add_argument("args", nargs="*")
+    s.add_argument("--oui", action="store_true", help="rejoindre : accord donné (sinon : aperçu seulement)")
+    s.add_argument("--nom", help="rejoindre : pseudo affiché aux amis")
+    s.add_argument("--garder", action="store_true", help="quitter : laisser tes pages aux amis")
+    s.add_argument("--non", action="store_true", help="projet : le rendre de nouveau privé")
+    s.add_argument("--no-push", action="store_true", help="sync : récupérer seulement")
+    s.add_argument("--auto", action="store_true", help=argparse.SUPPRESS)
+    s.add_argument("--delai", type=float, help=argparse.SUPPRESS)
     s = cmd("import", cmd_import, "importer la mémoire native de Claude Code (~/.claude/projects/*/memory)")
     s.add_argument("--force", action="store_true")
     s.add_argument("--dry-run", action="store_true")
@@ -1636,6 +1715,7 @@ def main(argv=None):
     if not getattr(args, "func", None):
         parser.print_help()
         return 0
+    from .store import ReadOnly
     from .wikistore import WikiMissing
     try:
         return args.func(args) or 0
@@ -1644,4 +1724,6 @@ def main(argv=None):
     except TimeoutError as exc:
         die(f"{exc} — une autre session écrit dans le cerveau, réessaie.")
     except WikiMissing as exc:  # wiki débranché ou déplacé : rien n'est écrit, le cache reste lisible
+        die(str(exc))
+    except ReadOnly as exc:  # page d'un ami (cerveau commun)
         die(str(exc))

@@ -55,6 +55,12 @@ def gist(n, chars=220) -> str:
     return short((n.get("meta") or {}).get("resume") or n.get("body", ""), chars)
 
 
+def label(n) -> str:
+    """Type d'un souvenir, avec l'ami qui l'a partagé pour une page du cerveau commun."""
+    who = (n.get("meta") or {}).get("commun_par")
+    return TYPES.get(n["type"], n["type"]) + (f" 🤝 {who}" if who else "")
+
+
 def emit(event, context):
     if context:
         sys.stdout.write(json.dumps({"hookSpecificOutput": {"hookEventName": event, "additionalContext": context}},
@@ -172,7 +178,7 @@ def compact_recall(brain, st, data, cfg, proj):
     lines, shown = ["🧠 Souvenirs liés au travail en cours (d'après le résumé de compaction) :"], []
     used = len(lines[0]) + 1
     for n in picks:
-        line = f"- [{TYPES.get(n['type'], n['type'])}] {n['title']} — {gist(n)} `{n['id']}`"
+        line = f"- [{label(n)}] {n['title']} — {gist(n)} `{n['id']}`"
         if used + len(line) + 1 > budget:
             break
         lines.append(line)
@@ -193,6 +199,11 @@ def on_session_start(data, cfg):
         importer.sync()  # mémoire native de Claude Code → cerveau (seulement si elle a changé)
     except Exception as exc:
         log(f"import auto-memory : {exc!r}")
+    try:  # cerveau commun : les nouveautés des amis avant de construire l'index (attente brève si la dernière est vieille)
+        from . import commun
+        commun.maybe_pull(wait=4)
+    except Exception as exc:
+        log(f"commun (démarrage) : {exc!r}")
     brain = Brain.load()
     proj = brain.project_for_path(cwd)
     wiki_root = (brain.data.get("wiki") or {}).get("root")
@@ -249,6 +260,13 @@ def on_session_start(data, cfg):
             text = f"{text}\n\n{wiki_start(brain, cfg)}".rstrip()
         except Exception as exc:
             log(f"wiki (démarrage) : {exc!r}")
+    try:  # cerveau commun : état (membre) ou proposition d'y entrer (une fois par jour, s'il est ouvert)
+        from . import commun
+        line = commun.notice(brain)
+        if line:
+            text = f"{text}\n\n{line}"
+    except Exception as exc:
+        log(f"commun (démarrage) : {exc!r}")
     st["started"] = st.get("started") or now_iso()
     st["injected_at"] = now_iso()
     save_state(sid, st)
@@ -285,6 +303,11 @@ def pc_watch(cfg):
 def on_prompt(data, cfg):
     rc = cfg["recall"]
     raw = (data.get("prompt") or "").strip()
+    try:  # cerveau commun : les pages des amis, récupérées en arrière-plan (au plus une fois par minute)
+        from . import commun
+        commun.maybe_pull(wait=2.5)
+    except Exception as exc:
+        log(f"commun (message) : {exc!r}")
     if not rc["enabled"] or len(raw) < 6 or raw.startswith("/"):
         return
     pcline = pc_watch(cfg)
@@ -324,7 +347,7 @@ def on_prompt(data, cfg):
     used = sum(len(x) + 1 for x in out)
     shown_mem, shown_files = [], []
     groups = [("🧠 Souvenirs pertinents (cerveau) :",
-               [(n, f"- [{TYPES.get(n['type'], n['type'])}] {n['title']} — {gist(n)} `{n['id']}`")
+               [(n, f"- [{label(n)}] {n['title']} — {gist(n)} `{n['id']}`")
                 for n in picks], shown_mem)]
     if files:
         groups.append((f"📁 Fichiers probablement concernés (carte `{proj['id']}`) :",
@@ -430,6 +453,11 @@ def on_stop(data, cfg):
             st["reminded_at"] = tx["tools"]
             block = after_compact = True
     save_state(sid, st)
+    try:  # cerveau commun : récupéré pendant que l'utilisateur lit la réponse → son prochain message voit les nouveautés
+        from . import commun
+        commun.maybe_pull()
+    except Exception as exc:
+        log(f"commun (fin de tour) : {exc!r}")
     if after_compact:
         sys.stdout.write(json.dumps({"decision": "block", "reason": OBS_REASON}, ensure_ascii=False))
     elif block:
@@ -487,6 +515,13 @@ def on_session_end(data, cfg, event="session-end"):
                 spawn_background(["wiki", "sync", "--auto"])
         except Exception as exc:
             log(f"wiki fin de session : {exc!r}")
+    if event == "session-end":
+        try:  # cerveau commun : ma part publique (et le journal des projets communs) part en fin de session
+            from . import commun
+            if commun.member():
+                commun.spawn(["commun", "sync", "--auto"])
+        except Exception as exc:
+            log(f"commun fin de session : {exc!r}")
     if event == "session-end":
         try:  # visualisation 3D et analyse du graphe gardées à jour sans y penser
             from . import viz

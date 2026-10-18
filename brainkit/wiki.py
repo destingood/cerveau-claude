@@ -441,12 +441,14 @@ def _summary(n, chars=130) -> str:
 def render_index(data, root) -> str:
     from .dates import due_of
     from .store import TYPES, priority
-    nodes = [n for n in (data.get("nodes") or {}).values() if n.get("status", "active") == "active"]
+    nodes = [n for n in (data.get("nodes") or {}).values() if n.get("status", "active") == "active"
+             and not n["id"].startswith("c--")]  # le wiki, ce sont mes pages (pas celles des amis)
     files = (data.get("wiki") or {}).get("files") or {}
     names = {nid: ws.stem(v["path"]) for nid, v in files.items() if v.get("path")}
     raw = raw_files(root)
     pend = len(pending(data, root, raw))
-    archived = sum(1 for n in (data.get("nodes") or {}).values() if n.get("status", "active") != "active")
+    archived = sum(1 for n in (data.get("nodes") or {}).values() if n.get("status", "active") != "active"
+                   and not n["id"].startswith("c--"))
     out = ["# 📚 Index du wiki", "",
            f"_Catalogue régénéré par le cerveau — ne pas modifier à la main. {len(nodes)} pages · {len(raw)} sources "
            f"brutes" + (f" ({pend} à ingérer)" if pend else "") + f" · {archived} archivée{'s' if archived > 1 else ''}. Chercher : "
@@ -558,7 +560,7 @@ def content_digest(data: bytes) -> str:
 def pending(data, root, raw=None) -> list:
     """Sources à ingérer : fichiers de raw/ sans page Sources, et pages Sources encore à remplir."""
     raw = raw_files(root) if raw is None else raw
-    srcs = [n for n in (data.get("nodes") or {}).values() if n["type"] == "source"]
+    srcs = [n for n in (data.get("nodes") or {}).values() if n["type"] == "source" and not n["id"].startswith("c--")]
     known = {str((n.get("meta") or {}).get("brut") or "").replace("\\", "/").lower() for n in srcs}
     out = [{"raw": r, "page": None} for r in raw if r.lower() not in known]
     for n in srcs:
@@ -936,13 +938,14 @@ def lint(brain, root=None, limit=12) -> dict:
     data = brain.data
     files = (data.get("wiki") or {}).get("files") or {}
     names = {nid: ws.stem(v["path"]) for nid, v in files.items() if v.get("path")}
-    nodes = data["nodes"]
+    nodes = {k: v for k, v in data["nodes"].items() if not k.startswith("c--")}  # mes pages, pas celles des amis
     stems = {s.lower(): nid for nid, s in names.items()}
     find = ws._resolver(nodes, stems)
     active = [n for n in nodes.values() if n.get("status", "active") == "active"]
     inbound = {}
     for e in data["edges"]:
-        inbound[e["to"]] = inbound.get(e["to"], 0) + 1
+        if e["to"] in nodes:
+            inbound[e["to"]] = inbound.get(e["to"], 0) + 1
     broken = {}
     for n in active:
         for t in ws.links_in(n.get("body", "")):
@@ -1204,9 +1207,10 @@ def init(path, migrate=True, push=True) -> list:
     return report
 
 
-def journal_pages() -> dict:
+def journal_pages(sessions=True, keep=None) -> dict:
     """L'historique du cerveau (sa mémoire épisodique) en pages : sessions passées et observations datées, archivées
-    comprises, mois par mois → {« journal/AAAA-MM.md »: texte}. Généré : rien ne s'y écrit à la main."""
+    comprises, mois par mois → {« journal/AAAA-MM.md »: texte}. Généré : rien ne s'y écrit à la main.
+    sessions=False / keep(observation) → bool : la part publique (cerveau commun) — observations choisies seulement."""
     import datetime as _dt
     from . import journal as jr
     from . import observations as ob
@@ -1216,7 +1220,7 @@ def journal_pages() -> dict:
     def day(d):
         return days.setdefault(d, {"s": [], "o": {}})
 
-    for sess in (jr.load().get("sessions") or {}).values():
+    for sess in (jr.load().get("sessions") or {}).values() if sessions else ():
         d = str(sess.get("end") or sess.get("start") or "")[:10]
         if len(d) == 10 and (sess.get("title") or sess.get("first") or sess.get("brief")):
             day(d)["s"].append(sess)
@@ -1228,7 +1232,7 @@ def journal_pages() -> dict:
         olds = []
     for o in olds + list(ob.load().get("obs") or []):
         d = str(o.get("at") or "")[:10]
-        if len(d) == 10 and o.get("t"):
+        if len(d) == 10 and o.get("t") and (keep is None or keep(o)):
             day(d)["o"][o.get("id") or f"{o['at']}{o['t']}"] = o
     months = {}
     for d in sorted(days):

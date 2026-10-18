@@ -17,7 +17,7 @@ import tempfile
 from pathlib import Path
 
 from . import __version__
-from .common import CODE_DIR, load_config, set_config
+from .common import CODE_DIR, load_config, read_json, set_config
 
 NAME = MARKET = "cerveau"
 DESC = ("Cerveau persistant pour Claude Code : souvenirs en graphe, rappel automatique à chaque message, wiki Markdown "
@@ -53,6 +53,7 @@ def _hook(arg: str, timeout: int, status=None) -> dict:
 
 def readme(owner: str, repo: str) -> str:
     repo = repo or "PROPRIETAIRE/DEPOT"
+    commun = (read_json(CODE_DIR / "brainkit" / "commun.json", {}) or {}).get("repo") or "PROPRIETAIRE/cerveau-commun"
     return f"""# 🧠 Cerveau pour Claude Code
 
 Une mémoire persistante pour Claude Code, faite par {owner} : Claude se souvient de toi, de tes projets, de tes
@@ -68,8 +69,13 @@ décisions et de ce qu'il a appris, d'une session à l'autre.
   déposes des sources (articles, PDF, transcriptions, notes) ; Claude les lit et tient à jour des pages de synthèse
   (sources résumées, entités, concepts, sujets, analyses), liées entre elles. Rien ne change tant que tu ne le lances pas.
 
+- **Nouveau — le cerveau commun** : si tu le veux, ce que tu apprends (recherches, savoir, projets que tu déclares
+  communs) nourrit aussi le cerveau de tes amis, et le leur nourrit le tien, presque en temps réel. Claude te le
+  propose ; rien ne part avant ton oui, et jamais ton profil, tes préférences ni rien de personnel ou de sensible.
+
 Tout reste chez toi, dans `~/.claude/brain` — ou dans ton wiki, sur ton PC et, si tu le choisis, dans ton dépôt
-GitHub privé : rien n'est envoyé ailleurs, et chacun a sa propre mémoire.
+GitHub privé. Rien n'est envoyé ailleurs, sauf ta part publique si tu rejoins le cerveau commun ; chacun garde sa
+propre mémoire.
 
 ## Installer (une seule fois)
 
@@ -107,6 +113,25 @@ Rien à faire : parle normalement à Claude. Pour aller plus loin, demande-lui �
 Avec un wiki : « ingère cet article », « range cette réponse dans le wiki », « fais le point sur le wiki » (contrôle de
 santé : pages à créer, sources en attente, pages dépassées). Le schéma que suit Claude est dans le `CLAUDE.md` du wiki :
 fais-le évoluer avec lui.
+
+## Le cerveau commun (avec tes amis)
+
+1. {owner} t'invite sur le dépôt GitHub privé du cerveau commun : accepte l'invitation (e-mail, ou
+   https://github.com/notifications). Dépôt : `{commun}`.
+2. Au démarrage suivant, Claude te le propose et te montre ce qui partirait. Rien ne part avant ton oui ; la première
+   fois, une fenêtre de connexion à GitHub peut s'ouvrir.
+3. Ensuite tout est automatique : ce que tu apprends part une quinzaine de secondes après (le temps de corriger ou de
+   dire « garde ça pour moi »), ce que tes amis apprennent arrive à ton message suivant (moins de 2 minutes), marqué 🤝
+   et en lecture seule.
+
+Ne part jamais : ton profil et tes préférences, le contenu sensible (santé, argent, intimité, identité, opinions, mots
+de passe), les personnes, tes documents personnels, tes projets tant que tu ne les déclares pas communs (« partage le
+projet X avec les amis »), le texte de tes sessions. Coordonnées, secrets, chemins de fichiers et liens d'accès
+(documents partagés, invitations, réunions) sont retirés du reste. « Garde ça pour moi » : la page reste privée.
+`brain commun` montre l'état ; `brain commun quitter` pour en sortir (tes pages sont retirées).
+
+Pour le lancer ({owner}) : crée sur GitHub le dépôt **privé et vide** `{commun}`,
+invite tes amis (Settings → Collaborators → Add people), puis rejoins-le le premier (dis oui quand Claude le propose).
 
 ## Désinstaller
 

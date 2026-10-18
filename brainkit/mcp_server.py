@@ -39,6 +39,8 @@ TOOLS = [
          "keys": {"type": "string", "description": "mots-clés, synonymes, questions types pour le retrouver"},
          "resume": {"type": "string", "description": "page du wiki : une phrase qui dit l'essentiel"},
          "sources": {"type": "string", "description": "page du wiki : pages Sources qui l'appuient (« [[Titre]], … »)"},
+         "commun": {"type": "string", "enum": ["oui", "non", "auto"],
+                    "description": "cerveau commun des amis : oui = partager, non = garder privé, auto = règles par défaut"},
          "source": {"type": "string", "enum": ["utilisateur", "verifie", "claude", "deduit"],
                     "description": "provenance : dit par l'utilisateur, vérifié, Claude, déduit"}},
          "required": ["type", "title", "body"]}},
@@ -57,6 +59,7 @@ TOOLS = [
          "due": {"type": "string", "description": "échéance, « none » pour l'enlever"},
          "resume": {"type": "string", "description": "page du wiki : nouveau résumé"},
          "sources": {"type": "string", "description": "page du wiki : pages Sources à ajouter"},
+         "commun": {"type": "string", "enum": ["oui", "non", "auto"], "description": "cerveau commun : partager ou non"},
          "done": {"type": "boolean", "description": "à-faire terminé"},
          "archive": {"type": "boolean", "description": "archiver (réversible)"}},
          "required": ["id"]}},
@@ -133,7 +136,7 @@ def call_tool(name, args):
             argv += ["--replaces", str(args["replaces"])]
         if args.get("keys"):
             argv += ["--keys", str(args["keys"])]
-        for key in ("resume", "sources"):
+        for key in ("resume", "sources", "commun"):
             if args.get(key):
                 argv += [f"--{key}", str(args[key])]
         argv += ["--source", str(args.get("source") or "mcp")]
@@ -148,7 +151,7 @@ def call_tool(name, args):
             return _run_cli(["rm", nid])
         argv = ["edit", nid]
         for key, flag in (("append", "-a"), ("body", "-b"), ("title", "-T"), ("importance", "-i"), ("due", "--due"),
-                          ("resume", "--resume"), ("sources", "--sources")):
+                          ("resume", "--resume"), ("sources", "--sources"), ("commun", "--commun")):
             if args.get(key) not in (None, ""):
                 argv += [flag, str(args[key])]
         if len(argv) == 2:

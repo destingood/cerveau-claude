@@ -11,11 +11,11 @@ from .common import (CMD, EXPORT_FILE, GRAPH_FILE, INDEX_FILE, JOURNAL_FILE, PRO
 from .store import TYPES, priority
 
 ID_RE = re.compile(r"`([a-z0-9][a-z0-9\-]*)`")
-# Poids des sections (échéances, profil, règles, projets, savoir global, références, à faire, wiki). Partage max-min : une
+# Poids des sections (échéances, profil, règles, projets, savoir, références, à faire, wiki, commun). Partage max-min : une
 # section qui demande moins que sa part la reçoit entière, les autres se partagent le reste au prorata. Profil et règles
 # raccourcissent leurs corps pour tenir en entier ; dans un projet, la fiche du projet porte déjà l'essentiel.
-WEIGHTS = (1.5, 2.5, 3.0, 2.5, 2.0, 0.6, 0.8, 0.9)
-WEIGHTS_FOCUS = (1.5, 2.5, 3.0, 0.0, 1.2, 0.4, 0.6, 0.6)  # dernière section : pages de savoir du wiki
+WEIGHTS = (1.5, 2.5, 3.0, 2.5, 2.0, 0.6, 0.8, 0.9, 0.7)
+WEIGHTS_FOCUS = (1.5, 2.5, 3.0, 0.0, 1.2, 0.4, 0.6, 0.6, 0.5)  # avant-dernière : savoir du wiki ; dernière : cerveau commun
 
 
 def _allocate(needs, weights, total):
@@ -100,7 +100,9 @@ def build_index(brain, cfg=None, focus=None, previews=None) -> str:
     cfg = cfg or load_config()
     # dans un projet, la fiche du projet porte déjà l'essentiel : l'index global se resserre sur ce qui s'y rapporte
     budget = budget_chars(cfg["inject"], "index_tokens_project" if focus else "index_tokens")
-    act = list(brain.active())
+    act = list(brain.active(own=True))
+    friends = sorted((n for n in brain.active() if n["id"].startswith("c--")),  # cerveau commun : le plus récent d'abord
+                     key=lambda n: n.get("updated") or "", reverse=True)
     seen = journal.last_seen_by_project()
     rel = _relevance(brain, focus) if focus else {}
 
@@ -161,6 +163,9 @@ def build_index(brain, cfg=None, focus=None, previews=None) -> str:
         ("☑️ À faire", rest(lambda n: n["type"] == "todo", 100, 6)),
         ("📚 Wiki (sujets, concepts, analyses)" + (" — titres" if focus else ""),
          rest(lambda n: n["type"] in ("topic", "concept", "analysis"), 110, 8)),
+        ("🤝 Cerveau commun — récent chez les amis (lecture seule)" + (" — titres" if focus else ""),
+         lambda a: [(title_line(n) if focus else line(n, 100)).replace(f" `{n['id']}`", f" 🤝 {(n.get('meta') or {}).get('commun_par', '?')} `{n['id']}`")
+                    for n in friends[:8]]),
     ]
     header = f"# 🧠 Cerveau — mémoire persistante (index du {fmt_date(now_iso())})"
     footer = f"_{len(act)} souvenirs · {len(brain.edges)} liens — `show <id>` pour le détail._"

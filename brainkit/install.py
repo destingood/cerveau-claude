@@ -16,7 +16,7 @@ CLAUDE_BLOCK = f"""<!-- BRAIN:START (géré par ~/.claude/brain — `brain insta
 # 🧠 Cerveau persistant (`~/.claude/brain`)
 Injecté tout seul : index + fiche du projet au démarrage, souvenirs/fichiers pertinents à chaque message (blocs 🧠/📁).
 S'en servir AVANT d'explorer ou de redemander. Outil : `{CMD} <cmd>` (Bash/PowerShell) — détail : skill `/brain`.
-`q "sujet"` · `add -t <type> -T "titre" -b "fait + pourquoi + comment"` · `edit`/`show <id>` · `todo` · `files`/`where`/`explain <x>` · `map .` · `wiki add <source>`
+`q "sujet"` · `add -t <type> -T "titre" -b "fait + pourquoi + comment"` · `edit`/`show <id>` · `todo` · `files`/`where`/`explain <x>` · `map .` · `wiki add <source>` · `commun` (cerveau des amis)
 1. Projet : carte (MAP.md) et `files`/`where`/`explain` avant tout Glob/Grep/Read en masse ; pas de carte → `map .`.
 2. Mémoriser aussitôt le durable — feedback (préférence, correction), user, decision, fact (travail en cours),
    learning (piège, solution), reference, todo (`--due`) — après un `q` anti-doublon.
@@ -106,6 +106,31 @@ Méthode d'ingestion (détail dans le CLAUDE.md du wiki) : lire la source → di
 Sources (remplacer « ⏳ à remplir », `resume:`) → intégrer dans les pages concernées (10 à 15 pages, `sources:`),
 contradictions en `> [!contradiction]` → `wiki log ingest`. Une bonne réponse se range dans une page Analyses.
 Sur le PC, commit/pull/push se font seuls en début et en fin de session ; dans une session cloud, pousser sur sa branche.
+
+## Cerveau commun (avec les amis)
+Ce que chacun apprend nourrit le cerveau de tous, presque en temps réel (envoi ~15 s après un ajout — corriger ou
+`--commun non` dans ce délai et le premier jet ne part pas ; pages des amis récupérées au démarrage, à chaque message et
+en fin de tour, au plus une fois par minute), **sans rien de privé**. Un
+dépôt GitHub privé ; chaque cerveau publie sa part publique dans `membres/<nom>/` et lit celle des autres en lecture
+seule (pages marquées 🤝 nom).
+**Ne part jamais** : profil, règles, contenu sensible (santé, argent, intimité, identité, opinions, accès), page ayant
+contenu un secret, personnes, documents personnels (source sans adresse web publique) et ce qui n'est tiré que d'eux,
+références, domaine « perso », projets non partagés, ce qui est marqué privé, texte des sessions. Retirés du reste :
+coordonnées, secrets, chemins de fichiers, liens d'accès (document partagé, invitation, réunion) ; lien vers une page
+privée → « [privé] ». **Part** : le savoir (sources web, concepts, sujets, analyses, apprentissages, entités qui ne sont
+pas des personnes : appuyées sur une source web ou étiquetées entreprise, outil, lieu, œuvre…), ce qui appartient à un
+projet commun, ce qui est marqué partagé. Rien ne part avant l'accord : quand le démarrage propose le cerveau commun, le
+dire à l'utilisateur avec l'aperçu, et n'entrer qu'avec son oui.
+
+| But | Commande |
+|---|---|
+| État · ce qui partirait (et ce qui reste privé) · ce que je partage | `commun` · `commun apercu` · `commun liste` |
+| Entrer (après l'accord de l'utilisateur) · refuser · sortir | `commun rejoindre --oui --nom <pseudo>` · `commun non` · `commun quitter [--garder]` |
+| Partager un projet (ses tâches, décisions, faits, observations) · le rendre privé | `commun projet <id>` · `commun projet <id> --non` |
+| Forcer pour un souvenir : partager · garder privé · règles par défaut | `add`/`edit … --commun oui\\|non\\|auto` |
+| Synchroniser tout de suite | `commun sync` |
+
+Pages des amis : s'en servir, les citer ; pour compléter, écrire sa propre page (elle part). Elles ne se modifient pas.
 
 ## Ailleurs que dans l'onglet Code
 | But | Commande |

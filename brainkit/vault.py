@@ -398,7 +398,7 @@ def sync(root, do_import=True) -> dict:
         handled = set(previous)
     # ---- export : le cerveau → le coffre
     brain = Brain.load()
-    nodes = [n for n in brain.active() if n["type"] in FOLDERS]
+    nodes = [n for n in brain.active(own=True) if n["type"] in FOLDERS]  # sans les pages des amis
     names = _assign_names(nodes, previous)
     files, written = {}, set()
     for n in nodes:
