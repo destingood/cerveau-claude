@@ -131,7 +131,8 @@ sont jamais touchés par une mise à jour.
 ## Au quotidien
 
 Rien à faire : parle normalement à Claude. Pour aller plus loin, demande-lui « qu'est-ce que tu sais sur … ? »,
-« retiens que … », ou tape `/brain`. Vue 3D de ta mémoire : `~/.claude/brain/cerveau.html`.
+« retiens que … », ou tape `/brain`. Vue 3D de ta mémoire : `~/.claude/brain/cerveau.html` (souvenirs, projets,
+le cerveau e-commerce avec ses fiches et ses outils, et tes boutiques suivies).
 
 Pour une boutique : « fais décoller ma boutique », « trouve-moi des clients sans pub », « audite mon site », « quel
 produit vendre ? », « fais le point de la semaine » — le cerveau e-commerce prend le relais tout seul (ou tape

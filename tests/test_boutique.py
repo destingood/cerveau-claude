@@ -221,6 +221,31 @@ c, out = brain("boutique", "liste")
 check(c == 0 and "Atelier Lumière" in out and "plan 0/17" in out and "audit du" in out, "liste : état de la boutique",
       out)
 
+# ------------------------------------------------------------------ 6 bis. la vue 3D montre la boutique et le cerveau e-commerce
+c, out = brain("viz")
+html = (TMP / "brain" / "cerveau.html").read_text(encoding="utf-8") if (TMP / "brain" / "cerveau.html").exists() else ""
+try:
+    data = json.JSONDecoder().raw_decode(html[html.index('{"generated"'):].replace("<\\/", "</"))[0]
+except ValueError:
+    data = {"nodes": [], "edges": [], "comms": [], "stats": {}}
+vnodes = {n["id"]: n for n in data["nodes"]}
+shop_node = vnodes.get("boutique:atelier-lumiere", {})
+check(c == 0 and shop_node.get("t") == "boutique" and "1 000" not in shop_node.get("body", "x")
+      and "plan : 17 étapes" in shop_node.get("body", ""), "vue 3D : la boutique suivie est un nœud (chiffres, plan)",
+      shop_node)
+check(vnodes.get("skill:ecommerce", {}).get("t") == "skill" and sum(1 for i in vnodes if i.startswith("skill:ecommerce:"))
+      >= 20, "vue 3D : le cerveau e-commerce, ses fiches et ses outils", [i for i in vnodes if i.startswith("skill:")][:3])
+links = {(e["s"], e["t"]) for e in data["edges"]}
+fiche_id = shop_file()["fiche"]
+check(("boutique:atelier-lumiere", fiche_id) in links and ("boutique:atelier-lumiere", "skill:ecommerce") in links
+      and sum(1 for s_, t in links if t == "boutique:atelier-lumiere") >= 17,
+      "vue 3D : boutique reliée à sa fiche, au cerveau e-commerce et à son plan")
+check(data["stats"].get("shops") == 1 and data["stats"].get("skills") == 1
+      and data["stats"].get("memories") == sum(1 for n in data["nodes"] if n["t"] not in ("project", "skill", "boutique")),
+      "vue 3D : compteurs (boutiques, compétences ; les souvenirs ne les comptent pas)", data["stats"])
+check({"Cerveau e-commerce", "Boutiques suivies"} <= {c_["label"] for c_ in data["comms"]},
+      "vue 3D : groupes « Cerveau e-commerce » et « Boutiques suivies » dans la légende")
+
 # ------------------------------------------------------------------ 7. sauvegarde et restauration
 c, out = brain("backup", "--to", TMP / "sauvegardes")
 zips = sorted((TMP / "sauvegardes").glob("cerveau-*.zip"))

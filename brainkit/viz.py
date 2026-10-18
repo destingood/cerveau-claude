@@ -3,18 +3,125 @@
 - cerveau.html : vue 3D (3d-force-graph / three.js) — communautés en couleur, taille = centralité, liens explicites
   animés, liens déduits en courbes, panneau de détails, rapport, recherche, tableau ; cartes de projets en 3D.
 - cerveau-2d.html : la vue 2D d'origine, 100 % locale (fonctionne hors ligne), mêmes données.
-Les cartes de projets (map.json, jusqu'à plusieurs Mo) sont résumées une fois puis mises en cache (state/vizmaps)."""
+Les cartes de projets (map.json, jusqu'à plusieurs Mo) sont résumées une fois puis mises en cache (state/vizmaps).
+Le cerveau montre aussi ce qu'il sait faire et ce qu'il suit : chaque skill métier (cerveau e-commerce…) avec ses
+modules et ses outils, et chaque boutique suivie (`brain boutique`), reliée à sa fiche et à son plan."""
 from __future__ import annotations
 
 import json
 from collections import Counter
 
-from .common import (GRAPH_FILE, PROJECTS_DIR, STATE_DIR, VIZ2D_FILE, VIZ_FILE, log, now_iso, read_json, write_json,
-                     write_text)
+from .common import (BRAIN_DIR, GRAPH_FILE, PLUGIN, PROJECTS_DIR, STATE_DIR, VIZ2D_FILE, VIZ_FILE, log, now_iso,
+                     read_json, write_json, write_text)
 from .store import Brain
 
 VIZMAP_DIR = STATE_DIR / "vizmaps"
 VIZMAP_VERSION = 2
+SKILL_LABELS = {"ecommerce": "Cerveau e-commerce"}
+VIRTUAL = ("skill", "boutique")  # nœuds de la vue qui ne sont pas des souvenirs
+
+
+def _first(path, chars=360) -> tuple:
+    """(titre, premier paragraphe) d'un module Markdown ou (première ligne de docstring, suite) d'un outil Python."""
+    try:
+        text = path.read_text(encoding="utf-8", errors="replace")
+    except OSError:
+        return path.stem, ""
+    if path.suffix == ".py":
+        import re
+        m = re.search(r'"""(.*?)"""', text, re.S)
+        doc = (m.group(1) if m else "").strip().splitlines()
+        return (doc[0] if doc else path.name), " ".join(x.strip() for x in doc[1:6] if x.strip())[:chars]
+    lines = text.splitlines()
+    if lines and lines[0].strip() == "---":  # en-tête YAML d'une skill : sauté
+        end = next((i for i, x in enumerate(lines[1:], 1) if x.strip() == "---"), 0)
+        lines = lines[end + 1:]
+    title = next((x[2:].strip() for x in lines if x.startswith("# ")), path.stem)
+    para, started = [], False
+    for x in lines:
+        if x.strip() and not x.startswith("#") and not x.startswith("|"):
+            para.append(x.strip())
+            started = True
+        elif started:
+            break
+    return title, " ".join(para)[:chars]
+
+
+def _skills_and_shops(ids: set, comms: list, prs: dict) -> tuple:
+    """Skills métier (avec modules et outils) et boutiques suivies, en nœuds de la vue. → (nœuds, liens, groupes)."""
+    nodes, edges, groups = [], [], []
+    top = max(prs.values(), default=0.02) or 0.02
+    next_id = max((c["id"] for c in comms if isinstance(c.get("id"), int)), default=-1) + 1
+
+    def node(nid, t, title, body, imp=3, pr=0.0, tags=(), c=None):
+        nodes.append({"id": nid, "t": t, "title": title, "body": body, "tags": list(tags), "p": None, "imp": imp,
+                      "hits": 0, "upd": "", "path": None, "c": c, "pr": pr, "deg": 0, "cre": ""})
+
+    hubs = {}
+    try:
+        from .install import skill_sources
+        sources = skill_sources()
+    except Exception as exc:
+        log(f"viz (skills) : {exc!r}")
+        sources = {}
+    for name, src in sources.items():
+        cid, next_id = next_id, next_id + 1
+        hub = f"skill:{name}"
+        hubs[name] = hub
+        label = SKILL_LABELS.get(name, name)
+        mods = sorted((src / "references").glob("*.md")) if (src / "references").is_dir() else []
+        tools = sorted((src / "scripts").glob("*.py")) if (src / "scripts").is_dir() else []
+        _, intro = _first(src / "SKILL.md")
+        cmd = f"/cerveau:{name}" if PLUGIN else f"/{name}"
+        node(hub, "skill", f"{label} ({cmd})",
+             f"Skill métier livrée avec le cerveau : {len(mods)} fiches, {len(tools)} outils. {intro}".strip(),
+             imp=5, pr=top * 0.9, tags=("skill", name), c=cid)
+        members = [hub]
+        for path in mods + tools:
+            title, para = _first(path)
+            nid = f"skill:{name}:{path.name}"
+            node(nid, "skill", ("Outil · " if path.suffix == ".py" else "") + title, para, pr=top * 0.15,
+                 tags=("skill", name), c=cid)
+            edges.append({"s": nid, "t": hub, "r": "part_of"})
+            members.append(nid)
+        groups.append({"id": cid, "label": label, "size": len(members), "project": None, "words": [name],
+                       "members": members})
+    try:
+        from . import boutique
+        shops = boutique.all_shops() if (BRAIN_DIR / "boutiques").is_dir() else []
+    except Exception as exc:
+        log(f"viz (boutiques) : {exc!r}")
+        shops = []
+    if shops:
+        cid = next_id
+        members = []
+        for s in shops:
+            bid = f"boutique:{s['slug']}"
+            last = (s.get("kpi") or [])[-1:]
+            bits = [x for x in (s.get("url"), s.get("plateforme"), s.get("type")) if x]
+            if last:
+                k = last[0]
+                num = lambda v: "?" if v is None else (f"{v:.0f}" if float(v).is_integer() else f"{v:.2f}".replace(".", ","))  # noqa: E731
+                bits.append(f"semaine du {k.get('semaine')} : {num(k.get('sessions'))} sessions, "
+                            f"{num(k.get('commandes'))} commandes"
+                            + (f", CA {num(k.get('ca'))} €" if k.get("ca") is not None else ""))
+            plan = s.get("plan") or []
+            if plan:
+                bits.append(f"plan : {len(plan)} étapes datées")
+            if s.get("audits"):
+                a = s["audits"][-1]
+                bits.append(f"audit du {a.get('date')} : ✗ {a.get('x', 0)} · ⚠ {a.get('warn', 0)}")
+            node(bid, "boutique", f"🏪 {s['nom']}", " · ".join(bits), imp=5, pr=top * 0.7,
+                 tags=("boutique", s["slug"]), c=cid)
+            members.append(bid)
+            if "ecommerce" in hubs:
+                edges.append({"s": bid, "t": hubs["ecommerce"], "r": "relates"})
+            if s.get("fiche") in ids:
+                edges.append({"s": bid, "t": s["fiche"], "r": "relates"})
+            edges += [{"s": p["id"], "t": bid, "r": "part_of"} for p in plan if p.get("id") in ids]
+        groups.append({"id": cid, "label": "Boutiques suivies", "size": len(members), "project": None,
+                       "words": ["boutique"], "members": members})
+    return nodes, edges, groups
 
 
 def _map_payload(p):
@@ -73,6 +180,8 @@ def is_stale() -> bool:
     try:
         if GRAPH_FILE.stat().st_mtime > t:
             return True
+        if any(b.stat().st_mtime > t for b in (BRAIN_DIR / "boutiques").glob("*.json")):  # boutique suivie modifiée
+            return True
         return any(m.stat().st_mtime > t for m in PROJECTS_DIR.glob("*/map.json"))
     except OSError:
         return True
@@ -102,14 +211,20 @@ def render(brain=None):
     maps = [m for m in (_map_payload_cached(p) for p in brain.projects()) if m]
     comms = [{"id": c["id"], "label": c["label"], "size": c["size"], "project": c.get("project"), "words": c.get("words", []),
               "members": [i for i in c["members"] if i in ids]} for c in an.get("communities", [])]
+    extra, extra_edges, extra_comms = _skills_and_shops(ids, comms, prs)
+    nodes += extra
+    edges += extra_edges
+    comms += extra_comms
     data = {"generated": now_iso(), "nodes": nodes, "edges": edges, "maps": maps,
             "inf": [e for e in an.get("inferred", []) if e["s"] in ids and e["t"] in ids],
             "comms": comms, "key": an.get("key", []),
             "concepts": [{"id": c["id"], "label": c["label"], "kind": c["kind"], "members": [i for i in c["members"] if i in ids]}
                          for c in an.get("concepts", [])], "bridges": an.get("bridges", []), "dups": an.get("dups", []),
             "gaps": an.get("gaps", {}), "questions": an.get("questions", []),
-            "stats": {"memories": sum(1 for n in nodes if n["t"] != "project"),
-                      "projects": sum(1 for n in nodes if n["t"] == "project"), "links": len(edges), "maps": len(maps)}}
+            "stats": {"memories": sum(1 for n in nodes if n["t"] != "project" and n["t"] not in VIRTUAL),
+                      "projects": sum(1 for n in nodes if n["t"] == "project"), "links": len(edges), "maps": len(maps),
+                      "skills": sum(1 for c in extra_comms if c["label"] != "Boutiques suivies"),
+                      "shops": sum(1 for n in nodes if n["t"] == "boutique")}}
     payload = json.dumps(data, ensure_ascii=False).replace("</", "<\\/")
     write_text(VIZ_FILE, TEMPLATE_3D.replace("__LIBS__", json.dumps(list(LIBS))).replace("__DATA__", payload))
     write_text(VIZ2D_FILE, TEMPLATE_2D.replace("__DATA__", payload))
@@ -210,7 +325,8 @@ const cv = $('#cv'), ctx = cv.getContext('2d'), tip = $('#tip'), panel = $('#pan
 const TYPES = {user:['Profil','s1','circle'], feedback:['Règle','s1','diamond'], project:['Projet','s2','square'],
   decision:['Décision','s3','triangle'], fact:['Fait','s3','diamond'], learning:['Apprentissage','s3','circle'], reference:['Référence','other','square'],
   entity:['Entité','other','circle'], todo:['À faire','other','ring'], source:['Source','other','square'],
-  concept:['Concept','s3','circle'], topic:['Sujet','s2','diamond'], analysis:['Analyse','s3','triangle']};
+  concept:['Concept','s3','circle'], topic:['Sujet','s2','diamond'], analysis:['Analyse','s3','triangle'],
+  skill:['Compétence','s2','diamond'], boutique:['Boutique','s2','square']};
 const KIND = {code:['code','circle'], doc:['document','square'], data:['données','diamond'], asset:['média','triangle'], other:['autre','ring']};
 const SLOTS = ['s1','s2','s3'];
 const state = {view:null, hidden:new Set(), q:'', hover:null, sel:null, scale:1, tx:0, ty:0, w:0, h:0, dpr:1};
