@@ -393,8 +393,8 @@ def build(root, pages, old=None) -> dict:
     return data
 
 
-def _parse_cache(root) -> dict:
-    pc = read_json(PARSE_FILE, {}) or {}
+def _parse_cache(root, parse_file=None) -> dict:
+    pc = read_json(parse_file or PARSE_FILE, {}) or {}
     return dict(pc.get("files") or {}) if pc.get("root") == str(root) and pc.get("v") == 1 else {}
 
 
@@ -412,19 +412,21 @@ def _keep_classic(cache):
             log(f"wiki : copie du graph.json classique : {exc!r}")
 
 
-def load(root, write=True) -> dict:
+def load(root, write=True, cache_file=None, parse_file=None) -> dict:
     """Données du graphe d'après le wiki : le cache s'il est à jour, sinon relecture des seules pages modifiées.
-    write=False (migration) : ni le cache ni graph.json ne sont touchés."""
+    write=False (migration) : ni le cache ni graph.json ne sont touchés. cache_file / parse_file : caches d'un autre
+    wiki que celui du cerveau (dossiers des amis dans le cerveau commun)."""
     root = Path(root)
+    cache_file, parse_file = cache_file or GRAPH_FILE, parse_file or PARSE_FILE
     entries = scan(root)
     sig = signature(entries)
-    cache = read_json(GRAPH_FILE, None)
+    cache = read_json(cache_file, None)
     if isinstance(cache, dict) and (cache.get("wiki") or {}).get("root") == str(root) \
             and cache["wiki"].get("sig") == sig and isinstance(cache.get("nodes"), dict):
         return cache
-    if write:
+    if write and cache_file == GRAPH_FILE:
         _keep_classic(cache)
-    files = _parse_cache(root)
+    files = _parse_cache(root, parse_file)
     pages, changed = {}, False
     for rel, (m, s) in entries.items():
         hit = files.get(rel)
@@ -441,7 +443,7 @@ def load(root, write=True) -> dict:
         changed = True
     if write and (changed or set(files) != set(pages)):
         try:
-            write_json(PARSE_FILE, {"v": 1, "root": str(root), "files": pages}, indent=None)
+            write_json(parse_file, {"v": 1, "root": str(root), "files": pages}, indent=None)
         except Exception as exc:
             log(f"wiki : cache des pages : {exc!r}")
     old = cache if isinstance(cache, dict) and (cache.get("wiki") or {}).get("root") == str(root) else \
@@ -450,7 +452,7 @@ def load(root, write=True) -> dict:
     data["wiki"]["sig"] = sig
     if write:
         try:
-            write_json(GRAPH_FILE, data)
+            write_json(cache_file, data)
         except Exception as exc:
             log(f"wiki : écriture du cache : {exc!r}")
     return data
@@ -601,10 +603,12 @@ def _canon_links(body, find, stems_by_id, known) -> str:
     return LINK_RX.sub(sub, body)
 
 
-def save(data, root=None, full=False) -> dict:
+def save(data, root=None, full=False, cache_file=None, parse_file=None, guard=True) -> dict:
     """Écrit dans le wiki les pages qui changent, déplace ou renomme celles qui le doivent, retire celles des souvenirs
     supprimés, puis le cache. full=True (restauration) : toutes les pages sont vérifiées et les effacements massifs
-    permis. → compte rendu {written, moved, removed}."""
+    permis. guard=False (export vers le cerveau commun) : pas de garde-fou contre les effacements massifs.
+    → compte rendu {written, moved, removed}."""
+    cache_file, parse_file = cache_file or GRAPH_FILE, parse_file or PARSE_FILE
     w = data.get("wiki") or {}
     if w.get("missing"):
         raise WikiMissing(f"wiki introuvable : {w.get('root')} — rebranche le disque, ou `brain config wiki.path <dossier>`")
@@ -631,7 +635,7 @@ def save(data, root=None, full=False) -> dict:
             out.setdefault(e["from"], []).append((e["rel"], e["to"]))
     report = {"written": 0, "moved": 0, "removed": 0}
     gone = [nid for nid in files if nid not in nodes]
-    if gone and not full and len(files) >= 10 and len(gone) > MASS_DELETE * len(files):
+    if gone and guard and not full and len(files) >= 10 and len(gone) > MASS_DELETE * len(files):
         raise RuntimeError(f"écriture refusée : elle effacerait {len(gone)} pages sur {len(files)} du wiki")
     new_files, writes = {}, []
     for nid, n in nodes.items():
@@ -652,11 +656,11 @@ def save(data, root=None, full=False) -> dict:
         writes.append((rel, text, prev.get("path")))
     if not writes and not gone:  # rien à écrire (un compteur, un rappel) : le cache seul, même signature
         data["wiki"] = {"root": str(root), "files": new_files, "sig": w.get("sig")}
-        write_json(GRAPH_FILE, data)
+        write_json(cache_file, data)
         return report
     # État connu des pages (dernière relecture + écritures du cerveau) : la signature en découle, si bien qu'une page
     # modifiée dans Obsidian entre-temps sera relue au prochain passage au lieu d'être masquée par le cache.
-    pfiles = _parse_cache(root)
+    pfiles = _parse_cache(root, parse_file)
     known = {r: (v.get("m"), v.get("s")) for r, v in pfiles.items()}
     keep = {p.lower() for p in paths.values()}
     for rel, text, _ in writes:
@@ -695,11 +699,11 @@ def save(data, root=None, full=False) -> dict:
             pass
     if writes or olds:
         try:
-            write_json(PARSE_FILE, {"v": 1, "root": str(root), "files": pfiles}, indent=None)
+            write_json(parse_file, {"v": 1, "root": str(root), "files": pfiles}, indent=None)
         except Exception as exc:
             log(f"wiki : cache des pages : {exc!r}")
     data["wiki"] = {"root": str(root), "files": new_files, "sig": signature(known)}
-    write_json(GRAPH_FILE, data)
+    write_json(cache_file, data)
     return report
 
 
@@ -715,7 +719,7 @@ def replace_all(data) -> dict:
 
 def stats(data) -> dict:
     """Compte des pages par type (actives), des archivées et des sources brutes."""
-    nodes = data.get("nodes") or {}
+    nodes = {k: v for k, v in (data.get("nodes") or {}).items() if not k.startswith("c--")}  # sans les pages des amis
     by = {}
     for n in nodes.values():
         if n.get("status", "active") == "active":

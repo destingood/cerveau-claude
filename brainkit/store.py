@@ -168,6 +168,14 @@ def load_graph():
     raise RuntimeError(f"graph.json inaccessible : {last!r}")
 
 
+class ReadOnly(RuntimeError):
+    """Page d'un ami (cerveau commun) : lecture seule."""
+
+
+def _foreign(nid) -> bool:
+    return str(nid or "").startswith("c--")
+
+
 def replace_all(data):
     """Le cerveau entier devient `data` (restauration d'un instantané ou d'une sauvegarde), sous verrou. Mode wiki :
     les pages sont réécrites, déplacées ou retirées pour correspondre (git garde l'état d'avant)."""
@@ -184,13 +192,21 @@ def replace_all(data):
 
 class Brain:
     def __init__(self, data=None):
-        if data is None:
+        loaded = data is None
+        if loaded:
             data = load_graph()
         if not isinstance(data, dict) or not isinstance(data.get("nodes"), dict):
             data = {"version": 1, "created": now_iso(), "nodes": {}, "edges": []}
         data.setdefault("edges", [])
         self.data = data
         self.dirty = False
+        if loaded:  # cerveau commun : les pages des amis entrent dans le graphe, en lecture seule
+            from . import commun
+            try:
+                commun.merge_foreign(self.data)
+            except Exception as exc:
+                from .common import log as _log
+                _log(f"commun : pages des amis : {exc!r}")
 
     @classmethod
     def load(cls):
@@ -210,13 +226,32 @@ class Brain:
         from . import history
         history.snapshot("auto")  # état d'avant la modification (au plus un toutes les 30 min)
         self.data["updated"] = now_iso()
-        if self.data.get("wiki"):  # mode wiki : les pages qui changent, puis le cache
+        data = self._own_data()
+        if data.get("wiki"):  # mode wiki : les pages qui changent, puis le cache
             from . import wikistore
-            wikistore.save(self.data)
+            wikistore.save(data)
+            self.data["wiki"] = data["wiki"]
             self._stems = None
         else:
-            write_json(GRAPH_FILE, self.data)
+            write_json(GRAPH_FILE, data)
         self.dirty = False
+        if self.data.get("commun"):  # membre du cerveau commun : ma part publique part en arrière-plan si elle change
+            from . import commun
+            commun.after_save(data)
+
+    def _own_data(self) -> dict:
+        """Ce qui s'enregistre : mes souvenirs, sans les pages des amis (ni les liens qui les touchent)."""
+        if not self.data.get("commun"):
+            return self.data
+        out = {k: v for k, v in self.data.items() if k not in ("nodes", "edges", "commun")}
+        out["nodes"] = {k: v for k, v in self.nodes.items() if not _foreign(k)}
+        out["edges"] = [e for e in self.edges if not _foreign(e["from"]) and not _foreign(e["to"])]
+        return out
+
+    def _writable(self, nid):
+        if _foreign(nid):
+            who = ((self.nodes.get(nid) or {}).get("meta") or {}).get("commun_par") or "un ami"
+            raise ReadOnly(f"page de {who} (cerveau commun) : lecture seule — écris ta propre page en la citant")
 
     def _guard(self, text):
         """Garde anti-secrets : masque clés, jetons et mots de passe avant toute écriture."""
@@ -237,11 +272,14 @@ class Brain:
         return self.data["edges"]
 
     # ------------------------------------------------------------------------------ lecture
-    def active(self, types=None):
+    def active(self, types=None, own=False):
+        """Souvenirs actifs (own=True : sans les pages des amis du cerveau commun)."""
         for n in self.nodes.values():
             if n.get("status", "active") != "active":
                 continue
             if types and n["type"] not in types:
+                continue
+            if own and _foreign(n["id"]):
                 continue
             yield n
 
@@ -268,10 +306,14 @@ class Brain:
         if slug in self.nodes:
             return self.nodes[slug]
         cands = [n for k, n in self.nodes.items() if k.startswith(slug)]
+        if len(cands) > 1:  # cerveau commun : ma page passe avant celle d'un ami
+            cands = [n for n in cands if not _foreign(n["id"])] or cands
         if len(cands) == 1:
             return cands[0]
         folded = fold(ref)
         cands = [n for n in self.nodes.values() if fold(n["title"]) == folded]
+        if len(cands) > 1:
+            cands = [n for n in cands if not _foreign(n["id"])] or cands
         return cands[0] if len(cands) == 1 else None
 
     def neighbors(self, nid):
@@ -293,7 +335,7 @@ class Brain:
         tt = set(tokenize(title))
         bt = set(tokenize(f"{title} {body}"))
         out = []
-        for n in self.active():
+        for n in self.active(own=True):  # jamais une page d'ami : rien de privé ne doit y fusionner
             if n["type"] == "project" or n["id"] == exclude:
                 continue
             if ntype and n["type"] != ntype:
@@ -307,7 +349,7 @@ class Brain:
 
     # ------------------------------------------------------------------------------ projets
     def projects(self):
-        return list(self.active(("project",)))
+        return list(self.active(("project",), own=True))
 
     def project_for_path(self, path):
         """Projet connu le plus spécifique contenant ce chemin."""
@@ -385,6 +427,7 @@ class Brain:
         return node
 
     def update(self, nid, **fields):
+        self._writable(nid)
         n = self.nodes[nid]
         for key, val in fields.items():
             if key == "project":
@@ -412,8 +455,8 @@ class Brain:
         return n
 
     def link(self, a, b, rel="relates") -> bool:
-        if a == b or a not in self.nodes or b not in self.nodes:
-            return False
+        if a == b or a not in self.nodes or b not in self.nodes or _foreign(a) or _foreign(b):
+            return False  # pas de lien enregistré vers une page d'ami : la citer dans le texte suffit
         for e in self.edges:
             if e["from"] == a and e["to"] == b and e["rel"] == rel:
                 return False
@@ -434,7 +477,7 @@ class Brain:
 
     def adjust_confidence(self, nid, delta):
         n = self.nodes.get(nid)
-        if not n:
+        if not n or _foreign(nid):
             return
         meta = dict(n.get("meta") or {})
         meta["conf"] = round(max(0.05, min(1.0, confidence(n) + delta)), 2)
@@ -446,6 +489,8 @@ class Brain:
         Rien n'est effacé : l'ancien fait reste consultable (`show`) et datable (`q --at`)."""
         if new_id == old_id or new_id not in self.nodes or old_id not in self.nodes:
             return False
+        self._writable(new_id)
+        self._writable(old_id)
         self.link(new_id, old_id, "supersedes")
         old = self.nodes[old_id]
         meta = dict(old.get("meta") or {})
@@ -458,6 +503,7 @@ class Brain:
         return True
 
     def remove(self, nid, purge=False):
+        self._writable(nid)
         if purge:
             self.nodes.pop(nid, None)
             self.data["edges"] = [e for e in self.edges if nid not in (e["from"], e["to"])]
@@ -483,7 +529,7 @@ class Brain:
         ts = now_iso()
         for i in ids:
             n = self.nodes.get(i)
-            if n:
+            if n and not _foreign(i):  # les compteurs d'une page d'ami ne s'enregistrent pas
                 n["hits"] = n.get("hits", 0) + 1
                 n["last_hit"] = ts
                 self.dirty = True
@@ -514,7 +560,7 @@ def bump_used(ids):
             ts = now_iso()
             for i in ids:
                 n = b.nodes.get(i)
-                if n:
+                if n and not _foreign(i):
                     n["used"] = (n.get("used", 0) or 0) + 1
                     n["last_used"] = ts
                     b.dirty = True
