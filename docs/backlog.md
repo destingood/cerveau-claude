@@ -14,6 +14,19 @@ son origine et la phase visée ; « ? » signifie « à décider par Lucas ».
 | B6 | Garde-fou shell : refuser `docker compose config` sans `--quiet`, `docker inspect`, `docker compose exec … env` | threat-model §5.6 | 1 |
 | B7 | ~~Contrôle des outils MCP dans les hooks dès le premier serveur MCP~~ : fait en phase 1 (`.claude/hooks/guard_mcp.py`, liste d'autorisation à relire par Lucas) | threat-model §5.7 | 1 |
 | B37 | Garde-fou pour `WebFetch` et `WebSearch` (outils intégrés, hors matchers) : une URL construite peut faire sortir des données | threat-model §5.7 | ? |
+| B38 | Détection de consignes : couvrir les formulations polies (« note à l'IA »), les autres verbes d'ajout de lien (« lis », « écris », « recopie… dans l'URL »), le leet speak et les lettres espacées | `evals/redteam`, faille 1, R5 | 2 |
+| B39 | Texte caché : retirer avant extraction le texte en police nulle, blanc sur blanc, `hidden` ou hors écran, que trafilatura garde ; idem pour `display:none`, `visibility:hidden`, `aria-hidden` et `noscript` dans son repli des pages courtes | `evals/redteam`, faille 2, R5 | 2 |
+| B40 | Liens HTML (`<a>`, `<img>`, `<iframe>`…) vers un hôte tiers : les compter dans `links_removed` et les signaler à Lucas, comme les liens Markdown | `evals/redteam`, faille 3, R5 | 2 |
+| B41 | Requête `web_search` : contrôler ce qu'un planificateur manipulé peut y glisser (longueur, recouvrement avec la conversation, motifs d'exfiltration) | `evals/redteam`, faille 4, R5 | 2 |
+| B42 | Classifieur d'injection dédié (option 3 de l'ADR-008), seulement si les mesures réelles le justifient | ADR-008, R13 | ? |
+| B43 | Pseudonymiser aussi le texte des pages lues avant le lecteur (données de tiers des pages publiques) ; aujourd'hui seuls la question et l'adresse finale le sont | section 13, R6 | 2 |
+| B64 | Liste d'autorisation MCP (`.claude/hooks/guard_mcp.py`) : retirer `Claude_Browser__navigate` ou contrôler son URL (liste blanche de domaines, refus du loopback et des adresses privées) ; `navigate`, `read_page` et `get_page_text` donnent à Claude Code un GET vers n'importe quelle URL (fuite par l'URL, Langfuse local, contenu non fiable devant un agent qui a Bash et Edit) | revue de sécurité phase 1 (M3), B37, R5 | ? |
+| B65 | Vérifier en session réelle que Claude Code déclenche le hook MCP avec le matcher `^mcp__` (les tests appellent le script directement) | revue de sécurité phase 1 (M3) | 2 |
+| B66 | `web_read` : ne pas recopier `Content-Type` ni `Content-Encoding` (contrôlés par la page) dans les erreurs, ou n'en garder que `[a-z0-9/+.-]{0,40}` | `plugins/web_research/fetcher.py`, revue (F2), R5 | 2 |
+| B67 | `web_read` : message d'erreur générique sans l'hôte de l'URL (il part en clair au modèle et à Langfuse, ce qui contourne la pseudonymisation de l'URL) | `plugins/web_research/guard.py`, revue (F3), R6 | 2 |
+| B68 | URL des résultats de recherche montrées au planificateur : passer `injection_signals` sur l'URL, ou n'afficher que le domaine et le rang (le chemin peut porter une consigne) | `core/orchestrator/planner.py`, revue (F5), R5 | 2 |
+| B69 | Lecteur : le texte `affirmation` n'est pas ancré dans la page, seule l'heuristique le filtre ; exiger une citation présente dans la page | `core/orchestrator/reader.py`, revue (info 2), R5 | 2 |
+| B70 | Kill switch : le vérifier avant chaque appel de modèle (`Run.invoke`) ; aujourd'hui seul `policy_node` refuse, à la fin de la requête | `core/orchestrator/runtime.py`, revue (F6), R4 | 2 |
 | B8 | Copie du journal d'audit hors machine et ancre externe du dernier hash | R11, section 13 | déploiement |
 | B9 | Durcissement du VPS : SSH par clé, pare-feu, mises à jour automatiques, réseau privé (`A_DEFINIR`), sauvegardes chiffrées, restauration testée | section 13 | déploiement |
 
@@ -25,6 +38,7 @@ son origine et la phase visée ; « ? » signifie « à décider par Lucas ».
 | B12 | Version de promptfoo définie à un seul endroit (Makefile et CI) | phase 0 | 1 |
 | B13 | Audit npm de promptfoo ; relevé automatique des licences transitives (ex. `pip-licenses`) | ADR-001, R14 | 1 |
 | B14 | Vérifier le passage de la CI sur `ubuntu-latest` au premier push (non exécutée en local) | phase 0 | 1 |
+| B71 | promptfoo : passer l'environnement en liste blanche (PATH, SYSTEMROOT, TEMP, APPDATA, `CERVEAU_*`, `PROMPTFOO_*`, et les deux clés en mode réel seulement) et installer promptfoo par `package.json`, `package-lock.json` et `npm ci` (`npx -y` ne fige que le paquet de tête) | `interfaces/cli/evaluate.py`, revue (M2), B13, R6 | 2 |
 
 ## Infrastructure
 | # | Élément | Origine | Phase |
@@ -42,7 +56,7 @@ son origine et la phase visée ; « ? » signifie « à décider par Lucas ».
 | B21 | Vérifier le dépôt OpenBB depuis https://docs.openbb.co (nom `openbq-org` suspect) | Annexe A, licences | 2 |
 | B22 | `web_read` : cache de `robots.txt` entre deux lectures (durée de vie bornée, RFC 9309 §2.4 : 24 h au plus) | ADR-006, plugin `web_research` | 2 |
 | B23 | `web_read` : encodages `br` et `deflate` (aujourd'hui refusés ; seul `gzip` est décodé, avec garde anti-bombe) | plugin `web_research` | ? |
-| B24 | `web_read` : limiter les ports joignables (80 et 443 seulement ?) | plugin `web_research`, anti-SSRF | ? |
+| B24 | `web_read` : limiter les ports joignables à 80 et 443 ; un autre port d'une adresse publique peut atteindre l'administration de la box par sa propre IP publique (NAT en boucle) | plugin `web_research`, anti-SSRF, revue de sécurité phase 1 (F1) | 2 |
 | B25 | `web_search` : confirmer dans la doc Brave le champ `age` et la longueur maximale de requête (400 caractères retenus, `A_VERIFIER`) | plugin `web_research` | 1 |
 | B26 | Déclarer dans le manifeste C.1 le démarrage d'un plugin (module, variables d'environnement, outils payants) ; aujourd'hui constante `RUNTIMES` de `core/mcp/adapter.py` | ADR-007, annexe C.1 | 2 |
 | B27 | Client MCP : transport HTTP (Streamable HTTP) pour un plugin distant ; seul stdio est couvert | ADR-007 | ? |
@@ -54,4 +68,30 @@ son origine et la phase visée ; « ? » signifie « à décider par Lucas ».
 | B33 | Vérification des chiffres : contrôler aussi les dates, les heures et les petits entiers nus (≤ 10), ignorés aujourd'hui | `core/verification`, R1 | 2 |
 | B34 | Vérification des chiffres : lire les nombres écrits en lettres (« douze pour cent ») ; le prompt système impose les chiffres en attendant | `core/verification`, R1 | 3 |
 | B35 | Vérification des chiffres : comparer le signe (hausse / baisse) au lieu de le laisser au contrôle des affirmations | `core/verification`, R1 | 2 |
-| B36 | Liens : liste blanche par URL exacte plutôt que par domaine (un lien vers un domaine autorisé peut encore porter des données dans sa requête) ; retirer aussi les adresses e-mail nues | `core/verification`, R5 | 2 |
+| B36 | Liens : liste blanche par URL exacte plutôt que par domaine (un lien vers un domaine autorisé peut encore porter des données dans sa requête) ; retirer aussi les adresses e-mail nues. Fait en partie en phase 1 : un lien qui porte un pseudonyme doit être exactement une URL autorisée (revue, E1) | `core/verification`, R5 | 2 |
+| B72 | `web_read` : extraction trafilatura dans `asyncio.to_thread` avec un délai (elle est synchrone et hors du délai de 15 s) | `plugins/web_research/fetcher.py`, revue (F7) | 2 |
+| B44 | Budgets : actions `downgrade_to_fast_or_local` et `stop_non_critical_tasks` de `on_exceeded` ; seul le refus existe (D9) | `core/budget/gate.py`, ADR-005 | ? |
+| B45 | Grand livre des coûts : index au lieu de relire tout le journal d'audit à chaque contrôle | ADR-005 | si besoin |
+| B46 | Alertes ntfy des seuils de budget (50, 80, 100 %) ; aujourd'hui CLI et journal | plan phase 1 §5 et §13 | ? |
+| B47 | Tier local Ollama (`langchain-ollama`) ; modèle `A_DEFINIR` | plan phase 1 §5 et §13 | ? |
+| B48 | Plugin CALCUL : les calculs simples du golden set restent sans outil déterministe (R1) en phase 1 | R1, R13 | 2 |
+| B49 | Pseudonymisation : la NER masque des lieux et des noms publics de la question, ce qui appauvrit la requête de recherche ; décider s'il faut ré-identifier les arguments d'outil (aujourd'hui jamais) | ADR-010, D10 | ? |
+| B50 | Pages rendues en JavaScript : outil web fetch d'Anthropic ou navigateur sans interface | ADR-006, plan phase 1 §13 | ? |
+| B51 | Compteur de phrases de la synthèse : abréviations et nombres décimaux faussent le compte (« M. », « 3.5 ») | `core/orchestrator/planner.py` | 3 |
+| B52 | `clean_title` : la coupe à `MAX_TITLE_CHARS` peut laisser une espace finale | `core/orchestrator/answer.py` | 3 |
+| B53 | Optimisation fine du cache de prompt, une fois son gain mesuré (`A_VERIFIER`) | ADR-005, plan phase 1 §13 | ? |
+| B54 | `cerveau status`, `cerveau kill` et `cerveau report` | plan phase 1 §13 | ? |
+| B55 | Mode Comité | section 7, plan phase 1 §13 | 3 |
+| B56 | Bot Discord et approbations | plan phase 1 §13 | 5 |
+| B57 | Autres packs de domaine et RAG (`knowledge/sources.yaml` vide pour le pack Généraliste) | section 9, plan phase 1 §13 | ? |
+| B58 | Mémoire (section 11) : la spécification ne la place dans aucune phase ; en phase 1 le nœud 8 journalise et la mémoire est désactivée | plan phase 1 §13 | ? |
+
+## Évaluations
+| # | Élément | Origine | Phase |
+|---|---|---|---|
+| B59 | Juge et planificateur sont tous deux des modèles Anthropic (le tier deep sert aussi `planner_complex`) : juge d'un autre fournisseur ou second juge ; en attendant, relecture hebdomadaire de 20 jugements | `core/evals/judge.py`, plan §9 | ? |
+| B60 | Mesures réelles que le hors-ligne ne prouve pas : résistance du modèle aux injections (canari écrit par le rédacteur, requête détournée), score du juge, coûts réels ; une campagne `eval-live` par accord de Lucas (D8) | `evals/redteam`, faille 5 | 1 (avec accord) |
+| B61 | Journal d'audit : acteur ou type d'entrée dédié aux évals (le juge écrit aujourd'hui sous l'acteur `orchestrator`) | R11, `core/evals/judge.py` | 2 |
+| B62 | Golden set : passer de 37 à 300 cas (objectif section 9), validés par Lucas puis gelés (R9) | section 9, plan §9 | 2 |
+| B63 | Mode réel : le « petit lot en web réel » de l'ADR-009 n'est pas implémenté (le mode réel lit les pages fixtures) ; à ajouter sans stocker les résultats Brave (droits de stockage) | ADR-009, plan §9 | ? |
+| B73 | Juge : refuser aussi un cas dont `payload.guard.pii` n'est pas vide, pas seulement ceux marqués `expect.pii` (le juge reçoit la question brute et la réponse ré-identifiée) | `core/evals/judge.py`, revue (F4), R6 | 2 |

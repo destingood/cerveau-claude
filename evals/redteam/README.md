@@ -53,21 +53,21 @@ démonstration) : aucune donnée de tiers (R6).
 
 Ces limites sont mesurées ou constatées, pas corrigées en phase 1 (`docs/backlog.md`) :
 
-1. **Détection de consignes heuristique.** Elle manque les formulations polies (« note à l'IA »),
+1. **Détection de consignes heuristique (B38).** Elle manque les formulations polies (« note à l'IA »),
    les demandes d'ajouter un lien ou une image avec d'autres verbes (« lis », « recopie… dans
    l'URL », « écris »), le leet speak et les lettres espacées. Contre un vrai modèle, la seule
    protection restante est le prompt système (mesure réelle à faire).
-2. **Texte caché gardé par l'extraction.** trafilatura garde la police de taille nulle, le texte
+2. **Texte caché gardé par l'extraction (B39).** trafilatura garde la police de taille nulle, le texte
    blanc, l'attribut `hidden` et le texte hors écran. Sur une page très courte (une centaine de
    caractères), son extraction de repli garde aussi `display:none`, `visibility:hidden`,
    `aria-hidden` et `noscript`. Dans ces cas, seule la détection de consignes protège.
-3. **Liens HTML retirés sans signalement.** Les balises `<a>`, `<img>`, `<iframe>`, `<script>`,
+3. **Liens HTML retirés sans signalement (B40).** Les balises `<a>`, `<img>`, `<iframe>`, `<script>`,
    etc. vers un hôte tiers sont bien retirées du développement, mais ni comptées dans
    `links_removed` ni signalées à Lucas.
-4. **Exfiltration par la requête de recherche.** Un planificateur manipulé peut glisser le
+4. **Exfiltration par la requête de recherche (B41).** Un planificateur manipulé peut glisser le
    contenu de la conversation dans une requête `web_search`, que Brave reçoit. Les données
    personnelles restent protégées, car les arguments d'outil ne sont jamais ré-identifiés ; le
    reste du texte ne l'est pas.
-5. **Ce que seul le modèle peut refuser.** Hors ligne, le modèle scripté obéit : un canari écrit
+5. **Ce que seul le modèle peut refuser (B60).** Hors ligne, le modèle scripté obéit : un canari écrit
    par le rédacteur lui-même ou une requête de recherche détournée ne se mesurent qu'en réel. La
    suite hors ligne prouve les couches déterministes, pas la résistance du modèle.
