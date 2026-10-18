@@ -118,6 +118,10 @@ check("[[Choix de l" not in page(files["relancer-fournisseur"]["path"]) and 'lie
 idx = page("index.md")
 check("[[Prix du matcha]]" in idx and "Prix du matcha (" not in idx, "index : pages actives seulement")
 check("migration" in page("log.md"), "journal : entrée de migration")
+cs = json.loads(page(".claude/settings.json"))
+check(set(cs.get("hooks", {})) == {"SessionStart", "UserPromptSubmit", "Stop", "PreCompact", "PostCompact", "SessionEnd"}
+      and "enabledPlugins" not in cs and (WIKI / ".claude/cerveau.py").is_file(),
+      "squelette : hooks du dépôt + lanceur cloud (pas de plugin déclaré, ignoré par le cloud)", json.dumps(cs))
 
 # ------------------------------------------------------------------ 3. relecture sans changement : rien n'est réécrit
 before = {p: p.stat().st_mtime_ns for p in WIKI.rglob("*.md")}
@@ -416,6 +420,40 @@ code, out = brain("config", "wiki.path", json.dumps(str(WIKI.resolve())))
 check("fait-apres-debranchement" not in Brain.load().nodes, "rebranché : le wiki refait foi")
 kept = [json.loads(p.read_text(encoding="utf-8")) for p in (TMP / "brain").glob("graph.classique-*.json")]
 check(any("fait-apres-debranchement" in k.get("nodes", {}) for k in kept), "rebranché : le cerveau classique d'entre-temps est gardé à côté")
+
+
+# ------------------------------------------------------------------ 16. lanceur cloud du wiki (.claude/cerveau.py)
+launcher = CLONE / ".claude" / "cerveau.py"
+check(launcher.is_file(), "le lanceur cloud est dans le dépôt du wiki")
+payload = json.dumps({"session_id": "c1", "cwd": str(CLONE), "source": "startup"}).encode()
+env_pc = {k: v for k, v in os.environ.items() if k != "CLAUDE_CODE_REMOTE"}
+r = subprocess.run([sys.executable, "-I", "-S", str(launcher), "session-start"], input=payload, capture_output=True,
+                   cwd=str(CLONE), env=env_pc, timeout=60)
+check(r.returncode == 0 and not r.stdout, "lanceur sur le PC : ne fait rien (le cerveau installé suffit)", r.stdout[:200])
+CLOUD2 = TMP / "cloud2"
+env_c = {k: v for k, v in os.environ.items() if k not in ("BRAIN_HOME", "CLAUDE_CODE_REMOTE")}
+env_c.update(CLAUDE_CODE_REMOTE="true", CLAUDE_CONFIG_DIR=str(CLOUD2 / "claude"), CERVEAU_CODE=str(CODE))
+r = subprocess.run([sys.executable, "-I", "-S", str(launcher), "session-start"], input=payload, capture_output=True,
+                   cwd=str(CLONE), env=env_c, timeout=120)
+out = r.stdout.decode("utf-8", "replace")
+check(r.returncode == 0 and "📚 Le cerveau vit dans le wiki" in out and "SKILL.md" in out,
+      "lanceur en session cloud : le cerveau démarre sur le wiki (consignes avec la référence SKILL.md)",
+      out[-400:] + r.stderr.decode("utf-8", "replace")[-400:])
+check((CLOUD2 / "claude" / "brain" / "brain.py").is_file(), "lanceur en session cloud : lanceur stable du cerveau écrit")
+r = subprocess.run([sys.executable, "-I", "-S", str(launcher), "prompt"], capture_output=True, cwd=str(CLONE), env=env_c,
+                   input=json.dumps({"session_id": "c2", "cwd": str(CLONE),
+                                     "prompt": "parle-moi de la synthèse japonaise sur Kyoto et Uji"}).encode(), timeout=60)
+check(r.returncode == 0 and "Thé japonais" in r.stdout.decode("utf-8", "replace"), "lanceur en session cloud : rappel",
+      r.stdout.decode("utf-8", "replace")[-300:])
+CODE3 = TMP / "code-clone"
+env_c.update(CERVEAU_CODE=str(CODE3), CERVEAU_REPO=f"file://{CODE}", CLAUDE_CONFIG_DIR=str(TMP / "cloud3" / "claude"))
+r = subprocess.run([sys.executable, "-I", "-S", str(launcher), "prompt"], input=payload, capture_output=True,
+                   cwd=str(CLONE), env=env_c, timeout=60)
+check(r.returncode == 0 and not (CODE3 / "brain.py").exists(), "lanceur : aucun téléchargement pendant un message")
+r = subprocess.run([sys.executable, "-I", "-S", str(launcher), "session-start"], input=payload, capture_output=True,
+                   cwd=str(CLONE), env=env_c, timeout=120)
+check((CODE3 / "brain.py").is_file() and "Le cerveau vit dans le wiki" in r.stdout.decode("utf-8", "replace"),
+      "lanceur : code du cerveau récupéré au démarrage (git clone)", r.stderr.decode("utf-8", "replace")[-300:])
 
 print(f"\n{len(OK)} vérifications OK, {len(FAIL)} échec(s)")
 (shutil.rmtree(TMP, ignore_errors=True) if not FAIL and not os.environ.get("KEEP") else print(f"(dossier gardé : {TMP})"))

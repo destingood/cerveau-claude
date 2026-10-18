@@ -157,8 +157,9 @@ sources). Le schéma qui guide Claude est dans [CLAUDE.md](CLAUDE.md).
    sources ». Une note que tu crées dans Obsidian arrive aussi dans `raw/` : c'est une source.
 
 ## Dans une session cloud (claude.ai/code)
-Ouvre la session sur ce dépôt : `CLAUDE.md` est lu tout seul, et `.claude/settings.json` déclare le plugin « cerveau »
-(rappel automatique, recherche, entretien). Les changements faits depuis le cloud arrivent sur une branche, en pull
+Ouvre la session sur ce dépôt (seul, sans autre dépôt) : `CLAUDE.md` est lu tout seul, et les hooks de
+`.claude/settings.json` lancent le cerveau (rappel automatique, recherche, entretien) — son code est récupéré au
+démarrage depuis le dépôt public du plugin. Les changements faits depuis le cloud arrivent sur une branche, en pull
 request : fusionne-la pour que ton PC les récupère.
 
 Images : Obsidian les range dans `raw/assets/` (Réglages → Fichiers et liens). Le dépôt doit rester **privé**.
@@ -186,6 +187,56 @@ GITATTRIBUTES = """* text=auto eol=lf
 *.docx binary
 *.xlsx binary
 """
+# Session cloud (claude.ai/code) ouverte sur le wiki : un plugin déclaré par le dépôt n'y est pas installé, mais les
+# hooks du .claude/settings.json du dépôt s'y exécutent. Ils appellent ce lanceur, qui récupère une fois le code du
+# cerveau (dépôt public du plugin) et lui passe l'événement ; sur le PC il sort aussitôt (le cerveau installé suffit).
+CLOUD_EVENTS = (("SessionStart", "session-start", 90), ("UserPromptSubmit", "prompt", 10), ("Stop", "stop", 15),
+                ("PreCompact", "pre-compact", 20), ("PostCompact", "post-compact", 15), ("SessionEnd", "session-end", 20))
+CLOUD_LAUNCHER = '''#!/usr/bin/env python3
+"""Cerveau dans une session cloud (claude.ai/code) ouverte sur ce wiki.
+
+Un plugin déclaré par le dépôt n'est pas installé dans une session cloud, mais les hooks de .claude/settings.json s'y
+exécutent : ce lanceur récupère une fois le code du cerveau (dépôt public du plugin), puis lui passe chaque événement.
+Sur le PC, il ne fait rien : le cerveau installé y travaille déjà. Il ne bloque jamais une session."""
+import os
+import subprocess
+import sys
+
+REPO = "{repo}"
+
+
+def main():
+    if os.environ.get("CLAUDE_CODE_REMOTE") != "true":
+        return 0
+    event = sys.argv[1] if len(sys.argv) > 1 else ""
+    code = os.environ.get("CERVEAU_CODE") or os.path.join(os.path.expanduser("~"), ".cache", "cerveau-claude")
+    brain = os.path.join(code, "brain.py")
+    if not os.path.isfile(brain):
+        if event != "session-start":
+            return 0  # jamais de téléchargement pendant un message : seulement au démarrage
+        try:
+            subprocess.run(["git", "clone", "-q", "--depth", "1", os.environ.get("CERVEAU_REPO") or REPO, code],
+                           stdin=subprocess.DEVNULL, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, timeout=80)
+        except Exception:
+            return 0
+        if not os.path.isfile(brain):
+            return 0
+    os.environ["CERVEAU_CLOUD"] = "1"
+    os.execv(sys.executable, [sys.executable, "-I", "-S", brain, "hook", event])
+
+
+if __name__ == "__main__":
+    sys.exit(main())
+'''
+
+
+def cloud_settings() -> dict:
+    """Hooks du dépôt du wiki pour les sessions cloud (sans effet sur le PC : le lanceur sort aussitôt)."""
+    hook = 'python -I -S "$CLAUDE_PROJECT_DIR"/.claude/cerveau.py {arg}'
+    return {"hooks": {event: [{"hooks": [{"type": "command", "command": hook.format(arg=arg), "timeout": timeout}]}]
+                      for event, arg, timeout in CLOUD_EVENTS}}
+
+
 OBSIDIAN_APP = {"attachmentFolderPath": "raw/assets", "newFileLocation": "folder", "newFileFolderPath": "raw",
                 "alwaysUpdateLinks": True, "newLinkFormat": "shortest", "useMarkdownLinks": False,
                 "userIgnoreFilters": ["archive/"], "showUnsupportedFiles": True}
@@ -232,10 +283,8 @@ def scaffold(root) -> list:
     put(".gitignore", GITIGNORE)
     put(".gitattributes", GITATTRIBUTES)
     put(".obsidian/app.json", json.dumps(OBSIDIAN_APP, ensure_ascii=False, indent=2) + "\n")
-    put(".claude/settings.json", json.dumps({
-        "extraKnownMarketplaces": {"cerveau": {"source": {"source": "git",
-                                                          "url": f"https://github.com/{_plugin_repo()}.git"}}},
-        "enabledPlugins": {"cerveau@cerveau": True}}, ensure_ascii=False, indent=2) + "\n")
+    put(".claude/settings.json", json.dumps(cloud_settings(), ensure_ascii=False, indent=2) + "\n")
+    put(".claude/cerveau.py", CLOUD_LAUNCHER.format(repo=f"https://github.com/{_plugin_repo()}.git"))
     put(f"{ws.RAW}/assets/.gitkeep", "")
     for folder in ws.FOLDERS.values():
         put(f"{ws.PAGES}/{folder}/.gitkeep", "")

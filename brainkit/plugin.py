@@ -7,6 +7,8 @@ jour tout seul ; les souvenirs restent dans ~/.claude/brain.
 - Le plugin s'efface devant le cerveau classique (code dans ~/.claude/brain) : jamais deux cerveaux à la fois."""
 from __future__ import annotations
 
+import os
+
 from .common import BRAIN_DIR, CODE_DIR, PLUGIN, write_text
 
 LAUNCHER = '''#!/usr/bin/env python3
@@ -48,4 +50,6 @@ def instructions() -> str:
     """Le bloc CLAUDE.md du cerveau classique, sans ses balises : consignes de chaque session en mode plugin."""
     from .install import CLAUDE_BLOCK
     text = "\n".join(line for line in CLAUDE_BLOCK.strip().splitlines() if not line.startswith("<!--"))
+    if os.environ.get("CERVEAU_CLOUD"):  # session cloud lancée par le wiki : code récupéré, pas de skill installée
+        return text.replace("skill `/brain`", f"référence complète : {CODE_DIR / 'skills' / 'brain' / 'SKILL.md'}")
     return text.replace("skill `/brain`", "skill `/cerveau:brain`")
