@@ -1,4 +1,4 @@
-"""`cerveau` command line: ask, eval, audit, config, registry."""
+"""`cerveau` command line: ask, feedback, eval, audit, config, registry."""
 
 from __future__ import annotations
 
@@ -7,15 +7,19 @@ import json
 import os
 import shutil
 import sys
+from collections.abc import Callable
 from datetime import datetime
+from enum import StrEnum
 from pathlib import Path
 from typing import TYPE_CHECKING, Annotated, NoReturn
 
 import typer
 
-from core.audit import AuditJournal, default_journal_path, verify
+from core.audit import AuditError, AuditJournal, default_journal_path, verify
 from core.budget.gate import BudgetExceededError, BudgetGate
 from core.config import FEATURES, BlockedFeatureError, ConfigError, load_config
+from core.learning import FeedbackError, default_feedback_path, give_feedback
+from core.learning.feedback import NotePseudonymiser
 from core.observability import build_tracer
 from core.registry import validate_all, validate_plugin
 from interfaces.cli import evaluate
@@ -147,6 +151,70 @@ def ask(
         typer.echo(f"alerte budget : {alert}", err=True)
     typer.echo(result.json() if as_json else result.markdown(), nl=False)
     typer.echo(_footer(result), err=True)
+
+
+class Verdict(StrEnum):
+    BON = "bon"
+    MAUVAIS = "mauvais"
+
+
+def note_pseudonymiser(config_dir: Path | None) -> Callable[[], NotePseudonymiser]:
+    """Presidio, loaded only for a note: a bare verdict works while the PII threshold is unset."""
+
+    def load() -> NotePseudonymiser:
+        from core.guardrails.pii import PiiAnalyzer, PiiUnavailableError, Pseudonymiser
+
+        config = _load(config_dir)
+        try:
+            return Pseudonymiser(PiiAnalyzer.from_config(config))
+        except PiiUnavailableError as exc:
+            _fail(f"Note bloquée : pseudonymisation indisponible ({exc}).", EXIT_BLOCKED)
+
+    return load
+
+
+@app.command("feedback")
+def feedback(
+    request_id: Annotated[
+        str, typer.Argument(help="L'identifiant affiché sous la réponse (« — requête … »).")
+    ],
+    verdict: Annotated[Verdict, typer.Argument(help="bon ou mauvais.")],
+    note: Annotated[
+        str | None, typer.Argument(help="Note libre, pseudonymisée avant d'être gardée (R6).")
+    ] = None,
+    journal: JournalOpt = None,
+    config_dir: ConfigDirOpt = None,
+) -> None:
+    """Note une réponse de `cerveau ask` : bon ou mauvais, avec une note facultative (ADR-011).
+
+    Le verdict va au journal d'audit ; la note, nettoyée, secrets masqués et pseudonymisée, va
+    dans var/feedback/, hors du journal, comme donnée non fiable (R5). Codes de sortie : 0 retour
+    enregistré, 1 refus (requête inconnue, note trop longue, journal illisible), 2 note bloquée
+    tant que la pseudonymisation n'est pas configurée (R7).
+    """
+    root = project_root()
+    audit = AuditJournal(journal or default_journal_path(root))
+    try:
+        entry = give_feedback(
+            audit,
+            default_feedback_path(root),
+            request_id,
+            verdict.value,
+            note,
+            pseudonymiser=note_pseudonymiser(config_dir),
+        )
+    except BlockedFeatureError as exc:
+        _blocked(exc)
+    except (FeedbackError, AuditError) as exc:
+        _fail(f"Refus : {exc}", EXIT_ERROR)
+    typer.echo(f"Retour « {verdict.value} » enregistré pour la requête {request_id}.")
+    counts = audit.read_payload(entry["payload_ref"])["note"]
+    if counts is not None:
+        masked = sum(counts["pii"].values())
+        typer.echo(
+            f"Note gardée hors du journal : {masked} donnée(s) personnelle(s) pseudonymisée(s), "
+            f"{counts['secrets_masked']} secret(s) masqué(s)."
+        )
 
 
 @app.command("eval")

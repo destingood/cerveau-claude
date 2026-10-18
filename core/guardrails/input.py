@@ -56,11 +56,16 @@ def provided_urls(text: str) -> tuple[str, ...]:
     return tuple(urls)
 
 
-def check_question(raw: str) -> CheckedQuestion:
+def strip_invisible(raw: str) -> tuple[str, int]:
+    """NFC, invisible characters removed, newlines unified, stripped; and how many were removed."""
     text = unicodedata.normalize("NFC", raw)
-    cleaned = _INVISIBLE.sub("", text).replace("\r\n", "\n").replace("\r", "\n")
-    removed = len(text) - len(_INVISIBLE.sub("", text))
-    cleaned = cleaned.strip()
+    visible = _INVISIBLE.sub("", text)
+    cleaned = visible.replace("\r\n", "\n").replace("\r", "\n").strip()
+    return cleaned, len(text) - len(visible)
+
+
+def check_question(raw: str) -> CheckedQuestion:
+    cleaned, removed = strip_invisible(raw)
     if not cleaned:
         raise InputRefusedError("question vide")
     if len(cleaned) > MAX_QUESTION_CHARS:
