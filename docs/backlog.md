@@ -50,3 +50,7 @@ son origine et la phase visée ; « ? » signifie « à décider par Lucas ».
 | B30 | Revenir à `presidio-anonymizer` quand sa borne `cryptography<49` sera levée | ADR-010 | 3 |
 | B31 | URL fournies : remplacer l'URL par un jeton `<URL_n>` côté LLM (une URL peut contenir un nom) | ADR-010, R5 | 3 |
 | B32 | Mesurer rappel et précision de la NER `fr_core_news_md` sur un corpus français annoté avant de passer au modèle `lg` | ADR-010, D10 | 2 |
+| B33 | Vérification des chiffres : contrôler aussi les dates, les heures et les petits entiers nus (≤ 10), ignorés aujourd'hui | `core/verification`, R1 | 2 |
+| B34 | Vérification des chiffres : lire les nombres écrits en lettres (« douze pour cent ») ; le prompt système impose les chiffres en attendant | `core/verification`, R1 | 3 |
+| B35 | Vérification des chiffres : comparer le signe (hausse / baisse) au lieu de le laisser au contrôle des affirmations | `core/verification`, R1 | 2 |
+| B36 | Liens : liste blanche par URL exacte plutôt que par domaine (un lien vers un domaine autorisé peut encore porter des données dans sa requête) ; retirer aussi les adresses e-mail nues | `core/verification`, R5 | 2 |
