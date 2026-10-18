@@ -3,7 +3,8 @@
 context → guard → route → plan → verify → output → policy → audit. The kill switch, a refused
 question and a question that needs a clarification go straight to the output; every request,
 answered or not, ends with one DECISION entry in the audit journal (R11) that carries its cost
-(the ledger reads it) and counts, never the question, the answer or a URL.
+(the ledger reads it) and counts, never the question, the answer or a URL; one ERROR entry per
+error the request shows follows it (ADR-011).
 """
 
 from __future__ import annotations
@@ -27,6 +28,7 @@ from core.budget.gate import BudgetGate, RequestBudget
 from core.budget.ledger import COST_KEY
 from core.config.loader import Config
 from core.guardrails.pii import PiiAnalyzer, Pseudonymiser
+from core.learning.errors import decision_errors, journal_errors
 from core.models.router import ModelRouter
 from core.observability.tracing import NoTracer, Tracer
 from core.orchestrator.answer import map_texts, output_node, render_json, render_markdown
@@ -156,15 +158,28 @@ def audit_payload(run: Run, state: CerveauState, *, status: str | None = None) -
     return payload
 
 
-async def audit_node(run: Run, state: CerveauState) -> dict[str, Any]:
+def journal_decision(run: Run, payload: dict[str, Any]) -> None:
+    """The request's DECISION entry, then one ERROR entry per error it shows (ADR-011)."""
+    run_versions = versions(run)
     run.journal.append(
         actor="orchestrator",
         event="DECISION",
         request_id=run.request_id,
-        versions=versions(run),
-        payload=audit_payload(run, state),
+        versions=run_versions,
+        payload=payload,
     )
     run.audited = True
+    journal_errors(
+        run.journal,
+        decision_errors(payload),
+        actor="orchestrator",
+        request_id=run.request_id,
+        versions=run_versions,
+    )
+
+
+async def audit_node(run: Run, state: CerveauState) -> dict[str, Any]:
+    journal_decision(run, audit_payload(run, state))
     return {"audited": True}
 
 
@@ -306,13 +321,7 @@ class Orchestrator:
                     state = CerveauState(request_id=request_id)
                     payload = audit_payload(run, state, status="erreur")
                     payload["error"] = type(exc).__name__
-                    self.journal.append(
-                        actor="orchestrator",
-                        event="DECISION",
-                        request_id=request_id,
-                        versions=versions(run),
-                        payload=payload,
-                    )
+                    journal_decision(run, payload)
                 finish({**trace_metadata(run, "erreur"), "error": type(exc).__name__})
                 raise
             finally:

@@ -256,6 +256,35 @@ def test_gate_refuses_at_100_percent(config: Config, journal: AuditJournal) -> N
     assert tomorrow.spending.month_eur == Decimal("1.000000")
 
 
+def test_each_refusal_is_an_error_record(config: Config, journal: AuditJournal) -> None:
+    gate = _gate(config, journal)
+    _spend(journal, "0.80")
+    gate.check(now=NOW, request_id="r1")  # an alert is not an error
+    _spend(journal, "0.20")
+    for request_id in ("r2", "r3"):
+        with pytest.raises(BudgetExceededError):
+            gate.check(now=NOW, request_id=request_id)
+    errors = [e for e in _entries(journal) if e["event"] == "ERROR"]
+    assert [(e["actor"], e["request_id"]) for e in errors] == [("policy", "r2"), ("policy", "r3")]
+    assert errors[0]["versions"] == {"config": config.digest}
+    assert journal.read_payload(errors[0]["payload_ref"]) == {
+        "error_schema": 1,
+        "kind": "budget_exceeded",
+        "details": {
+            "exceeded": [
+                {
+                    "period": "jour",
+                    "period_key": "2026-10-18",
+                    "pct": 100,
+                    "spent_eur": "1.00",
+                    "limit_eur": "1.00",
+                }
+            ]
+        },
+    }
+    assert verify(journal.path).ok
+
+
 def test_monthly_budget_refuses_too(config_dir: Path, journal: AuditJournal) -> None:
     config = _budgeted(config_dir, daily="100", monthly="2")
     gate = _gate(config, journal)

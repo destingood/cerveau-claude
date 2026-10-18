@@ -35,6 +35,7 @@ from core.evals.offline import (
     presidio,
     scripted_router,
 )
+from core.learning.errors import journal_errors, judge_error
 from core.models.router import ModelRouter
 from core.orchestrator.graph import Orchestrator, RunResult
 from core.policy.engine import KILL_SWITCH_FILE
@@ -286,6 +287,15 @@ async def _live(case: Case, root: Path, run: str) -> CaseResult:
             journal=journal,
             now=datetime.now().astimezone(),
             root=root,
+        )
+        grades = judgement.as_dict()["grades"]
+        low = judge_error(case.id, judgement.score, threshold, grades)
+        journal_errors(
+            journal,
+            [low] if low is not None else [],
+            actor="orchestrator",
+            request_id=result.request_id,
+            versions={"config": config.digest},
         )
     return _result(outcome, result, run, judgement, threshold)
 

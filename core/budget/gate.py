@@ -23,6 +23,7 @@ from typing import Any, Literal
 from core.audit.chain import AuditJournal
 from core.budget.ledger import ALERT_KEY, Spending, read_spending
 from core.config.loader import Config, PerRequest
+from core.learning.errors import budget_error, journal_errors
 from core.models.meter import Meter
 
 Period = Literal["jour", "mois"]
@@ -146,6 +147,14 @@ class BudgetGate:
             tuple(journaled),
         )
         if check.exceeded:
+            journal_errors(
+                self._journal,
+                [budget_error(alert.to_payload() for alert in check.exceeded)],
+                actor="policy",
+                request_id=request_id,
+                versions={"config": self._config.digest},
+                now=now,
+            )
             raise BudgetExceededError(check)
         return check
 

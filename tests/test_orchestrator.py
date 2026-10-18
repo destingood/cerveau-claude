@@ -866,3 +866,67 @@ def test_undefined_budgets_block_the_request(tmp_path: Path) -> None:
         rig.ask("Quelle est la population de la France ?")
     assert rig.brain.seen == []
     assert not rig.journal.path.exists()
+
+
+# --- error records (ADR-011) -------------------------------------------------------------------
+
+
+def _journal(rig: Rig) -> list[dict[str, Any]]:
+    return [json.loads(line) for line in rig.journal.path.read_text(encoding="utf-8").splitlines()]
+
+
+def _errors(rig: Rig) -> list[dict[str, Any]]:
+    entries = [e for e in _journal(rig) if e["event"] == "ERROR"]
+    return [rig.journal.read_payload(e["payload_ref"]) for e in entries]
+
+
+def test_a_clean_answer_journals_no_error(rig: Rig) -> None:
+    _read_insee(rig)
+    rig.ask("Quelle est la population de la France ?")
+    assert _errors(rig) == []
+
+
+def test_verification_failures_follow_the_decision(rig: Rig) -> None:
+    wrong = final(
+        synthese="La France compte 70 millions d'habitants [1].",
+        developpement="L'Insee écrit « la population dépasse les soixante-dix millions » [1].",
+    )
+    _read_insee(rig, wrong)
+    rig.ask("Quelle est la population de la France ?")
+    decision, error = _journal(rig)[-2:]
+    assert (decision["event"], error["event"]) == ("DECISION", "ERROR")
+    assert (error["actor"], error["request_id"]) == ("orchestrator", "req-1")
+    assert error["versions"] == decision["versions"]  # phase 7 ties errors to a prompt version
+    [payload] = _errors(rig)
+    assert payload["kind"] == "verification"
+    details = payload["details"]
+    assert (details["quotes_failed"], details["numbers_unmatched"]) == (1, 1)
+    assert details["issues"] == {"chiffre_non_source": 1, "citation_inexacte": 1}
+    assert "millions" not in json.dumps(payload)  # counts and codes, never the text (R6)
+
+
+def test_a_partial_answer_is_an_error_record(tmp_path: Path, config_dir: Path) -> None:
+    rig = make_rig(tmp_path, _config(config_dir, max_tool_calls=2))
+    _read_insee(rig)
+    rig.brain.planner[2] = tool_call("web_read", url=INED)
+    rig.ask("Quelle est la population de la France ?")
+    [partial] = [p for p in _errors(rig) if p["kind"] == "partial_answer"]
+    assert partial["details"] == {"limit": "tool_calls", "turns": 3, "searches": 1}
+
+
+def test_a_failed_request_is_an_error_record(rig: Rig) -> None:
+    rig.brain.planner = [RuntimeError("panne du modèle")]
+    with pytest.raises(RuntimeError):
+        rig.ask("Quelle est la population de la France ?")
+    assert _errors(rig) == [
+        {"error_schema": 1, "kind": "task_failed", "details": {"error": "RuntimeError"}}
+    ]
+    assert "panne" not in rig.raw()
+
+
+def test_a_refusal_is_not_an_error(rig: Rig, tmp_path: Path) -> None:
+    kill = tmp_path / KILL_SWITCH_FILE
+    kill.parent.mkdir(parents=True, exist_ok=True)
+    kill.write_text("arrêt", encoding="utf-8")
+    assert rig.ask("Quelle est la population de la France ?").answer.statut == "refus"
+    assert _errors(rig) == []
