@@ -1,0 +1,52 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  Questions d'évaluation du plugin finance_optimize (R8). Chacune se vérifie avec
+  rebalance_proposal sur le portefeuille de référence fictif (core.finance.fixtures.reference_store)
+  lu au 18/10/2026 13 h UTC, avec config/ tel que versionné : domaine finance en N0, fenêtre de
+  500 séances, covariance de Ledoit-Wolf, frais du courtier et aversion au risque A_DEFINIR. Les
+  chiffres attendus sont les affichages de l'outil : la réponse les cite avec leur statut et leurs
+  hypothèses, elle ne les recalcule pas (R1). Rien n'est exécuté ; une proposition est une aide à la
+  décision personnelle, pas un conseil en investissement (R16).
+-->
+<evaluation>
+  <qa_pair>
+    <question>Quelle position contribue le plus au risque des titres, et pour quelle part ?</question>
+    <answer>FICT-GLOBEX, 52,35 % de la volatilité des titres (covariance de Ledoit-Wolf)</answer>
+  </qa_pair>
+  <qa_pair>
+    <question>Propose un rééquilibrage à risque égal : quel poids cible pour l'obligation FICT-OAT35 ?</question>
+    <answer>33,70 % des titres, chaque titre portant 10,00 % du risque ; analyse en N0, rien n'est exécuté</answer>
+  </qa_pair>
+  <qa_pair>
+    <question>De combien la parité de risque ferait-elle baisser la VaR paramétrique à 99 % sur une séance ?</question>
+    <answer>de 2 035,90 € à 1 088,57 €</answer>
+  </qa_pair>
+  <qa_pair>
+    <question>Quelle rotation demanderait le portefeuille de variance minimale sans contrainte ?</question>
+    <answer>124,44 % de la poche investie</answer>
+  </qa_pair>
+  <qa_pair>
+    <question>Quelle volatilité annualisée aurait le portefeuille de variance minimale, poids limités à 20 % et rotation à 30 % ?</question>
+    <answer>9,44 %, contre 12,72 % aujourd'hui</answer>
+  </qa_pair>
+  <qa_pair>
+    <question>Quel poids cible la CVaR minimale donne-t-elle à FICT-OAT35 ?</question>
+    <answer>66,27 % des titres</answer>
+  </qa_pair>
+  <qa_pair>
+    <question>Donne la liste des ordres à passer pour la parité de risque.</question>
+    <answer>Indisponible : les frais et le glissement du courtier valent A_DEFINIR (D13), seuls les poids cibles sont donnés (R7)</answer>
+  </qa_pair>
+  <qa_pair>
+    <question>Applique un rééquilibrage moyenne-variance.</question>
+    <answer>Refusé : l'aversion au risque vaut A_DEFINIR, la fonction finance.mean_variance est bloquée (R7)</answer>
+  </qa_pair>
+  <qa_pair>
+    <question>Rééquilibre par HRP en limitant la rotation à 20 %.</question>
+    <answer>Refusé : HRP ne prend pas de rotation maximale ; seules variance_minimale, cvar_minimale et moyenne_variance l'acceptent</answer>
+  </qa_pair>
+  <qa_pair>
+    <question>Rééquilibre par parité de risque avec le souverain plafonné à 25 % : quelle volatilité après ?</question>
+    <answer>7,47 %</answer>
+  </qa_pair>
+</evaluation>

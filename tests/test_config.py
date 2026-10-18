@@ -55,6 +55,7 @@ def test_every_marker_dependent_feature_is_blocked_by_default() -> None:
         "finance.historical_stress",
         "finance.benchmark",
         "finance.trading_costs",
+        "finance.mean_variance",
         "data.openbb",
         "data.yfinance",
     ):
@@ -365,11 +366,26 @@ def test_equity_shock_cannot_wipe_out_more_than_the_position(config_dir: Path) -
 
 
 def test_trading_costs_unblock_as_exact_decimals_once_decided(config_dir: Path) -> None:
-    costs = {"commission_pct": "0.1", "min_commission_eur": "1.99", "slippage_bps": "5"}
+    costs = {
+        "commission_pct": "0.1",
+        "min_commission_eur": "1.99",
+        "slippage_bps": "5",
+        "fx_conversion_bps": "25",
+    }
     edit_yaml(config_dir / "risk.yaml", lambda d: d["trading_costs"].update(costs))
     config = load_config(config_dir)
     config.require("finance.trading_costs")
     assert config.risk.trading_costs.min_commission_eur == Decimal("1.99")
+
+
+def test_mean_variance_waits_for_a_positive_risk_aversion(config_dir: Path) -> None:
+    edit_yaml(config_dir / "risk.yaml", lambda d: d["optimization"].update(risk_aversion=0))
+    with pytest.raises(ConfigError):
+        load_config(config_dir)
+    edit_yaml(config_dir / "risk.yaml", lambda d: d["optimization"].update(risk_aversion=4))
+    config = load_config(config_dir)
+    config.require("finance.mean_variance")
+    assert config.risk.optimization.risk_aversion == 4.0
 
 
 def test_historical_stress_unblocks_once_dates_and_sources_are_checked(config_dir: Path) -> None:

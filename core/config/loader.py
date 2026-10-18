@@ -340,9 +340,16 @@ Money = Annotated[Decimal, Field(ge=0)] | Marker
 
 class TradingCosts(_Strict):
     # R10: fees and slippage are always included; unknown until Lucas gives his broker's (D13).
-    commission_pct: Money
-    min_commission_eur: Money
+    commission_pct: Money  # percent of the amount traded: 0.1 for 0.1 %
+    min_commission_eur: Money  # per order
     slippage_bps: Money
+    fx_conversion_bps: Money  # on the amount of an order in a foreign currency
+
+
+class Optimization(_Strict):
+    # ADR-019: the covariance of every optimizer; mean-variance waits for Lucas's risk aversion.
+    covariance: Literal["ledoit_wolf"]
+    risk_aversion: Annotated[float, Field(gt=0)] | Marker
 
 
 class RiskConfig(_Strict):
@@ -352,6 +359,7 @@ class RiskConfig(_Strict):
     infra: Infra
     market_risk: MarketRisk
     trading_costs: TradingCosts
+    optimization: Optimization
 
 
 # --- pricing.yaml (ADR-005) -------------------------------------------------------------------
@@ -503,6 +511,9 @@ FEATURES: dict[str, Feature] = {
     "finance.benchmark": Feature("Indice de référence (bêta)", ("risk:market_risk.benchmark",)),
     "finance.trading_costs": Feature(
         "Frais et glissement (liste d'opérations d'une proposition)", ("risk:trading_costs",)
+    ),
+    "finance.mean_variance": Feature(
+        "Optimisation moyenne-variance (aversion au risque)", ("risk:optimization.risk_aversion",)
     ),
     "compliance.fiscal": Feature("Règles fiscales", ("compliance:fiscal",)),
     "compliance.crypto": Feature("Plateformes crypto autorisées", ("compliance:crypto",)),

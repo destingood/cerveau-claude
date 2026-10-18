@@ -21,8 +21,9 @@ from __future__ import annotations
 import math
 from collections import defaultdict
 from collections.abc import Sequence
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from datetime import date, datetime
+from decimal import Decimal
 from typing import Annotated, Literal, get_args
 
 import numpy as np
@@ -291,6 +292,7 @@ class Holdings:
     lines: list[Line]  # securities, then cash, each by key
     values: dict[str, float]  # value in euros by line
     warnings: list[str]
+    quantities: dict[str, Decimal] = field(default_factory=dict)  # securities, all accounts
 
     def exposures(self, lines: Sequence[Line]) -> Vector:
         return np.array([self.values.get(line.key, 0.0) for line in lines], dtype=float)
@@ -312,6 +314,7 @@ def holdings(store: FinanceStore, *, as_of: datetime, strict: bool) -> Holdings:
         )
     lines: dict[str, Line] = {}
     sums: defaultdict[str, list[float]] = defaultdict(list)
+    quantities: defaultdict[str, Decimal] = defaultdict(Decimal)
     for held in valuation.lines:
         if not held.quantity:
             continue
@@ -322,13 +325,14 @@ def holdings(store: FinanceStore, *, as_of: datetime, strict: bool) -> Holdings:
                 if card is None:
                     raise ViewError(f"{key} : absent du référentiel à cette date")
                 lines[key] = Line(key, held.currency, card)
+            quantities[key] += held.quantity
         else:
             key = f"{CASH}-{held.currency}"
             lines.setdefault(key, Line(key, held.currency, None))
         sums[key].append(held.value_eur or 0.0)
     ordered = sorted(lines.values(), key=lambda line: (line.is_cash, line.key))
     values = {key: math.fsum(parts) for key, parts in sums.items()}
-    return Holdings(book.day, ordered, values, list(book.warnings))
+    return Holdings(book.day, ordered, values, list(book.warnings), dict(quantities))
 
 
 def _per_euro(

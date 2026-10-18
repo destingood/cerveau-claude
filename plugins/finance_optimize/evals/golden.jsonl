@@ -1,0 +1,31 @@
+{"id": "fo-001", "tool": "rebalance_proposal", "arguments": {"method": "variance_minimale"}, "expected": {"is_error": false, "contains": "\"status\":\"analyse\""}}
+{"id": "fo-002", "tool": "rebalance_proposal", "arguments": {"method": "variance_minimale"}, "expected": {"is_error": false, "contains": "\"notice\":\"aide à la décision personnelle, pas un conseil en investissement (R16)\""}}
+{"id": "fo-003", "tool": "rebalance_proposal", "arguments": {"method": "variance_minimale"}, "expected": {"is_error": false, "contains": "liste d'opérations indisponible : frais et glissement du courtier A_DEFINIR (D13)"}}
+{"id": "fo-004", "tool": "rebalance_proposal", "arguments": {"method": "variance_minimale"}, "expected": {"is_error": false, "contains": "\"display\":\"2\u202f035,90\u00a0€\""}}
+{"id": "fo-005", "tool": "rebalance_proposal", "arguments": {"method": "variance_minimale"}, "expected": {"is_error": false, "contains": "\"display\":\"12,72\u00a0%\""}}
+{"id": "fo-006", "tool": "rebalance_proposal", "arguments": {"method": "variance_minimale"}, "expected": {"is_error": false, "contains": "\"display\":\"124,44\u00a0%\""}}
+{"id": "fo-007", "tool": "rebalance_proposal", "arguments": {"method": "variance_minimale"}, "expected": {"is_error": false, "contains": "\"display\":\"4,54\u00a0%\""}}
+{"id": "fo-008", "tool": "rebalance_proposal", "arguments": {"method": "variance_minimale"}, "expected": {"is_error": false, "contains": "\"display\":\"712,24\u00a0€\""}}
+{"id": "fo-009", "tool": "rebalance_proposal", "arguments": {"method": "variance_minimale"}, "expected": {"is_error": false, "contains": "\"display\":\"62,00\u00a0%\""}}
+{"id": "fo-010", "tool": "rebalance_proposal", "arguments": {"method": "variance_minimale"}, "expected": {"is_error": false, "contains": "\"display\":\"52,35\u00a0%\""}}
+{"id": "fo-011", "tool": "rebalance_proposal", "arguments": {"method": "cvar_minimale"}, "expected": {"is_error": false, "contains": "\"display\":\"66,27\u00a0%\""}}
+{"id": "fo-012", "tool": "rebalance_proposal", "arguments": {"method": "cvar_minimale"}, "expected": {"is_error": false, "contains": "\"display\":\"133,31\u00a0%\""}}
+{"id": "fo-013", "tool": "rebalance_proposal", "arguments": {"method": "cvar_minimale"}, "expected": {"is_error": false, "contains": "\"cvar_confidence\":{\"id\":\"methode/confiance_cvar\""}}
+{"id": "fo-014", "tool": "rebalance_proposal", "arguments": {"method": "parite_de_risque"}, "expected": {"is_error": false, "contains": "\"display\":\"33,70\u00a0%\""}}
+{"id": "fo-015", "tool": "rebalance_proposal", "arguments": {"method": "parite_de_risque"}, "expected": {"is_error": false, "contains": "\"display\":\"1\u202f088,57\u00a0€\""}}
+{"id": "fo-016", "tool": "rebalance_proposal", "arguments": {"method": "parite_de_risque"}, "expected": {"is_error": false, "contains": "contributions égales à la variance"}}
+{"id": "fo-017", "tool": "rebalance_proposal", "arguments": {"method": "hrp"}, "expected": {"is_error": false, "contains": "\"display\":\"54,17\u00a0%\""}}
+{"id": "fo-018", "tool": "rebalance_proposal", "arguments": {"method": "hrp"}, "expected": {"is_error": false, "contains": "liaison de Ward"}}
+{"id": "fo-019", "tool": "rebalance_proposal", "arguments": {"method": "variance_minimale", "max_weight": 0.2, "max_turnover": 0.3}, "expected": {"is_error": false, "contains": "\"display\":\"30,00\u00a0%\""}}
+{"id": "fo-020", "tool": "rebalance_proposal", "arguments": {"method": "variance_minimale", "max_weight": 0.2, "max_turnover": 0.3}, "expected": {"is_error": false, "contains": "\"display\":\"9,44\u00a0%\""}}
+{"id": "fo-021", "tool": "rebalance_proposal", "arguments": {"method": "parite_de_risque", "sector_caps": [{"sector": "souverain", "max_weight": 0.25}]}, "expected": {"is_error": false, "contains": "\"display\":\"7,47\u00a0%\""}}
+{"id": "fo-022", "tool": "rebalance_proposal", "arguments": {"method": "variance_minimale", "sector_caps": [{"sector": "Souverain", "max_weight": 0.3}, {"sector": "Matières premières", "max_weight": 0.1}]}, "expected": {"is_error": false, "contains": "\"display\":\"22,72\u00a0%\""}}
+{"id": "fo-023", "tool": "rebalance_proposal", "arguments": {"method": "variance_minimale", "sector_caps": [{"sector": "Immobilier", "max_weight": 0.2}]}, "expected": {"is_error": false, "contains": "plafond sans effet : aucun titre du secteur Immobilier"}}
+{"id": "fo-024", "tool": "rebalance_proposal", "arguments": {"method": "hrp", "max_turnover": 0.2}, "expected": {"is_error": true, "contains": "rotation maximale non prise en charge par la méthode hrp"}}
+{"id": "fo-025", "tool": "rebalance_proposal", "arguments": {"method": "hrp", "sector_caps": [{"sector": "Souverain", "max_weight": 0.3}]}, "expected": {"is_error": true, "contains": "plafonds sectoriels non pris en charge par la méthode hrp"}}
+{"id": "fo-026", "tool": "rebalance_proposal", "arguments": {"method": "parite_de_risque", "max_turnover": 0.2}, "expected": {"is_error": true, "contains": "rotation maximale non prise en charge par la méthode parite_de_risque"}}
+{"id": "fo-027", "tool": "rebalance_proposal", "arguments": {"method": "moyenne_variance"}, "expected": {"is_error": true, "contains": "fonction bloquée « finance.mean_variance » : risk.yaml › optimization.risk_aversion = A_DEFINIR"}}
+{"id": "fo-028", "tool": "rebalance_proposal", "arguments": {"method": "variance_minimale", "max_weight": 0.05}, "expected": {"is_error": true, "contains": "poids maximal trop bas : les titres ne peuvent pas totaliser 100 %"}}
+{"id": "fo-029", "tool": "rebalance_proposal", "arguments": {"method": "variance_minimale", "sector_caps": [{"sector": "Souverain", "max_weight": 0.2}, {"sector": "souverain", "max_weight": 0.3}]}, "expected": {"is_error": true, "contains": "plafonds sectoriels : un secteur figure deux fois"}}
+{"id": "fo-030", "tool": "rebalance_proposal", "arguments": {"method": "variance_minimale", "as_of": "2020-01-01T00:00:00Z"}, "expected": {"is_error": true, "contains": "aucune position en titres à cette date : rien à optimiser"}}
+{"id": "fo-031", "tool": "rebalance_proposal", "arguments": {"method": "kelly"}, "expected": {"is_error": true, "contains": "Input should be 'variance_minimale'"}}
