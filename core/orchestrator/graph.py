@@ -1,7 +1,8 @@
 """The 8-node graph of section 7.1 and the orchestrator that runs one request.
 
 context → guard → route → plan → verify → output → policy → audit. The kill switch, a refused
-question and a question that needs a clarification go straight to the output; a kill switch
+question (by the guard, or once routed to a domain that cannot carry out its action class) and a
+question that needs a clarification go straight to the output; a kill switch
 engaged while the request runs stops it before the next model call, with a refusal. Every request,
 answered or not, ends with one DECISION entry in the audit journal (R11) that carries its cost
 (the ledger reads it) and counts, never the question, the answer or a URL; one ERROR entry per
@@ -245,6 +246,10 @@ def _after_guard(state: CerveauState) -> str:
     return "routage" if required(state.guarded, "garde").decision == "ok" else "sortie"
 
 
+def _after_route(state: CerveauState) -> str:
+    return "planification" if required(state.guarded, "garde").decision == "ok" else "sortie"
+
+
 def build_graph(run: Run) -> Any:
     """The compiled graph for one request; each node gets the request's ``Run``."""
     graph = StateGraph(CerveauState)
@@ -261,8 +266,10 @@ def build_graph(run: Run) -> Any:
     graph.set_entry_point("contexte")
     graph.add_conditional_edges("contexte", _after_context, {"sortie": "sortie", "garde": "garde"})
     graph.add_conditional_edges("garde", _after_guard, {"sortie": "sortie", "routage": "routage"})
+    graph.add_conditional_edges(
+        "routage", _after_route, {"sortie": "sortie", "planification": "planification"}
+    )
     for source, target in (
-        ("routage", "planification"),
         ("planification", "controle"),
         ("controle", "sortie"),
         ("sortie", "politique"),

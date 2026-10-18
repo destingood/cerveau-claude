@@ -13,9 +13,12 @@ from core.config.loader import ACTION_CLASSES, LEVELS, AutonomyConfig, MatrixDec
 from core.policy import (
     KILL_SWITCH_FILE,
     PHASE_ACTION_CLASSES,
+    PHASE_DOMAIN_ACTION_CLASSES,
+    ROUTED_ACTION_CLASSES,
     PolicyDecision,
     decide,
     kill_switch_engaged,
+    phase_action_classes,
 )
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
@@ -33,10 +36,10 @@ SPEC_MATRIX = {
 }
 
 
-def _at(level: str, matrix: dict | None = None) -> AutonomyConfig:
-    """The real autonomy config with a test domain at ``level``."""
+def _at(level: str, matrix: dict | None = None, domain: str = "test") -> AutonomyConfig:
+    """The real autonomy config with ``domain`` (a test domain by default) at ``level``."""
     data = AUTONOMY.model_dump()
-    data["domains"]["test"] = {"level": level, "max_level": "N4"}
+    data["domains"][domain] = {"level": level, "max_level": "N4"}
     if matrix is not None:
         data["matrix"] = matrix
     return AutonomyConfig.model_validate(data)
@@ -67,9 +70,10 @@ def test_phase_1_domains() -> None:
 
 @pytest.mark.parametrize("action_class", ACTION_CLASSES)
 @pytest.mark.parametrize("domain", ["generaliste", "finance"])
-def test_phase_1_grants_reading_only(domain: str, action_class: str) -> None:
+def test_phase_2_grants_reading_and_finance_computing(domain: str, action_class: str) -> None:
+    granted = action_class == "LECTURE" or (action_class, domain) == ("CALCUL", "finance")
     result = _decide(AUTONOMY, domain, action_class)
-    expected = "auto" if action_class == "LECTURE" else "refus"
+    expected = "auto" if granted else "refus"
     assert result.decision == expected
     assert result.allowed is (expected == "auto")
     level = AUTONOMY.domains[domain].level
@@ -79,7 +83,7 @@ def test_phase_1_grants_reading_only(domain: str, action_class: str) -> None:
 
 
 @pytest.mark.parametrize(("action_class", "level"), list(product(ACTION_CLASSES, LEVELS)))
-def test_every_cell_in_phase_1(action_class: str, level: str) -> None:
+def test_every_cell_of_a_domain_without_computing(action_class: str, level: str) -> None:
     cell = SPEC_MATRIX[action_class][LEVELS.index(level)]
     result = _decide(_at(level), "test", action_class)
     assert result.autonomy_level == level
@@ -91,6 +95,20 @@ def test_every_cell_in_phase_1(action_class: str, level: str) -> None:
         assert result.reasons[0] == f"matrice {action_class} × {level} : {cell}"
         if cell != "refus":
             assert result.reasons[1].endswith(": refus")
+
+
+@pytest.mark.parametrize(("action_class", "level"), list(product(ACTION_CLASSES, LEVELS)))
+def test_every_cell_of_finance_in_phase_2(action_class: str, level: str) -> None:
+    """Finance computes at every level (CALCUL is ``auto`` in the matrix), and nothing more."""
+    cell = SPEC_MATRIX[action_class][LEVELS.index(level)]
+    result = _decide(_at(level, domain="finance"), "finance", action_class)
+    assert result.autonomy_level == level
+    if cell == "auto" and action_class in {"LECTURE", "CALCUL"}:
+        assert result.decision == "auto"
+        assert result.reasons == (f"matrice {action_class} × {level} : auto",)
+    else:
+        assert result.decision == "refus"
+        assert result.reasons[0] == f"matrice {action_class} × {level} : {cell}"
 
 
 @pytest.mark.parametrize(("action_class", "level"), list(product(ACTION_CLASSES, LEVELS)))
@@ -118,7 +136,25 @@ def test_unimplemented_decision_is_refused() -> None:
 
 def test_auto_cell_without_capability_is_refused() -> None:
     result = _decide(AUTONOMY, "generaliste", "ECRITURE_INTERNE")
-    assert result.reasons[1] == "aucune capacité ECRITURE_INTERNE dans cette phase : refus"
+    assert result.reasons[1] == (
+        "aucune capacité ECRITURE_INTERNE pour le domaine « generaliste » dans cette phase : refus"
+    )
+
+
+def test_computing_outside_finance_is_refused() -> None:
+    result = _decide(AUTONOMY, "generaliste", "CALCUL")
+    assert result.reasons == (
+        "matrice CALCUL × N1 : auto",
+        "aucune capacité CALCUL pour le domaine « generaliste » dans cette phase : refus",
+    )
+
+
+def test_explicit_classes_replace_the_phase_grants() -> None:
+    assert _decide(AUTONOMY, "finance", "CALCUL", action_classes=PHASE_ACTION_CLASSES).decision == (
+        "refus"
+    )
+    granted = frozenset({"LECTURE", "CALCUL"})
+    assert _decide(AUTONOMY, "generaliste", "CALCUL", action_classes=granted).decision == "auto"
 
 
 @pytest.mark.parametrize("action_class", ACTION_CLASSES)
@@ -196,8 +232,35 @@ def test_decision_payload_follows_annex_c4() -> None:
     assert PolicyDecision.model_validate(payload).decision == "auto"
 
 
-def test_phase_1_classes_are_reading_only() -> None:
+def test_phase_2_classes() -> None:
     assert frozenset({"LECTURE"}) == PHASE_ACTION_CLASSES
+    assert dict(PHASE_DOMAIN_ACTION_CLASSES) == {"finance": frozenset({"LECTURE", "CALCUL"})}
+    assert frozenset({"CALCUL"}) == ROUTED_ACTION_CLASSES
+    assert phase_action_classes("finance") == frozenset({"LECTURE", "CALCUL"})
+    for domain in ("generaliste", "test", "inconnu", ""):
+        assert phase_action_classes(domain) == PHASE_ACTION_CLASSES
+
+
+def test_phase_grants_are_read_only() -> None:
+    with pytest.raises(TypeError):
+        PHASE_DOMAIN_ACTION_CLASSES["generaliste"] = frozenset({"CALCUL"})  # type: ignore[index]
+
+
+@given(
+    domain=st.sampled_from(["generaliste", "finance", "recherche", "test"]),
+    known=st.booleans(),
+    action_class=st.sampled_from(ACTION_CLASSES),
+    level=st.sampled_from(LEVELS),
+    kill=st.booleans(),
+)
+def test_the_phase_grants_nothing_beyond_reading_and_finance_computing(
+    domain: str, known: bool, action_class: str, level: str, kill: bool
+) -> None:
+    autonomy = _at(level, domain=domain) if known else AUTONOMY
+    result = _decide(autonomy, domain, action_class, kill_switch=kill)
+    if result.allowed:
+        assert not kill
+        assert action_class == "LECTURE" or (action_class, domain) == ("CALCUL", "finance")
 
 
 # --- kill switch file (section 8.5) ---

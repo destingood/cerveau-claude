@@ -21,6 +21,7 @@ from core.audit.chain import AuditJournal, verify
 from core.budget.gate import RequestBudget, RequestBudgetExceeded
 from core.config import load_config
 from core.config.loader import PerRequest
+from core.finance.fixtures import REFERENCE_READ_AT, reference_store
 from core.mcp.adapter import (
     McpAdapterError,
     McpPlugin,
@@ -30,6 +31,7 @@ from core.mcp.adapter import (
 )
 from core.models import CostCalculator, Meter
 from core.policy.engine import KILL_SWITCH_FILE
+from plugins.finance_risk.server import build_server as build_risk_server
 from plugins.web_research.guard import FetchError
 from plugins.web_research.models import PageText, SearchResults
 from plugins.web_research.search import Hit
@@ -114,6 +116,28 @@ def entries(scope: RequestScope) -> list[dict[str, Any]]:
         {**entry, "payload": scope.journal.read_payload(entry["payload_ref"])}
         for entry in map(json.loads, lines)
     ]
+
+
+@pytest.mark.parametrize("domain", ["finance", "generaliste"])
+def test_a_computing_tool_is_kept_in_the_finance_pack_only(tmp_path: Path, domain: str) -> None:
+    store = reference_store(tmp_path / "finance.db")
+    server = build_risk_server(store, REPO / "config", clock=lambda: REFERENCE_READ_AT)
+    scope = replace(make_scope(tmp_path), domain=domain)
+
+    async def go() -> McpPlugin:
+        async with McpPlugin(REPO / "plugins" / "finance_risk", scope, target=server) as plugin:
+            return plugin
+
+    plugin = asyncio.run(go())
+    if domain == "finance":
+        assert [tool.name for tool in plugin.tools] == ["risk_report"]
+        assert plugin.skipped == {}
+    else:
+        assert list(plugin.tools) == []
+        assert plugin.skipped == {
+            "risk_report": "politique : matrice CALCUL × N1 : auto ; aucune capacité CALCUL "
+            "pour le domaine « generaliste » dans cette phase : refus"
+        }
 
 
 def test_the_manifest_tools_are_exposed(scope: RequestScope) -> None:

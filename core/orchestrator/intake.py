@@ -3,7 +3,8 @@
 The question is pseudonymised before any model sees it (ADR-007). The URLs Lucas gave are
 pseudonymised one by one and remembered in the ``Run``, so that web_read can open the address
 he wrote while the models only see its masked form. A failing classifier refuses (prudence); a
-failing router falls back to the most careful route.
+failing router falls back to the most careful route. An action class this phase grants to some
+packs only (``CALCUL``, ADR-022) is decided once the domain is routed, before any tool opens.
 """
 
 from __future__ import annotations
@@ -29,7 +30,7 @@ from core.orchestrator.state import (
     required,
 )
 from core.orchestrator.structured import StructuredOutputError, ask_json
-from core.policy.engine import decide, kill_switch_engaged
+from core.policy.engine import ROUTED_ACTION_CLASSES, decide, kill_switch_engaged
 
 TIMEZONE = "Europe/Paris"
 KILL_MESSAGE = (
@@ -113,7 +114,8 @@ async def guard_node(run: Run, state: CerveauState) -> dict[str, Any]:
             **common,
         )
     reason = verdict.raison.strip() or "aucune raison donnée"
-    if verdict.decision == "ok" and verdict.classe_action != "LECTURE":
+    routed_later = verdict.classe_action in ROUTED_ACTION_CLASSES  # decided by route_node
+    if verdict.decision == "ok" and verdict.classe_action != "LECTURE" and not routed_later:
         context = required(state.context, "contexte")
         policy = decide(
             run.config.autonomy,
@@ -140,6 +142,23 @@ async def guard_node(run: Run, state: CerveauState) -> dict[str, Any]:
     return {"guarded": guarded}
 
 
+def _routed_refusal(run: Run, guarded: GuardedInput, domain: str) -> GuardedInput | None:
+    """The guard's verdict refused when the routed domain cannot carry out its action class."""
+    if guarded.action_class == "LECTURE":
+        return None
+    policy = decide(
+        run.config.autonomy,
+        request_id=run.request_id,
+        domain=domain,
+        action_class=guarded.action_class,
+        kill_switch=kill_switch_engaged(run.project_root),
+    )
+    if policy.allowed:
+        return None
+    reason = f"action de classe {guarded.action_class} : " + " ; ".join(policy.reasons)
+    return guarded.model_copy(update={"decision": "refus", "reason": reason})
+
+
 def _prudent_route(reason: str) -> RouteVerdict:
     return RouteVerdict(complexite="complexe", importance="elevee", web=True, raison=reason)
 
@@ -160,8 +179,12 @@ async def route_node(run: Run, state: CerveauState) -> dict[str, Any]:
     domain = requested if requested in run.packs else DEFAULT_DOMAIN
     role = "planner_complex" if verdict.complexite == "complexe" else "planner"
     needs_web = verdict.web or bool(guarded.urls)
-    # The web opens only when the question needs it; the pack's other plugins always do.
+    refused = _routed_refusal(run, guarded, domain)
+    # The web opens only when the question needs it; the pack's other plugins always do, unless
+    # the policy refused the request.
     plugins = [name for name in run.packs[domain].plugins if needs_web or name != WEB_PLUGIN]
+    if refused is not None:
+        plugins = []
     tools: tuple[str, ...] = ()
     skipped: dict[str, str] = {}
     if plugins:
@@ -183,4 +206,6 @@ async def route_node(run: Run, state: CerveauState) -> dict[str, Any]:
     context = required(state.context, "contexte")
     level = "N0" if context.kill_switch else run.config.autonomy.domains[domain].level
     routed = context.model_copy(update={"domain": domain, "autonomy_level": level})
+    if refused is not None:
+        return {"route": plan, "context": routed, "guarded": refused}
     return {"route": plan, "context": routed}

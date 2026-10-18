@@ -283,6 +283,32 @@ def test_a_finance_question_opens_the_finance_plugins_without_the_web(rig: Finan
     assert entry["payload"]["policy"]["domain"] == "finance"
 
 
+def test_a_computing_question_routed_to_finance_is_planned(rig: FinanceRig) -> None:
+    rig.brain.verdict = {"decision": "ok", "classe_action": "CALCUL", "raison": "mesure de risque"}
+    rig.brain.planner = [answer_json("Réponse sans outil.")]
+    result = rig.ask("Calcule la VaR de mon portefeuille.")
+    assert result.answer.statut != "refus"
+    assert sorted(rig.desk.opened) == sorted(FINANCE_TOOLS)
+    assert "planner" in rig.brain.roles()
+    [entry] = rig.decisions()
+    policy = entry["payload"]["policy"]
+    assert (policy["domain"], policy["action_class"], policy["decision"]) == (
+        "finance",
+        "CALCUL",
+        "auto",
+    )
+
+
+def test_a_computing_question_routed_to_an_unknown_pack_is_refused(rig: FinanceRig) -> None:
+    rig.brain.verdict = {"decision": "ok", "classe_action": "CALCUL", "raison": "calcul demandé"}
+    rig.brain.route = {**FINANCE_ROUTE, "domaine": "astronomie"}
+    answer = rig.ask("Calcule la distance de cette étoile.").answer
+    assert answer.statut == "refus"
+    assert "« generaliste »" in answer.message
+    assert rig.desk.opened == []
+    assert "planner" not in rig.brain.roles()
+
+
 def test_the_finance_context_carries_its_autonomy(rig: FinanceRig) -> None:
     rig.brain.planner = [answer_json("Réponse sans outil.")]
     rig.ask("Quel est le risque de mon portefeuille ?")

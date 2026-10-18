@@ -807,13 +807,32 @@ def test_unclear_question_asks_for_details(rig: Rig) -> None:
     assert rig.payload()["status"] == "clarification"
 
 
-@pytest.mark.parametrize("action", ["CALCUL", "ECRITURE_INTERNE", "FINANCIERE"])
-def test_only_reading_is_allowed_in_phase_1(rig: Rig, action: str) -> None:
+@pytest.mark.parametrize("action", ["ECRITURE_INTERNE", "FINANCIERE"])
+def test_only_reading_and_computing_reach_the_route(rig: Rig, action: str) -> None:
     rig.brain.verdict = {"decision": "ok", "classe_action": action, "raison": "action demandée"}
     answer = rig.ask("Achète dix actions pour moi.").answer
     assert answer.statut == "refus"
     assert answer.message.startswith(f"action de classe {action}")
     assert rig.brain.roles() == ["classifier"]
+
+
+@pytest.mark.parametrize("web", [True, False])
+def test_computing_outside_finance_is_refused_once_routed(rig: Rig, web: bool) -> None:
+    rig.brain.verdict = {"decision": "ok", "classe_action": "CALCUL", "raison": "calcul demandé"}
+    rig.brain.route["web"] = web
+    answer = rig.ask("Calcule la moyenne de ces chiffres.").answer
+    assert answer.statut == "refus"
+    assert answer.message == (
+        "action de classe CALCUL : matrice CALCUL × N1 : auto ; aucune capacité CALCUL pour le "
+        "domaine « generaliste » dans cette phase : refus"
+    )
+    assert rig.brain.roles() == ["classifier", "classifier"]  # guard and route, no planner
+    assert (rig.world.opened, rig.world.calls) == (0, [])  # no tool opens
+    [entry] = rig.decisions()
+    payload = entry["payload"]
+    assert payload["status"] == "refus"
+    assert (payload["route"]["domain"], payload["route"]["tools"]) == ("generaliste", [])
+    assert entry["versions"]["plugin"] == "aucun"
 
 
 def test_question_is_pseudonymised_and_answer_reidentified(rig: Rig) -> None:
