@@ -12,7 +12,7 @@ import re
 import xml.etree.ElementTree as ET
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import Literal
+from typing import Annotated, Literal
 
 import yaml
 from jsonschema import Draft202012Validator
@@ -72,6 +72,15 @@ class Slo(_Strict):
     p95_latency_ms: int | Marker
 
 
+class Runtime(_Strict):
+    """How the adapter starts the server (ADR-015, B26): ``python -m <module>`` over stdio."""
+
+    module: str = Field(pattern=r"^[a-z_][a-z0-9_]*(\.[a-z_][a-z0-9_]*)*$")
+    # Variables copied by name into the server's environment; their values are never logged.
+    env: list[Annotated[str, Field(pattern=r"^[A-Z][A-Z0-9_]*$")]] = Field(default_factory=list)
+    priced_tools: dict[str, str] = Field(default_factory=dict)  # tool → pricing.search key
+
+
 class PluginManifest(_Strict):
     id: str = Field(pattern=r"^[a-z][a-z0-9_]*$", max_length=64)
     version: str = Field(pattern=SEMVER_RE)
@@ -86,6 +95,7 @@ class PluginManifest(_Strict):
     evals: EvalsSpec
     slo: Slo
     dependencies_licences: list[str]
+    runtime: Runtime | None = None
 
     @model_validator(mode="after")
     def _tools_present(self) -> PluginManifest:
@@ -97,6 +107,23 @@ class PluginManifest(_Strict):
             raise ValueError(f"noms d'outils en double : {duplicates}")
         if len(set(self.environments)) != len(self.environments):
             raise ValueError("environnements en double")
+        return self
+
+    @model_validator(mode="after")
+    def _runtime_stays_in_the_plugin(self) -> PluginManifest:
+        if self.runtime is None:
+            return self
+        package = f"plugins.{self.id}"
+        module = self.runtime.module
+        if module != package and not module.startswith(package + "."):
+            raise ValueError(f"runtime.module doit être {package} ou l'un de ses modules")
+        if self.transport != "mcp-stdio":
+            raise ValueError("runtime ne décrit qu'un démarrage mcp-stdio")
+        unknown = sorted(set(self.runtime.priced_tools) - {t.name for t in self.tools})
+        if unknown:
+            raise ValueError(f"runtime.priced_tools : outils non déclarés {unknown}")
+        if len(set(self.runtime.env)) != len(self.runtime.env):
+            raise ValueError("runtime.env : variables en double")
         return self
 
 

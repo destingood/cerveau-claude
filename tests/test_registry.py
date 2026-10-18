@@ -60,6 +60,47 @@ def test_invalid_manifest_fields_are_refused(
     assert any(expected in e for e in report.errors), report.errors
 
 
+RUNTIME = {"module": "plugins.demo_plugin", "env": ["DEMO_KEY"], "priced_tools": {}}
+
+
+def test_declared_runtime_is_accepted(make_plugin: Callable[..., Path]) -> None:
+    manifest = base_manifest()
+    manifest["runtime"] = {**RUNTIME, "priced_tools": {"portfolio_var": "brave"}}
+    report = validate_plugin(make_plugin(manifest=manifest))
+    assert report.ok, report.errors
+    assert report.manifest is not None and report.manifest.runtime is not None
+    assert report.manifest.runtime.module == "plugins.demo_plugin"
+
+
+@pytest.mark.parametrize(
+    ("change", "expected"),
+    [
+        ({"module": "os"}, "plugins.demo_plugin ou l'un de ses modules"),
+        ({"module": "plugins.demo_plugin_evil"}, "plugins.demo_plugin ou l'un de ses modules"),
+        ({"module": "plugins.web_research"}, "plugins.demo_plugin ou l'un de ses modules"),
+        ({"module": "plugins.demo_plugin; rm"}, "module"),
+        ({"env": ["lower_case"]}, "env"),
+        ({"env": ["DEMO_KEY", "DEMO_KEY"]}, "variables en double"),
+        ({"priced_tools": {"ghost_tool": "brave"}}, "outils non déclarés"),
+        ({"surprise": True}, "surprise"),
+    ],
+)
+def test_invalid_runtime_is_refused(
+    make_plugin: Callable[..., Path], change: dict, expected: str
+) -> None:
+    manifest = base_manifest()
+    manifest["runtime"] = {**RUNTIME, **change}
+    report = validate_plugin(make_plugin(manifest=manifest))
+    assert any(expected in e for e in report.errors), report.errors
+
+
+def test_runtime_describes_a_stdio_start_only(make_plugin: Callable[..., Path]) -> None:
+    manifest = base_manifest()
+    manifest.update(transport="mcp-http", runtime=RUNTIME)
+    report = validate_plugin(make_plugin(manifest=manifest))
+    assert any("mcp-stdio" in e for e in report.errors), report.errors
+
+
 def test_id_must_match_directory(make_plugin: Callable[..., Path]) -> None:
     report = validate_plugin(make_plugin(manifest=base_manifest("other_name")))
     assert any("ne correspond pas au dossier" in e for e in report.errors)
@@ -178,3 +219,5 @@ def test_repository_plugins_directory_is_valid() -> None:
 
     result = validate_all(REPO_ROOT / "plugins")
     assert not result.refused, [(r.plugin_id, r.errors) for r in result.refused]
+    # Every repository plugin can be started from its own folder (ADR-015, B26).
+    assert all(r.manifest and r.manifest.runtime for r in result.accepted)

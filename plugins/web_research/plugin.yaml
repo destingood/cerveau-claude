@@ -44,3 +44,9 @@ slo:
   p95_latency_ms: A_DEFINIR
 # mcp (MIT), httpx (BSD-3-Clause), trafilatura (Apache-2.0) : docs/licences.md.
 dependencies_licences: [MIT, BSD-3-Clause, Apache-2.0]
+# Démarrage (ADR-015, B26) : seule la clé Brave est transmise au serveur ; chaque recherche est
+# comptée au tarif `pricing.search.brave`.
+runtime:
+  module: plugins.web_research
+  env: [BRAVE_SEARCH_API_KEY]
+  priced_tools: { web_search: brave }

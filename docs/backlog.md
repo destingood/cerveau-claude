@@ -58,7 +58,7 @@ son origine et la phase visée ; « ? » signifie « à décider par Lucas ».
 | B23 | `web_read` : encodages `br` et `deflate` (aujourd'hui refusés ; seul `gzip` est décodé, avec garde anti-bombe) | plugin `web_research` | ? |
 | B24 | `web_read` : limiter les ports joignables à 80 et 443 ; un autre port d'une adresse publique peut atteindre l'administration de la box par sa propre IP publique (NAT en boucle) | plugin `web_research`, anti-SSRF, revue de sécurité phase 1 (F1) | 2 |
 | B25 | `web_search` : confirmer dans la doc Brave le champ `age` et la longueur maximale de requête (400 caractères retenus, `A_VERIFIER`) | plugin `web_research` | 1 |
-| B26 | Déclarer dans le manifeste C.1 le démarrage d'un plugin (module, variables d'environnement, outils payants) ; aujourd'hui constante `RUNTIMES` de `core/mcp/adapter.py` | ADR-007, annexe C.1 | 2 |
+| B26 | ~~Déclarer dans le manifeste C.1 le démarrage d'un plugin (module, variables d'environnement, outils payants)~~ : fait en phase 2 (bloc `runtime` du manifeste, validé par le registre, ADR-015) | ADR-007, annexe C.1 | 2 |
 | B27 | Client MCP : transport HTTP (Streamable HTTP) pour un plugin distant ; seul stdio est couvert | ADR-007 | ? |
 | B28 | Coût Brave : ne compter une recherche que si elle a atteint Brave (aujourd'hui comptée dès l'envoi au serveur, même sans clé : prudence) | ADR-005, `core/mcp` | 3 |
 | B29 | Pseudonymisation : recognizers SIREN / SIRET (clé de Luhn) et plaques d'immatriculation | ADR-010, section 13 | 2 |

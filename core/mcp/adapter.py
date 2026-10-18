@@ -20,7 +20,7 @@ import sys
 import time
 from collections.abc import Callable, Mapping, Sequence
 from contextlib import AsyncExitStack
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 from pathlib import Path
 from types import TracebackType
 from typing import Any
@@ -40,24 +40,6 @@ from core.registry.manifest import PluginManifest, ToolSpec, validate_plugin
 TOOL_TIMEOUT_S = 30.0
 MAX_ARGUMENT_CHARS = 2048
 MAX_ERROR_CHARS = 300
-
-
-@dataclass(frozen=True)
-class PluginRuntime:
-    """How to start a plugin server. Not part of the C.1 manifest yet (backlog B26)."""
-
-    module: str
-    env: tuple[str, ...] = ()
-    priced_tools: Mapping[str, str] = field(default_factory=dict)  # tool → pricing.search key
-
-
-RUNTIMES: Mapping[str, PluginRuntime] = {
-    "web_research": PluginRuntime(
-        "plugins.web_research",
-        env=("BRAVE_SEARCH_API_KEY",),
-        priced_tools={"web_search": "brave"},
-    ),
-}
 
 
 class McpAdapterError(Exception):
@@ -130,15 +112,18 @@ class McpPlugin:
             )
         self.manifest: PluginManifest = report.manifest
         self.directory = directory
-        self.runtime = RUNTIMES.get(self.manifest.id, PluginRuntime(""))
+        runtime = self.manifest.runtime
+        self._priced_tools: Mapping[str, str] = runtime.priced_tools if runtime else {}
         if target is None:
-            if not self.runtime.module:
-                raise McpAdapterError(f"plugin « {self.manifest.id} » : démarrage inconnu")
+            if runtime is None:
+                raise McpAdapterError(
+                    f"plugin « {self.manifest.id} » : démarrage inconnu (bloc runtime absent)"
+                )
             source = os.environ if environ is None else environ
             target = StdioServerParameters(
                 command=sys.executable,
-                args=["-m", self.runtime.module],
-                env=server_environment(self.runtime.env, source),
+                args=["-m", runtime.module],
+                env=server_environment(runtime.env, source),
                 cwd=str(scope.project_root),
             )
         self._target = target
@@ -271,7 +256,7 @@ class McpPlugin:
         if self._client is None:
             raise McpAdapterError(f"plugin « {self.manifest.id} » : session fermée")
         timeout = min(self._timeout_s, self._scope.budget.remaining_seconds())
-        provider = self.runtime.priced_tools.get(spec.name)
+        provider = self._priced_tools.get(spec.name)
         search: SearchCall | None = None
         status, error, size, result = "ok", None, None, None
         start = self._clock()
