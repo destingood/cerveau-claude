@@ -7,6 +7,8 @@ requires-python = ">=3.12,<3.13"
 license = { text = "Proprietary - personal use" }
 authors = [{ name = "Lucas" }]
 dependencies = [
+    "arch==8.0.0",
+    "exchange-calendars==4.13.2",
     "fr-core-news-md==3.8.0",
     "httpx==0.28.1",
     "jsonschema>=4",
@@ -15,9 +17,13 @@ dependencies = [
     "langfuse==5.0.2",
     "langgraph==1.2.16",
     "mcp==2.3.0",
+    "numpy==2.4.6",
+    "pandas==3.0.6",
     "presidio-analyzer==2.2.364",
     "pydantic>=2",
     "pyyaml>=6",
+    "scipy==1.18.1",
+    "skfolio==1.8.1",
     "spacy==3.8.16",
     "tldextract==5.4.0",
     "trafilatura==2.3.1",

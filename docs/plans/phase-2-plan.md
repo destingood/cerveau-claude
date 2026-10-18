@@ -179,7 +179,7 @@ Le score est le **minimum** des quatre : aucun poids à régler, et une seule an
 
 | Paquet | Version | Licence | Rôle |
 |---|---|---|---|
-| numpy | 2.5.4 | BSD-3 | calcul |
+| numpy | 2.4.6 (déjà verrouillée ; `presidio-analyzer` 2.2.364 impose `numpy<2.5`) | BSD-3 | calcul |
 | pandas | 3.0.6 | BSD-3 | séries |
 | scipy | 1.18.1 | BSD-3 | lois, optimisation, XIRR |
 | arch | 8.0.0 | NCSA | GARCH |
