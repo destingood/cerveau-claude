@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import itertools
 import json
+import sqlite3
 from collections.abc import Callable
 from datetime import UTC, date, datetime, timedelta
 from functools import partial
@@ -323,3 +324,17 @@ def test_cli_does_not_reach_a_disabled_source(
     blocked = cli("ecb", "--start", "2026-10-01")
     assert blocked.exit_code == 2 and "Bloqué (R7)" in blocked.output
     assert seen == [] and not cli.journal.exists()
+
+
+def test_cli_refuses_a_store_of_a_newer_schema_and_journals_it(cli: Any, tmp_path: Path) -> None:
+    FinanceStore.open(cli.store).close()
+    newer = sqlite3.connect(cli.store)
+    newer.execute("INSERT INTO schema_version VALUES (99, '2026-10-18T12:00:00Z')")
+    newer.commit()
+    newer.close()
+    path = tmp_path / "cours.csv"
+    path.write_text("date,identifiant,cloture,devise\n", encoding="utf-8")
+    refused = cli("prices", str(path))
+    assert refused.exit_code == 1 and "Refus : base au schéma 99" in refused.output
+    [(event, payload)] = entries(cli.journal)
+    assert (event, payload["command"]) == ("ERROR", "finance sync prices")

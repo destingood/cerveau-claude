@@ -12,7 +12,7 @@ from contextlib import contextmanager
 from datetime import UTC, datetime
 from functools import partial
 from pathlib import Path
-from typing import TYPE_CHECKING, Annotated, Any
+from typing import TYPE_CHECKING, Annotated, Any, NoReturn
 
 import httpx
 import typer
@@ -29,6 +29,7 @@ from core.finance.providers import (
 )
 from core.finance.providers.ecb import ESTR_CATEGORY, ESTR_SERIES_ID, FX_CATEGORY
 from core.finance.quality import QualityReport
+from core.finance.schema import SchemaError
 from core.finance.store import FinanceStore, FinanceStoreError, default_store_path
 from core.finance.sync import (
     SyncResult,
@@ -78,9 +79,30 @@ def ecb_transport() -> httpx.BaseTransport | None:
 
 
 @contextmanager
-def _store(path: Path | None) -> Iterator[FinanceStore]:
-    with FinanceStore.open(path or default_store_path(project_root())) as store:
+def _store(
+    path: Path | None, command: str, journal: Path | None, config: Config
+) -> Iterator[FinanceStore]:
+    """Open the store; one this code cannot use is refused and journaled like a sync (R11)."""
+    try:
+        store = FinanceStore.open(path or default_store_path(project_root()))
+    except (FinanceStoreError, SchemaError) as exc:
+        _refuse(command, journal, config, f"finance-sync-{uuid.uuid4().hex[:12]}", exc)
+    with store:
         yield store
+
+
+def _refuse(
+    command: str, journal: Path | None, config: Config, request_id: str, exc: Exception
+) -> NoReturn:
+    # These messages never quote a downloaded value (R5): see providers.base.
+    AuditJournal(journal or default_journal_path(project_root())).append(
+        actor="lucas",
+        event="ERROR",
+        request_id=request_id,
+        versions={"config": config.digest},
+        payload={"command": f"finance sync {command}", "error": str(exc)},
+    )
+    fail(f"Refus : {exc}. Rien n'est enregistré ; requête {request_id}.", EXIT_ERROR)
 
 
 def _run(
@@ -93,15 +115,7 @@ def _run(
     try:
         result = action()
     except (ProviderError, FinanceStoreError) as exc:
-        # These messages never quote a downloaded value (R5): see providers.base.
-        audit.append(
-            actor="lucas",
-            event="ERROR",
-            request_id=request_id,
-            versions={"config": config.digest},
-            payload={**entry, "error": str(exc)},
-        )
-        fail(f"Refus : {exc}. Rien n'est enregistré ; requête {request_id}.", EXIT_ERROR)
+        _refuse(command, journal, config, request_id, exc)
     audit.append(
         actor="lucas",
         event="TOOL_CALL",
@@ -188,7 +202,7 @@ def sync_ecb(
     source = config.data_sources.sources["ecb"]
     categories = list(source.categories or [])
     moment = now()
-    with _store(store) as db:
+    with _store(store, "ecb", journal, config) as db:
         currencies = sorted(
             set(reference_currencies(db.instruments(as_of=moment)))
             | {c.strip().upper() for c in currency or []}
@@ -230,7 +244,7 @@ def sync_prices(
 ) -> None:
     """Clôtures exportées par Lucas : date, identifiant, cloture, devise[, volume] (ADR-017)."""
     config = load(config_dir)
-    with _store(store) as db:
+    with _store(store, "prices", journal, config) as db:
         _run("prices", journal, config, _sync(db, config, lambda: CsvCloses(file, reference(db))))
 
 
@@ -243,7 +257,7 @@ def sync_corporate_actions(
 ) -> None:
     """Splits et dividendes : date_ex, identifiant, type, valeur[, devise, date_annonce]."""
     config = load(config_dir)
-    with _store(store) as db:
+    with _store(store, "corporate-actions", journal, config) as db:
         provider = partial(CsvCorporateActions, file, reference(db))
         _run("corporate-actions", journal, config, _sync(db, config, provider))
 
@@ -257,6 +271,6 @@ def sync_instruments(
 ) -> None:
     """Référentiel : une ligne par version d'instrument (identifiant, nom, classe, devise…)."""
     config = load(config_dir)
-    with _store(store) as db:
+    with _store(store, "instruments", journal, config) as db:
         action = partial(import_instruments, db, file, recorded_at=now())
         _run("instruments", journal, config, action)
