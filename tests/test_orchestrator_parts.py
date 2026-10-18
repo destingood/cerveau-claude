@@ -12,6 +12,7 @@ from langchain_core.messages import AIMessage, BaseMessage, HumanMessage
 
 from core.guardrails.injection import SIGNAL_NAMES, injection_signals
 from core.orchestrator.answer import clean_title, render_markdown
+from core.orchestrator.packs import PACK_IDS
 from core.orchestrator.planner import format_issues, sentence_count
 from core.orchestrator.prompts import PACKS_DIR, PROMPTS_DIR, TEMPLATES, PromptError, PromptSet
 from core.orchestrator.state import (
@@ -83,7 +84,8 @@ def _context() -> RequestContext:
 def _copy_prompts(tmp_path: Path) -> tuple[Path, Path]:
     prompts, packs = tmp_path / "prompts", tmp_path / "packs"
     shutil.copytree(PROMPTS_DIR, prompts)
-    shutil.copytree(PACKS_DIR / "generaliste" / "prompts", packs / "generaliste" / "prompts")
+    for pack in PACK_IDS:
+        shutil.copytree(PACKS_DIR / pack / "prompts", packs / pack / "prompts")
     return prompts, packs
 
 
@@ -99,7 +101,7 @@ def test_system_prompt_is_fully_rendered() -> None:
     system = PromptSet.load().system(_context())
     assert "{{" not in system
     assert "2026-10-18T14:00+02:00" in system
-    assert PromptSet.load().role in system
+    assert PromptSet.load().roles["generaliste"] in system
 
 
 def test_any_prompt_change_changes_the_version(tmp_path: Path) -> None:

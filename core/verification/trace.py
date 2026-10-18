@@ -45,7 +45,7 @@ class ToolOutput(BaseModel):
 
     model_config = ConfigDict(extra="forbid", frozen=True)
 
-    call: CallId  # "<tool>#<n>": the n-th call of the request
+    call: CallId  # "<tool>#<n>": the n-th call of this tool in the request
     tool: str
     figures: tuple[Figure, ...] = ()
     texts: tuple[str, ...] = ()

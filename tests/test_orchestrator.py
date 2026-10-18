@@ -29,7 +29,7 @@ from core.orchestrator.answer import _Links
 from core.orchestrator.graph import Orchestrator, RunResult
 from core.orchestrator.intake import KILL_MESSAGE
 from core.orchestrator.prompts import PromptSet
-from core.orchestrator.runtime import OUTPUT_CAPS
+from core.orchestrator.runtime import OUTPUT_CAPS, WEB_PLUGIN
 from core.orchestrator.state import MARKER
 from core.policy.engine import KILL_SWITCH_FILE
 from core.verification.domains import REMOVED
@@ -367,7 +367,7 @@ def make_rig(
         project_root=root,
         journal=journal,
         router=_router(config, brain),
-        open_toolbox=opener(world),
+        toolboxes={WEB_PLUGIN: opener(world)},
         pseudonymiser=FakePseudonymiser,
         prompts=PROMPTS,
         tracer=tracer,

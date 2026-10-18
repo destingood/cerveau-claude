@@ -2,12 +2,15 @@
 
 The planner model asks for tools; the code runs them. web_read only opens an address that came
 from a web_search of this request or from Lucas's question (R5), and the planner never sees a
-page: the reader turns it into checked extracts first (``reader.py``). Hitting a request limit
-gives an honest partial answer built from the verified extracts only, without a conclusion.
+page: the reader turns it into checked extracts first (``reader.py``). The other tools (finance)
+compute: the planner reads each figure by its display only, and every result is kept for the R1
+trace. Hitting a request limit gives an honest partial answer built from the verified extracts
+only, without a conclusion.
 """
 
 from __future__ import annotations
 
+import json
 import re
 from dataclasses import dataclass, field
 from typing import Any
@@ -41,11 +44,14 @@ from core.orchestrator.state import (
 )
 from core.orchestrator.structured import REPAIR, message_text, parse_json, short_error
 from core.verification.citations import CITATION
+from core.verification.figures import FIGURE_KEYS
+from core.verification.trace import ToolOutput, tool_output
 
 SEARCH, READ = "web_search", "web_read"
 MAX_PLANNER_TURNS = 15
 MAX_TITLE_CHARS = 120
 MAX_PARTIAL_QUOTES = 10
+MAX_VIEW_CHARS = 64_000  # about 16 000 tokens of a computed result in the planner's context
 LIMIT_TEXT = {
     "tool_calls": "le nombre maximal d'appels d'outils",
     "tokens": "le nombre maximal de tokens",
@@ -60,6 +66,10 @@ FORMAT_REPAIR = (
 READ_REFUSED = (
     "Refus : web_read n'ouvre que les adresses données par web_search dans cette requête ou "
     "écrites dans la question de Lucas (R5). Lance d'abord une recherche."
+)
+TOO_LARGE = (
+    "Erreur : le résultat de {name} compte {size} caractères (au plus {limit}). Restreins la "
+    "demande (une période plus courte, moins de lignes) ou réponds sans ce résultat."
 )
 _SENTENCE_END = re.compile(r"[.!?…]+[\"»”)\]]*(?=\s|$)")
 
@@ -86,6 +96,8 @@ class Session:
     refused_urls: int = 0
     turns: int = 0
     reader_failures: int = 0
+    tool_outputs: list[ToolOutput] = field(default_factory=list)  # for the R1 trace
+    tool_counts: dict[str, int] = field(default_factory=dict)  # tool → calls kept
 
     def draft(self, answer: DraftAnswer, **extra: Any) -> Draft:
         return Draft(
@@ -93,6 +105,7 @@ class Session:
             sources=tuple(self.sources),
             pages=dict(self.pages),
             search_texts=tuple(self.search_texts),
+            tool_outputs=tuple(self.tool_outputs),
             searches=self.searches,
             refused_urls=self.refused_urls,
             turns=self.turns,
@@ -206,6 +219,29 @@ async def _read(
     return extracts_view(reading.source)
 
 
+def figure_view(value: object) -> object:
+    """A computed result as the planner reads it: each figure by its display only (R1)."""
+    if isinstance(value, dict):
+        if value.keys() == FIGURE_KEYS:
+            return value["display"]
+        return {key: figure_view(item) for key, item in value.items()}
+    if isinstance(value, list):
+        return [figure_view(item) for item in value]
+    return value
+
+
+async def _compute(session: Session, toolbox: Toolbox, name: str, arguments: dict[str, Any]) -> str:
+    result = await toolbox.call(name, arguments)
+    view = json.dumps(figure_view(result), ensure_ascii=False, separators=(",", ":"))
+    if len(view) > MAX_VIEW_CHARS:
+        return TOO_LARGE.format(name=name, size=len(view), limit=MAX_VIEW_CHARS)
+    number = session.tool_counts.get(name, 0) + 1
+    output = tool_output(f"{name}#{number}", name, result)  # a malformed figure raises here
+    session.tool_counts[name] = number
+    session.tool_outputs.append(output)
+    return mark_untrusted(view, source=output.call)
+
+
 async def _execute(
     run: Run, session: Session, toolbox: Toolbox | None, call: ToolCall, question: str
 ) -> str:
@@ -217,7 +253,7 @@ async def _execute(
             return await _search(session, toolbox, arguments)
         if name == READ:
             return await _read(run, session, toolbox, arguments, question)
-        return f"Erreur : l'outil « {name} » n'est pas géré par le planificateur."
+        return await _compute(session, toolbox, name, arguments)
     except ValidationError as exc:
         error = f"résultat inattendu ({short_error(exc)})"
     except ToolRefusedError as exc:

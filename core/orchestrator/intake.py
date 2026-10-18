@@ -17,6 +17,7 @@ from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 from langchain_core.messages import HumanMessage, SystemMessage
 
 from core.guardrails.input import InputRefusedError, check_question
+from core.orchestrator.packs import DEFAULT_DOMAIN
 from core.orchestrator.runtime import WEB_PLUGIN, Run
 from core.orchestrator.state import (
     CerveauState,
@@ -30,8 +31,6 @@ from core.orchestrator.state import (
 from core.orchestrator.structured import StructuredOutputError, ask_json
 from core.policy.engine import decide, kill_switch_engaged
 
-DEFAULT_DOMAIN = "generaliste"
-PACKS = frozenset({DEFAULT_DOMAIN})  # domain packs of phase 1
 TIMEZONE = "Europe/Paris"
 KILL_MESSAGE = (
     "Le kill switch est engagé : CERVEAU est à l'arrêt et ne traite aucune requête (R4). "
@@ -158,19 +157,17 @@ async def route_node(run: Run, state: CerveauState) -> dict[str, Any]:
     except StructuredOutputError:
         verdict = _prudent_route("routage indisponible : route la plus prudente par défaut")
     requested = verdict.domaine.strip().lower() or DEFAULT_DOMAIN
-    domain = requested if requested in PACKS else DEFAULT_DOMAIN
+    domain = requested if requested in run.packs else DEFAULT_DOMAIN
     role = "planner_complex" if verdict.complexite == "complexe" else "planner"
     needs_web = verdict.web or bool(guarded.urls)
+    # The web opens only when the question needs it; the pack's other plugins always do.
+    plugins = [name for name in run.packs[domain].plugins if needs_web or name != WEB_PLUGIN]
     tools: tuple[str, ...] = ()
     skipped: dict[str, str] = {}
-    if needs_web:
-        toolbox = await run.open_tools(domain)
-        if toolbox is None:
-            skipped = {WEB_PLUGIN: run.toolbox_error or "indisponible"}
-        else:
-            limit = run.config.models.routing.max_tools_to_planner
-            tools = tuple(tool.name for tool in toolbox.tools[:limit])
-            skipped = dict(toolbox.skipped)
+    if plugins:
+        toolbox = await run.open_tools(domain, plugins)
+        tools = tuple(tool.name for tool in toolbox.tools)
+        skipped = dict(toolbox.skipped)
     plan = RoutePlan(
         domain=domain,
         requested_domain=requested,
@@ -183,4 +180,7 @@ async def route_node(run: Run, state: CerveauState) -> dict[str, Any]:
         tools=tools,
         skipped=skipped,
     )
-    return {"route": plan}
+    context = required(state.context, "contexte")
+    level = "N0" if context.kill_switch else run.config.autonomy.domains[domain].level
+    routed = context.model_copy(update={"domain": domain, "autonomy_level": level})
+    return {"route": plan, "context": routed}

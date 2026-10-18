@@ -2,7 +2,8 @@
 
 The graph state may be traced (commit 13); the ``Run`` is not. It holds the raw question, the
 pseudonym table and the raw URLs Lucas gave, and it hands out the metered models (each call
-checked against the request's budget) and the plugin's tools.
+checked against the request's budget and the kill switch) and the tools of the routed pack's
+plugins.
 """
 
 from __future__ import annotations
@@ -26,7 +27,9 @@ from core.config.loader import Config
 from core.mcp.adapter import McpAdapterError, McpPlugin, RequestScope
 from core.models.meter import Meter
 from core.models.router import ModelRouter, Role
+from core.orchestrator.packs import Pack, load_packs
 from core.orchestrator.prompts import PromptSet
+from core.policy.engine import kill_switch_engaged
 
 # Output ceilings per role, below what is left of the request's token budget (R9: a change here
 # changes the behaviour under evaluation).
@@ -40,6 +43,10 @@ OUTPUT_CAPS: Mapping[Role, int] = MappingProxyType(
     }
 )
 WEB_PLUGIN = "web_research"
+
+
+class KillSwitchEngaged(Exception):
+    """R4: the kill switch was engaged while the request ran; no model is called again."""
 
 
 class PseudonymiserLike(Protocol):
@@ -63,6 +70,7 @@ class Toolbox(Protocol):
 
 
 ToolboxOpener = Callable[[RequestScope], AbstractAsyncContextManager[Toolbox]]
+PluginOpeners = Callable[[str], ToolboxOpener | None]  # plugin → its opener, None if unknown
 
 
 class McpToolbox:
@@ -100,6 +108,54 @@ def mcp_toolbox(plugin_dir: Path) -> ToolboxOpener:
             yield McpToolbox(plugin)
 
     return open_toolbox
+
+
+class PluginSet:
+    """The tools of the routed pack's plugins as one toolbox, in the order of the pack's manifest.
+
+    A plugin that failed to open, a tool whose name another plugin of the pack already gave and a
+    tool beyond ``limit`` (``max_tools_to_planner``) are skipped, each with its reason.
+    """
+
+    def __init__(
+        self, opened: Sequence[tuple[str, Toolbox]], failed: Mapping[str, str], limit: int
+    ) -> None:
+        self._owners: dict[str, Toolbox] = {}
+        tools: list[BaseTool] = []
+        skipped = dict(failed)
+        for plugin, toolbox in opened:
+            skipped.update(toolbox.skipped)
+            for tool in toolbox.tools:
+                if tool.name in self._owners:
+                    skipped[f"{plugin}.{tool.name}"] = "nom déjà donné par un autre plugin du pack"
+                elif len(tools) >= limit:
+                    skipped[tool.name] = f"au-delà des {limit} outils transmis au planificateur"
+                else:
+                    self._owners[tool.name] = toolbox
+                    tools.append(tool)
+        self._tools = tuple(tools)
+        self._skipped = skipped
+        self._version = ", ".join(toolbox.version for _plugin, toolbox in opened) or "aucun"
+
+    @property
+    def tools(self) -> Sequence[BaseTool]:
+        return self._tools
+
+    @property
+    def skipped(self) -> Mapping[str, str]:
+        return dict(self._skipped)
+
+    @property
+    def version(self) -> str:
+        return self._version
+
+    async def call(
+        self, name: str, arguments: dict[str, Any], *, journaled: Mapping[str, Any] | None = None
+    ) -> dict[str, Any]:
+        owner = self._owners.get(name)
+        if owner is None:
+            raise ToolException(f"{name} : outil indisponible pour cette requête")
+        return await owner.call(name, arguments, journaled=journaled)
 
 
 class _Holder:
@@ -152,14 +208,15 @@ class Run:
     now: datetime
     pseudonymiser: PseudonymiserLike = field(repr=False)
     raw_question: str = field(repr=False)
-    open_toolbox: ToolboxOpener | None = None
+    packs: Mapping[str, Pack] = field(default_factory=load_packs)
+    open_plugin: PluginOpeners | None = None
     callbacks: tuple[BaseCallbackHandler, ...] = ()
     url_map: dict[str, str] = field(default_factory=dict, repr=False)  # as shown → as given
-    toolbox: Toolbox | None = None
-    toolbox_error: str | None = None
+    toolbox: PluginSet | None = None
     models_used: dict[str, str] = field(default_factory=dict)  # role → model id
     audited: bool = False  # the DECISION entry of node 8 is written
-    _holder: _Holder = field(default_factory=_Holder, repr=False)
+    last_state: Any = field(default=None, repr=False)  # the state the running node was given
+    _holders: list[_Holder] = field(default_factory=list, repr=False)
 
     def _time_exceeded(self) -> RequestBudgetExceeded:
         maximum = self.config.budgets.per_request.max_seconds
@@ -168,7 +225,10 @@ class Run:
     async def invoke(
         self, role: Role, messages: Sequence[BaseMessage], *, tools: Sequence[BaseTool] = ()
     ) -> AIMessage:
-        """One model call within what is left of the request's tokens and seconds."""
+        """One model call within what is left of the request's tokens and seconds (R4: never with
+        the kill switch engaged)."""
+        if kill_switch_engaged(self.project_root):
+            raise KillSwitchEngaged
         self.budget.check()
         remaining = self.budget.remaining_seconds()
         if remaining <= 0:
@@ -189,13 +249,10 @@ class Run:
             raise TypeError(f"réponse inattendue du modèle : {type(reply).__name__}")
         return reply
 
-    async def open_tools(self, domain: str) -> Toolbox | None:
-        """Opens the plugin once per request; ``None`` (and ``toolbox_error``) if unavailable."""
-        if self.toolbox is not None or self.toolbox_error is not None:
+    async def open_tools(self, domain: str, plugins: Sequence[str]) -> PluginSet:
+        """Opens the plugins once per request, side by side; one that fails is skipped."""
+        if self.toolbox is not None:
             return self.toolbox
-        if self.open_toolbox is None:
-            self.toolbox_error = "aucun plugin d'outils configuré"
-            return None
         scope = RequestScope(
             request_id=self.request_id,
             domain=domain,
@@ -205,11 +262,24 @@ class Run:
             meter=self.meter,
             project_root=self.project_root,
         )
-        try:
-            self.toolbox = await self._holder.open(self.open_toolbox, scope)
-        except McpAdapterError as exc:
-            self.toolbox_error = str(exc)
+
+        async def open_one(plugin: str) -> Toolbox | str:
+            opener = self.open_plugin(plugin) if self.open_plugin is not None else None
+            if opener is None:
+                return "plugin non configuré"
+            holder = _Holder()
+            self._holders.append(holder)
+            try:
+                return await holder.open(opener, scope)
+            except McpAdapterError as exc:
+                return str(exc)
+
+        results = await asyncio.gather(*(open_one(plugin) for plugin in plugins))
+        opened = [(p, r) for p, r in zip(plugins, results, strict=True) if not isinstance(r, str)]
+        failed = {p: r for p, r in zip(plugins, results, strict=True) if isinstance(r, str)}
+        limit = self.config.models.routing.max_tools_to_planner
+        self.toolbox = PluginSet(opened, failed, limit)
         return self.toolbox
 
     async def aclose(self) -> None:
-        await self._holder.aclose()
+        await asyncio.gather(*(holder.aclose() for holder in self._holders))

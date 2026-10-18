@@ -26,7 +26,8 @@ son origine et la phase visée ; « ? » signifie « à décider par Lucas ».
 | B67 | `web_read` : message d'erreur générique sans l'hôte de l'URL (il part en clair au modèle et à Langfuse, ce qui contourne la pseudonymisation de l'URL) | `plugins/web_research/guard.py`, revue (F3), R6 | 2 |
 | B68 | URL des résultats de recherche montrées au planificateur : passer `injection_signals` sur l'URL, ou n'afficher que le domaine et le rang (le chemin peut porter une consigne) | `core/orchestrator/planner.py`, revue (F5), R5 | 2 |
 | B69 | Lecteur : le texte `affirmation` n'est pas ancré dans la page, seule l'heuristique le filtre ; exiger une citation présente dans la page | `core/orchestrator/reader.py`, revue (info 2), R5 | 2 |
-| B70 | Kill switch : le vérifier avant chaque appel de modèle (`Run.invoke`) ; aujourd'hui seul `policy_node` refuse, à la fin de la requête | `core/orchestrator/runtime.py`, revue (F6), R4 | 2 |
+| B70 | ~~Kill switch : le vérifier avant chaque appel de modèle (`Run.invoke`) ; aujourd'hui seul `policy_node` refuse, à la fin de la requête~~ : fait en phase 2 (`Run.invoke` lève `KillSwitchEngaged`, `Orchestrator.ask` répond par un refus et journalise la décision avec `halted: kill_switch`) | `core/orchestrator/runtime.py`, revue (F6), R4 | 2 |
+| B95 | Données du portefeuille vues par le modèle : les sorties des outils Finance (positions, montants, plus-values) arrivent au planificateur en clair ; décider d'une vue réduite ou pseudonymisée (identifiants de titres, montants arrondis) sans casser la traçabilité R1 | `core/orchestrator/planner.py` (`_compute`), R6 | ? |
 | B8 | Copie du journal d'audit hors machine et ancre externe du dernier hash | R11, section 13 | déploiement |
 | B9 | Durcissement du VPS : SSH par clé, pare-feu, mises à jour automatiques, réseau privé (`A_DEFINIR`), sauvegardes chiffrées, restauration testée | section 13 | déploiement |
 
@@ -95,6 +96,9 @@ son origine et la phase visée ; « ? » signifie « à décider par Lucas ».
 | B92 | Sens des nombres : « le TWR a baissé de 8,80 % » face à un chiffre positif est accepté, le mot de sens d'un texte pouvant décrire autre chose que le chiffre (un coût, un écart) ; seul le signe écrit (« -8,80 % ») contredit un chiffre d'outil. À lever par une lecture de la phrase ou par le contrôle des affirmations | `core/verification/numbers.py`, B35, R1 | 3 |
 | B93 | Dates : aucune conversion de fuseau (une heure UTC d'un outil réécrite en heure de Paris n'est pas retrouvée) ; dates sans chiffres (« le premier mars ») non lues ; une durée « 2 h » est lue comme une heure et signalée si aucune source ne la donne | `core/verification/dates.py`, B33, R1 | 3 |
 | B94 | Chiffres d'outil : seules les devises et le % sont comparés (« 3 options » est retrouvé dans « 3 séances ») ; le signe de « -€3 » (symbole entre le signe et le nombre) n'est pas lu | `core/verification`, R1 | 3 |
+| B96 | Sortie d'outil trop longue (plus de 64 000 caractères en vue compacte) : le planificateur reçoit un refus et doit restreindre sa demande ; envisager une pagination ou un résumé déterministe par l'outil | `core/orchestrator/planner.py` (`MAX_VIEW_CHARS`) | 3 |
+| B97 | Kill switch au milieu d'une requête : l'entrée `DECISION` reprend l'état reçu par le nœud interrompu, pas ce qu'il avait déjà produit (les appels d'outil restent journalisés un par un par l'adaptateur) | `core/orchestrator/graph.py` (`halted_state`), R4, R11 | 3 |
+| B98 | Pack Finance : cinq plugins (six avec le web) ouverts côte à côte à chaque requête, un sous-processus chacun ; mesurer la latence de démarrage et, si besoin, n'ouvrir un plugin qu'à l'appel de son premier outil (schémas tirés du manifeste) | `core/orchestrator/runtime.py` (`open_tools`), `A_VERIFIER` | 3 |
 
 ## Évaluations
 | # | Élément | Origine | Phase |

@@ -38,6 +38,7 @@ from core.evals.offline import (
 from core.learning.errors import journal_errors, judge_error
 from core.models.router import ModelRouter
 from core.orchestrator.graph import Orchestrator, RunResult
+from core.orchestrator.runtime import WEB_PLUGIN
 from core.policy.engine import KILL_SWITCH_FILE
 from core.verification.citations import citation_numbers
 
@@ -179,6 +180,7 @@ def _outcome(
         search_texts=tuple(f"{hit.title} {hit.snippet}" for hit in hits),
         now=result.now,
         tool_calls=result.tool_calls,
+        tool_outputs=result.tool_outputs,
     )
 
 
@@ -242,7 +244,7 @@ async def _offline(case: Case, root: Path, run: str) -> CaseResult:
             project_root=home,
             journal=journal,
             router=scripted_router(config, pilot),
-            open_toolbox=fixture_toolbox(case, log, root),
+            toolboxes={WEB_PLUGIN: fixture_toolbox(case, log, root)},
             pseudonymiser=lambda: presidio(config),
             callbacks=(recorder,),
             clock=lambda: FIXTURE_NOW,
@@ -269,7 +271,7 @@ async def _live(case: Case, root: Path, run: str) -> CaseResult:
         project_root=root,
         journal=journal,
         router=router,
-        open_toolbox=fixture_toolbox(case, log, root),
+        toolboxes={WEB_PLUGIN: fixture_toolbox(case, log, root)},
         pseudonymiser=lambda: presidio(config),
         callbacks=(recorder,),
     )

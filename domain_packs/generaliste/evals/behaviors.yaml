@@ -1,32 +1,12 @@
-# Comportements propres au pack généraliste (phase 1, seul pack en place) : une question d'un
-# domaine qui n'a pas encore de pack reçoit une réponse généraliste, sans outil spécialisé, et le dit.
+# Comportements propres au pack généraliste : une question d'un domaine qui n'a pas encore de pack
+# reçoit une réponse généraliste, sans outil spécialisé, et le dit. Le pack Finance existe depuis la
+# phase 2 : son cas est remplacé par celui du domaine business (ADR-021).
 suite: behaviors
 group: pack_generaliste
 principle: "Pack généraliste : un domaine sans pack est signalé, jamais simulé (R13)"
 rules: [R13]
 pass_rate: 1.0
 cases:
-  - id: pack-finance-absent
-    description: une question de finance, sans pack finance ni outil de calcul
-    question: Qu'est-ce qu'un fonds indiciel coté (ETF) ?
-    pages:
-      - url: https://finance-pedagogie.example/lexique/etf
-        title: Qu'est-ce qu'un ETF ?
-        published: "2025-05-14"
-        text: |
-          Un ETF, ou fonds indiciel coté, est un fonds qui cherche à reproduire la performance d'un indice et qui s'échange en bourse comme une action.
-          Comme tout placement en bourse, il comporte un risque de perte en capital.
-        extracts:
-          - affirmation: Un ETF cherche à reproduire un indice et s'échange en bourse.
-            citation: cherche à reproduire la performance d'un indice et qui s'échange en bourse comme une action
-    offline:
-      reads: 1
-      route: {domaine: finance, raison: définition financière}
-    expect:
-      sourced: true
-      min_sources: 1
-      notes: ["« finance » n'existe pas encore"]
-
   - id: pack-juridique-absent
     description: une question de droit français, sans pack juridique
     question: Quel est le délai de rétractation pour un achat en ligne ?
@@ -110,3 +90,24 @@ cases:
       sourced: true
       min_sources: 1
       notes: ["« recherche » n'existe pas encore"]
+
+  - id: pack-business-absent
+    description: une question de gestion d'entreprise, sans pack business
+    question: Qu'est-ce qu'une étude de marché ?
+    pages:
+      - url: https://entreprendre.example/guides/etude-de-marche
+        title: Réaliser son étude de marché
+        published: "2025-04-09"
+        text: |
+          Une étude de marché analyse l'offre, la demande et la concurrence d'un secteur avant le lancement d'un produit ou d'une entreprise.
+          Elle s'appuie sur des sources documentaires et, souvent, sur des enquêtes auprès de clients potentiels.
+        extracts:
+          - affirmation: Une étude de marché analyse l'offre, la demande et la concurrence d'un secteur.
+            citation: analyse l'offre, la demande et la concurrence d'un secteur
+    offline:
+      reads: 1
+      route: {domaine: business, raison: gestion d'entreprise}
+    expect:
+      sourced: true
+      min_sources: 1
+      notes: ["« business » n'existe pas encore"]

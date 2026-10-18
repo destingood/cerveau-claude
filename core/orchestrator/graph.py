@@ -1,7 +1,8 @@
 """The 8-node graph of section 7.1 and the orchestrator that runs one request.
 
 context → guard → route → plan → verify → output → policy → audit. The kill switch, a refused
-question and a question that needs a clarification go straight to the output; every request,
+question and a question that needs a clarification go straight to the output; a kill switch
+engaged while the request runs stops it before the next model call, with a refusal. Every request,
 answered or not, ends with one DECISION entry in the audit journal (R11) that carries its cost
 (the ledger reads it) and counts, never the question, the answer or a URL; one ERROR entry per
 error the request shows follows it (ADR-011).
@@ -12,7 +13,7 @@ from __future__ import annotations
 import hashlib
 import uuid
 from collections import Counter
-from collections.abc import Awaitable, Callable, Sequence
+from collections.abc import Awaitable, Callable, Mapping, Sequence
 from dataclasses import dataclass
 from datetime import datetime, tzinfo
 from decimal import Decimal
@@ -32,11 +33,12 @@ from core.learning.errors import decision_errors, journal_errors
 from core.models.router import ModelRouter
 from core.observability.tracing import NoTracer, Tracer
 from core.orchestrator.answer import map_texts, output_node, render_json, render_markdown
-from core.orchestrator.intake import context_node, guard_node, route_node
+from core.orchestrator.intake import KILL_MESSAGE, context_node, guard_node, route_node
+from core.orchestrator.packs import DEFAULT_DOMAIN, Pack, load_packs
 from core.orchestrator.planner import plan_node
 from core.orchestrator.prompts import PromptSet
 from core.orchestrator.runtime import (
-    WEB_PLUGIN,
+    KillSwitchEngaged,
     PseudonymiserLike,
     Run,
     ToolboxOpener,
@@ -45,6 +47,7 @@ from core.orchestrator.runtime import (
 from core.orchestrator.state import Answer, CerveauState, TraceRow, required
 from core.orchestrator.verify import verify_node
 from core.policy.engine import decide, kill_switch_engaged
+from core.verification.trace import ToolOutput
 
 Node = Callable[[Run, CerveauState], Awaitable[dict[str, Any]]]
 RECURSION_LIMIT = 20  # 8 nodes, no cycle in the graph
@@ -199,6 +202,23 @@ def journal_decision(run: Run, payload: dict[str, Any]) -> None:
     )
 
 
+def halted_state(run: Run) -> CerveauState:
+    """R4: the state the interrupted node was given, with the kill switch's refusal."""
+    state = run.last_state
+    if not isinstance(state, CerveauState):
+        state = CerveauState(request_id=run.request_id)
+    domain = state.context.domain if state.context is not None else DEFAULT_DOMAIN
+    decision = decide(
+        run.config.autonomy,
+        request_id=run.request_id,
+        domain=domain,
+        action_class="LECTURE",
+        kill_switch=True,
+    )
+    answer = Answer(statut="refus", message=KILL_MESSAGE)
+    return state.model_copy(update={"answer": answer, "policy": decision.to_payload()})
+
+
 async def audit_node(run: Run, state: CerveauState) -> dict[str, Any]:
     journal_decision(run, audit_payload(run, state))
     return {"audited": True}
@@ -230,6 +250,7 @@ def build_graph(run: Run) -> Any:
 
     def bind(fn: Node) -> Callable[[CerveauState], Awaitable[dict[str, Any]]]:
         async def node(state: CerveauState) -> dict[str, Any]:
+            run.last_state = state  # what a kill switch engaged in this node journals
             return await fn(run, state)
 
         return node
@@ -261,6 +282,7 @@ class RunResult:
     elapsed_s: float
     budget_alerts: tuple[str, ...] = ()  # highest daily / monthly threshold reached, for display
     now: str | None = None  # the date of the day the models were given
+    tool_outputs: tuple[ToolOutput, ...] = ()  # the computed results the answer may cite (R1)
 
     def markdown(self) -> str:
         return render_markdown(self.answer)
@@ -277,7 +299,8 @@ class Orchestrator:
         project_root: Path,
         journal: AuditJournal | None = None,
         router: ModelRouter | None = None,
-        open_toolbox: ToolboxOpener | None = None,
+        toolboxes: Mapping[str, ToolboxOpener] | None = None,  # plugin → opener; None: MCP servers
+        packs: Mapping[str, Pack] | None = None,
         pseudonymiser: Callable[[], PseudonymiserLike] | None = None,
         prompts: PromptSet | None = None,
         callbacks: Sequence[BaseCallbackHandler] = (),
@@ -290,8 +313,9 @@ class Orchestrator:
         self.project_root = project_root
         self.journal = journal or AuditJournal(default_journal_path(project_root))
         self.router = router or ModelRouter(config)
-        self.open_toolbox = open_toolbox or mcp_toolbox(project_root / "plugins" / WEB_PLUGIN)
-        self.prompts = prompts or PromptSet.load()
+        self.toolboxes = toolboxes
+        self.packs = packs if packs is not None else load_packs()
+        self.prompts = prompts or PromptSet.load(tuple(self.packs))
         self.callbacks = tuple(callbacks)
         self.tracer: Tracer = tracer or NoTracer()
         self._new_pseudonymiser = pseudonymiser or self._presidio
@@ -299,6 +323,12 @@ class Orchestrator:
         self._budget_clock = budget_clock
         self._tz = tz
         self._analyzer: PiiAnalyzer | None = None
+
+    def open_plugin(self, name: str) -> ToolboxOpener | None:
+        """The plugin's MCP server, or only the openers given (tests, evals)."""
+        if self.toolboxes is not None:
+            return self.toolboxes.get(name)
+        return mcp_toolbox(self.project_root / "plugins" / name)
 
     def _presidio(self) -> PseudonymiserLike:
         if self._analyzer is None:  # spaCy's French model loads once per process
@@ -326,7 +356,8 @@ class Orchestrator:
             now=now,
             pseudonymiser=pseudonymiser,
             raw_question=question,
-            open_toolbox=self.open_toolbox,
+            packs=self.packs,
+            open_plugin=self.open_plugin,
             callbacks=self.callbacks + self.tracer.callbacks(),
         )
         start = {"config": self.config.digest}
@@ -338,6 +369,11 @@ class Orchestrator:
                     CerveauState(request_id=request_id), config={"recursion_limit": RECURSION_LIMIT}
                 )
                 final = CerveauState.model_validate(result)
+            except KillSwitchEngaged:
+                final = halted_state(run)
+                payload = audit_payload(run, final)
+                payload["halted"] = "kill_switch"
+                journal_decision(run, payload)
             except BaseException as exc:
                 if not run.audited:  # the money spent so far still reaches the ledger
                     state = CerveauState(request_id=request_id)
@@ -360,4 +396,5 @@ class Orchestrator:
             elapsed_s=round(budget.elapsed_s, 3),
             budget_alerts=alerts,
             now=final.context.now if final.context is not None else None,
+            tool_outputs=final.draft.tool_outputs if final.draft is not None else (),
         )
