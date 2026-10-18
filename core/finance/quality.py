@@ -21,7 +21,6 @@ from __future__ import annotations
 
 import math
 from datetime import UTC, date, datetime, timedelta
-from functools import lru_cache
 from itertools import pairwise
 from statistics import NormalDist, median
 from typing import TYPE_CHECKING, Literal
@@ -32,6 +31,7 @@ from pydantic import AwareDatetime, BaseModel, ConfigDict
 
 from core.config.loader import DataQuality
 from core.finance.adjust import AdjustmentError
+from core.finance.calendars import exchange_calendar
 from core.finance.model import utc_text
 from core.finance.schema import QUALITY_COLUMNS
 
@@ -108,13 +108,6 @@ class QualityReport(_Frozen):
         return "suffisante" if score >= threshold else "insuffisante"
 
 
-@lru_cache(maxsize=32)
-def _calendar(mic: str, first_year: int, last_year: int) -> xc.ExchangeCalendar | None:
-    if mic not in xc.get_calendar_names():
-        return None
-    return xc.get_calendar(mic, start=date(first_year, 1, 1), end=date(last_year, 12, 31))
-
-
 def _closed_sessions(calendar: xc.ExchangeCalendar, as_of: datetime, count: int) -> list[date]:
     """The last ``count`` sessions whose close is at or before ``as_of``."""
     moment = pd.Timestamp(as_of).tz_convert(UTC)
@@ -168,7 +161,7 @@ def assess(
 
     day = as_of.astimezone(UTC).date()
     first_year = (day - timedelta(days=2 * window_sessions + 30)).year
-    calendar = _calendar(instrument.mic, first_year, day.year + 1)
+    calendar = exchange_calendar(instrument.mic, first_year, day.year + 1)
     if calendar is None:
         reason = f"calendrier inconnu pour la place {instrument.mic}"
         not_evaluated.update(gaps=reason, freshness=reason)

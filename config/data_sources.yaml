@@ -8,11 +8,14 @@ sources:
   ecb:
     enabled: true                     # D2
     url: https://data-api.ecb.europa.eu/service/
-    categories: [fx_reference_rates, estr, yield_curve]
+    # ADR-017 : la courbe des taux (yield_curve) est retirée tant que Lucas n'a pas lu ses
+    # conditions propres, plus restrictives (D22).
+    categories: [fx_reference_rates, estr]
     usage: personnel
     terms: >-
       Réutilisation libre si la BCE est citée comme source et si toute modification (calcul de
-      rendement, par exemple) est signalée ; l'€STR est publié sans frais ni licence
+      rendement, par exemple) est signalée ; l'€STR est publié sans frais ni licence ; les cours
+      de référence sont donnés à titre d'information seulement
       (ecb.europa.eu/services/using-our-site/disclaimer et page €STR, vérifiées le 2026-10-18).
 quality:
   max_staleness_sessions: 1           # D12 : données de clôture

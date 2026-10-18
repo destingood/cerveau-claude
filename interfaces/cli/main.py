@@ -1,4 +1,4 @@
-"""`cerveau` command line: ask, feedback, eval, audit, config, registry."""
+"""`cerveau` command line: ask, feedback, eval, audit, config, registry, finance."""
 
 from __future__ import annotations
 
@@ -11,7 +11,7 @@ from collections.abc import Callable
 from datetime import datetime
 from enum import StrEnum
 from pathlib import Path
-from typing import TYPE_CHECKING, Annotated, NoReturn
+from typing import TYPE_CHECKING, Annotated
 
 import typer
 
@@ -23,6 +23,18 @@ from core.learning.feedback import NotePseudonymiser
 from core.observability import build_tracer
 from core.registry import validate_all, validate_plugin
 from interfaces.cli import evaluate
+from interfaces.cli.common import (
+    EXIT_BLOCKED,
+    EXIT_BUDGET,
+    EXIT_ERROR,
+    ConfigDirOpt,
+    JournalOpt,
+    project_root,
+)
+from interfaces.cli.common import blocked as _blocked
+from interfaces.cli.common import fail as _fail
+from interfaces.cli.common import load as _load
+from interfaces.cli.finance import finance_app
 
 if TYPE_CHECKING:
     from core.config.loader import Config
@@ -36,6 +48,7 @@ registry_app = typer.Typer(help="Registre de plugins (R8).", no_args_is_help=Tru
 app.add_typer(audit_app, name="audit")
 app.add_typer(config_app, name="config")
 app.add_typer(registry_app, name="registry")
+app.add_typer(finance_app, name="finance")
 
 
 @app.callback()
@@ -47,40 +60,9 @@ def main() -> None:
             reconfigure(encoding="utf-8")
 
 
-def project_root() -> Path:
-    override = os.environ.get("CERVEAU_HOME")
-    return Path(override) if override else Path(__file__).resolve().parents[2]
-
-
-JournalOpt = Annotated[
-    Path | None, typer.Option("--journal", help="Chemin du journal (défaut : var/audit).")
-]
-ConfigDirOpt = Annotated[
-    Path | None, typer.Option("--config-dir", help="Dossier de configuration (défaut : config/).")
-]
-EXIT_ERROR, EXIT_BLOCKED, EXIT_BUDGET = 1, 2, 3
-
-
 def missing_keys(names: tuple[str, ...]) -> list[str]:
     """Names absent from the environment: a presence test, the values are never read (R6)."""
     return [name for name in names if name not in os.environ]
-
-
-def _fail(message: str, code: int) -> NoReturn:
-    typer.echo(message, err=True)
-    raise typer.Exit(code)
-
-
-def _load(config_dir: Path | None) -> Config:
-    directory = config_dir or project_root() / "config"
-    try:
-        return load_config(directory)
-    except ConfigError:
-        _fail(f"Configuration invalide ({directory}) : lancer `cerveau config check`.", EXIT_ERROR)
-
-
-def _blocked(exc: BlockedFeatureError) -> NoReturn:
-    _fail(f"Bloqué (R7) : {exc}. Voir `cerveau config check`.", EXIT_BLOCKED)
 
 
 def build_orchestrator(config: Config, root: Path, tracer: Tracer | None = None) -> Orchestrator:

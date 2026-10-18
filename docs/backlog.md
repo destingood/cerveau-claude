@@ -87,6 +87,9 @@ son origine et la phase visée ; « ? » signifie « à décider par Lucas ».
 | B58 | Mémoire (section 11) : la spécification ne la place dans aucune phase ; en phase 1 le nœud 8 journalise et la mémoire est désactivée | plan phase 1 §13 | ? |
 | B85 | Contrôles de qualité des séries de change et de taux (calendrier TARGET de la BCE) ; en phase 2 ils ne portent que sur les cours | ADR-016, D12 | 3 |
 | B86 | Reconnaître un grand mouvement vérifié comme réel (une annonce, une faillite) pour que le sous-score « opérations sur titres » ne reste pas à 0 sur toute la fenêtre | ADR-016 | 3 |
+| B87 | Courbe des taux de la BCE (`yield_curve`) : Lucas lit ses conditions propres, plus restrictives, avant de la remettre dans `data_sources.yaml` (D22) | ADR-017 | 3 |
+| B88 | Confirmer sur une vraie réponse de la BCE les colonnes `csvdata` (KEY, CURRENCY, CURRENCY_DENOM, TIME_PERIOD, OBS_VALUE) et le sens de TIME_PERIOD pour l'€STR (`A_VERIFIER`) | ADR-017 | 2 |
+| B89 | Rapprocher les identifiants d'un courtier (ISIN, code interne) du référentiel par `map_source_id`, avec l'adaptateur de son export (D4) | ADR-012, ADR-017 | 2 |
 
 ## Évaluations
 | # | Élément | Origine | Phase |

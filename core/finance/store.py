@@ -200,24 +200,34 @@ class FinanceStore:
         A version starts where the previous one ends: history is never rewritten, so a new
         version must start after the latest one.
         """
+        return self.add_instruments([instrument], recorded_at=recorded_at) == 1
+
+    def add_instruments(self, instruments: Iterable[Instrument], *, recorded_at: datetime) -> int:
+        """Record versions in one transaction (a refusal cancels all); returns how many are new."""
+        added = 0
         with self._write():
-            versions = [v for v, _ in self._versions(instrument.instrument_id)]
-            if instrument in versions:
-                return False
-            if versions and instrument.valid_from <= versions[-1].valid_from:
-                raise FinanceStoreError(
-                    f"{instrument.instrument_id} : une version doit commencer après le "
-                    f"{versions[-1].valid_from} (l'historique du référentiel ne se réécrit pas)"
-                )
-            values = instrument.model_dump()
-            values["duration"] = _duration_to_sql(instrument.duration)
-            columns = (*_INSTRUMENT_COLUMNS, "recorded_at")
-            self._conn.execute(
-                f"INSERT INTO instruments ({', '.join(columns)}) "  # noqa: S608 - constant names
-                f"VALUES ({', '.join('?' * len(columns))})",
-                [_sql(values[c]) for c in _INSTRUMENT_COLUMNS] + [utc_text(recorded_at)],
+            for instrument in instruments:
+                added += self._insert_instrument(instrument, recorded_at)
+        return added
+
+    def _insert_instrument(self, instrument: Instrument, recorded_at: datetime) -> bool:
+        versions = [v for v, _ in self._versions(instrument.instrument_id)]
+        if instrument in versions:
+            return False
+        if versions and instrument.valid_from <= versions[-1].valid_from:
+            raise FinanceStoreError(
+                f"{instrument.instrument_id} : une version doit commencer après le "
+                f"{versions[-1].valid_from} (l'historique du référentiel ne se réécrit pas)"
             )
-            self._versions_cache.pop(instrument.instrument_id, None)
+        values = instrument.model_dump()
+        values["duration"] = _duration_to_sql(instrument.duration)
+        columns = (*_INSTRUMENT_COLUMNS, "recorded_at")
+        self._conn.execute(
+            f"INSERT INTO instruments ({', '.join(columns)}) "  # noqa: S608 - constant names
+            f"VALUES ({', '.join('?' * len(columns))})",
+            [_sql(values[c]) for c in _INSTRUMENT_COLUMNS] + [utc_text(recorded_at)],
+        )
+        self._versions_cache.pop(instrument.instrument_id, None)
         return True
 
     def _version_on(
@@ -304,14 +314,8 @@ class FinanceStore:
                     raise FinanceStoreError(
                         f"{table.name} : publication annoncée après l'ingestion ({record!r})"
                     )
-                keys = [_sql(getattr(record, k)) for k in table.keys]
-                values = [_sql(getattr(record, v)) for v in table.values]
-                where = " AND ".join(f"{k} = ?" for k in table.keys)
-                last = self._conn.execute(
-                    f"SELECT revision, published_at, {', '.join(table.values)} "  # noqa: S608
-                    f"FROM {table.name} WHERE {where} ORDER BY revision DESC LIMIT 1",
-                    keys,
-                ).fetchone()
+                keys, values = _key_values(table, record)
+                last = self._last_revision(table, keys)
                 published = utc_text(record.published_at)
                 if last is not None and [last[v] for v in table.values] == values:
                     report.unchanged += 1
@@ -333,6 +337,26 @@ class FinanceStore:
                 else:
                     report.revised += 1
         return report
+
+    def _last_revision(self, table: _Table, keys: list[Any]) -> sqlite3.Row | None:
+        where = " AND ".join(f"{k} = ?" for k in table.keys)
+        row: sqlite3.Row | None = self._conn.execute(
+            f"SELECT revision, published_at, {', '.join(table.values)} "  # noqa: S608
+            f"FROM {table.name} WHERE {where} ORDER BY revision DESC LIMIT 1",
+            keys,
+        ).fetchone()
+        return row
+
+    def revising(self, records: Sequence[MarketRecord]) -> set[int]:
+        """Positions of the records whose key is stored with other values: they would revise it."""
+        found: set[int] = set()
+        for position, record in enumerate(records):
+            table = _TABLES[type(record)]
+            keys, values = _key_values(table, record)
+            last = self._last_revision(table, keys)
+            if last is not None and [last[v] for v in table.values] != values:
+                found.add(position)
+        return found
 
     # Market data: point-in-time reads --------------------------------------------------------
 
@@ -540,6 +564,13 @@ class FinanceStore:
             "SELECT * FROM quality_scores WHERE series_id = ? ORDER BY as_of", (series_id,)
         ).fetchall()
         return [dict(row) for row in rows]
+
+
+def _key_values(table: _Table, record: MarketRecord) -> tuple[list[Any], list[Any]]:
+    return (
+        [_sql(getattr(record, k)) for k in table.keys],
+        [_sql(getattr(record, v)) for v in table.values],
+    )
 
 
 def _key_clauses(table: _Table, where: dict[str, Any]) -> list[str]:
