@@ -1,0 +1,416 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$defs": {
+    "Attribution": {
+      "additionalProperties": false,
+      "properties": {
+        "lines": {
+          "items": {
+            "$ref": "#/$defs/LineContribution"
+          },
+          "title": "Lines",
+          "type": "array"
+        },
+        "sectors": {
+          "items": {
+            "$ref": "#/$defs/SectorContribution"
+          },
+          "title": "Sectors",
+          "type": "array"
+        },
+        "total": {
+          "$ref": "#/$defs/Figure"
+        },
+        "residual": {
+          "$ref": "#/$defs/Figure"
+        }
+      },
+      "required": [
+        "lines",
+        "sectors",
+        "total",
+        "residual"
+      ],
+      "title": "Attribution",
+      "type": "object"
+    },
+    "DrawdownView": {
+      "additionalProperties": false,
+      "properties": {
+        "depth": {
+          "$ref": "#/$defs/Figure"
+        },
+        "peak": {
+          "format": "date",
+          "title": "Peak",
+          "type": "string"
+        },
+        "trough": {
+          "format": "date",
+          "title": "Trough",
+          "type": "string"
+        },
+        "recovery": {
+          "anyOf": [
+            {
+              "format": "date",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Recovery"
+        }
+      },
+      "required": [
+        "depth",
+        "peak",
+        "trough",
+        "recovery"
+      ],
+      "title": "DrawdownView",
+      "type": "object"
+    },
+    "Figure": {
+      "additionalProperties": false,
+      "description": "A number for the planner. ``unit``: a currency code, ``%`` (``value`` is a fraction),\n``XXX/EUR`` (units of XXX for one euro), ``titres``, ``jours``, ``séances``, ``ans`` or\n``score`` (in [0, 1]).",
+      "properties": {
+        "id": {
+          "maxLength": 200,
+          "minLength": 1,
+          "title": "Id",
+          "type": "string"
+        },
+        "value": {
+          "title": "Value",
+          "type": "number"
+        },
+        "display": {
+          "title": "Display",
+          "type": "string"
+        },
+        "unit": {
+          "title": "Unit",
+          "type": "string"
+        }
+      },
+      "required": [
+        "id",
+        "value",
+        "display",
+        "unit"
+      ],
+      "title": "Figure",
+      "type": "object"
+    },
+    "LineContribution": {
+      "additionalProperties": false,
+      "properties": {
+        "line": {
+          "title": "Line",
+          "type": "string"
+        },
+        "name": {
+          "title": "Name",
+          "type": "string"
+        },
+        "sector": {
+          "title": "Sector",
+          "type": "string"
+        },
+        "currency": {
+          "title": "Currency",
+          "type": "string"
+        },
+        "gain_eur": {
+          "$ref": "#/$defs/Figure"
+        },
+        "contribution": {
+          "$ref": "#/$defs/Figure"
+        }
+      },
+      "required": [
+        "line",
+        "name",
+        "sector",
+        "currency",
+        "gain_eur",
+        "contribution"
+      ],
+      "title": "LineContribution",
+      "type": "object"
+    },
+    "Measures": {
+      "additionalProperties": false,
+      "properties": {
+        "twr": {
+          "$ref": "#/$defs/Figure"
+        },
+        "twr_annualized": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/Figure"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "mwr": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/Figure"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "mwr_annualized": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/Figure"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "volatility": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/Figure"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "risk_free": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/Figure"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "sharpe": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/Figure"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "sortino": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/Figure"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "max_drawdown": {
+          "$ref": "#/$defs/DrawdownView"
+        },
+        "calmar": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/Figure"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        }
+      },
+      "required": [
+        "twr",
+        "twr_annualized",
+        "mwr",
+        "mwr_annualized",
+        "volatility",
+        "risk_free",
+        "sharpe",
+        "sortino",
+        "max_drawdown",
+        "calmar"
+      ],
+      "title": "Measures",
+      "type": "object"
+    },
+    "Period": {
+      "additionalProperties": false,
+      "properties": {
+        "start": {
+          "format": "date",
+          "title": "Start",
+          "type": "string"
+        },
+        "end": {
+          "format": "date",
+          "title": "End",
+          "type": "string"
+        },
+        "calendar_days": {
+          "$ref": "#/$defs/Figure"
+        },
+        "returns": {
+          "$ref": "#/$defs/Figure"
+        }
+      },
+      "required": [
+        "start",
+        "end",
+        "calendar_days",
+        "returns"
+      ],
+      "title": "Period",
+      "type": "object"
+    },
+    "SectorContribution": {
+      "additionalProperties": false,
+      "properties": {
+        "sector": {
+          "title": "Sector",
+          "type": "string"
+        },
+        "gain_eur": {
+          "$ref": "#/$defs/Figure"
+        },
+        "contribution": {
+          "$ref": "#/$defs/Figure"
+        }
+      },
+      "required": [
+        "sector",
+        "gain_eur",
+        "contribution"
+      ],
+      "title": "SectorContribution",
+      "type": "object"
+    },
+    "Unavailable": {
+      "additionalProperties": false,
+      "properties": {
+        "measure": {
+          "title": "Measure",
+          "type": "string"
+        },
+        "reason": {
+          "title": "Reason",
+          "type": "string"
+        }
+      },
+      "required": [
+        "measure",
+        "reason"
+      ],
+      "title": "Unavailable",
+      "type": "object"
+    },
+    "Values": {
+      "additionalProperties": false,
+      "properties": {
+        "start_eur": {
+          "$ref": "#/$defs/Figure"
+        },
+        "end_eur": {
+          "$ref": "#/$defs/Figure"
+        },
+        "net_deposits_eur": {
+          "$ref": "#/$defs/Figure"
+        },
+        "gain_eur": {
+          "$ref": "#/$defs/Figure"
+        },
+        "dividends_eur": {
+          "$ref": "#/$defs/Figure"
+        },
+        "fees_eur": {
+          "$ref": "#/$defs/Figure"
+        }
+      },
+      "required": [
+        "start_eur",
+        "end_eur",
+        "net_deposits_eur",
+        "gain_eur",
+        "dividends_eur",
+        "fees_eur"
+      ],
+      "title": "Values",
+      "type": "object"
+    }
+  },
+  "additionalProperties": false,
+  "properties": {
+    "as_of": {
+      "format": "date-time",
+      "title": "As Of",
+      "type": "string"
+    },
+    "strict": {
+      "title": "Strict",
+      "type": "boolean"
+    },
+    "notice": {
+      "title": "Notice",
+      "type": "string"
+    },
+    "period": {
+      "$ref": "#/$defs/Period"
+    },
+    "values": {
+      "$ref": "#/$defs/Values"
+    },
+    "measures": {
+      "$ref": "#/$defs/Measures"
+    },
+    "attribution": {
+      "$ref": "#/$defs/Attribution"
+    },
+    "assumptions": {
+      "items": {
+        "type": "string"
+      },
+      "title": "Assumptions",
+      "type": "array"
+    },
+    "unavailable": {
+      "items": {
+        "$ref": "#/$defs/Unavailable"
+      },
+      "title": "Unavailable",
+      "type": "array"
+    },
+    "warnings": {
+      "items": {
+        "type": "string"
+      },
+      "title": "Warnings",
+      "type": "array"
+    }
+  },
+  "required": [
+    "as_of",
+    "strict",
+    "notice",
+    "period",
+    "values",
+    "measures",
+    "attribution",
+    "assumptions",
+    "unavailable",
+    "warnings"
+  ],
+  "title": "PerformanceReport",
+  "type": "object"
+}
