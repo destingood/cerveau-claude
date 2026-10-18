@@ -99,7 +99,8 @@ def restore(zip_path):
             raise ValueError("graph.json de l'archive illisible")
         history.snapshot("avant-restauration-sauvegarde", force=True)
         from .common import write_json
-        write_json(GRAPH_FILE, graph)
+        from .store import replace_all
+        replace_all(graph)  # mode wiki : les pages suivent
         for rel in ("journal/sessions.json", "journal/observations.json", "config.json"):
             if rel in names:
                 data = json.loads(z.read(rel).decode("utf-8"))

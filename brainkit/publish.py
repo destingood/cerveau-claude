@@ -20,8 +20,9 @@ from . import __version__
 from .common import CODE_DIR, load_config, set_config
 
 NAME = MARKET = "cerveau"
-DESC = ("Cerveau persistant pour Claude Code : souvenirs en graphe, rappel automatique à chaque message, cartes de "
-        "projets, à-faire datés, serveur MCP. Tout reste sur ton PC.")
+DESC = ("Cerveau persistant pour Claude Code : souvenirs en graphe, rappel automatique à chaque message, wiki Markdown "
+        "tenu par Claude (sources ingérées, coffre Obsidian, dépôt git), cartes de projets, à-faire datés, serveur MCP. "
+        "Tout reste chez toi.")
 SETTINGS_SNIPPET = """{{
   "extraKnownMarketplaces": {{
     "cerveau": {{ "source": {{ "source": "git", "url": "https://github.com/{repo}.git" }}, "autoUpdate": true }}
@@ -62,8 +63,13 @@ décisions et de ce qu'il a appris, d'une session à l'autre.
   phonétique et synonymes compris).
 - **En fin de tâche** : Claude note ce qui mérite d'être retenu (décisions, pièges, préférences).
 - Cartes de tes projets (fichiers clés, où est défini quoi), à-faire datés, vue 3D, serveur MCP.
+- **Nouveau — le cerveau en wiki** (le « LLM Wiki » d'Andrej Karpathy) : `brain wiki init <dossier>` range chaque
+  souvenir dans une page Markdown d'un dossier que tu ouvres dans Obsidian (idéalement un dépôt GitHub privé). Tu y
+  déposes des sources (articles, PDF, transcriptions, notes) ; Claude les lit et tient à jour des pages de synthèse
+  (sources résumées, entités, concepts, sujets, analyses), liées entre elles. Rien ne change tant que tu ne le lances pas.
 
-Tout reste sur ton PC, dans `~/.claude/brain` : rien n'est envoyé ailleurs, et chacun a sa propre mémoire.
+Tout reste chez toi, dans `~/.claude/brain` — ou dans ton wiki, sur ton PC et, si tu le choisis, dans ton dépôt
+GitHub privé : rien n'est envoyé ailleurs, et chacun a sa propre mémoire.
 
 ## Installer (une seule fois)
 
@@ -98,6 +104,10 @@ sont jamais touchés par une mise à jour.
 Rien à faire : parle normalement à Claude. Pour aller plus loin, demande-lui « qu'est-ce que tu sais sur … ? »,
 « retiens que … », ou tape `/brain`. Vue 3D de ta mémoire : `~/.claude/brain/cerveau.html`.
 
+Avec un wiki : « ingère cet article », « range cette réponse dans le wiki », « fais le point sur le wiki » (contrôle de
+santé : pages à créer, sources en attente, pages dépassées). Le schéma que suit Claude est dans le `CLAUDE.md` du wiki :
+fais-le évoluer avec lui.
+
 ## Désinstaller
 
 `/plugin uninstall cerveau@cerveau`. Tes souvenirs restent dans `~/.claude/brain` (supprime ce dossier pour tout effacer).
@@ -126,7 +136,7 @@ def build(dest: Path, owner: str = "Lucas", repo: str = "") -> list:
         "command": "python", "args": ["-I", "-S", "${CLAUDE_PLUGIN_ROOT}/brain.py", "mcp"]}}})
     _lf(dest / "skills" / "brain" / "SKILL.md", SKILL)
     plugin = {"name": NAME, "version": __version__, "description": DESC, "author": {"name": owner},
-              "keywords": ["mémoire", "memory", "souvenirs", "rappel", "hooks", "mcp"]}
+              "keywords": ["mémoire", "memory", "souvenirs", "rappel", "hooks", "mcp", "wiki", "obsidian"]}
     if repo:
         plugin["homepage"] = plugin["repository"] = f"https://github.com/{repo}"
     _json(dest / ".claude-plugin" / "plugin.json", plugin)

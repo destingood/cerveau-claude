@@ -12,7 +12,8 @@ import json
 import sys
 
 PROTOCOLS = ("2025-11-25", "2025-06-18", "2025-03-26", "2024-11-05")
-TYPES = ["user", "feedback", "project", "decision", "fact", "learning", "reference", "entity", "todo"]
+TYPES = ["user", "feedback", "project", "decision", "fact", "learning", "reference", "entity", "todo", "source", "concept",
+         "topic", "analysis"]
 
 TOOLS = [
     {"name": "memory_search",
@@ -36,6 +37,8 @@ TOOLS = [
          "due": {"type": "string", "description": "échéance d'un à-faire (10/11, demain, dans 2 semaines)"},
          "replaces": {"type": "string", "description": "id du souvenir que celui-ci remplace"},
          "keys": {"type": "string", "description": "mots-clés, synonymes, questions types pour le retrouver"},
+         "resume": {"type": "string", "description": "page du wiki : une phrase qui dit l'essentiel"},
+         "sources": {"type": "string", "description": "page du wiki : pages Sources qui l'appuient (« [[Titre]], … »)"},
          "source": {"type": "string", "enum": ["utilisateur", "verifie", "claude", "deduit"],
                     "description": "provenance : dit par l'utilisateur, vérifié, Claude, déduit"}},
          "required": ["type", "title", "body"]}},
@@ -52,6 +55,8 @@ TOOLS = [
          "title": {"type": "string"},
          "importance": {"type": "integer", "description": "1 à 5"},
          "due": {"type": "string", "description": "échéance, « none » pour l'enlever"},
+         "resume": {"type": "string", "description": "page du wiki : nouveau résumé"},
+         "sources": {"type": "string", "description": "page du wiki : pages Sources à ajouter"},
          "done": {"type": "boolean", "description": "à-faire terminé"},
          "archive": {"type": "boolean", "description": "archiver (réversible)"}},
          "required": ["id"]}},
@@ -62,6 +67,30 @@ TOOLS = [
      "description": "Ce que le cerveau sait d'emblée : profil, règles, projets, échéances, savoir global (et la fiche "
                     "d'un projet si un dossier est donné). À appeler en début de conversation.",
      "inputSchema": {"type": "object", "properties": {"folder": {"type": "string", "description": "dossier du projet"}}}},
+    {"name": "wiki_status",
+     "description": "Le wiki du cerveau (si le cerveau vit dans un wiki Markdown) : pages par type, sources à ingérer, "
+                    "synchronisation git, dernières entrées du journal, et son schéma (méthode d'ingestion, conventions).",
+     "inputSchema": {"type": "object", "properties": {"schema": {"type": "boolean", "description": "donner aussi le schéma complet"}}}},
+    {"name": "wiki_add_source",
+     "description": "Ranger une source dans le wiki (texte d'un article, d'une transcription, d'une note, d'une "
+                    "conversation) : elle part dans raw/ (immuable) et sa page Sources est créée ; renvoie le plan "
+                    "d'ingestion (pages concernées, entités repérées). Ensuite : remplir la page (memory_update), "
+                    "mettre à jour les pages liées (memory_add / memory_update), puis wiki_log.",
+     "inputSchema": {"type": "object", "properties": {
+         "title": {"type": "string"}, "text": {"type": "string", "description": "contenu complet de la source"},
+         "url": {"type": "string", "description": "adresse d'origine"},
+         "format": {"type": "string", "description": "article, video, podcast, livre, note, conversation, donnees…"}},
+         "required": ["title", "text"]}},
+    {"name": "wiki_lint",
+     "description": "Contrôle de santé du wiki : pages à créer, orphelines, sans résumé, sources à ingérer ou abîmées, "
+                    "pages dépassées, doublons, contradictions, souvenirs à verser dans une page de savoir.",
+     "inputSchema": {"type": "object", "properties": {}}},
+    {"name": "wiki_log",
+     "description": "Ajouter une entrée au journal du wiki (log.md) : opération (ingest, query, lint, note), titre, "
+                    "lignes (pages touchées…). Régénère l'index.",
+     "inputSchema": {"type": "object", "properties": {
+         "operation": {"type": "string"}, "title": {"type": "string"},
+         "lines": {"type": "array", "items": {"type": "string"}}}, "required": ["operation", "title"]}},
 ]
 
 
@@ -104,6 +133,9 @@ def call_tool(name, args):
             argv += ["--replaces", str(args["replaces"])]
         if args.get("keys"):
             argv += ["--keys", str(args["keys"])]
+        for key in ("resume", "sources"):
+            if args.get(key):
+                argv += [f"--{key}", str(args[key])]
         argv += ["--source", str(args.get("source") or "mcp")]
         return _run_cli(argv)
     if name == "memory_show":
@@ -115,7 +147,8 @@ def call_tool(name, args):
         if args.get("archive"):
             return _run_cli(["rm", nid])
         argv = ["edit", nid]
-        for key, flag in (("append", "-a"), ("body", "-b"), ("title", "-T"), ("importance", "-i"), ("due", "--due")):
+        for key, flag in (("append", "-a"), ("body", "-b"), ("title", "-T"), ("importance", "-i"), ("due", "--due"),
+                          ("resume", "--resume"), ("sources", "--sources")):
             if args.get(key) not in (None, ""):
                 argv += [flag, str(args[key])]
         if len(argv) == 2:
@@ -128,6 +161,27 @@ def call_tool(name, args):
         argv = ["context", "--cwd", str(args.get("folder") or os.path.expanduser("~"))]
         text, err = _run_cli(argv)
         return text.rsplit("\n--- injecté", 1)[0], err
+    if name == "wiki_status":
+        text, err = _run_cli(["wiki", "status"])
+        if args.get("schema") and not err:
+            more, _ = _run_cli(["wiki", "schema"])
+            text = f"{text}\n\n{more}"
+        return text, err
+    if name == "wiki_add_source":
+        from . import wiki
+        try:
+            info = wiki.add_source(None, title=str(args.get("title") or "Source"), fmt=args.get("format"),
+                                   url=args.get("url"), text=str(args.get("text") or ""))
+            text = wiki.ingest_plan(info)
+            wiki.write_index()
+            return text, False
+        except Exception as exc:
+            return f"✗ {exc}", True
+    if name == "wiki_lint":
+        return _run_cli(["wiki", "lint"])
+    if name == "wiki_log":
+        lines = [str(x) for x in (args.get("lines") or [])]
+        return _run_cli(["wiki", "log", str(args.get("operation") or "note"), str(args.get("title") or ""), *lines])
     return f"outil inconnu : {name}", True
 
 

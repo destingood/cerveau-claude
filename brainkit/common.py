@@ -58,6 +58,9 @@ DEFAULT_CONFIG = {
     "due": {"days_ahead": 7},
     # Coffre Obsidian (`export --vault <dossier>`) : dossier retenu après le premier export.
     "vault": {"path": None},
+    # Le cerveau en wiki (`brain wiki init <dossier>`) : les pages Markdown du dossier font foi. Synchronisation git
+    # automatique sur le PC (pull au démarrage au plus toutes les sync_minutes, commit + push en fin de session).
+    "wiki": {"path": None, "auto_sync": True, "sync_minutes": 30},
     # Rêve : entretien quotidien hors conversation ; ligne au démarrage s'il y a au moins min_items points à trancher.
     "dream": {"notice": True, "min_items": 3},
     # PC (`brain pc`) : veille légère pendant les hooks (au plus toutes les check_minutes), fermeture seule des orphelins

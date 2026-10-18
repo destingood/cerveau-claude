@@ -209,7 +209,8 @@ const root = document.documentElement;
 const cv = $('#cv'), ctx = cv.getContext('2d'), tip = $('#tip'), panel = $('#panel');
 const TYPES = {user:['Profil','s1','circle'], feedback:['Règle','s1','diamond'], project:['Projet','s2','square'],
   decision:['Décision','s3','triangle'], fact:['Fait','s3','diamond'], learning:['Apprentissage','s3','circle'], reference:['Référence','other','square'],
-  entity:['Entité','other','circle'], todo:['À faire','other','ring']};
+  entity:['Entité','other','circle'], todo:['À faire','other','ring'], source:['Source','other','square'],
+  concept:['Concept','s3','circle'], topic:['Sujet','s2','diamond'], analysis:['Analyse','s3','triangle']};
 const KIND = {code:['code','circle'], doc:['document','square'], data:['données','diamond'], asset:['média','triangle'], other:['autre','ring']};
 const SLOTS = ['s1','s2','s3'];
 const state = {view:null, hidden:new Set(), q:'', hover:null, sel:null, scale:1, tx:0, ty:0, w:0, h:0, dpr:1};
