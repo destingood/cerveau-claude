@@ -342,7 +342,7 @@ class FinanceStore:
     ) -> list[sqlite3.Row]:
         table = _TABLES[record_type]
         stamp = utc_text(as_of)
-        clauses = [f"{k} = ?" for k in where] + ["published_at <= ?"]
+        clauses = [*_key_clauses(table, where), "published_at <= ?"]
         params: list[Any] = [*map(_sql, where.values()), stamp]
         if strict:
             clauses.append("ingested_at <= ?")
@@ -484,13 +484,21 @@ class FinanceStore:
     ) -> Sequence[Stored[R]]:
         """Every revision of the matching keys, oldest first (audit, quality checks)."""
         table = _TABLES[record_type]
-        clauses = " AND ".join(f"{k} = ?" for k in where) or "1 = 1"
+        clauses = " AND ".join(_key_clauses(table, where)) or "1 = 1"
         rows = self._conn.execute(
             f"SELECT * FROM {table.name} WHERE {clauses} "  # noqa: S608 - constant names
             f"ORDER BY {table.date_column}, revision",
             [*map(_sql, where.values())],
         ).fetchall()
         return [self._stored(record_type, row) for row in rows]
+
+
+def _key_clauses(table: _Table, where: dict[str, Any]) -> list[str]:
+    """Filters on key columns only: their names are the only text interpolated into SQL."""
+    unknown = set(where) - set(table.keys)
+    if unknown:
+        raise FinanceStoreError(f"filtre hors des clés de {table.name} : {sorted(unknown)}")
+    return [f"{k} = ?" for k in where]
 
 
 def _duration_to_sql(value: float | str | None) -> str | None:

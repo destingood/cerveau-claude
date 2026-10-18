@@ -454,3 +454,10 @@ def test_the_store_adjusts_with_the_known_dividends(store: FinanceStore) -> None
         store.ingest(
             [dividend(SESSIONS[3], 2.0).model_copy(update={"currency": "USD"})], ingested_at=NOW
         )
+
+
+def test_filters_are_limited_to_key_columns(store: FinanceStore) -> None:
+    with pytest.raises(FinanceStoreError, match="hors des clés"):
+        store.revisions(PriceRow, {"instrument_id = '' OR 1 = 1 --": "x"})
+    with pytest.raises(FinanceStoreError, match="hors des clés"):
+        store._visible(PriceRow, {"close": 10.0}, as_of=NOW, strict=False)
