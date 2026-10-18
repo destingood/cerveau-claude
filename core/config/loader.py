@@ -505,6 +505,10 @@ FEATURES: dict[str, Feature] = {
             "risk:market_risk.cross_check",
         ),
     ),
+    "finance.performance": Feature(
+        "Mesures de performance (annualisation, taux sans risque)",
+        ("risk:market_risk.annualisation_sessions", "risk:market_risk.risk_free"),
+    ),
     "finance.historical_stress": Feature(
         "Stress historiques (fenêtres de crise)", ("risk:market_risk.historical_stress",)
     ),

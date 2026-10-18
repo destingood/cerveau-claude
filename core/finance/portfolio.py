@@ -20,17 +20,21 @@ from dataclasses import dataclass, field
 from datetime import date, datetime
 from decimal import Decimal, localcontext
 from pathlib import Path
-from typing import Any, Literal
+from typing import TYPE_CHECKING, Any, Literal
 
 from core.finance.brokers import FORMATS, read_statement
 from core.finance.model import PARIS, StatementLine, Transaction, end_of_day, local_date
 from core.finance.store import FinanceStore, PortfolioFile
 from core.finance.sync import reference
 
+if TYPE_CHECKING:
+    import pandas as pd
+
 ZERO = Decimal(0)
 EUR = "EUR"
 Status = Literal["ok", "ecart", "non_rapproche"]
 Nature = Literal["security", "cash"]
+SeriesLookup = Callable[[str], "pd.Series"]
 GAP_ALERT = "rapprochement: ecart"
 # Enough for the product of two file numbers (25 digits each) to be exact: sums and products
 # stay exact, and only the share of a cost basis a sale removes is rounded, at 60 digits.
@@ -86,6 +90,8 @@ class RealizedGain:
     trade_date: date
     currency: str
     quantity: Decimal
+    price: Decimal  # unit sale price, before fees
+    fees: Decimal
     proceeds: Decimal  # net of fees
     cost: Decimal  # the share of the cost basis the sale removed
     where: str
@@ -220,7 +226,7 @@ def _replay(
 
 def _sell(booked: Booked, lot: _Lot) -> RealizedGain:
     t = booked.transaction
-    assert t.asset is not None  # noqa: S101 - required by the model for a sale
+    assert t.asset is not None and t.price is not None  # noqa: S101 - required for a sale
     if t.quantity > lot.quantity:
         raise PortfolioError(
             f"{booked.where} : vente supérieure à la position détenue ({t.asset}, compte "
@@ -235,6 +241,8 @@ def _sell(booked: Booked, lot: _Lot) -> RealizedGain:
         trade_date=t.trade_date,
         currency=t.currency,
         quantity=t.quantity,
+        price=t.price,
+        fees=t.fees,
         proceeds=t.cash_flow,
         cost=removed,
         where=booked.where,
@@ -251,15 +259,32 @@ def build_book(
         for b in effective_ledger(store, as_of=as_of, strict=strict)
         if b.transaction.trade_date <= day
     ]
-    held = sorted({b.transaction.asset for b in ledger if b.transaction.kind in ("buy", "sell")})
-    splits = [
+    return replay(
+        ledger, known_splits(store, ledger, as_of=as_of, strict=strict), day=day, as_of=as_of
+    )
+
+
+def held_instruments(ledger: Iterable[Booked]) -> list[str]:
+    """The instruments the ledger buys or sells, sorted."""
+    return sorted(
+        {
+            b.transaction.asset
+            for b in ledger
+            if b.transaction.kind in ("buy", "sell") and b.transaction.asset is not None
+        }
+    )
+
+
+def known_splits(
+    store: FinanceStore, ledger: Iterable[Booked], *, as_of: datetime, strict: bool
+) -> list[Split]:
+    """The splits known at ``as_of`` of the instruments the ledger trades."""
+    return [
         Split(action.ex_date, action.instrument_id, _ratio(action.value))
-        for instrument_id in held
-        if instrument_id is not None
+        for instrument_id in held_instruments(ledger)
         for action in store.corporate_actions(instrument_id, as_of=as_of, strict=strict)
         if action.kind == "split"
     ]
-    return replay(ledger, splits, day=day, as_of=as_of)
 
 
 # Valuation -------------------------------------------------------------------------------------
@@ -303,13 +328,24 @@ class Valuation:
 
 def value(store: FinanceStore, book: Book, *, strict: bool = False) -> Valuation:
     """Last close and last ECB rate published by ``book.as_of``, up to ``book.day``."""
+    return valuation(
+        book,
+        lambda instrument_id: store.closes(
+            instrument_id, as_of=book.as_of, end=book.day, strict=strict
+        ),
+        lambda currency: store.fx_rates(currency, as_of=book.as_of, end=book.day, strict=strict),
+    )
+
+
+def valuation(book: Book, closes_of: SeriesLookup, rates_of: SeriesLookup) -> Valuation:
+    """:func:`value` on given series: raw closes and ECB rates, none after ``book.day``."""
     rates: dict[str, tuple[float | None, date | None]] = {}
 
     def rate(currency: str) -> tuple[float | None, date | None]:
         if currency == EUR:
             return 1.0, None
         if currency not in rates:
-            series = store.fx_rates(currency, as_of=book.as_of, end=book.day, strict=strict)
+            series = rates_of(currency)
             known = not series.empty
             rates[currency] = (
                 (float(series.iloc[-1]), series.index[-1].date()) if known else (None, None)
@@ -318,7 +354,7 @@ def value(store: FinanceStore, book: Book, *, strict: bool = False) -> Valuation
 
     lines: list[ValuedLine] = []
     for h in book.holdings:
-        closes = store.closes(h.instrument_id, as_of=book.as_of, end=book.day, strict=strict)
+        closes = closes_of(h.instrument_id)
         fx_rate, fx_date = rate(h.currency)
         close = close_date = amount = None
         if not closes.empty:

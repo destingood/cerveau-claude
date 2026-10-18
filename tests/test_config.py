@@ -304,7 +304,7 @@ def test_phase_2_decisions_are_recorded() -> None:
 
 def test_finance_read_only_features_are_available() -> None:
     config = load_config(REPO_ROOT / "config")
-    for feature in ("finance.market_risk", "data.ecb"):
+    for feature in ("finance.market_risk", "finance.performance", "data.ecb"):
         config.require(feature)
     assert config.data_sources.sources["yfinance"].enabled is False  # R15, ADR-013
 
