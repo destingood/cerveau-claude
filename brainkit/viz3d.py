@@ -217,7 +217,7 @@ const PALETTE = ["#38e1ff","#a78bfa","#f472b6","#a3e635","#fbbf24","#fb923c","#2
 const TYPES = {user:["Profil","#60a5fa"], feedback:["Règle","#c084fc"], project:["Projet","#fb923c"], decision:["Décision","#fbbf24"],
   fact:["Fait","#34d399"], learning:["Apprentissage","#22d3ee"], reference:["Référence","#a5b4cf"], entity:["Entité","#f472b6"],
   todo:["À faire","#fb7185"], source:["Source","#94a3b8"], concept:["Concept","#a3e635"], topic:["Sujet","#facc15"],
-  analysis:["Analyse","#2dd4bf"]};
+  analysis:["Analyse","#2dd4bf"], skill:["Compétence","#e879f9"], boutique:["Boutique","#4ade80"]};
 const KIND = {code:"code", doc:"document", data:"données", asset:"média", other:"autre"};
 const REL = 4;
 const store = { get(k){ try { return localStorage.getItem(k); } catch (e) { return null; } },
@@ -972,7 +972,7 @@ function setStats(){
   if (cur.map){ const m = cur.map;
     $("#stats").innerHTML = chip(m.nodes.length, `/ ${m.total} fichiers`) + chip(cur.links.length, "imports") + `<span class="stat">carte du ${esc((m.generated || "").slice(0, 10))}</span>`;
   } else { const s = DATA.stats;
-    $("#stats").innerHTML = chip(s.memories, "souvenirs") + chip(s.projects, "projets") + chip(s.links, "liens") + chip((DATA.inf || []).length, "déduits")
+    $("#stats").innerHTML = chip(s.memories, "souvenirs") + chip(s.projects, "projets") + (s.skills ? chip(s.skills, "compétences") : "") + (s.shops ? chip(s.shops, "boutiques") : "") + chip(s.links, "liens") + chip((DATA.inf || []).length, "déduits")
       + chip(COMMS.filter(c => c.size >= 2).length, "communautés");
   }
   countUp(); layoutTop();
