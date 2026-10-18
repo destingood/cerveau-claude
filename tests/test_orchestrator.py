@@ -5,8 +5,8 @@ from __future__ import annotations
 import asyncio
 import itertools
 import json
-from collections.abc import AsyncIterator, Sequence
-from contextlib import asynccontextmanager
+from collections.abc import AsyncIterator, Callable, Iterator, Mapping, Sequence
+from contextlib import asynccontextmanager, contextmanager
 from dataclasses import dataclass, field
 from datetime import UTC, datetime
 from pathlib import Path
@@ -14,6 +14,7 @@ from typing import Any
 
 import pytest
 import yaml
+from langchain_core.callbacks import BaseCallbackHandler
 from langchain_core.language_models.chat_models import BaseChatModel
 from langchain_core.messages import AIMessage, BaseMessage, HumanMessage, ToolMessage
 from langchain_core.outputs import ChatGeneration, ChatResult
@@ -281,6 +282,38 @@ class FakePseudonymiser:
         return {"PERSON": len(self.table)} if self.table else {}
 
 
+class RecordingHandler(BaseCallbackHandler):
+    """What a Langfuse handler would see: every message sent to a model."""
+
+    def __init__(self) -> None:
+        self.texts: list[str] = []
+
+    def on_chat_model_start(
+        self, serialized: dict[str, Any], messages: list[list[BaseMessage]], **kwargs: Any
+    ) -> None:
+        self.texts.extend(str(m.content) for batch in messages for m in batch)
+
+
+@dataclass
+class FakeTracer:
+    handler: RecordingHandler = field(default_factory=RecordingHandler)
+    requests: list[tuple[str, str, dict[str, Any]]] = field(default_factory=list)
+    finished: list[dict[str, Any]] = field(default_factory=list)
+
+    def callbacks(self) -> tuple[BaseCallbackHandler, ...]:
+        return (self.handler,)
+
+    @contextmanager
+    def request(
+        self, request_id: str, *, version: str, metadata: Mapping[str, str | int]
+    ) -> Iterator[Callable[[Mapping[str, str | int]], None]]:
+        self.requests.append((request_id, version, dict(metadata)))
+        yield lambda final: self.finished.append(dict(final))
+
+    def flush(self) -> None:
+        return None
+
+
 # --- rig ---------------------------------------------------------------------------------------
 
 
@@ -318,7 +351,9 @@ def _config(config_dir: Path, **per_request: int) -> Config:
     return load_config(config_dir)
 
 
-def make_rig(root: Path, config: Config, brain: Brain | None = None) -> Rig:
+def make_rig(
+    root: Path, config: Config, brain: Brain | None = None, tracer: FakeTracer | None = None
+) -> Rig:
     brain, world = brain or Brain(), World()
     journal = AuditJournal(root / "audit" / "journal.jsonl")
     orchestrator = Orchestrator(
@@ -329,6 +364,7 @@ def make_rig(root: Path, config: Config, brain: Brain | None = None) -> Rig:
         open_toolbox=opener(world),
         pseudonymiser=FakePseudonymiser,
         prompts=PROMPTS,
+        tracer=tracer,
         clock=lambda: NOW,
         tz=UTC,
     )
@@ -710,6 +746,51 @@ def test_failure_is_journaled_with_its_cost(rig: Rig) -> None:
     assert payload["error"] == "RuntimeError"
     assert len(payload["cost"]["llm_calls"]) == 2  # the classifier calls are still paid for
     assert rig.world.opened == rig.world.closed == 1
+
+
+# --- optional Langfuse tracing (ADR-004) -------------------------------------------------------
+
+
+@pytest.fixture
+def traced(tmp_path: Path, config_dir: Path) -> tuple[Rig, FakeTracer]:
+    tracer = FakeTracer()
+    return make_rig(tmp_path, _config(config_dir), tracer=tracer), tracer
+
+
+def test_each_request_is_one_trace_with_our_own_costs(traced: tuple[Rig, FakeTracer]) -> None:
+    rig, tracer = traced
+    _read_insee(rig)
+    result = rig.ask("Quelle est la population de la France ?")
+    assert tracer.requests == [
+        ("req-1", PROMPTS.version, {"config": rig.orchestrator.config.digest})
+    ]
+    [final_metadata] = tracer.finished
+    assert final_metadata["status"] == "complete"
+    assert final_metadata["cost_eur"] == str(result.cost_eur)  # R1: our figure, not Langfuse's
+    assert final_metadata["tokens"] == result.tokens
+    assert final_metadata["tool_calls"] == 2
+    assert tracer.handler.texts  # the model calls reach the handler
+
+
+def test_trace_sees_only_pseudonymised_text(traced: tuple[Rig, FakeTracer]) -> None:
+    rig, tracer = traced
+    rig.brain.route["web"] = False
+    rig.brain.planner = [final(synthese="Rien de fiable sur <PERSON_1>.")]
+    result = rig.ask("Que sait-on de Jean Dupont ?")
+    assert "Jean Dupont" in result.answer.synthese  # re-identified for Lucas only
+    traced_text = " ".join(tracer.handler.texts) + json.dumps(tracer.finished)
+    assert "<PERSON_1>" in traced_text
+    assert "Jean Dupont" not in traced_text
+
+
+def test_failure_closes_the_trace_with_the_error(traced: tuple[Rig, FakeTracer]) -> None:
+    rig, tracer = traced
+    rig.brain.planner = [RuntimeError("panne du modèle")]
+    with pytest.raises(RuntimeError, match="panne du modèle"):
+        rig.ask("Quelle est la population de la France ?")
+    [final_metadata] = tracer.finished
+    assert final_metadata["status"] == "erreur"
+    assert final_metadata["error"] == "RuntimeError"
 
 
 def test_undefined_budgets_block_the_request(tmp_path: Path) -> None:

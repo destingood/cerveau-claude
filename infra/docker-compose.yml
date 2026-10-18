@@ -12,8 +12,14 @@
 #   docker compose -f infra/docker-compose.yml --profile core up -d
 #   docker compose -f infra/docker-compose.yml --profile observability up -d
 #
-# Images were checked on 2026-10-17. Langfuse (`:4`) and MinIO (Chainguard, untagged) follow their
-# upstream compose file and are not pinned to a patch release: see docs/threat-model.md.
+# Traces from `cerveau ask` (optional): create a project and its keys in Langfuse
+# (http://localhost:3000), then set LANGFUSE_PUBLIC_KEY, LANGFUSE_SECRET_KEY and
+# LANGFUSE_BASE_URL=http://localhost:3000 as user environment variables. CERVEAU refuses any
+# server that is not on this machine (core/observability, ADR-004).
+#
+# Images were checked on 2026-10-17. Langfuse is pinned to 4.63.0 (D12, checked on 2026-10-18;
+# upgrades are manual). MinIO (Chainguard, untagged) follows the upstream compose file and is not
+# pinned to a release: see docs/threat-model.md.
 name: cerveau
 
 x-langfuse-depends-on: &langfuse-depends-on
@@ -84,7 +90,7 @@ services:
       retries: 10
 
   langfuse-worker:
-    image: docker.langfuse.com/langfuse/langfuse-worker:4
+    image: docker.langfuse.com/langfuse/langfuse-worker:4.63.0
     profiles: [observability]
     restart: unless-stopped
     depends_on: *langfuse-depends-on
@@ -92,7 +98,7 @@ services:
       <<: *langfuse-env
 
   langfuse-web:
-    image: docker.langfuse.com/langfuse/langfuse:4
+    image: docker.langfuse.com/langfuse/langfuse:4.63.0
     profiles: [observability]
     restart: unless-stopped
     depends_on: *langfuse-depends-on

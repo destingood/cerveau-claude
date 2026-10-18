@@ -17,6 +17,7 @@ from core.budget.gate import BudgetGate
 from core.config import load_config
 from core.config.loader import Config
 from core.models import COST_SCHEMA
+from core.observability import NoTracer, Tracer
 from core.orchestrator.graph import RunResult
 from core.orchestrator.state import Answer
 from interfaces.cli import evaluate, main
@@ -60,8 +61,9 @@ def _entries(journal: Path) -> list[dict[str, Any]]:
 
 
 class FakeOrchestrator:
-    def __init__(self, config: Config, journal: Path) -> None:
-        self.config, self.journal, self.questions = config, journal, []
+    def __init__(self, config: Config, journal: Path, tracer: Tracer | None) -> None:
+        self.config, self.journal, self.tracer = config, journal, tracer
+        self.questions: list[str] = []
 
     async def ask(self, question: str) -> RunResult:
         self.questions.append(question)
@@ -81,8 +83,8 @@ class FakeOrchestrator:
 def fake(budgeted: Path, journal: Path, monkeypatch: pytest.MonkeyPatch) -> list[FakeOrchestrator]:
     built: list[FakeOrchestrator] = []
 
-    def build(config: Config, root: Path) -> FakeOrchestrator:
-        built.append(FakeOrchestrator(config, journal))
+    def build(config: Config, root: Path, tracer: Tracer | None = None) -> FakeOrchestrator:
+        built.append(FakeOrchestrator(config, journal, tracer))
         return built[-1]
 
     monkeypatch.setattr(main, "build_orchestrator", build)
@@ -97,6 +99,28 @@ def test_ask_prints_the_answer_and_a_footer(fake: list[FakeOrchestrator], budget
     assert result.stdout == "**Refus.** Non.\n"
     assert "— requête req-1 · 0,0123 € · 456 jetons · 2 appel(s) d'outil · 3,2 s" in result.stderr
     assert fake[0].questions == ["Une question ?"]
+    assert FAKE_KEY not in result.output
+
+
+def test_ask_without_langfuse_keys_warns_and_answers(
+    fake: list[FakeOrchestrator], budgeted: Path
+) -> None:
+    result = runner.invoke(app, ["ask", "Q ?", "--config-dir", str(budgeted)])
+    assert result.exit_code == 0, result.output
+    assert "avertissement : traces Langfuse désactivées : aucune clé" in result.stderr
+    assert isinstance(fake[0].tracer, NoTracer)
+
+
+def test_ask_refuses_to_trace_to_a_remote_langfuse(
+    fake: list[FakeOrchestrator], budgeted: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.setenv("LANGFUSE_PUBLIC_KEY", FAKE_KEY)
+    monkeypatch.setenv("LANGFUSE_SECRET_KEY", FAKE_KEY)
+    monkeypatch.setenv("LANGFUSE_BASE_URL", "https://cloud.langfuse.com")
+    result = runner.invoke(app, ["ask", "Q ?", "--config-dir", str(budgeted)])
+    assert result.exit_code == 0, result.output
+    assert "serveur non local refusé (cloud.langfuse.com, ADR-004)" in result.stderr
+    assert isinstance(fake[0].tracer, NoTracer)
     assert FAKE_KEY not in result.output
 
 
@@ -117,7 +141,7 @@ def test_ask_is_refused_at_100_percent(
     _spend(journal, "1.00")
     result = runner.invoke(app, ["ask", "Q ?", "--config-dir", str(budgeted)])
     assert result.exit_code == 3
-    assert result.stderr.startswith("Refus (D9) : ")
+    assert result.stderr.splitlines()[-1].startswith("Refus (D9) : ")
     assert result.stdout == ""
 
 

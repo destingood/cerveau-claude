@@ -28,6 +28,7 @@ from core.budget.ledger import COST_KEY
 from core.config.loader import Config
 from core.guardrails.pii import PiiAnalyzer, Pseudonymiser
 from core.models.router import ModelRouter
+from core.observability.tracing import NoTracer, Tracer
 from core.orchestrator.answer import map_texts, output_node, render_json, render_markdown
 from core.orchestrator.intake import context_node, guard_node, route_node
 from core.orchestrator.planner import plan_node
@@ -72,6 +73,20 @@ def versions(run: Run) -> dict[str, str]:
         "model": models or "aucun",
         "config": run.config.digest,
         "plugin": run.toolbox.version if run.toolbox is not None else "aucun",
+    }
+
+
+def trace_metadata(run: Run, status: str) -> dict[str, str | int]:
+    """What a trace carries besides the model calls: CERVEAU's own costs (R1), no text."""
+    run_versions = versions(run)
+    return {
+        "status": status,
+        "cost_eur": str(run.meter.total_eur),
+        "tokens": run.meter.total_tokens,
+        "tool_calls": run.budget.tool_calls,
+        "elapsed_s": f"{run.budget.elapsed_s:.3f}",
+        "models": run_versions["model"],
+        "plugin": run_versions["plugin"],
     }
 
 
@@ -229,6 +244,7 @@ class Orchestrator:
         pseudonymiser: Callable[[], PseudonymiserLike] | None = None,
         prompts: PromptSet | None = None,
         callbacks: Sequence[BaseCallbackHandler] = (),
+        tracer: Tracer | None = None,
         clock: Callable[[], datetime] | None = None,
         budget_clock: Callable[[], float] | None = None,
         tz: tzinfo | None = None,
@@ -240,6 +256,7 @@ class Orchestrator:
         self.open_toolbox = open_toolbox or mcp_toolbox(project_root / "plugins" / WEB_PLUGIN)
         self.prompts = prompts or PromptSet.load()
         self.callbacks = tuple(callbacks)
+        self.tracer: Tracer = tracer or NoTracer()
         self._new_pseudonymiser = pseudonymiser or self._presidio
         self._clock = clock or (lambda: datetime.now().astimezone())
         self._budget_clock = budget_clock
@@ -273,28 +290,36 @@ class Orchestrator:
             pseudonymiser=pseudonymiser,
             raw_question=question,
             open_toolbox=self.open_toolbox,
-            callbacks=self.callbacks,
+            callbacks=self.callbacks + self.tracer.callbacks(),
         )
-        try:
-            result = await build_graph(run).ainvoke(
-                CerveauState(request_id=request_id), config={"recursion_limit": RECURSION_LIMIT}
-            )
-            final = CerveauState.model_validate(result)
-        except BaseException as exc:
-            if not run.audited:  # the money spent so far still reaches the ledger
-                payload = audit_payload(run, CerveauState(request_id=request_id), status="erreur")
-                payload["error"] = type(exc).__name__
-                self.journal.append(
-                    actor="orchestrator",
-                    event="DECISION",
-                    request_id=request_id,
-                    versions=versions(run),
-                    payload=payload,
+        start = {"config": self.config.digest}
+        with self.tracer.request(
+            request_id, version=self.prompts.version, metadata=start
+        ) as finish:
+            try:
+                result = await build_graph(run).ainvoke(
+                    CerveauState(request_id=request_id), config={"recursion_limit": RECURSION_LIMIT}
                 )
-            raise
-        finally:
-            await run.aclose()
-        answer = map_texts(required(final.answer, "sortie"), pseudonymiser.reidentify)
+                final = CerveauState.model_validate(result)
+            except BaseException as exc:
+                if not run.audited:  # the money spent so far still reaches the ledger
+                    state = CerveauState(request_id=request_id)
+                    payload = audit_payload(run, state, status="erreur")
+                    payload["error"] = type(exc).__name__
+                    self.journal.append(
+                        actor="orchestrator",
+                        event="DECISION",
+                        request_id=request_id,
+                        versions=versions(run),
+                        payload=payload,
+                    )
+                finish({**trace_metadata(run, "erreur"), "error": type(exc).__name__})
+                raise
+            finally:
+                await run.aclose()
+            final_answer = required(final.answer, "sortie")
+            finish(trace_metadata(run, final_answer.statut))
+        answer = map_texts(final_answer, pseudonymiser.reidentify)
         return RunResult(
             request_id=request_id,
             answer=answer,

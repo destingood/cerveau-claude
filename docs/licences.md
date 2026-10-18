@@ -50,7 +50,7 @@ faite dans `core/guardrails/` à partir des résultats de `presidio-analyzer` (A
 | Composant | Image | Licence | Usage |
 |---|---|---|---|
 | PostgreSQL + pgvector | `pgvector/pgvector:0.8.7-pg17-trixie` | PostgreSQL License | base `cerveau` et base `langfuse` |
-| Langfuse web et worker | `docker.langfuse.com/langfuse/*:4` | MIT, sauf dossiers `ee/` (commercial) | observabilité |
+| Langfuse web et worker | `docker.langfuse.com/langfuse/*:4.63.0` (D12) | MIT, sauf dossiers `ee/` (commercial) | observabilité |
 | ClickHouse | `clickhouse/clickhouse-server:25.12` | Apache-2.0 | stockage des traces Langfuse |
 | MinIO | `cgr.dev/chainguard/minio` | AGPL-3.0 (dépôt d'images Chainguard : Apache-2.0) | stockage objet Langfuse |
 | Redis | `redis:7` (7.4.11) | RSALv2 / SSPLv1 | file d'attente Langfuse |

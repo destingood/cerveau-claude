@@ -15,11 +15,13 @@ import typer
 from core.audit import AuditJournal, default_journal_path, verify
 from core.budget.gate import BudgetExceededError, BudgetGate
 from core.config import FEATURES, BlockedFeatureError, ConfigError, load_config
+from core.observability import build_tracer
 from core.registry import validate_all, validate_plugin
 from interfaces.cli import evaluate
 
 if TYPE_CHECKING:
     from core.config.loader import Config
+    from core.observability import Tracer
     from core.orchestrator.graph import Orchestrator, RunResult
 
 app = typer.Typer(help="CERVEAU : plateforme d'IA personnelle.", no_args_is_help=True)
@@ -76,10 +78,10 @@ def _blocked(exc: BlockedFeatureError) -> NoReturn:
     _fail(f"Bloqué (R7) : {exc}. Voir `cerveau config check`.", EXIT_BLOCKED)
 
 
-def build_orchestrator(config: Config, root: Path) -> Orchestrator:
+def build_orchestrator(config: Config, root: Path, tracer: Tracer | None = None) -> Orchestrator:
     from core.orchestrator.graph import Orchestrator  # langgraph and spaCy load only for `ask`
 
-    return Orchestrator(config, project_root=root)
+    return Orchestrator(config, project_root=root, tracer=tracer)
 
 
 def _decimal(value: object, places: int) -> str:
@@ -123,8 +125,11 @@ def ask(
         typer.echo(
             "avertissement : BRAVE_SEARCH_API_KEY absente, recherche web indisponible.", err=True
         )
+    tracer, tracing = build_tracer(os.environ)  # optional (ADR-004): never blocks a request
+    if not tracing.enabled:
+        typer.echo(f"avertissement : {tracing.reason}.", err=True)
     try:
-        result = asyncio.run(build_orchestrator(config, root).ask(question))
+        result = asyncio.run(build_orchestrator(config, root, tracer=tracer).ask(question))
     except BlockedFeatureError as exc:
         _blocked(exc)
     except BudgetExceededError as exc:
@@ -135,6 +140,8 @@ def ask(
         typer.echo(f"ERREUR : {type(exc).__name__}{detail}", err=True)
         typer.echo("La requête est journalisée : `cerveau audit tail`.", err=True)
         raise typer.Exit(EXIT_ERROR) from exc
+    finally:
+        tracer.flush()
     for alert in result.budget_alerts:
         typer.echo(f"alerte budget : {alert}", err=True)
     typer.echo(result.json() if as_json else result.markdown(), nl=False)

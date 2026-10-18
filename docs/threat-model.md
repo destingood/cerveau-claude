@@ -75,8 +75,13 @@ simples, pas un adversaire déterminé. Limites connues à ce jour :
   MinIO non publiée ; ClickHouse et Redis sans port publié.
 - Télémétrie Langfuse coupée ; secrets obligatoires (`${VAR:?}`), le Compose refuse de démarrer
   sans eux ; base et rôle `langfuse` séparés de la base `cerveau`.
-- Images non épinglées par digest : `langfuse:4`, `langfuse-worker:4`, MinIO Chainguard sans
-  étiquette. MinIO amont archivé depuis 2026-04 : plus de correctifs (backlog).
+- Images non épinglées par digest : `langfuse:4.63.0` et `langfuse-worker:4.63.0` (épinglées par
+  étiquette, D12), MinIO Chainguard sans étiquette. MinIO amont archivé depuis 2026-04 : plus de
+  correctifs (backlog).
+- Traces (phase 1) : `cerveau ask` n'envoie de trace que vers un serveur Langfuse local
+  (`localhost`, `127.0.0.1`, `::1`) et seulement si les deux clés sont présentes ; sans URL, le SDK
+  viserait Langfuse Cloud, donc CERVEAU coupe les traces. Une trace contient le texte pseudonymisé
+  envoyé aux modèles et les extraits web, jamais la réponse ré-identifiée.
 - Redis 7.4 : licence RSALv2 / SSPLv1, sans effet sur un usage interne ; Valkey à évaluer.
 - Inscriptions Langfuse ouvertes jusqu'à la création du premier compte par Lucas.
 - Empreinte mémoire et comportement au démarrage non mesurés (Docker arrêté en phase 0).

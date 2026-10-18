@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+import os
 import shutil
 from collections.abc import Callable
 from pathlib import Path
@@ -9,6 +10,14 @@ import pytest
 import yaml
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
+
+
+@pytest.fixture(autouse=True)
+def _no_langfuse(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Lucas's own LANGFUSE_* variables never reach a test: no trace leaves a test run."""
+    for name in [name for name in os.environ if name.startswith("LANGFUSE_")]:
+        monkeypatch.delenv(name)
+
 
 QUESTIONS_XML = (
     "<evaluation>\n"
