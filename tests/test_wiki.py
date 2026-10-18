@@ -439,6 +439,14 @@ check(any("fait-apres-debranchement" in k.get("nodes", {}) for k in kept), "rebr
 
 
 # ------------------------------------------------------------------ 16. lanceur cloud du wiki (.claude/cerveau.py)
+# Le lanceur récupère le plugin publié : on en construit un ici (publish.build), dépôt git compris. Toujours avec un
+# BRAIN_HOME temporaire : lancé depuis un arbre de développement, ce test ne touche jamais la vraie mémoire.
+from brainkit import publish  # noqa: E402
+PLUG = TMP / "plugin-publie"
+publish.build(PLUG, owner="Test", repo="exemple/cerveau")
+for args in (["init", "-q", "-b", "main"], ["add", "-A"],
+             ["-c", "user.email=t@example.com", "-c", "user.name=T", "commit", "-qm", "plugin"]):
+    subprocess.run(["git", "-C", str(PLUG), *args], check=True, capture_output=True)
 launcher = CLONE / ".claude" / "cerveau.py"
 check(launcher.is_file(), "le lanceur cloud est dans le dépôt du wiki")
 payload = json.dumps({"session_id": "c1", "cwd": str(CLONE), "source": "startup"}).encode()
@@ -447,8 +455,8 @@ r = subprocess.run([sys.executable, "-I", "-S", str(launcher), "session-start"],
                    cwd=str(CLONE), env=env_pc, timeout=60)
 check(r.returncode == 0 and not r.stdout, "lanceur sur le PC : ne fait rien (le cerveau installé suffit)", r.stdout[:200])
 CLOUD2 = TMP / "cloud2"
-env_c = {k: v for k, v in os.environ.items() if k not in ("BRAIN_HOME", "CLAUDE_CODE_REMOTE")}
-env_c.update(CLAUDE_CODE_REMOTE="true", CLAUDE_CONFIG_DIR=str(CLOUD2 / "claude"), CERVEAU_CODE=str(CODE))
+env_c = dict(os.environ, CLAUDE_CODE_REMOTE="true", CLAUDE_CONFIG_DIR=str(CLOUD2 / "claude"),
+             BRAIN_HOME=str(CLOUD2 / "claude" / "brain"), CERVEAU_CODE=str(PLUG))
 r = subprocess.run([sys.executable, "-I", "-S", str(launcher), "session-start"], input=payload, capture_output=True,
                    cwd=str(CLONE), env=env_c, timeout=120)
 out = r.stdout.decode("utf-8", "replace")
@@ -462,7 +470,8 @@ r = subprocess.run([sys.executable, "-I", "-S", str(launcher), "prompt"], captur
 check(r.returncode == 0 and "Thé japonais" in r.stdout.decode("utf-8", "replace"), "lanceur en session cloud : rappel",
       r.stdout.decode("utf-8", "replace")[-300:])
 CODE3 = TMP / "code-clone"
-env_c.update(CERVEAU_CODE=str(CODE3), CERVEAU_REPO=f"file://{CODE}", CLAUDE_CONFIG_DIR=str(TMP / "cloud3" / "claude"))
+env_c.update(CERVEAU_CODE=str(CODE3), CERVEAU_REPO=PLUG.as_uri(), CLAUDE_CONFIG_DIR=str(TMP / "cloud3" / "claude"),
+             BRAIN_HOME=str(TMP / "cloud3" / "claude" / "brain"))
 r = subprocess.run([sys.executable, "-I", "-S", str(launcher), "prompt"], input=payload, capture_output=True,
                    cwd=str(CLONE), env=env_c, timeout=60)
 check(r.returncode == 0 and not (CODE3 / "brain.py").exists(), "lanceur : aucun téléchargement pendant un message")
