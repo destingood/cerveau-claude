@@ -27,6 +27,9 @@ STOP_REASON = (
     f"`{CMD} add -t <type> -T \"titre court\" -b \"fait + pourquoi + comment l'appliquer\"` (`-p none` si hors du "
     "projet courant). Jamais de secrets, mots de passe ni infos sensibles sur des tiers."
 )
+WIKI_REASON = (" 3) Wiki : une réponse qui vaut d'être gardée (synthèse, comparaison, analyse) → page Analyses "
+               f"(`{CMD} add -t analyse -T … -b - --resume …`) puis `{CMD} wiki log query \"…\"` ; une source lue ou "
+               f"citée → `{CMD} wiki add` puis la méthode du CLAUDE.md du wiki.")
 OBS_REASON = ("🧠 Cerveau — le contexte vient d'être compacté : avant de conclure, note 3 à 5 observations datées de "
               f"cette session (d'après le résumé et la suite), {OBS_HOW}.")
 REMEMBER_RX = re.compile(r"\b(souviens[- ]toi|retiens|m[ée]moris|note (?:que|bien|[çc]a)|n'oublie pas|"
@@ -45,6 +48,11 @@ def recall_query(raw) -> str:
     """Message → requête de rappel : blocs collés et balises retirés, nombres sans valeur (« 12 fois 8 », « le 15/10 »,
     « 2026 ») effacés. Partagé avec `brain bench` pour mesurer exactement ce que fait le hook."""
     return NUM_NOISE.sub(" ", journal.clean_prompt(raw, 600))
+
+
+def gist(n, chars=220) -> str:
+    """Ce qu'on montre d'un souvenir : le résumé d'une page du wiki s'il existe, sinon le début de son contenu."""
+    return short((n.get("meta") or {}).get("resume") or n.get("body", ""), chars)
 
 
 def emit(event, context):
@@ -104,6 +112,30 @@ def _project_path(proj):
     return path if path and os.path.isdir(path) else None
 
 
+def _within(path, root) -> bool:
+    from .common import path_within
+    try:
+        return path_within(path, root)
+    except Exception:
+        return False
+
+
+def _auto_sync(brain, cfg) -> bool:
+    """Synchronisation git automatique du wiki : sur le PC seulement (une session cloud pousse sur sa branche)."""
+    w = brain.data.get("wiki") or {}
+    return bool(w.get("root")) and not w.get("missing") and (cfg.get("wiki") or {}).get("auto_sync", True) \
+        and not os.environ.get("CLAUDE_CODE_REMOTE") and (Path(w["root"]) / ".git").exists()
+
+
+def wiki_start(brain, cfg) -> str:
+    """Démarrage en mode wiki : la ligne du wiki pour Claude, et un pull en arrière-plan (au plus toutes les 30 min)."""
+    from . import wiki
+    if _auto_sync(brain, cfg) and wiki.due_sync((cfg.get("wiki") or {}).get("sync_minutes", 30)):
+        wiki.mark_pulled()
+        spawn_background(["wiki", "sync", "--auto", "--no-push"])
+    return wiki.notice(brain)
+
+
 # ------------------------------------------------------------------------------------------ SessionStart
 COMPACT_MAX_AGE = 600  # s : un résumé gardé plus vieux n'est pas celui de cette compaction
 COMPACT_MIN_SCORE, COMPACT_MIN_COV, COMPACT_ITEMS = 20, 0.10, 3
@@ -140,7 +172,7 @@ def compact_recall(brain, st, data, cfg, proj):
     lines, shown = ["🧠 Souvenirs liés au travail en cours (d'après le résumé de compaction) :"], []
     used = len(lines[0]) + 1
     for n in picks:
-        line = f"- [{TYPES.get(n['type'], n['type'])}] {n['title']} — {short(n.get('body', ''), 220)} `{n['id']}`"
+        line = f"- [{TYPES.get(n['type'], n['type'])}] {n['title']} — {gist(n)} `{n['id']}`"
         if used + len(line) + 1 > budget:
             break
         lines.append(line)
@@ -163,7 +195,9 @@ def on_session_start(data, cfg):
         log(f"import auto-memory : {exc!r}")
     brain = Brain.load()
     proj = brain.project_for_path(cwd)
-    if not proj and cfg["auto_map"]["enabled"]:
+    wiki_root = (brain.data.get("wiki") or {}).get("root")
+    in_wiki = bool(wiki_root) and _within(cwd, wiki_root)  # le dossier du wiki n'est pas un projet à cartographier
+    if not proj and cfg["auto_map"]["enabled"] and not in_wiki:
         from . import mapper  # dossier inconnu seulement : le cartographe est lourd à importer
         if mapper.looks_like_project(cwd):
             with Brain.edit() as b:
@@ -175,7 +209,7 @@ def on_session_start(data, cfg):
         spawn_background(["map", path, "-p", proj["id"], "--quiet"])
     st = load_state(sid)
     source = data.get("source") or "startup"
-    st.update({"cwd": cwd, "project": proj["id"] if proj else None})
+    st.update({"cwd": cwd, "project": proj["id"] if proj else None, "wiki": bool(wiki_root)})
     if source == "resume" and st.get("started"):
         # Reprise : l'injection de départ est encore dans l'historique (7 reprises sur 7) → les nouveautés seulement.
         text = idx.resume_delta(brain, st.get("injected_at") or st["started"], cfg)
@@ -210,6 +244,11 @@ def on_session_start(data, cfg):
                 text = f"{text}\n\n{tip}"
         except Exception as exc:
             log(f"optimize (démarrage) : {exc!r}")
+    if wiki_root:
+        try:
+            text = f"{text}\n\n{wiki_start(brain, cfg)}".rstrip()
+        except Exception as exc:
+            log(f"wiki (démarrage) : {exc!r}")
     st["started"] = st.get("started") or now_iso()
     st["injected_at"] = now_iso()
     save_state(sid, st)
@@ -285,7 +324,7 @@ def on_prompt(data, cfg):
     used = sum(len(x) + 1 for x in out)
     shown_mem, shown_files = [], []
     groups = [("🧠 Souvenirs pertinents (cerveau) :",
-               [(n, f"- [{TYPES.get(n['type'], n['type'])}] {n['title']} — {short(n.get('body', ''), 220)} `{n['id']}`")
+               [(n, f"- [{TYPES.get(n['type'], n['type'])}] {n['title']} — {gist(n)} `{n['id']}`")
                 for n in picks], shown_mem)]
     if files:
         groups.append((f"📁 Fichiers probablement concernés (carte `{proj['id']}`) :",
@@ -399,6 +438,8 @@ def on_stop(data, cfg):
         cands = [p["t"] for p in tx.get("recent", []) if p.get("i", 0) >= base and CAPTURE_RX.search(p["t"])][-3:]
         if cands:  # capture assistée : les phrases de l'utilisateur qui ressemblent à une préférence ou une décision
             reason += " Candidats repérés dans ses messages : " + " · ".join(f"« {short(c, 160)} »" for c in cands) + "."
+        if st.get("wiki"):
+            reason += WIKI_REASON
         sys.stdout.write(json.dumps({"decision": "block", "reason": reason}, ensure_ascii=False))
 
 
@@ -438,6 +479,14 @@ def on_session_end(data, cfg, event="session-end"):
                 log(f"{name} : {exc!r}")
     brain = Brain.load()
     idx.rebuild(brain, cfg)
+    if event == "session-end" and (brain.data.get("wiki") or {}).get("root") and not brain.data["wiki"].get("missing"):
+        try:  # wiki : index.md, entrée « session » au journal, puis commit + pull + push en arrière-plan
+            from . import wiki
+            wiki.session_close(brain, proj["title"] if proj else None)
+            if _auto_sync(brain, cfg):
+                spawn_background(["wiki", "sync", "--auto"])
+        except Exception as exc:
+            log(f"wiki fin de session : {exc!r}")
     if event == "session-end":
         try:  # visualisation 3D et analyse du graphe gardées à jour sans y penser
             from . import viz

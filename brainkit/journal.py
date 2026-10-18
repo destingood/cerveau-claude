@@ -19,7 +19,7 @@ SUMMARY_HEAD_RE = re.compile(r"^\s*(?:#+\s*)?(?:\d+\.\s*)?(?:\*\*)?\s*(Primary R
                              r"Optional Next Step)\b", re.I | re.M)
 CODE_BLOCK_RE = re.compile(r"```.*?```", re.S)
 EDIT_TOOLS = {"Edit", "Write", "MultiEdit", "NotebookEdit"}
-SAVE_RE = re.compile(r"brain\.py[\"']?\s+(?:add|save|retiens|edit|obs|observe)\b")
+SAVE_RE = re.compile(r"brain\.py[\"']?\s+(?:add|save|retiens|edit|obs|observe|wiki\s+(?:add|log))\b")
 OBS_RE = re.compile(r"brain\.py[\"']?\s+(?:obs|observe)\b[^|;&\n]*?[\"']")  # observations notées (pas une simple lecture)
 LOCK = JOURNAL_FILE.with_name("journal.lock")
 

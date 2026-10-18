@@ -20,6 +20,9 @@ from .store import Brain
 
 DREAM_FILE = BRAIN_DIR / "REVE.md"
 STATE_FILE = STATE_DIR / "dream.json"
+WIKI_DREAM = ("Pages à créer (liens vers rien)", "Sources à ingérer", "Pages peut-être dépassées", "Sources abîmées",
+              "Conflits git non résolus (<<<<<<<)", "Secrets à retirer",
+              "Souvenirs à verser dans une page de savoir (concept, sujet, entité)")
 WHY_RX = re.compile(r"(pourquoi|parce qu|\bcar\b|afin|pour que|sinon|\bwhy\b|because|comment l'appliquer|raison)", re.I)
 
 
@@ -165,7 +168,17 @@ def prepare(apply_safe=True):
         red = observations.unsaved(brain, since)
     except Exception:
         red = []
-    items = len(heard) + len(dups) + len(conflicts) + len(rules) + len(idle) + len(why) + len(late) + len(red)
+    wiki_rows = []
+    if (brain.data.get("wiki") or {}).get("root") and not brain.data["wiki"].get("missing"):
+        try:  # le wiki : sa santé fait partie de l'entretien (pages à créer, sources en attente, pages dépassées…)
+            from . import wiki
+            rep = wiki.lint(brain, limit=5)
+            wiki_rows = [(f"Wiki — {title}", rows) for title, rows in rep.items() if title in WIKI_DREAM]
+        except Exception as exc:
+            from .common import log
+            log(f"rêve : lint du wiki : {exc!r}")
+    items = len(heard) + len(dups) + len(conflicts) + len(rules) + len(idle) + len(why) + len(late) + len(red) \
+        + sum(len(r) for _, r in wiki_rows)
     lines = [f"# 🌙 Rêve du cerveau — {fmt_date(now_iso())}", "",
              f"_{items} point(s) demandant du jugement. Appliquer ce qui est sûr avec les commandes indiquées, demander "
              f"à l'utilisateur en cas de doute, ne jamais inventer un fait ; terminer par `{CMD} dream --done`._", ""]
@@ -200,6 +213,7 @@ def prepare(apply_safe=True):
          [f"`{n['id']}` ({short(n['title'], 70)}) — échéance {fmt_date(d)} → `done`, nouvelle date (`edit --due`) "
           f"ou demander à l'utilisateur" for n, d in late]),
     ]
+    sections += [(t, [f"{r} → voir le schéma du wiki (CLAUDE.md), `brain wiki lint`" for r in rows]) for t, rows in wiki_rows]
     for title, rows in sections:
         if rows:
             lines += [f"## {title}", ""] + [f"- {r}" for r in rows] + [""]

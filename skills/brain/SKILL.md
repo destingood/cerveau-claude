@@ -1,6 +1,6 @@
 ---
 name: brain
-description: Cerveau persistant de Claude : mémoire en graphe datée (souvenirs, concepts, liens), cartes de projets, à-faire, historique, coffre Obsidian, MCP, vue 3D. Pour retrouver ou mémoriser un souvenir, trouver un fichier ou un symbole sans explorer, reprendre une session, ou quand l'utilisateur dit « souviens-toi », « retiens », « cerveau », « /brain ».
+description: Cerveau persistant de Claude : mémoire en graphe datée (souvenirs, concepts, liens), wiki Markdown tenu par Claude (sources ingérées, entités, concepts, sujets — coffre Obsidian, dépôt git), cartes de projets, à-faire, historique, MCP, vue 3D. Pour retrouver ou mémoriser un souvenir, ingérer une source dans le wiki, trouver un fichier ou un symbole sans explorer, reprendre une session, ou quand l'utilisateur dit « souviens-toi », « retiens », « cerveau », « wiki », « ingère », « /brain ».
 ---
 
 # 🧠 Cerveau — référence
@@ -58,11 +58,32 @@ Anti-doublon intégré : un `add` quasi identique complète le souvenir existant
 des sessions sont des bots US : filtrer session_country='France' avant tout calcul de conversion."`
 **À ne pas stocker** : secrets, données sensibles ou de tiers, ce que le code/git disent déjà, l'éphémère.
 
+## Wiki (le « LLM Wiki » de Karpathy)
+Le cerveau peut vivre dans un **wiki Markdown** (un dépôt git ouvert comme coffre Obsidian) : chaque souvenir y est
+une page, et Claude y compile le savoir des sources — `raw/` (sources brutes, immuables), `wiki/<Type>/` (pages tenues
+par Claude), `archive/`, `CLAUDE.md` (le schéma : conventions et méthodes, à suivre et à faire évoluer), `index.md`
+(catalogue régénéré), `log.md` (journal, on ajoute en bas). Types de savoir en plus : `source`, `concept`, `topic`
+(sujet), `analysis` (analyse) ; `add`/`edit`/`rm` créent, modifient, archivent les pages ; `q` cherche dans tout le wiki.
+
+| But | Commande |
+|---|---|
+| Créer le wiki et y migrer le cerveau (rien n'est perdu : instantané + copie de graph.json) | `wiki init <dossier>` (idéalement le clone d'un dépôt GitHub privé) |
+| Ingérer une source : rangée dans raw/, page Sources créée, plan affiché (pages concernées, entités repérées) | `wiki add <fichier\|url\|->` (`-` = texte par stdin, avec `-T "Titre" [--url …] [--format video]`) |
+| Sources en attente (déposées dans raw/ par le Web Clipper, ou pages Sources à remplir) | `wiki pending` |
+| Santé : pages à créer, orphelines, sans résumé, sources abîmées, pages dépassées, doublons, contradictions | `wiki lint [--log]` |
+| Journal : noter une ingestion, une réponse rangée, un entretien · voir les dernières entrées | `wiki log ingest\|query\|lint\|note "titre" "ligne" …` · `wiki log` |
+| État (pages, sources, git) · schéma par défaut · index.md · commit + pull + push | `wiki` · `wiki schema` · `wiki index` · `wiki sync` |
+
+Méthode d'ingestion (détail dans le CLAUDE.md du wiki) : lire la source → dire les points clés → remplir la page
+Sources (remplacer « ⏳ à remplir », `resume:`) → intégrer dans les pages concernées (10 à 15 pages, `sources:`),
+contradictions en `> [!contradiction]` → `wiki log ingest`. Une bonne réponse se range dans une page Analyses.
+Sur le PC, commit/pull/push se font seuls en début et en fin de session ; dans une session cloud, pousser sur sa branche.
+
 ## Ailleurs que dans l'onglet Code
 | But | Commande |
 |---|---|
-| Coffre Obsidian / Markdown, synchronisé dans les deux sens (une note par souvenir, propriétés, liens `[[ ]]`) | `export --vault <dossier>` (dossier retenu ensuite : `export --vault`) — notes modifiées rapatriées champ par champ, nouvelle note dans « À trier » = nouveau souvenir, note supprimée = souvenir archivé, conflit = version Obsidian gardée dans « Conflits » · `--push` écrase le coffre |
-| Serveur MCP (chat Claude, Cowork, tout client MCP) : outils memory_search / memory_add / memory_show / memory_todo / memory_context | `mcp` (stdio) · `install --mcp` l'enregistre dans l'app Claude (`--uninstall` le retire) |
+| Coffre Obsidian / Markdown, synchronisé dans les deux sens (une note par souvenir, propriétés, liens `[[ ]]`) — sans objet en mode wiki (le wiki est le coffre) | `export --vault <dossier>` (dossier retenu ensuite : `export --vault`) — notes modifiées rapatriées champ par champ, nouvelle note dans « À trier » = nouveau souvenir, note supprimée = souvenir archivé, conflit = version Obsidian gardée dans « Conflits » · `--push` écrase le coffre |
+| Serveur MCP (chat Claude, Cowork, tout client MCP) : outils memory_search / memory_add / memory_show / memory_update / memory_todo / memory_context, et wiki_status / wiki_add_source / wiki_lint / wiki_log | `mcp` (stdio) · `install --mcp` l'enregistre dans l'app Claude (`--uninstall` le retire) |
 
 ## Graphe (façon graphify)
 | But | Commande |

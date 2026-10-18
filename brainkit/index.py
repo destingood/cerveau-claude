@@ -11,11 +11,11 @@ from .common import (CMD, EXPORT_FILE, GRAPH_FILE, INDEX_FILE, JOURNAL_FILE, PRO
 from .store import TYPES, priority
 
 ID_RE = re.compile(r"`([a-z0-9][a-z0-9\-]*)`")
-# Poids des sections (échéances, profil, règles, projets, savoir global, références, à faire). Partage max-min : une
+# Poids des sections (échéances, profil, règles, projets, savoir global, références, à faire, wiki). Partage max-min : une
 # section qui demande moins que sa part la reçoit entière, les autres se partagent le reste au prorata. Profil et règles
 # raccourcissent leurs corps pour tenir en entier ; dans un projet, la fiche du projet porte déjà l'essentiel.
-WEIGHTS = (1.5, 2.5, 3.0, 2.5, 2.0, 0.6, 0.8)
-WEIGHTS_FOCUS = (1.5, 2.5, 3.0, 0.0, 1.2, 0.4, 0.6)
+WEIGHTS = (1.5, 2.5, 3.0, 2.5, 2.0, 0.6, 0.8, 0.9)
+WEIGHTS_FOCUS = (1.5, 2.5, 3.0, 0.0, 1.2, 0.4, 0.6, 0.6)  # dernière section : pages de savoir du wiki
 
 
 def _allocate(needs, weights, total):
@@ -117,7 +117,7 @@ def build_index(brain, cfg=None, focus=None, previews=None) -> str:
         return sorted((n for n in act if pred(n)), key=lambda n: -score(n))
 
     def line(n, chars):
-        body = short(n.get("body", ""), chars)
+        body = short((n.get("meta") or {}).get("resume") or n.get("body", ""), chars)
         return f"- **{n['title']}**" + (f" — {body}" if body else "") + f" `{n['id']}`"
 
     def title_line(n):
@@ -159,6 +159,8 @@ def build_index(brain, cfg=None, focus=None, previews=None) -> str:
          rest(lambda n: n["type"] in ("decision", "fact", "learning"), 130, 10)),
         ("🔗 Références & entités", rest(lambda n: n["type"] in ("reference", "entity"), 100, 6)),
         ("☑️ À faire", rest(lambda n: n["type"] == "todo", 100, 6)),
+        ("📚 Wiki (sujets, concepts, analyses)" + (" — titres" if focus else ""),
+         rest(lambda n: n["type"] in ("topic", "concept", "analysis"), 110, 8)),
     ]
     header = f"# 🧠 Cerveau — mémoire persistante (index du {fmt_date(now_iso())})"
     footer = f"_{len(act)} souvenirs · {len(brain.edges)} liens — `show <id>` pour le détail._"

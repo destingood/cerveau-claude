@@ -216,7 +216,8 @@ const PALETTE = ["#38e1ff","#a78bfa","#f472b6","#a3e635","#fbbf24","#fb923c","#2
                  "#e879f9","#facc15","#818cf8","#4ade80","#f87171","#67e8f9"];
 const TYPES = {user:["Profil","#60a5fa"], feedback:["Règle","#c084fc"], project:["Projet","#fb923c"], decision:["Décision","#fbbf24"],
   fact:["Fait","#34d399"], learning:["Apprentissage","#22d3ee"], reference:["Référence","#a5b4cf"], entity:["Entité","#f472b6"],
-  todo:["À faire","#fb7185"]};
+  todo:["À faire","#fb7185"], source:["Source","#94a3b8"], concept:["Concept","#a3e635"], topic:["Sujet","#facc15"],
+  analysis:["Analyse","#2dd4bf"]};
 const KIND = {code:"code", doc:"document", data:"données", asset:"média", other:"autre"};
 const REL = 4;
 const store = { get(k){ try { return localStorage.getItem(k); } catch (e) { return null; } },

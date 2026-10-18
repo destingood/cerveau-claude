@@ -1,4 +1,5 @@
-"""Graphe de mémoire : nœuds typés (profil, règles, projets, décisions…) + liens, stockés dans graph.json."""
+"""Graphe de mémoire : nœuds typés (profil, règles, projets, décisions…) + liens, stockés dans graph.json — ou, en
+mode wiki (wikistore.py), dans les pages Markdown du wiki, dont graph.json n'est plus que le cache."""
 from __future__ import annotations
 
 import contextlib
@@ -8,7 +9,7 @@ import re
 import sys
 import time
 
-from .common import (BRAIN_DIR, GRAPH_FILE, FileLock, days_since, fold, jaccard, norm_path, now_iso,
+from .common import (BRAIN_DIR, GRAPH_FILE, FileLock, days_since, fold, jaccard, log, norm_path, now_iso,
                      path_within, read_json, slugify, tokenize, write_json)
 
 TYPES = {
@@ -21,6 +22,11 @@ TYPES = {
     "reference": "Référence",
     "entity": "Entité",
     "todo": "À faire",
+    # pages de savoir du wiki (façon « LLM Wiki ») : écrites par Claude à partir des sources
+    "source": "Source",
+    "concept": "Concept",
+    "topic": "Sujet",
+    "analysis": "Analyse",
 }
 TYPE_ALIASES = {
     "u": "user", "profil": "user", "profile": "user", "moi": "user", "utilisateur": "user",
@@ -36,6 +42,10 @@ TYPE_ALIASES = {
     "e": "entity", "entite": "entity", "outil": "entity", "tool": "entity", "personne": "entity",
     "contact": "entity",
     "t": "todo", "tache": "todo", "afaire": "todo", "task": "todo",
+    "src": "source", "article": "source", "lecture": "source",
+    "idee": "concept", "notion": "concept", "methode": "concept", "theme": "concept",
+    "sujet": "topic", "synthese": "topic", "apercu": "topic", "these": "topic",
+    "analyse": "analysis", "comparaison": "analysis", "comparatif": "analysis", "etude": "analysis",
 }
 RELATIONS = ("relates", "part_of", "depends_on", "uses", "fixes", "supersedes", "contradicts", "about")
 LOCK_FILE = BRAIN_DIR / ".graph.lock"
@@ -71,7 +81,7 @@ def clamp_importance(value) -> int:
 
 
 SOURCES = {"lucas": 0.9, "user": 0.9, "utilisateur": 0.9, "verifie": 0.95, "verified": 0.95, "obsidian": 0.9,
-           "claude": 0.7, "mcp": 0.7, "import": 0.7, "auto": 0.6, "deduit": 0.5, "inference": 0.5}
+           "wiki": 0.8, "claude": 0.7, "mcp": 0.7, "import": 0.7, "auto": 0.6, "deduit": 0.5, "inference": 0.5}
 
 
 def normalize_source(value) -> str:
@@ -123,14 +133,24 @@ def _absolutize_new(old, new):
 def load_graph():
     """Lecture sûre de graph.json : réessaie si Windows le verrouille un instant (remplacement en cours), répare
     s'il est corrompu, et ne renvoie JAMAIS un graphe vide à la place d'un fichier existant mais illisible
-    (sinon la prochaine écriture effacerait tout le cerveau)."""
+    (sinon la prochaine écriture effacerait tout le cerveau).
+    Mode wiki : les pages du wiki font foi, graph.json n'en est que le cache (reconstruit s'il est abîmé)."""
+    from . import wikistore
+    mode, root = wikistore.resolve()
+    if mode == "wiki":
+        return wikistore.load(root)
+    if mode == "missing":
+        return wikistore.load_missing(root)
     if not GRAPH_FILE.exists():
         return None
     last = None
     for attempt in range(10):
         try:
             with open(GRAPH_FILE, encoding="utf-8") as fh:
-                return json.load(fh)
+                data = json.load(fh)
+            if isinstance(data, dict) and data.pop("wiki", None) is not None:
+                log("wiki débranché (config wiki.path vide) : le cerveau repart en classique depuis son dernier cache")
+            return data
         except ValueError:  # JSON abîmé : réparation depuis un instantané ou une sauvegarde
             from .backup import recover_graph
             data = recover_graph()
@@ -146,6 +166,20 @@ def load_graph():
             last = exc
             time.sleep(0.03 * (attempt + 1))
     raise RuntimeError(f"graph.json inaccessible : {last!r}")
+
+
+def replace_all(data):
+    """Le cerveau entier devient `data` (restauration d'un instantané ou d'une sauvegarde), sous verrou. Mode wiki :
+    les pages sont réécrites, déplacées ou retirées pour correspondre (git garde l'état d'avant)."""
+    from . import wikistore
+    mode, root = wikistore.resolve()
+    with FileLock(LOCK_FILE, timeout=6.0):
+        if mode == "classic":
+            write_json(GRAPH_FILE, data)
+        elif mode == "missing":
+            raise wikistore.WikiMissing(f"wiki introuvable : {root}")
+        else:
+            wikistore.replace_all(data)
 
 
 class Brain:
@@ -176,7 +210,12 @@ class Brain:
         from . import history
         history.snapshot("auto")  # état d'avant la modification (au plus un toutes les 30 min)
         self.data["updated"] = now_iso()
-        write_json(GRAPH_FILE, self.data)
+        if self.data.get("wiki"):  # mode wiki : les pages qui changent, puis le cache
+            from . import wikistore
+            wikistore.save(self.data)
+            self._stems = None
+        else:
+            write_json(GRAPH_FILE, self.data)
         self.dirty = False
 
     def _guard(self, text):
@@ -206,12 +245,25 @@ class Brain:
                 continue
             yield n
 
+    def stem_map(self) -> dict:
+        """Mode wiki : nom de page (fichier, en minuscules) → id. Vide en mode classique."""
+        if getattr(self, "_stems", None) is None:
+            files = (self.data.get("wiki") or {}).get("files") or {}
+            self._stems = {str(v.get("path", "")).rsplit("/", 1)[-1][:-3].lower(): k for k, v in files.items()}
+        return self._stems
+
     def get(self, ref):
         if not ref:
             return None
         ref = str(ref).strip().strip("`")
         if ref in self.nodes:
             return self.nodes[ref]
+        if self.data.get("wiki"):  # [[Nom de la page]] (Obsidian) ou chemin d'une page du wiki
+            name = ref.replace("\\", "/").rsplit("/", 1)[-1]
+            name = name[:-3] if name.lower().endswith(".md") else name
+            hit = self.stem_map().get(name.lower())
+            if hit in self.nodes:
+                return self.nodes[hit]
         slug = slugify(ref)
         if slug in self.nodes:
             return self.nodes[slug]

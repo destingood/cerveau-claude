@@ -14,7 +14,7 @@ from . import index as idx
 from . import journal, search
 from .common import (BRAIN_DIR, CLAUDE_HOME, CMD, CONFIG_FILE, EXPORT_FILE, GRAPH_FILE, INDEX_FILE, JOURNAL_FILE,
                      LOG_FILE, PROJECTS_DIR, REPORT_FILE, VIZ2D_FILE, VIZ_FILE, budget_chars, days_since, est_tokens, fmt_date,
-                     fold, load_config, log, set_config, setup_io, short, write_text)
+                     fold, load_config, log, set_config, setup_io, short, slugify, write_text)
 from .store import GLOBAL_REFS, TYPES, Brain, bump_hits, clean_tags, normalize_type, priority
 
 
@@ -24,11 +24,14 @@ def die(msg, code=1):
 
 
 def refresh_views():
-    """Après une modification : index injecté, export lisible et visualisation à jour."""
+    """Après une modification : index injecté, export lisible et visualisation à jour (mode wiki : index.md aussi)."""
     try:
         b = Brain.load()
         idx.rebuild(b)
         idx.export(b)
+        if b.data.get("wiki") and not b.data["wiki"].get("missing"):
+            from . import wiki
+            wiki.write_index(b)
         from . import viz
         viz.render(b)
     except Exception as exc:
@@ -65,8 +68,33 @@ def project_arg(b, ref, cwd=None):
     return proj, True
 
 
+def wiki_meta(a, meta):
+    """--resume, --sources, --domaine (pages du wiki) → champs de meta ; « none » les retire."""
+    if getattr(a, "resume", None) is not None:
+        if fold(a.resume) in ("none", "aucun", "-", ""):
+            meta.pop("resume", None)
+        else:
+            meta["resume"] = " ".join(a.resume.split())
+    if getattr(a, "sources", None) is not None:
+        import re
+        from .wikistore import links_in
+        raw = a.sources.strip()
+        if fold(raw) in ("none", "aucune", "-", ""):
+            meta.pop("sources", None)
+        else:  # « [[A]], [[B]] » ou « A, B »
+            refs = [f"[[{t}]]" for t in (links_in(raw) or [x.strip() for x in re.split(r"[,;\n]", raw) if x.strip()])]
+            meta["sources"] = list(dict.fromkeys(list(meta.get("sources") or []) + refs))
+    if getattr(a, "domaine", None) is not None:
+        doms = [slugify(x, 30) for x in a.domaine.split(",") if x.strip() and fold(x.strip()) not in ("none", "-")]
+        if doms:
+            meta["domaine"] = doms
+        else:
+            meta.pop("domaine", None)
+    return meta
+
+
 def node_line(n, chars=110):
-    body = short(n.get("body", ""), chars)
+    body = short((n.get("meta") or {}).get("resume") or n.get("body", ""), chars)  # page du wiki : son résumé d'abord
     arch = " (archivé)" if n.get("status", "active") != "active" else ""
     return f"[{TYPES.get(n['type'], n['type'])}] {n['title']}" + (f" — {body}" if body else "") + f"  `{n['id']}`{arch}"
 
@@ -276,6 +304,7 @@ def cmd_add(a):
             meta = {"due": due} if due else {}
             if a.keys:
                 meta["keys"] = " ".join(a.keys.split())
+            wiki_meta(a, meta)
             node = b.add(ntype, a.title, body, tags=tags, project=pid, importance=a.importance or 3,
                          source=a.source, nid=a.id, meta=meta or None)
             created = node["id"]
@@ -372,6 +401,8 @@ def cmd_edit(a):
             else:
                 meta["keys"] = " ".join(a.keys.split())
             fields["meta"] = meta
+        if a.resume is not None or a.sources is not None or a.domaine is not None:
+            fields["meta"] = wiki_meta(a, dict(fields.get("meta") or n.get("meta") or {}))
         if a.path:
             if n["type"] != "project":
                 die("--path ne s'applique qu'à un projet")
@@ -851,7 +882,10 @@ def cmd_dream(a):
 
 def cmd_export(a):
     if a.vault is not None:
-        from . import vault
+        from . import vault, wikistore
+        if wikistore.resolve()[0] != "classic":
+            die(f"le cerveau vit déjà dans un wiki Markdown : ouvre {wikistore.resolve()[1]} comme coffre dans Obsidian "
+                "(pas de coffre à synchroniser en plus)")
         path = a.vault or (load_config().get("vault") or {}).get("path")
         if not path:
             die("dossier du coffre ? ex. : export --vault \"D:\\Cerveau\" (retenu pour les fois suivantes)")
@@ -936,6 +970,19 @@ def cmd_doctor(a):
         ok(True, f"index BRAIN.md : {len(text)} car. ≈ {est_tokens(text)} tokens")
     else:
         ok(False, "index BRAIN.md absent (→ brain index)")
+    from . import wikistore
+    mode, wroot = wikistore.resolve()
+    if mode == "wiki":
+        from . import wiki
+        st = wikistore.stats(b.data)
+        git_ok = wiki.is_repo(wroot)
+        ok(True, f"wiki : {wroot} — {sum(st['types'].values())} pages, {st['archived']} archivées · "
+                 + (f"git ({wiki.remote(wroot) or 'sans origin'})" if git_ok else "pas de dépôt git (→ git init)"))
+        conflict = (wiki.read_json(wiki.SYNC_STATE, {}) or {}).get("conflict")
+        if conflict:
+            ok(False, f"wiki : synchronisation git en conflit depuis le {fmt_date(conflict)} (→ brain wiki status, git status)")
+    elif mode == "missing":
+        ok(False, f"wiki introuvable : {wroot} — le cerveau lit son cache sans écrire (→ rebrancher, ou config wiki.path)")
     from .common import PLUGIN
     if PLUGIN:
         _doctor_plugin(ok)
@@ -1139,8 +1186,7 @@ def cmd_pc(a):
 
 def cmd_restore(a):
     from . import history
-    from .store import LOCK_FILE
-    from .common import FileLock, write_json
+    from .store import replace_all
     path = history.find(a.ref)
     if not path:
         die(f"instantané introuvable : {a.ref} (voir `brain history`)")
@@ -1148,8 +1194,10 @@ def cmd_restore(a):
     if not isinstance(data, dict) or not isinstance(data.get("nodes"), dict):
         die("instantané illisible")
     before = history.snapshot("avant-restauration", force=True)
-    with FileLock(LOCK_FILE, timeout=6.0):
-        write_json(GRAPH_FILE, data)
+    try:
+        replace_all(data)
+    except RuntimeError as exc:
+        die(str(exc))
     refresh_views()
     d = history.describe(path)
     print(f"✓ cerveau restauré depuis {path.name} ({d['active']} souvenirs actifs, {d['edges']} liens)"
@@ -1190,6 +1238,81 @@ def _doctor_fix():
     except Exception as exc:
         print(f"✗ sauvegarde : {exc}")
     print("✓ index, caches de recherche, vue 3D et entretien refaits\n")
+
+
+def cmd_wiki(a):
+    """Le cerveau en wiki (« LLM Wiki ») : squelette et migration, sources, index, journal, santé, synchronisation."""
+    from . import wiki, wikistore as ws
+    act = fold(a.action or "status")
+    if act == "init":
+        if not a.args:
+            die("dossier du wiki manquant : brain wiki init <dossier> (idéalement le clone d'un dépôt GitHub privé)")
+        try:
+            for line in wiki.init(a.args[0], migrate=not a.no_migrate, push=not a.no_push):
+                print(line)
+        except RuntimeError as exc:
+            die(str(exc))
+        refresh_views()
+        return
+    if act in ("status", "etat"):
+        print(wiki.status())
+        return
+    if act in ("schema", "schéma"):
+        print(wiki.schema_text())
+        return
+    root = ws.root()
+    if not root:
+        die("pas de wiki : `brain wiki init <dossier>` (le cerveau y migre ses souvenirs)"
+            if ws.resolve()[0] == "classic" else f"wiki introuvable : {ws.resolve()[1]}")
+    if act in ("add", "ingest", "ajoute", "ingere"):
+        src = a.args[0] if a.args else "-"
+        text = sys.stdin.read() if src == "-" else None
+        if src == "-" and not (text or "").strip():
+            die("rien reçu sur l'entrée standard (texte de la source) — ou : brain wiki add <fichier|url>")
+        try:
+            info = wiki.add_source(src, title=a.title, fmt=a.format, url=a.url, author=a.author, text=text)
+        except RuntimeError as exc:
+            die(str(exc))
+        print(wiki.ingest_plan(info))
+        wiki.write_index()
+    elif act in ("pending", "attente"):
+        b = Brain.load()
+        items = wiki.pending(b.data, root)
+        if not items:
+            print("✓ aucune source en attente")
+        for p in items[: a.n]:
+            print(f"- {p['raw']} — page « {p['page']['title']} » à remplir" if p["page"]
+                  else f"- {p['raw']} — `brain wiki add {p['raw']}`")
+        if len(items) > a.n:
+            print(f"- … +{len(items) - a.n}")
+    elif act == "lint":
+        b = Brain.load()
+        rep = wiki.lint(b, root, limit=a.n)
+        print(wiki.lint_text(rep))
+        wiki.write_index(b, root)
+        if a.log:
+            wiki.log_append("lint", f"{sum(len(v) for v in rep.values())} point(s)",
+                            [f"{k} : {len(v)}" for k, v in rep.items()], root=root)
+    elif act == "index":
+        print("✓ index.md régénéré" if wiki.write_index() else "✓ index.md déjà à jour")
+    elif act in ("log", "journal"):
+        if not a.args:
+            rows = wiki.log_entries(root, a.n)
+            print("\n".join(rows) if rows else "(journal vide)")
+            return
+        try:
+            head = wiki.log_append(a.args[0], a.args[1] if len(a.args) > 1 else "", a.args[2:], root=root)
+        except (RuntimeError, TimeoutError) as exc:
+            die(str(exc))
+        wiki.write_index()
+        print(f"✓ {head}")
+    elif act in ("sync", "synchro"):
+        for line in wiki.sync(root, push=not a.no_push, pull=not a.no_pull, auto=a.auto):
+            print(line)
+        if a.auto and not a.no_pull:
+            wiki.mark_pulled()
+    else:
+        die(f"action inconnue : {a.action} — init, add, pending, lint, index, log, status, sync, schema")
 
 
 def cmd_import(a):
@@ -1304,6 +1427,9 @@ def build_parser():
     s.add_argument("--force", action="store_true", help="créer même si un souvenir quasi identique existe")
     s.add_argument("--due", help="échéance (10/11, 10/11/2026, 3 novembre, demain, dans 2 semaines)")
     s.add_argument("--replaces", "--supersede", dest="replaces", help="id du souvenir que celui-ci remplace (l'ancien est archivé)")
+    s.add_argument("--resume", help="page du wiki : une phrase qui dit l'essentiel (index, rappel)")
+    s.add_argument("--sources", help="page du wiki : pages Sources qui l'appuient (« [[Titre]], [[Autre]] »)")
+    s.add_argument("--domaine", help="page du wiki : domaines séparés par des virgules (business, recherche, perso, lecture…)")
     s = cmd("supersede", cmd_supersede, "« nouveau » remplace « ancien » : l'ancien est archivé avec sa date de fin", ["remplace"])
     s.add_argument("new")
     s.add_argument("old")
@@ -1323,6 +1449,9 @@ def build_parser():
     s.add_argument("--unarchive", action="store_true")
     s.add_argument("--due", help="échéance (« none » pour l'enlever)")
     s.add_argument("--keys", help="mots-clés indexés (« none » pour les enlever)")
+    s.add_argument("--resume", help="page du wiki : son résumé (« none » pour l'enlever)")
+    s.add_argument("--sources", help="page du wiki : pages Sources à ajouter (« [[Titre]] » ; « none » pour vider)")
+    s.add_argument("--domaine", help="page du wiki : domaines (« none » pour les enlever)")
 
     s = cmd("rm", cmd_rm, "archiver un souvenir (--purge = supprimer définitivement)", ["archive"])
     s.add_argument("id")
@@ -1450,6 +1579,20 @@ def build_parser():
     cmd("stats", cmd_stats, "statistiques")
     s = cmd("doctor", cmd_doctor, "diagnostic complet de l'installation (--fix : tout réparer)")
     s.add_argument("--fix", action="store_true", help="réinstaller, reconstruire, nettoyer et sauvegarder")
+    s = cmd("wiki", cmd_wiki, "le cerveau en wiki (LLM Wiki, coffre Obsidian, dépôt git) : init <dossier> · add <fichier|url|-> · "
+            "pending · lint · index · log [op titre lignes…] · status · sync · schema")
+    s.add_argument("action", nargs="?", help="init, add, pending, lint, index, log, status (défaut), sync, schema")
+    s.add_argument("args", nargs="*", help="init : dossier · add : fichier, url ou « - » (stdin) · log : opération titre lignes…")
+    s.add_argument("-T", "--title", help="add : titre de la source")
+    s.add_argument("--url", help="add : adresse d'origine (texte reçu par stdin)")
+    s.add_argument("--format", help="add : article, pdf, video, podcast, livre, note, conversation, donnees, image, document")
+    s.add_argument("--author", "--auteur", dest="author", help="add : auteur")
+    s.add_argument("-n", type=int, default=12, help="nombre de lignes (lint, pending, log)")
+    s.add_argument("--log", action="store_true", help="lint : noter le passage au journal")
+    s.add_argument("--no-migrate", action="store_true", help="init : ne pas migrer le cerveau classique")
+    s.add_argument("--no-push", action="store_true", help="init/sync : ne pas envoyer sur GitHub")
+    s.add_argument("--no-pull", action="store_true", help="sync : ne pas récupérer")
+    s.add_argument("--auto", action="store_true", help=argparse.SUPPRESS)
     s = cmd("import", cmd_import, "importer la mémoire native de Claude Code (~/.claude/projects/*/memory)")
     s.add_argument("--force", action="store_true")
     s.add_argument("--dry-run", action="store_true")
@@ -1493,9 +1636,12 @@ def main(argv=None):
     if not getattr(args, "func", None):
         parser.print_help()
         return 0
+    from .wikistore import WikiMissing
     try:
         return args.func(args) or 0
     except KeyboardInterrupt:
         return 130
     except TimeoutError as exc:
         die(f"{exc} — une autre session écrit dans le cerveau, réessaie.")
+    except WikiMissing as exc:  # wiki débranché ou déplacé : rien n'est écrit, le cache reste lisible
+        die(str(exc))
