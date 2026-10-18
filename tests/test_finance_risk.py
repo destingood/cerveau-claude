@@ -10,13 +10,14 @@ from __future__ import annotations
 import math
 from collections import defaultdict
 from datetime import date
+from fractions import Fraction
 from pathlib import Path
 from statistics import NormalDist
 
 import numpy as np
 import pandas as pd
 import pytest
-from hypothesis import given, settings
+from hypothesis import example, given, settings
 from hypothesis import strategies as st
 from hypothesis.extra.numpy import arrays
 from scipy import stats
@@ -348,11 +349,14 @@ def test_the_var_change_splits_without_remainder(seed: int) -> None:
 
 
 @given(st.floats(1.0, 1e5), st.floats(0.5, 2.0), st.floats(-0.5, 0.5))
+@example(local=10251.0, rate=1.15625, shock=5.960464477539063e-08)  # a tiny shock, once a failure
 def test_the_fx_stress_is_an_exact_revaluation(local: float, rate: float, shock: float) -> None:
-    """A line of ``local`` dollars at ``rate`` dollars per euro; the rate moves by ``shock``."""
-    before = local / rate
-    after = local / (rate * (1 + shock))
-    assert close(risk.fx_revaluation(before, shock), after - before, rel=1e-9)
+    """A line of ``local`` dollars at ``rate`` dollars per euro; the rate moves by ``shock``. The
+    reference is exact rational arithmetic on the same floats, free of rounding."""
+    exact = Fraction(local) / (Fraction(rate) * (1 + Fraction(shock))) - Fraction(local) / Fraction(
+        rate
+    )
+    assert close(risk.fx_revaluation(local / rate, shock), float(exact), rel=1e-9)
 
 
 def test_the_fx_and_duration_stresses_refuse_or_follow_their_formula() -> None:

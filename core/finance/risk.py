@@ -347,10 +347,11 @@ def var_change(
 
 def fx_revaluation(value_eur: float, shock: float) -> float:
     """Change in EUR of a line priced in a currency whose rate per euro moves by ``shock``
-    (+0.10: one euro buys 10 % more of it), exact: ``V/(1 + s) − V``."""
+    (+0.10: one euro buys 10 % more of it), exact: ``V/(1 + s) − V``, written ``−V·s/(1 + s)``
+    so that a small shock does not cancel two close values."""
     if shock <= -1.0:
         raise RiskError("choc de change : supérieur à −100 % attendu")
-    return value_eur / (1.0 + shock) - value_eur
+    return -value_eur * shock / (1.0 + shock)
 
 
 def duration_impact(value_eur: float, duration: float, rates_bp: float) -> float:
