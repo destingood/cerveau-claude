@@ -51,6 +51,17 @@ l'a fait pour le risque et ADR-019 pour l'optimisation.
   sans fiche va en « non classé » avec un avertissement.
 - **Indisponibles** : comparaison à l'indice (ISIN `A_VERIFIER`, D8), attribution factorielle
   (D9), attribution de Brinson (reportée, faute d'indice validé).
+- **Export des plus-values** (`cerveau finance plus-values --annee AAAA`) : les ventes de titres
+  de l'année connues à la lecture, dans l'ordre du journal des opérations.
+  - PMP du livre : compte par compte, frais d'achat compris `[Hypothèse]`.
+  - Produit net et prix de revient convertis au taux BCE de la date de cession, le dernier
+    publié avant à défaut `[Hypothèse]` ; un taux inconnu refuse tout l'export (R12).
+  - Montants arrondis au centime (demi supérieur), plus-value = différence des arrondis : chaque
+    ligne se vérifie telle qu'imprimée.
+  - CSV `;` à virgule décimale, UTF-8 avec BOM, écrit dans `var/finance/exports/` seulement ; le
+    journal reçoit comptes, identifiants et SHA-256 du fichier, jamais un montant (R11).
+  - Règles fiscales `A_VERIFIER` (art. 150-0 D du CGI) : aucun calcul d'impôt ni de
+    déclaration (B90, B91).
 
 ## Conséquences
 - Contrôles indépendants dans les tests :

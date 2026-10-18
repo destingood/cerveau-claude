@@ -1,7 +1,9 @@
-"""`cerveau finance sync`: Lucas fills the point-in-time store; every run is journaled.
+"""`cerveau finance`: Lucas fills the point-in-time store and exports from it; every run is
+journaled.
 
-This is the only writer of the finance store (ADR-012) and the only one that reaches the network
-for market data (ADR-017): the finance MCP tools read the store and nothing else.
+`sync` is the only writer of the finance store (ADR-012) and the only one that reaches the
+network for market data (ADR-017): the finance MCP tools read the store and nothing else.
+`plus-values` reads it and writes a CSV under var/finance/exports/, nowhere else.
 """
 
 from __future__ import annotations
@@ -19,7 +21,17 @@ import typer
 
 from core.audit import AuditJournal, default_journal_path
 from core.config import BlockedFeatureError
+from core.finance.capital_gains import (
+    ASSUMPTIONS,
+    NOTICE,
+    CapitalGains,
+    CapitalGainsError,
+    capital_gains,
+    default_export_dir,
+    write_export,
+)
 from core.finance.model import local_date
+from core.finance.portfolio import PortfolioError
 from core.finance.providers import (
     CsvCloses,
     CsvCorporateActions,
@@ -274,3 +286,73 @@ def sync_instruments(
     with _store(store, "instruments", journal, config) as db:
         action = partial(import_instruments, db, file, recorded_at=now())
         _run("instruments", journal, config, action)
+
+
+YearOpt = Annotated[int, typer.Option("--annee", min=1, max=9999, help="Année civile (AAAA).")]
+
+
+@finance_app.command("plus-values")
+def capital_gains_command(
+    annee: YearOpt,
+    store: StoreOpt = None,
+    journal: JournalOpt = None,
+    config_dir: ConfigDirOpt = None,
+) -> None:
+    """Exporter les cessions d'une année civile : var/finance/exports/plus-values-AAAA.csv.
+
+    Pour chaque vente : prix moyen pondéré, frais, produit net, prix de revient et plus-value
+    brute, dans la devise et en euros au taux BCE de la date de cession. Les règles fiscales sont
+    A_VERIFIER : aucun calcul d'impôt ni de déclaration. Un export de la même année est remplacé.
+
+    Codes de sortie : 0 exporté, 1 refus (base absente, taux BCE inconnu, année future).
+    """
+    config = load(config_dir)
+    root = project_root()
+    audit = AuditJournal(journal or default_journal_path(root))
+    request_id = f"finance-plus-values-{uuid.uuid4().hex[:12]}"
+    entry: dict[str, Any] = {"command": "finance plus-values", "year": annee}
+    versions = {"config": config.digest}
+    try:
+        with FinanceStore.open(store or default_store_path(root), read_only=True) as db:
+            export = capital_gains(
+                db,
+                year=annee,
+                as_of=now(),
+                rules=config.compliance.fiscal.regime_plus_values,
+            )
+        path, digest = write_export(export, default_export_dir(root))
+    except (CapitalGainsError, FinanceStoreError, PortfolioError, SchemaError, OSError) as exc:
+        # These messages name a file, a line, an account or an identifier, never an amount.
+        audit.append(
+            actor="lucas",
+            event="ERROR",
+            request_id=request_id,
+            versions=versions,
+            payload={**entry, "error": str(exc)},
+        )
+        fail(f"Refus : {exc}. Aucun export écrit ; requête {request_id}.", EXIT_ERROR)
+    audit.append(
+        actor="lucas",
+        event="TOOL_CALL",
+        request_id=request_id,
+        versions=versions,
+        payload={**entry, **export.journal_payload(), "file": path.name, "sha256": digest},
+    )
+    _capital_gains_summary(export, path, request_id)
+
+
+def _capital_gains_summary(export: CapitalGains, path: Path, request_id: str) -> None:
+    typer.echo(
+        f"{path.name} : {len(export.disposals)} cession(s) du 01/01/{export.year} au "
+        f"{export.until:%d/%m/%Y} ({path.parent})."
+    )
+    if export.disposals:
+        total = f"{export.gain_eur:f}".replace(".", ",")
+        typer.echo(f"Somme des plus-values brutes : {total} EUR (somme des lignes, avant impôt).")
+    for warning in export.warnings:
+        typer.echo(f"Avertissement : {warning}.")
+    typer.echo("Hypothèses :")
+    for assumption in ASSUMPTIONS:
+        typer.echo(f"  · {assumption}")
+    typer.echo(f"Attention : {NOTICE}.")
+    typer.echo(f"Journalisé : requête {request_id} (`cerveau audit tail`).")

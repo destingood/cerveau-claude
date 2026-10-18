@@ -90,6 +90,8 @@ son origine et la phase visée ; « ? » signifie « à décider par Lucas ».
 | B87 | Courbe des taux de la BCE (`yield_curve`) : Lucas lit ses conditions propres, plus restrictives, avant de la remettre dans `data_sources.yaml` (D22) | ADR-017 | 3 |
 | B88 | Confirmer sur une vraie réponse de la BCE les colonnes `csvdata` (KEY, CURRENCY, CURRENCY_DENOM, TIME_PERIOD, OBS_VALUE) et le sens de TIME_PERIOD pour l'€STR (`A_VERIFIER`) | ADR-017 | 2 |
 | B89 | Rapprocher les identifiants d'un courtier (ISIN, code interne) du référentiel par `map_source_id`, avec l'adaptateur de son export (D4) | ADR-012, ADR-017 | 2 |
+| B90 | Plus-values : confirmer avec leur source les règles de l'article 150-0 D du CGI que l'export n'applique pas (PMP par compte ou tous comptes de même nature, change du jour d'achat pour le prix de revient, régime du PEA) ; `compliance.fiscal.regime_plus_values` reste `A_VERIFIER` | plan §7 F9, ADR-020 | ? |
+| B91 | Plus-values : cessions nées d'une opération sur titres (fusion, échange, rachat) et gains de change sur les liquidités en devises, absents de l'export | plan §7 F9, ADR-020 | ? |
 
 ## Évaluations
 | # | Élément | Origine | Phase |
