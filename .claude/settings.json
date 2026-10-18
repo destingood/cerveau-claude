@@ -42,6 +42,18 @@
             "onFailure": "block"
           }
         ]
+      },
+      {
+        "matcher": "^mcp__",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "python",
+            "args": ["${CLAUDE_PROJECT_DIR}/.claude/hooks/guard_mcp.py"],
+            "timeout": 15,
+            "onFailure": "block"
+          }
+        ]
       }
     ],
     "PostToolUse": [

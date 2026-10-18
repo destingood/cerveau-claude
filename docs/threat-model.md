@@ -36,7 +36,7 @@ pas encore.
 
 | # | Menace | Scénario | Mesures en place (phase 0) | Mesures prévues | Résiduel |
 |---|---|---|---|---|---|
-| T1 | Injection indirecte | Un document lu demande d'exécuter une commande ou de modifier la config | R5 dans `CLAUDE.md` et `.claude/rules/` ; aucun serveur MCP (`.mcp.json` vide) ; les hooks refusent les commandes dangereuses même si Claude est manipulé | Séparation lecteur / acteur (CaMeL), schémas de sortie, moteur de politique déterministe, évals `evals/redteam/` (phase 1+) | moyen |
+| T1 | Injection indirecte | Un document lu demande d'exécuter une commande ou de modifier la config | R5 dans `CLAUDE.md` et `.claude/rules/` ; aucun serveur MCP (`.mcp.json` vide) et outils MCP non listés refusés (B7) ; les hooks refusent les commandes dangereuses même si Claude est manipulé | Séparation lecteur / acteur (CaMeL), schémas de sortie, moteur de politique déterministe, évals `evals/redteam/` (phase 1+) | moyen |
 | T2 | Empoisonnement de la mémoire | Un fait faux ou une consigne cachée est mémorisé puis réutilisé | Sans objet (pas de mémoire) | Provenance obligatoire, quarantaine du contenu externe, revue des écritures, évals dédiées | sans objet |
 | T3 | Fuite de secrets | Un secret part dans git, un log, un prompt ou la conversation | gitleaks en pre-commit et en CI (`--redact`) ; `.env*` et `secrets/` ignorés par git et interdits en lecture (règles + hooks) ; secrets générés sans affichage (testé) ; masquage dans le journal d'audit | Docker secrets ou sops sur le VPS ; Presidio avant tout envoi distant ; rotation | moyen |
 | T4 | Compromission du VPS | Accès SSH, service exposé, sauvegarde lisible | Sans objet ; en local, ports publiés sur 127.0.0.1 uniquement | SSH par clé, pare-feu, mises à jour automatiques, réseau privé (`A_DEFINIR`), sauvegardes chiffrées hors VPS, restauration testée | sans objet |
@@ -44,7 +44,7 @@ pas encore.
 | T6 | Dépendance malveillante | Paquet, image ou action compromis, dépôt homonyme | `uv.lock` + `uv sync --frozen` ; pip-audit en CI ; gitleaks téléchargé avec somme SHA-256 vérifiée ; licences relevées (`docs/licences.md`) ; dépôt `openbq-org/OpenBB` signalé comme probable homonyme | Épinglage par SHA et par digest, Dependabot ou Renovate, audit npm | moyen |
 | T7 | Abus d'API | Clé volée ou boucle d'appels | Aucune clé ni appel de modèle en phase 0 (éval témoin : fournisseur `echo`) | Quotas, limites de débit, clés à droits minimaux (trading seul, sans retrait) | sans objet |
 | T8 | Coûts incontrôlés | Boucle d'agent, éval trop large | Aucun appel payant ; cache désactivé et versions figées pour promptfoo | Budgets par jour et par tâche (`A_DEFINIR`), suivi Langfuse, coût affiché par éval | sans objet |
-| T9 | Claude Code (erreur ou injection) | Modifier `live.yaml`, lire un secret, `rm -rf`, `push --force`, réécrire le journal, baisser un seuil (R9) | Règles `deny` ; hooks en échec fermé, 270 tests ; journal chaîné ; script d'ACL ; règles R3, R6, R9 dans `CLAUDE.md` | ACL appliquée par Lucas ; contrôle de propriétaire dans le chargeur ; décision sur la protection de `.claude/` | moyen |
+| T9 | Claude Code (erreur ou injection) | Modifier `live.yaml`, lire un secret, `rm -rf`, `push --force`, réécrire le journal, baisser un seuil (R9) | Règles `deny` ; hooks en échec fermé, outils MCP compris (B7), testés dans `tests/hooks/` ; journal chaîné ; script d'ACL ; règles R3, R6, R9 dans `CLAUDE.md` | ACL appliquée par Lucas ; contrôle de propriétaire dans le chargeur ; décision sur la protection de `.claude/` | moyen |
 | T10 | Falsification du journal d'audit | Entrée modifiée, supprimée ou fin de journal tronquée | Chaîne SHA-256 et `cerveau audit verify` ; écriture interdite à Claude dans `var/audit/` | Copie hors machine (hors VPS) et ancre externe du dernier hash | moyen |
 
 ## 5. Contournements connus des garde-fous de Claude Code
@@ -62,8 +62,16 @@ simples, pas un adversaire déterminé. Limites connues à ce jour :
 6. Docker : `docker compose config` sans `--quiet` affiche les secrets interpolés depuis
    `infra/.env` ; `docker inspect` et `docker compose exec … env` aussi. La cible
    `make compose-config` utilise `--quiet`.
-7. Outils hors matchers : les hooks surveillent `Bash`, `PowerShell`, `Edit`, `Write` et
-   `NotebookEdit`. Un futur serveur MCP aura besoin de son propre contrôle.
+7. Outils hors matchers : les hooks surveillent `Bash`, `PowerShell`, `Edit`, `Write`,
+   `NotebookEdit` et, depuis la phase 1, tout outil MCP (`^mcp__`, hook `guard_mcp.py`, B7). Ce
+   hook refuse et journalise tout outil MCP non listé. La liste garde les outils de l'app sans
+   effet hors de l'app et la lecture web dans le navigateur de l'app. Elle exclut le terminal de
+   l'app et les serveurs d'aperçu, qui contourneraient `guard_shell`, ainsi que Chrome, le
+   pilotage de l'ordinateur, les connecteurs, les tâches planifiées et la fusion automatique.
+   Un serveur déclaré dans `.mcp.json` n'emprunte jamais un nom listé. Il reste trois limites :
+   - `WebFetch` et `WebSearch` ne passent par aucun hook (B37) ;
+   - `navigate` peut aussi faire sortir des données par l'URL ;
+   - un serveur MCP de portée utilisateur nommé comme un outil de l'app passerait.
 8. `.claude/` n'est pas protégé : Claude peut modifier `settings.json` ou un hook. La modification
    reste visible dans `git diff` ; la protéger est une décision de Lucas.
 9. Portée : les réglages du projet ne s'appliquent que si la session démarre dans le dépôt.
