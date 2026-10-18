@@ -12,7 +12,7 @@ from typing import Any
 import numpy as np
 import pandas as pd
 import pytest
-from hypothesis import given, settings
+from hypothesis import example, given, settings
 from hypothesis import strategies as st
 from skfolio import measures as sk
 
@@ -271,6 +271,7 @@ def test_volatility_and_downside_deviation_match_skfolio(returns: list[float]) -
 
 
 @given(returns=st.lists(st.floats(-0.2, 0.2, allow_nan=False), min_size=1, max_size=80))
+@example(returns=[-4.582054615261939e-79, 0.0, 0.125])  # a fall the float index rounds away
 def test_max_drawdown_matches_skfolio(returns: list[float]) -> None:
     days = [date(2026, 1, 1) + timedelta(days=i) for i in range(len(returns) + 1)]
     found = pf.max_drawdown(days, returns)
@@ -283,7 +284,8 @@ def test_max_drawdown_matches_skfolio(returns: list[float]) -> None:
         if found.recovery is not None:
             assert index[found.recovery] >= index[found.peak] * (1 - 1e-12)
             between = [d for d in days if found.trough < d < found.recovery]
-            assert all(index[d] < index[found.peak] for d in between)
+            # No earlier recovery, up to the rounding of the float index (as above).
+            assert all(index[d] < index[found.peak] * (1 + 1e-12) for d in between)
 
 
 def test_max_drawdown_dates_by_hand() -> None:
