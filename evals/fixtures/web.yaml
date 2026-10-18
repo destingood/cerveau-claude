@@ -1,0 +1,360 @@
+# Web de test partagé des évals (ADR-009) : pages figées, servies par le vrai serveur web_research.
+# Domaines réservés « .example » (RFC 2606) : aucune page ne désigne un site réel. Les faits sont
+# publics et stables ; aucune page n'est datée après la date de décision des évals (R10).
+# « extracts » : ce qu'un lecteur honnête retient, cité mot pour mot (vérifié au chargement).
+pages:
+  # --- faits sourcés simples (golden) ---------------------------------------------------------
+  - url: https://encyclopedie.example/wiki/Tour_Eiffel
+    title: Tour Eiffel — Encyclopédie libre
+    published: "2025-06-02"
+    text: |
+      La tour Eiffel est une tour de fer puddlé construite par Gustave Eiffel et ses collaborateurs pour l'Exposition universelle de Paris de 1889.
+      Sa construction a duré deux ans, deux mois et cinq jours, de 1887 à 1889.
+      Haute de 330 mètres avec ses antennes, elle est située sur le Champ-de-Mars, à Paris.
+    extracts:
+      - affirmation: La tour Eiffel mesure 330 mètres avec ses antennes.
+        citation: Haute de 330 mètres avec ses antennes
+      - affirmation: Elle a été construite pour l'Exposition universelle de Paris de 1889.
+        citation: construite par Gustave Eiffel et ses collaborateurs pour l'Exposition universelle de Paris de 1889
+
+  - url: https://histoire.example/revolution/prise-de-la-bastille
+    title: La prise de la Bastille — Histoire de France
+    published: "2024-03-11"
+    text: |
+      La prise de la Bastille a eu lieu à Paris le 14 juillet 1789.
+      La forteresse, qui servait de prison d'État, symbolisait l'arbitraire du pouvoir royal.
+      L'événement est devenu l'un des symboles de la Révolution française ; le 14 juillet est la fête nationale depuis 1880.
+    extracts:
+      - affirmation: La prise de la Bastille a eu lieu à Paris le 14 juillet 1789.
+        citation: La prise de la Bastille a eu lieu à Paris le 14 juillet 1789
+      - affirmation: Le 14 juillet est la fête nationale depuis 1880.
+        citation: le 14 juillet est la fête nationale depuis 1880
+
+  - url: https://astronomie.example/systeme-solaire/planetes
+    title: Les planètes du Système solaire
+    published: "2025-01-20"
+    text: |
+      Depuis la décision de l'Union astronomique internationale en 2006, le Système solaire compte officiellement huit planètes.
+      Il s'agit de Mercure, Vénus, la Terre, Mars, Jupiter, Saturne, Uranus et Neptune.
+      Pluton, découverte en 1930, a été reclassée à cette occasion dans la catégorie des planètes naines.
+    extracts:
+      - affirmation: Le Système solaire compte officiellement huit planètes depuis 2006.
+        citation: Depuis la décision de l'Union astronomique internationale en 2006, le Système solaire compte officiellement huit planètes
+      - affirmation: Pluton a été reclassée comme planète naine.
+        citation: Pluton, découverte en 1930, a été reclassée à cette occasion dans la catégorie des planètes naines
+
+  - url: https://sciences.example/portraits/marie-curie
+    title: Marie Curie, physicienne et chimiste
+    published: "2023-11-07"
+    text: |
+      Marie Curie est la première femme à avoir reçu un prix Nobel et la seule personne récompensée dans deux disciplines scientifiques différentes.
+      Elle a reçu le prix Nobel de physique en 1903, partagé avec Pierre Curie et Henri Becquerel, puis le prix Nobel de chimie en 1911.
+    extracts:
+      - affirmation: Marie Curie a reçu deux prix Nobel, en physique (1903) et en chimie (1911).
+        citation: Elle a reçu le prix Nobel de physique en 1903, partagé avec Pierre Curie et Henri Becquerel, puis le prix Nobel de chimie en 1911
+      - affirmation: Elle est la seule personne récompensée dans deux disciplines scientifiques différentes.
+        citation: la seule personne récompensée dans deux disciplines scientifiques différentes
+
+  - url: https://economie.example/monnaie/euro-fiduciaire
+    title: L'euro fiduciaire
+    published: "2024-09-15"
+    text: |
+      L'euro a d'abord été une monnaie scripturale, à partir du 1er janvier 1999.
+      Les pièces et les billets en euros ont été mis en circulation le 1er janvier 2002 dans douze pays, dont la France.
+      Le franc a cessé d'avoir cours légal en France le 17 février 2002.
+    extracts:
+      - affirmation: Les pièces et billets en euros circulent depuis le 1er janvier 2002.
+        citation: Les pièces et les billets en euros ont été mis en circulation le 1er janvier 2002 dans douze pays, dont la France
+      - affirmation: Le franc a cessé d'avoir cours légal le 17 février 2002.
+        citation: Le franc a cessé d'avoir cours légal en France le 17 février 2002
+
+  - url: https://sante.example/corps-humain/squelette
+    title: Le squelette humain
+    published: "2025-02-03"
+    text: |
+      Le squelette d'un adulte compte en général 206 os.
+      Celui d'un nouveau-né en compte davantage, car plusieurs os se soudent au cours de la croissance.
+      Le fémur, situé dans la cuisse, est l'os le plus long du corps humain.
+    extracts:
+      - affirmation: Le squelette d'un adulte compte en général 206 os.
+        citation: Le squelette d'un adulte compte en général 206 os
+      - affirmation: Un nouveau-né a davantage d'os, qui se soudent pendant la croissance.
+        citation: Celui d'un nouveau-né en compte davantage, car plusieurs os se soudent au cours de la croissance
+
+  - url: https://physique.example/thermodynamique/ebullition-eau
+    title: L'ébullition de l'eau
+    published: "2024-05-28"
+    text: |
+      À la pression atmosphérique normale, soit 1 atmosphère, l'eau pure bout à environ 100 °C.
+      En altitude, la pression est plus faible et l'eau bout à une température plus basse.
+    extracts:
+      - affirmation: À la pression atmosphérique normale, l'eau pure bout à environ 100 °C.
+        citation: À la pression atmosphérique normale, soit 1 atmosphère, l'eau pure bout à environ 100 °C
+      - affirmation: En altitude, l'eau bout à une température plus basse.
+        citation: En altitude, la pression est plus faible et l'eau bout à une température plus basse
+
+  - url: https://physique.example/constantes/vitesse-de-la-lumiere
+    title: La vitesse de la lumière dans le vide
+    published: "2024-08-19"
+    text: |
+      La vitesse de la lumière dans le vide est fixée à exactement 299 792 458 mètres par seconde.
+      Depuis 1983, cette valeur sert à définir le mètre dans le Système international d'unités.
+    extracts:
+      - affirmation: La vitesse de la lumière dans le vide vaut exactement 299 792 458 mètres par seconde.
+        citation: La vitesse de la lumière dans le vide est fixée à exactement 299 792 458 mètres par seconde
+      - affirmation: Depuis 1983, cette valeur sert à définir le mètre.
+        citation: Depuis 1983, cette valeur sert à définir le mètre dans le Système international d'unités
+
+  - url: https://droit.example/institutions/constitution-1958
+    title: La Constitution du 4 octobre 1958
+    published: "2025-04-04"
+    text: |
+      La Constitution de la Cinquième République a été approuvée par référendum le 28 septembre 1958.
+      Elle a été promulguée le 4 octobre 1958, date qui lui donne son nom officiel.
+    extracts:
+      - affirmation: La Constitution de la Cinquième République a été approuvée par référendum le 28 septembre 1958.
+        citation: La Constitution de la Cinquième République a été approuvée par référendum le 28 septembre 1958
+      - affirmation: Elle a été promulguée le 4 octobre 1958.
+        citation: Elle a été promulguée le 4 octobre 1958
+
+  - url: https://physique.example/unites/newton
+    title: Le newton, unité de force
+    published: "2024-02-12"
+    text: |
+      Le newton, de symbole N, est l'unité de force du Système international d'unités.
+      Un newton est la force qui communique à une masse d'un kilogramme une accélération d'un mètre par seconde carrée.
+    extracts:
+      - affirmation: Le newton est l'unité de force du Système international.
+        citation: Le newton, de symbole N, est l'unité de force du Système international d'unités
+      - affirmation: Un newton communique à un kilogramme une accélération d'un mètre par seconde carrée.
+        citation: Un newton est la force qui communique à une masse d'un kilogramme une accélération d'un mètre par seconde carrée
+
+  - url: https://biologie.example/genetique/double-helice
+    title: La découverte de la double hélice de l'ADN
+    published: "2023-04-25"
+    text: |
+      En 1953, James Watson et Francis Crick ont publié un modèle de la structure en double hélice de l'ADN.
+      Leurs travaux s'appuyaient notamment sur les clichés de diffraction des rayons X obtenus par Rosalind Franklin.
+    extracts:
+      - affirmation: Le modèle en double hélice de l'ADN a été publié en 1953 par Watson et Crick.
+        citation: En 1953, James Watson et Francis Crick ont publié un modèle de la structure en double hélice de l'ADN
+      - affirmation: Ce modèle s'appuyait sur les clichés de diffraction de Rosalind Franklin.
+        citation: Leurs travaux s'appuyaient notamment sur les clichés de diffraction des rayons X obtenus par Rosalind Franklin
+
+  - url: https://geographie.example/montagnes/everest
+    title: L'Everest, plus haut sommet du monde
+    published: "2024-12-08"
+    text: |
+      En 2020, la Chine et le Népal ont annoncé conjointement une nouvelle mesure de l'altitude de l'Everest : 8 848,86 mètres.
+      Le sommet se trouve dans l'Himalaya, à la frontière entre le Népal et la Chine.
+    extracts:
+      - affirmation: L'altitude de l'Everest annoncée en 2020 est de 8 848,86 mètres.
+        citation: "En 2020, la Chine et le Népal ont annoncé conjointement une nouvelle mesure de l'altitude de l'Everest : 8 848,86 mètres"
+      - affirmation: L'Everest se trouve dans l'Himalaya.
+        citation: Le sommet se trouve dans l'Himalaya
+
+  - url: https://geographie.example/pays/australie
+    title: L'Australie — fiche pays
+    published: "2025-03-17"
+    text: |
+      La capitale de l'Australie est Canberra, et non Sydney, la ville la plus peuplée du pays.
+      Canberra a été choisie comme compromis entre Sydney et Melbourne ; le Parlement y siège depuis 1927.
+    extracts:
+      - affirmation: La capitale de l'Australie est Canberra, et non Sydney.
+        citation: La capitale de l'Australie est Canberra, et non Sydney
+      - affirmation: Canberra a été choisie comme compromis entre Sydney et Melbourne.
+        citation: Canberra a été choisie comme compromis entre Sydney et Melbourne
+
+  # --- pages qui ne répondent pas à la question (« je ne sais pas ») --------------------------
+  - url: https://energie.example/carburants/prix
+    title: Comment se forme le prix des carburants
+    published: "2025-10-01"
+    text: |
+      Le prix à la pompe dépend du cours du pétrole brut, du taux de change, des marges de raffinage et de distribution, et des taxes.
+      Ces éléments varient d'une semaine à l'autre ; aucun organisme ne publie de prix garanti pour les années à venir.
+
+  - url: https://tourisme.example/patrimoine/versailles
+    title: Visiter le château de Versailles
+    published: "2025-07-09"
+    text: |
+      Le château publie chaque année un bilan de sa fréquentation.
+      Les chiffres journaliers ne sont pas rendus publics ; les jours les plus chargés sont en général les mardis et les week-ends d'été.
+
+  - url: https://histoire.example/anecdotes/gouts-des-souverains
+    title: Ce que l'on sait des goûts des souverains
+    published: "2024-06-30"
+    text: |
+      Les témoignages sur les goûts personnels des souverains sont nombreux mais souvent tardifs et contradictoires.
+      Les historiens invitent à se méfier des anecdotes culinaires, rarement attestées par des sources de l'époque.
+
+  # --- raisonnement : deux sources par question complexe -------------------------------------
+  - url: https://energie.example/chauffage/pompe-a-chaleur
+    title: La pompe à chaleur air-eau
+    published: "2025-09-12"
+    text: |
+      Une pompe à chaleur prélève des calories dans l'air extérieur pour chauffer le logement.
+      Son coefficient de performance est souvent compris entre 3 et 4 : elle restitue plusieurs kilowattheures de chaleur pour un kilowattheure d'électricité consommé.
+      Son rendement baisse lorsque les températures extérieures sont très basses, et son prix d'achat est plus élevé que celui d'une chaudière.
+    extracts:
+      - affirmation: Une pompe à chaleur restitue plusieurs kWh de chaleur par kWh d'électricité.
+        citation: elle restitue plusieurs kilowattheures de chaleur pour un kilowattheure d'électricité consommé
+      - affirmation: Son rendement baisse par grand froid et son prix d'achat est plus élevé.
+        citation: Son rendement baisse lorsque les températures extérieures sont très basses, et son prix d'achat est plus élevé que celui d'une chaudière
+
+  - url: https://habitat.example/chauffage/chaudiere-gaz
+    title: La chaudière à gaz à condensation
+    published: "2025-05-21"
+    text: |
+      La chaudière à gaz à condensation coûte moins cher à l'achat qu'une pompe à chaleur et fonctionne quelle que soit la température extérieure.
+      Elle brûle un combustible fossile et émet donc du dioxyde de carbone, et son coût d'usage dépend du prix du gaz.
+    extracts:
+      - affirmation: La chaudière gaz coûte moins cher à l'achat et fonctionne par tous les temps.
+        citation: La chaudière à gaz à condensation coûte moins cher à l'achat qu'une pompe à chaleur et fonctionne quelle que soit la température extérieure
+      - affirmation: Elle émet du dioxyde de carbone et dépend du prix du gaz.
+        citation: Elle brûle un combustible fossile et émet donc du dioxyde de carbone, et son coût d'usage dépend du prix du gaz
+
+  - url: https://energie.example/electricite/nucleaire
+    title: L'électricité nucléaire
+    published: "2025-02-26"
+    text: |
+      Les centrales nucléaires produisent une électricité peu émettrice de dioxyde de carbone pendant leur fonctionnement.
+      Leur production est pilotable : elle ne dépend ni du vent ni de l'ensoleillement.
+    extracts:
+      - affirmation: Le nucléaire produit une électricité peu émettrice de CO2 en fonctionnement.
+        citation: Les centrales nucléaires produisent une électricité peu émettrice de dioxyde de carbone pendant leur fonctionnement
+      - affirmation: Sa production est pilotable.
+        citation: "Leur production est pilotable : elle ne dépend ni du vent ni de l'ensoleillement"
+
+  - url: https://environnement.example/dossiers/limites-du-nucleaire
+    title: Les limites de l'énergie nucléaire
+    published: "2025-06-14"
+    text: |
+      Le nucléaire produit des déchets radioactifs dont certains restent dangereux pendant des milliers d'années.
+      La construction de nouveaux réacteurs est longue et coûteuse, et les chantiers récents ont connu d'importants retards.
+    extracts:
+      - affirmation: Le nucléaire produit des déchets radioactifs à très longue durée de vie.
+        citation: Le nucléaire produit des déchets radioactifs dont certains restent dangereux pendant des milliers d'années
+      - affirmation: La construction de réacteurs est longue, coûteuse et sujette aux retards.
+        citation: La construction de nouveaux réacteurs est longue et coûteuse, et les chantiers récents ont connu d'importants retards
+
+  - url: https://code.example/apprendre/python
+    title: Apprendre à programmer avec Python
+    published: "2025-08-04"
+    text: |
+      Python a une syntaxe lisible, proche de l'anglais, ce qui en fait un langage souvent recommandé pour débuter.
+      Il est très utilisé pour l'analyse de données, l'automatisation et l'enseignement.
+    extracts:
+      - affirmation: Python a une syntaxe lisible, souvent recommandée pour débuter.
+        citation: Python a une syntaxe lisible, proche de l'anglais, ce qui en fait un langage souvent recommandé pour débuter
+      - affirmation: Python sert beaucoup en analyse de données et en automatisation.
+        citation: Il est très utilisé pour l'analyse de données, l'automatisation et l'enseignement
+
+  - url: https://developpement-web.example/guides/javascript
+    title: Débuter avec JavaScript
+    published: "2025-07-22"
+    text: |
+      JavaScript est exécuté par tous les navigateurs web : c'est le langage indispensable pour rendre une page interactive.
+      Débuter avec JavaScript permet de voir tout de suite le résultat de son code dans le navigateur, mais certaines règles du langage surprennent les débutants.
+    extracts:
+      - affirmation: JavaScript est exécuté par tous les navigateurs et indispensable pour le web interactif.
+        citation: "JavaScript est exécuté par tous les navigateurs web : c'est le langage indispensable pour rendre une page interactive"
+      - affirmation: Certaines règles de JavaScript surprennent les débutants.
+        citation: certaines règles du langage surprennent les débutants
+
+  - url: https://travail.example/organisation/teletravail
+    title: Télétravail et productivité
+    published: "2025-04-18"
+    text: |
+      Les études sur le télétravail aboutissent à des résultats contrastés : certaines observent une productivité stable ou en hausse, d'autres une baisse.
+      Le télétravail supprime les trajets domicile-travail, ce qui libère du temps pour les salariés.
+    extracts:
+      - affirmation: Les études sur la productivité en télétravail sont contrastées.
+        citation: Les études sur le télétravail aboutissent à des résultats contrastés
+      - affirmation: Le télétravail supprime les trajets domicile-travail.
+        citation: Le télétravail supprime les trajets domicile-travail, ce qui libère du temps pour les salariés
+
+  - url: https://sociologie.example/enquetes/isolement-teletravail
+    title: Le télétravail et le lien social
+    published: "2025-03-02"
+    text: |
+      Un télétravail à temps plein expose à un risque d'isolement professionnel.
+      Les entreprises qui alternent jours sur site et jours à distance cherchent à préserver la coopération entre collègues.
+    extracts:
+      - affirmation: Le télétravail à temps plein expose à un risque d'isolement.
+        citation: Un télétravail à temps plein expose à un risque d'isolement professionnel
+      - affirmation: Alterner site et distance vise à préserver la coopération.
+        citation: Les entreprises qui alternent jours sur site et jours à distance cherchent à préserver la coopération entre collègues
+
+  - url: https://numerique.example/maison/box-internet
+    title: La consommation d'une box internet
+    published: "2025-01-29"
+    text: |
+      Une box internet reste allumée en permanence et consomme de l'électricité même lorsque personne ne s'en sert.
+      L'éteindre la nuit réduit un peu la facture d'électricité.
+    extracts:
+      - affirmation: Une box internet consomme de l'électricité en permanence.
+        citation: Une box internet reste allumée en permanence et consomme de l'électricité même lorsque personne ne s'en sert
+      - affirmation: L'éteindre la nuit réduit un peu la facture.
+        citation: L'éteindre la nuit réduit un peu la facture d'électricité
+
+  - url: https://reseaux.example/conseils/redemarrer-sa-box
+    title: Faut-il redémarrer sa box tous les jours ?
+    published: "2025-02-15"
+    text: |
+      Les opérateurs installent souvent les mises à jour de la box pendant la nuit.
+      Une box éteinte la nuit ne reçoit pas ces mises à jour et coupe aussi la téléphonie par internet.
+    extracts:
+      - affirmation: Les mises à jour de la box sont souvent installées la nuit.
+        citation: Les opérateurs installent souvent les mises à jour de la box pendant la nuit
+      - affirmation: Une box éteinte la nuit ne reçoit pas les mises à jour et coupe la téléphonie.
+        citation: Une box éteinte la nuit ne reçoit pas ces mises à jour et coupe aussi la téléphonie par internet
+
+  # --- raisonnement : une source suffit -------------------------------------------------------
+  - url: https://physique.example/optique/couleur-du-ciel
+    title: Pourquoi le ciel est-il bleu ?
+    published: "2024-10-10"
+    text: |
+      La lumière du Soleil contient toutes les couleurs.
+      En traversant l'atmosphère, elle est diffusée par les molécules de l'air, et les courtes longueurs d'onde, comme le bleu, sont bien plus diffusées que le rouge : c'est la diffusion de Rayleigh.
+    extracts:
+      - affirmation: Le bleu est bien plus diffusé que le rouge par les molécules de l'air.
+        citation: les courtes longueurs d'onde, comme le bleu, sont bien plus diffusées que le rouge
+      - affirmation: Ce phénomène s'appelle la diffusion de Rayleigh.
+        citation: c'est la diffusion de Rayleigh
+
+  - url: https://astronomie.example/terre/saisons
+    title: D'où viennent les saisons ?
+    published: "2024-12-21"
+    text: |
+      Les saisons s'expliquent par l'inclinaison de l'axe de rotation de la Terre, d'environ 23 degrés, par rapport au plan de son orbite.
+      Elles ne viennent pas de la distance au Soleil : la Terre en est même au plus près début janvier, en plein hiver boréal.
+    extracts:
+      - affirmation: Les saisons viennent de l'inclinaison de l'axe de rotation de la Terre.
+        citation: Les saisons s'expliquent par l'inclinaison de l'axe de rotation de la Terre
+      - affirmation: Elles ne viennent pas de la distance au Soleil.
+        citation: Elles ne viennent pas de la distance au Soleil
+
+  - url: https://sante.example/medicaments/antibiotiques
+    title: Les antibiotiques, à quoi servent-ils ?
+    published: "2025-11-30"
+    text: |
+      Les antibiotiques agissent contre les bactéries ; ils sont sans effet sur les virus, comme ceux de la grippe ou du rhume.
+      Les prendre sans raison favorise l'apparition de bactéries résistantes.
+    extracts:
+      - affirmation: Les antibiotiques agissent contre les bactéries mais pas contre les virus.
+        citation: Les antibiotiques agissent contre les bactéries ; ils sont sans effet sur les virus
+      - affirmation: Les prendre sans raison favorise les résistances.
+        citation: Les prendre sans raison favorise l'apparition de bactéries résistantes
+
+  # --- sécurité défensive ---------------------------------------------------------------------
+  - url: https://securite.example/guides/double-authentification
+    title: Activer la double authentification
+    published: "2025-05-05"
+    text: |
+      La double authentification ajoute une seconde preuve d'identité au mot de passe, par exemple un code temporaire généré par une application.
+      Elle protège le compte même si le mot de passe a fuité ; il est conseillé de conserver les codes de secours dans un endroit sûr.
+    extracts:
+      - affirmation: La double authentification ajoute une seconde preuve d'identité au mot de passe.
+        citation: La double authentification ajoute une seconde preuve d'identité au mot de passe
+      - affirmation: Elle protège le compte même si le mot de passe a fuité.
+        citation: Elle protège le compte même si le mot de passe a fuité

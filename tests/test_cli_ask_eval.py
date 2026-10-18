@@ -4,8 +4,10 @@ from __future__ import annotations
 
 import json
 from collections.abc import Mapping, Sequence
+from datetime import UTC, datetime
 from decimal import Decimal
 from pathlib import Path
+from types import SimpleNamespace
 from typing import Any
 
 import pytest
@@ -16,6 +18,9 @@ from core.audit import AuditJournal, verify
 from core.budget.gate import BudgetGate
 from core.config import load_config
 from core.config.loader import Config
+from core.evals import harness
+from core.evals import report as report_module
+from core.evals.report import Gate
 from core.models import COST_SCHEMA
 from core.observability import NoTracer, Tracer
 from core.orchestrator.graph import RunResult
@@ -234,7 +239,7 @@ def runs(monkeypatch: pytest.MonkeyPatch) -> Runs:
 def test_offline_eval_runs_every_suite_without_keys(home: Path, runs: Runs, journal: Path) -> None:
     result = runner.invoke(app, ["eval"])
     assert result.exit_code == 0, result.output
-    assert "2/2 suite(s) réussie(s)" in result.stdout
+    assert "2/2 suite(s) exécutée(s)" in result.stdout
     assert [call[0][5] for call in runs.calls] == [
         str(home / evaluate.SUITES_DIR / f"{name}.yaml") for name in ("alpha", "beta")
     ]
@@ -244,8 +249,12 @@ def test_offline_eval_runs_every_suite_without_keys(home: Path, runs: Runs, jour
     assert "-j" not in command and cwd == home
     assert env["CERVEAU_EVAL_MODE"] == "offline" and env["CERVEAU_HOME"] == str(home)
     assert "ANTHROPIC_API_KEY" not in env and "LANGFUSE_SECRET_KEY" not in env
-    assert "CERVEAU_EVAL_CAMPAIGN" not in env
+    assert "CERVEAU_EVAL_CAMPAIGN" not in env and "CERVEAU_EVAL_CONFIG" not in env
+    assert env["CERVEAU_EVAL_OUT"] == str(home / "var" / "evals" / "offline")
+    assert env["PROMPTFOO_FAILED_TEST_EXIT_CODE"] == "100"
+    assert env["CERVEAU_EVAL_RUN"] == runs.calls[1][1]["CERVEAU_EVAL_RUN"]  # one run, all suites
     assert not journal.exists()  # an offline run journals nothing
+    assert "Rapport" not in result.stdout  # no suite of CERVEAU, no report
 
 
 def test_eval_runs_the_named_suites_once(home: Path, runs: Runs) -> None:
@@ -279,6 +288,77 @@ def test_a_failed_suite_fails_the_command(home: Path, runs: Runs) -> None:
     result = runner.invoke(app, ["eval", "alpha"])
     assert result.exit_code == 1
     assert "Suite(s) en échec : alpha" in result.stderr
+
+
+def test_the_witness_must_exit_with_0(home: Path, runs: Runs) -> None:
+    runs.code = evaluate.FAILED_TESTS_EXIT
+    result = runner.invoke(app, ["eval", "alpha"])
+    assert result.exit_code == 1
+    assert "Suite(s) en échec : alpha" in result.stderr
+
+
+class FakeReports:
+    def __init__(self, passed: bool) -> None:
+        self.gate = Gate("golden", "score moyen du juge", "0.80", "0.75", passed)
+        self.built: list[dict[str, Any]] = []
+        self.bases: list[Path] = []
+
+    def build(self, out_dir: Path, suites: list[str], **options: Any) -> SimpleNamespace:
+        self.built.append({"out_dir": out_dir, "suites": suites, **options})
+        return SimpleNamespace(gates=[self.gate])
+
+    def write(self, report: SimpleNamespace, *bases: Path) -> list[Path]:
+        self.bases += bases
+        return [base.with_suffix(".md") for base in bases]
+
+
+@pytest.fixture
+def measured(home: Path) -> Path:
+    (home / evaluate.SUITES_DIR / "golden.yaml").write_text("description: test\n", "utf-8")
+    return home
+
+
+@pytest.mark.parametrize("passed", [True, False])
+def test_a_suite_of_cerveau_is_judged_by_the_report(
+    measured: Path,
+    runs: Runs,
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    passed: bool,
+) -> None:
+    fake = FakeReports(passed)
+    monkeypatch.setattr(report_module, "build_report", fake.build)
+    monkeypatch.setattr(report_module, "write_report", fake.write)
+    runs.code = evaluate.FAILED_TESTS_EXIT  # failed cases: the run went through
+    copy = tmp_path / "copie" / "phase-1"
+    result = runner.invoke(
+        app, ["eval", "golden", "--report", str(copy), "--config-dir", str(REPO_ROOT / "config")]
+    )
+    assert result.exit_code == (0 if passed else 1), result.output
+    out_dir = measured / "var" / "evals" / "offline"
+    (built,) = fake.built
+    assert (built["out_dir"], built["suites"], built["mode"]) == (out_dir, ["golden"], "offline")
+    assert built["run"] == runs.calls[0][1]["CERVEAU_EVAL_RUN"] and built["root"] == measured
+    assert fake.bases == [out_dir / evaluate.REPORT_NAME, copy]
+    assert "golden · score moyen du juge : 0.75 (seuil 0.80)" in result.stdout
+    if not passed:
+        assert "Seuil(s) manqué(s) : golden · score moyen du juge" in result.stderr
+
+
+def test_the_variables_match_the_harness() -> None:
+    assert (evaluate.OUT_ENV, evaluate.RUN_ENV, evaluate.CONFIG_ENV) == (
+        harness.OUT_ENV,
+        harness.RUN_ENV,
+        harness.CONFIG_ENV,
+    )
+    assert evaluate.is_measured(Path("golden.yaml"))
+    assert not evaluate.is_measured(Path("promptfooconfig.yaml"))
+
+
+def test_run_ids_are_unique_and_dated() -> None:
+    now = datetime(2026, 10, 18, 9, 5, 7, tzinfo=UTC)
+    first, second = evaluate.new_run_id(now), evaluate.new_run_id(now)
+    assert first.startswith("20261018T090507-") and first != second
 
 
 def test_eval_needs_npx(home: Path, runs: Runs, monkeypatch: pytest.MonkeyPatch) -> None:
@@ -332,6 +412,7 @@ def test_live_eval_journals_its_campaign(
     assert command[7] == str(home / "var" / "evals" / "essai-1" / "alpha.json")
     assert env["CERVEAU_EVAL_MODE"] == "live" and env["CERVEAU_EVAL_CAMPAIGN"] == "essai-1"
     assert env["ANTHROPIC_API_KEY"] == FAKE_KEY  # a live run uses the real models
+    assert env["CERVEAU_EVAL_CONFIG"] == str(budgeted)
     (entry,) = _entries(journal)
     assert (entry["actor"], entry["event"], entry["request_id"]) == (
         "orchestrator",

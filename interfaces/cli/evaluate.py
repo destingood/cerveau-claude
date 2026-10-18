@@ -10,15 +10,21 @@ from __future__ import annotations
 import re
 import subprocess
 import sys
+import uuid
 from collections.abc import Mapping, Sequence
+from datetime import datetime
 from pathlib import Path
 from typing import Literal
 
 PROMPTFOO = "promptfoo@0.124.1"
 SUITES_DIR = Path("evals") / "promptfoo"
 RUNS_DIR = Path("var") / "evals"  # raw promptfoo results, ignored by git
+REPORT_NAME = "report"  # <run dir>/report.md and report.json
 CAMPAIGN = re.compile(r"[a-z0-9][a-z0-9-]{2,63}")
 API_KEYS = ("ANTHROPIC_API_KEY", "BRAVE_SEARCH_API_KEY")
+# The variables that core/evals/harness.py reads; a test keeps both sides in step.
+OUT_ENV, RUN_ENV, CONFIG_ENV = "CERVEAU_EVAL_OUT", "CERVEAU_EVAL_RUN", "CERVEAU_EVAL_CONFIG"
+FAILED_TESTS_EXIT = 100  # PROMPTFOO_FAILED_TEST_EXIT_CODE: a case failed, the run went through
 Mode = Literal["offline", "live"]
 
 
@@ -50,15 +56,40 @@ def check_campaign(campaign: str | None, names: Sequence[str]) -> str:
     return campaign
 
 
+def new_run_id(now: datetime) -> str:
+    """The run the case results belong to: the report ignores the results of older runs."""
+    return f"{now:%Y%m%dT%H%M%S}-{uuid.uuid4().hex[:6]}"
+
+
+def is_measured(suite: Path) -> bool:
+    """A suite of CERVEAU (golden, behaviours, injection), as opposed to the witness test."""
+    from core.evals.cases import SUITES  # trafilatura and spaCy load only for `eval`
+
+    return suite.stem in SUITES
+
+
+def accepted_codes(suite: Path) -> frozenset[int]:
+    """promptfoo exit codes of a run that went through: the report's gates judge the cases."""
+    return frozenset({0, FAILED_TESTS_EXIT}) if is_measured(suite) else frozenset({0})
+
+
 def child_env(
-    mode: Mode, root: Path, base: Mapping[str, str], campaign: str | None = None
+    mode: Mode,
+    root: Path,
+    base: Mapping[str, str],
+    campaign: str | None = None,
+    *,
+    out_dir: Path | None = None,
+    run: str | None = None,
+    config_dir: Path | None = None,
 ) -> dict[str, str]:
     """The environment of promptfoo and of the Python provider it starts."""
     env = dict(base)
     if mode == "offline":  # the keys stay out of reach, whatever a suite asks for
         for name in [*API_KEYS, *(n for n in env if n.upper().startswith("LANGFUSE_"))]:
             env.pop(name, None)
-    env.pop("CERVEAU_EVAL_CAMPAIGN", None)
+    for name in ("CERVEAU_EVAL_CAMPAIGN", OUT_ENV, RUN_ENV, CONFIG_ENV):
+        env.pop(name, None)
     env.update(
         {
             "CERVEAU_HOME": str(root),
@@ -66,10 +97,17 @@ def child_env(
             "PROMPTFOO_PYTHON": sys.executable,  # the provider runs in CERVEAU's environment
             "PROMPTFOO_DISABLE_TELEMETRY": "1",
             "PROMPTFOO_DISABLE_UPDATE": "1",
+            "PROMPTFOO_FAILED_TEST_EXIT_CODE": str(FAILED_TESTS_EXIT),
         }
     )
     if campaign is not None:
         env["CERVEAU_EVAL_CAMPAIGN"] = campaign
+    if out_dir is not None:
+        env[OUT_ENV] = str(out_dir)
+    if run is not None:
+        env[RUN_ENV] = run
+    if mode == "live" and config_dir is not None:
+        env[CONFIG_ENV] = str(config_dir)
     return env
 
 

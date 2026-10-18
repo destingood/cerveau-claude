@@ -7,6 +7,7 @@ import json
 import os
 import shutil
 import sys
+from datetime import datetime
 from pathlib import Path
 from typing import TYPE_CHECKING, Annotated, NoReturn
 
@@ -161,12 +162,17 @@ def eval_suites(
     campaign: Annotated[
         str | None, typer.Option("--campaign", help="Nom de la campagne réelle acceptée.")
     ] = None,
+    report_copy: Annotated[
+        Path | None,
+        typer.Option("--report", help="Copie du rapport (chemin sans extension : .md et .json)."),
+    ] = None,
     config_dir: ConfigDirOpt = None,
 ) -> None:
     """Lance les suites d'évals promptfoo, hors ligne par défaut (ni clé ni appel payant).
 
-    Codes de sortie : 0 suites réussies, 1 suite en échec ou erreur, 2 usage refusé ou fonction
-    bloquée (R7), 3 budget du jour ou du mois atteint (D9).
+    Les suites de CERVEAU (golden, behaviors, injection) sont jugées par les seuils du rapport,
+    écrit dans le dossier du run. Codes de sortie : 0 seuils atteints, 1 suite en échec, seuil
+    manqué ou erreur, 2 usage refusé ou fonction bloquée (R7), 3 budget atteint (D9).
     """
     root, names = project_root(), suites or []
     mode: evaluate.Mode = "live" if live else "offline"
@@ -185,20 +191,60 @@ def eval_suites(
         _fail("npx introuvable : installer Node.js pour promptfoo.", EXIT_ERROR)
     if campaign is not None:
         _open_campaign(_load(config_dir), root, campaign, found)
-    env = evaluate.child_env(mode, root, os.environ, campaign)
+    run = evaluate.new_run_id(datetime.now().astimezone())
     out_dir = root / evaluate.RUNS_DIR / (campaign or "offline")
     out_dir.mkdir(parents=True, exist_ok=True)
+    env = evaluate.child_env(
+        mode, root, os.environ, campaign, out_dir=out_dir, run=run, config_dir=config_dir
+    )
     failed = []
     for suite in found:
         typer.echo(f"Suite {suite.stem} ({'réelle' if live else 'hors ligne'})")
         command = evaluate.promptfoo_command(npx, suite, out_dir / f"{suite.stem}.json", mode)
-        if evaluate.run_suite(command, env=env, cwd=root) != 0:
+        if evaluate.run_suite(command, env=env, cwd=root) not in evaluate.accepted_codes(suite):
             failed.append(suite.stem)
-    typer.echo(
-        f"{len(found) - len(failed)}/{len(found)} suite(s) réussie(s) ; résultats : {out_dir}"
-    )
+    typer.echo(f"{len(found) - len(failed)}/{len(found)} suite(s) exécutée(s) ; run {run}")
+    measured = [suite.stem for suite in found if evaluate.is_measured(suite)]
+    missed = _eval_report(measured, out_dir, mode, run, campaign, config_dir, report_copy)
     if failed:
         _fail(f"Suite(s) en échec : {', '.join(failed)}", EXIT_ERROR)
+    if missed:
+        _fail(f"Seuil(s) manqué(s) : {', '.join(missed)}", EXIT_ERROR)
+
+
+def _eval_report(
+    suites: list[str],
+    out_dir: Path,
+    mode: evaluate.Mode,
+    run: str,
+    campaign: str | None,
+    config_dir: Path | None,
+    copy: Path | None,
+) -> list[str]:
+    """Writes the run's report and returns the gates it misses (R9: thresholds as declared)."""
+    if not suites:
+        return []
+    from core.evals.report import build_report, write_report
+
+    report = build_report(
+        out_dir,
+        suites,  # type: ignore[arg-type]  # names checked by evaluate.is_measured
+        mode=mode,
+        run=run,
+        config=_load(config_dir),
+        campaign=campaign,
+        root=project_root(),
+    )
+    bases = [out_dir / evaluate.REPORT_NAME, *([copy] if copy is not None else [])]
+    written = write_report(report, *bases)
+    typer.echo(f"Rapport : {', '.join(str(path) for path in written)}")
+    missed = [f"{gate.suite} · {gate.name}" for gate in report.gates if not gate.passed]
+    for gate in report.gates:
+        status = "atteint" if gate.passed else "MANQUÉ"
+        typer.echo(
+            f"  {gate.suite} · {gate.name} : {gate.measured} (seuil {gate.threshold}) {status}"
+        )
+    return missed
 
 
 def _open_campaign(config: Config, root: Path, campaign: str, suites: list[Path]) -> None:

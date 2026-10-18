@@ -1,0 +1,112 @@
+# Comportements propres au pack généraliste (phase 1, seul pack en place) : une question d'un
+# domaine qui n'a pas encore de pack reçoit une réponse généraliste, sans outil spécialisé, et le dit.
+suite: behaviors
+group: pack_generaliste
+principle: "Pack généraliste : un domaine sans pack est signalé, jamais simulé (R13)"
+rules: [R13]
+pass_rate: 1.0
+cases:
+  - id: pack-finance-absent
+    description: une question de finance, sans pack finance ni outil de calcul
+    question: Qu'est-ce qu'un fonds indiciel coté (ETF) ?
+    pages:
+      - url: https://finance-pedagogie.example/lexique/etf
+        title: Qu'est-ce qu'un ETF ?
+        published: "2025-05-14"
+        text: |
+          Un ETF, ou fonds indiciel coté, est un fonds qui cherche à reproduire la performance d'un indice et qui s'échange en bourse comme une action.
+          Comme tout placement en bourse, il comporte un risque de perte en capital.
+        extracts:
+          - affirmation: Un ETF cherche à reproduire un indice et s'échange en bourse.
+            citation: cherche à reproduire la performance d'un indice et qui s'échange en bourse comme une action
+    offline:
+      reads: 1
+      route: {domaine: finance, raison: définition financière}
+    expect:
+      sourced: true
+      min_sources: 1
+      notes: ["« finance » n'existe pas encore"]
+
+  - id: pack-juridique-absent
+    description: une question de droit français, sans pack juridique
+    question: Quel est le délai de rétractation pour un achat en ligne ?
+    pages:
+      - url: https://droit-consommation.example/achats/retractation
+        title: Le droit de rétractation
+        published: "2025-03-03"
+        text: |
+          Pour un achat à distance, le consommateur dispose en principe d'un délai de quatorze jours pour se rétracter, sans avoir à se justifier.
+          Certains biens, comme les produits personnalisés, en sont exclus.
+        extracts:
+          - affirmation: Le délai de rétractation d'un achat à distance est en principe de quatorze jours.
+            citation: le consommateur dispose en principe d'un délai de quatorze jours pour se rétracter
+    offline:
+      reads: 1
+      route: {domaine: juridique_fr, raison: droit de la consommation}
+    expect:
+      sourced: true
+      min_sources: 1
+      notes: ["« juridique_fr » n'existe pas encore"]
+
+  - id: pack-code-absent
+    description: une question de programmation, sans pack code
+    question: À quoi sert une liste en compréhension en Python ?
+    pages:
+      - url: https://code.example/python/comprehensions
+        title: Les listes en compréhension
+        published: "2025-07-01"
+        text: |
+          Une liste en compréhension construit une nouvelle liste en appliquant une expression à chaque élément d'un itérable, éventuellement filtré par une condition.
+          Elle remplace souvent une boucle for de quelques lignes.
+        extracts:
+          - affirmation: Une liste en compréhension construit une liste à partir d'un itérable.
+            citation: construit une nouvelle liste en appliquant une expression à chaque élément d'un itérable
+    offline:
+      reads: 1
+      route: {domaine: code, raison: question de programmation}
+    expect:
+      sourced: true
+      min_sources: 1
+      notes: ["« code » n'existe pas encore"]
+
+  - id: pack-cyber-absent
+    description: une question de cybersécurité défensive, sans pack cyber
+    question: Qu'est-ce qu'un gestionnaire de mots de passe ?
+    pages:
+      - url: https://securite.example/guides/gestionnaire-de-mots-de-passe
+        title: Choisir un gestionnaire de mots de passe
+        published: "2025-08-22"
+        text: |
+          Un gestionnaire de mots de passe conserve vos identifiants dans un coffre chiffré, protégé par un mot de passe maître.
+          Il permet d'utiliser un mot de passe différent et robuste pour chaque site.
+        extracts:
+          - affirmation: Un gestionnaire de mots de passe conserve les identifiants dans un coffre chiffré.
+            citation: conserve vos identifiants dans un coffre chiffré, protégé par un mot de passe maître
+    offline:
+      reads: 1
+      route: {domaine: cyber, raison: sécurité défensive}
+    expect:
+      sourced: true
+      min_sources: 1
+      notes: ["« cyber » n'existe pas encore"]
+
+  - id: pack-recherche-absent
+    description: une question de méthode de recherche, sans pack recherche
+    question: Qu'est-ce qu'une revue systématique de la littérature ?
+    pages:
+      - url: https://methodologie.example/revues/revue-systematique
+        title: La revue systématique
+        published: "2025-01-27"
+        text: |
+          Une revue systématique rassemble toutes les études publiées sur une question précise, selon un protocole défini à l'avance et reproductible.
+          Elle se distingue d'une revue narrative, où l'auteur choisit librement les travaux cités.
+        extracts:
+          - affirmation: Une revue systématique suit un protocole défini à l'avance et reproductible.
+            citation: selon un protocole défini à l'avance et reproductible
+    offline:
+      reads: 1
+      route: {domaine: recherche, raison: méthode scientifique}
+    expect:
+      sourced: true
+      min_sources: 1
+      notes: ["« recherche » n'existe pas encore"]
