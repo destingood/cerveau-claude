@@ -52,6 +52,11 @@ def test_every_marker_dependent_feature_is_blocked_by_default() -> None:
         "evals.gate.generaliste",
         "compliance.fiscal",
         "guardrails.pii",
+        "finance.historical_stress",
+        "finance.benchmark",
+        "finance.trading_costs",
+        "data.openbb",
+        "data.yfinance",
     ):
         with pytest.raises(BlockedFeatureError):
             config.require(feature)
@@ -276,3 +281,83 @@ def test_pii_threshold_must_be_a_probability(config_dir: Path, value: float) -> 
     edit_yaml(config_dir / "guardrails.yaml", lambda d: d["pii"].update(score_threshold=value))
     with pytest.raises(ConfigError, match="score_threshold"):
         load_config(config_dir)
+
+
+# --- phase 2: finance pack parameters ---------------------------------------------------------
+
+
+def test_phase_2_decisions_are_recorded() -> None:
+    config = load_config(REPO_ROOT / "config")
+    market = config.risk.market_risk
+    assert market.var.confidence_levels == [0.95, 0.99]  # D7
+    assert market.var.horizons_sessions == [1, 10]  # D7
+    assert market.var.window_sessions == 500  # D7
+    assert market.annualisation_sessions == 252  # D7
+    assert market.risk_free == "estr"  # D7
+    assert market.cross_check.rel_tolerance == 1e-9  # D11
+    assert config.data_sources.quality.max_staleness_sessions == 1  # D12
+    assert config.data_sources.quality.min_quality_score_above_N1 == 0.90  # D12
+    assert config.evals.thresholds.finance_golden_min_score == 0.85  # D17
+    assert config.risk.trading_costs.commission_pct == "A_DEFINIR"  # D13: not provided
+
+
+def test_finance_read_only_features_are_available() -> None:
+    config = load_config(REPO_ROOT / "config")
+    for feature in ("finance.market_risk", "data.ecb", "data.quality_gate"):
+        config.require(feature)
+    assert config.data_sources.sources["yfinance"].enabled is False  # R15, ADR-013
+
+
+def test_disabled_source_blocks_its_feature_without_markers(config_dir: Path) -> None:
+    edit_yaml(config_dir / "data_sources.yaml", lambda d: d["sources"]["ecb"].update(enabled=False))
+    reasons = load_config(config_dir).blockers("data.ecb")
+    assert reasons == ["data_sources.yaml › sources.ecb.enabled = false"]
+
+
+def test_missing_source_blocks_its_feature(config_dir: Path) -> None:
+    edit_yaml(config_dir / "data_sources.yaml", lambda d: d["sources"].pop("ecb"))
+    reasons = load_config(config_dir).blockers("data.ecb")
+    assert reasons == ["data_sources.yaml › sources.ecb absente"]
+
+
+@pytest.mark.parametrize("value", [1.5, -0.1])
+def test_quality_score_must_be_a_probability(config_dir: Path, value: float) -> None:
+    edit_yaml(
+        config_dir / "data_sources.yaml",
+        lambda d: d["quality"].update(min_quality_score_above_N1=value),
+    )
+    with pytest.raises(ConfigError, match="min_quality_score_above_N1"):
+        load_config(config_dir)
+
+
+@pytest.mark.parametrize(("field", "value"), [("confidence_levels", [1.0]), ("seed", -1)])
+def test_invalid_var_parameters_are_refused(config_dir: Path, field: str, value: object) -> None:
+    edit_yaml(config_dir / "risk.yaml", lambda d: d["market_risk"]["var"].update({field: value}))
+    with pytest.raises(ConfigError, match=field):
+        load_config(config_dir)
+
+
+def test_equity_shock_cannot_wipe_out_more_than_the_position(config_dir: Path) -> None:
+    edit_yaml(
+        config_dir / "risk.yaml",
+        lambda d: d["market_risk"]["hypothetical_stress"].update(equity_shock=-1.5),
+    )
+    with pytest.raises(ConfigError, match="equity_shock"):
+        load_config(config_dir)
+
+
+def test_trading_costs_unblock_as_exact_decimals_once_decided(config_dir: Path) -> None:
+    costs = {"commission_pct": "0.1", "min_commission_eur": "1.99", "slippage_bps": "5"}
+    edit_yaml(config_dir / "risk.yaml", lambda d: d["trading_costs"].update(costs))
+    config = load_config(config_dir)
+    config.require("finance.trading_costs")
+    assert config.risk.trading_costs.min_commission_eur == Decimal("1.99")
+
+
+def test_historical_stress_unblocks_once_dates_and_sources_are_checked(config_dir: Path) -> None:
+    def fill(d: dict) -> None:
+        for window in d["market_risk"]["historical_stress"].values():
+            window.update(start="2020-02-19", end="2020-03-23", source="test")
+
+    edit_yaml(config_dir / "risk.yaml", fill)
+    load_config(config_dir).require("finance.historical_stress")

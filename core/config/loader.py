@@ -239,8 +239,9 @@ class DataSource(_Strict):
 
 
 class DataQuality(_Strict):
-    max_staleness_minutes: int | Marker
-    min_quality_score_above_N1: float | Marker
+    # Closing prices (ADR-012): staleness is counted in exchange sessions, not minutes.
+    max_staleness_sessions: Annotated[int, Field(ge=0)] | Marker
+    min_quality_score_above_N1: Annotated[float, Field(ge=0, le=1)] | Marker
 
 
 class DataSourcesConfig(_Strict):
@@ -277,11 +278,76 @@ class Infra(_Strict):
     private_network: str
 
 
+Probability = Annotated[float, Field(gt=0, lt=1)]
+Sessions = Annotated[int, Field(gt=0)]
+
+
+class VarParameters(_Strict):
+    confidence_levels: list[Probability] = Field(min_length=1)
+    horizons_sessions: list[Sessions] = Field(min_length=1)
+    window_sessions: Annotated[int, Field(gt=1)]
+    monte_carlo_draws: Annotated[int, Field(gt=0)]
+    seed: Annotated[int, Field(ge=0)]
+
+
+class Backtest(_Strict):
+    window_sessions: Sessions
+    significance: Probability
+
+
+class HypotheticalStress(_Strict):
+    rates_bp: float
+    equity_shock: Annotated[float, Field(gt=-1)]
+    fx_eurusd_shocks: list[Annotated[float, Field(gt=-1)]] = Field(min_length=1)
+
+
+class CrisisWindow(_Strict):
+    label: str
+    start: date | Marker
+    end: date | Marker
+    source: str | Marker
+
+
+class Benchmark(_Strict):
+    description: str
+    isin: str | Marker
+
+
+class CrossCheck(_Strict):
+    # ADR-014: tolerances of the "independent calculation" phase criterion (never loosened, R9).
+    rel_tolerance: Annotated[float, Field(gt=0)]
+    monte_carlo_rel_tolerance: Annotated[float, Field(gt=0)]
+    monte_carlo_draws: Annotated[int, Field(gt=0)]
+
+
+class MarketRisk(_Strict):
+    var: VarParameters
+    backtest: Backtest
+    annualisation_sessions: Sessions
+    risk_free: Literal["estr"]
+    benchmark: Benchmark
+    hypothetical_stress: HypotheticalStress
+    historical_stress: dict[str, CrisisWindow]
+    cross_check: CrossCheck
+
+
+Money = Annotated[Decimal, Field(ge=0)] | Marker
+
+
+class TradingCosts(_Strict):
+    # R10: fees and slippage are always included; unknown until Lucas gives his broker's (D13).
+    commission_pct: Money
+    min_commission_eur: Money
+    slippage_bps: Money
+
+
 class RiskConfig(_Strict):
     kill_switch: KillSwitch
     plugin_health: PluginHealth
     keys: Keys
     infra: Infra
+    market_risk: MarketRisk
+    trading_costs: TradingCosts
 
 
 # --- pricing.yaml (ADR-005) -------------------------------------------------------------------
@@ -372,6 +438,7 @@ FILES: dict[str, tuple[str, type[BaseModel]]] = {
 class Feature:
     description: str
     requires: tuple[str, ...]  # "<file>:<dotted prefix>", "" prefix = whole file
+    source: str | None = None  # data source that must also be enabled
 
 
 # Which configuration values each feature depends on. A marker under any listed prefix
@@ -397,10 +464,10 @@ FEATURES: dict[str, Feature] = {
     "plugin_health": Feature("Désactivation auto d'un plugin hors SLO", ("risk:plugin_health",)),
     "keys.rotation": Feature("Rotation des clés", ("risk:keys",)),
     "infra.vps": Feature("Déploiement VPS (réseau privé)", ("risk:infra",)),
-    "data.openbb": Feature("Source OpenBB", ("data_sources:sources.openbb",)),
-    "data.yfinance": Feature("Source yfinance", ("data_sources:sources.yfinance",)),
-    "data.fred": Feature("Source FRED", ("data_sources:sources.fred",)),
-    "data.ecb": Feature("Source BCE", ("data_sources:sources.ecb",)),
+    "data.openbb": Feature("Source OpenBB", ("data_sources:sources.openbb",), "openbb"),
+    "data.yfinance": Feature("Source yfinance", ("data_sources:sources.yfinance",), "yfinance"),
+    "data.fred": Feature("Source FRED", ("data_sources:sources.fred",), "fred"),
+    "data.ecb": Feature("Source BCE", ("data_sources:sources.ecb",), "ecb"),
     "data.quality_gate": Feature(
         "Contrôle qualité des données au-delà de N1", ("data_sources:quality",)
     ),
@@ -414,6 +481,24 @@ FEATURES: dict[str, Feature] = {
     "evals.gate.finance": Feature(
         "Seuil du golden set Finance",
         ("evals:thresholds.finance_golden_min_score", "evals:thresholds.regression_block_delta"),
+    ),
+    "finance.market_risk": Feature(
+        "Mesures de risque de marché (VaR, CVaR, Kupiec, stress hypothétiques)",
+        (
+            "risk:market_risk.var",
+            "risk:market_risk.backtest",
+            "risk:market_risk.annualisation_sessions",
+            "risk:market_risk.risk_free",
+            "risk:market_risk.hypothetical_stress",
+            "risk:market_risk.cross_check",
+        ),
+    ),
+    "finance.historical_stress": Feature(
+        "Stress historiques (fenêtres de crise)", ("risk:market_risk.historical_stress",)
+    ),
+    "finance.benchmark": Feature("Indice de référence (bêta)", ("risk:market_risk.benchmark",)),
+    "finance.trading_costs": Feature(
+        "Frais et glissement (liste d'opérations d'une proposition)", ("risk:trading_costs",)
     ),
     "compliance.fiscal": Feature("Règles fiscales", ("compliance:fiscal",)),
     "compliance.crypto": Feature("Plateformes crypto autorisées", ("compliance:crypto",)),
@@ -496,6 +581,13 @@ class Config:
         reasons: list[str] = []
         if feature == "live_trading" and not self.live.enabled:
             reasons.append("live.yaml › enabled = false (R3)")
+        source = FEATURES[feature].source
+        if source is not None:
+            known = self.data_sources.sources.get(source)
+            if known is None:
+                reasons.append(f"data_sources.yaml › sources.{source} absente")
+            elif not known.enabled:
+                reasons.append(f"data_sources.yaml › sources.{source}.enabled = false")
         for req in FEATURES[feature].requires:
             file_key, _, prefix = req.partition(":")
             reasons.extend(

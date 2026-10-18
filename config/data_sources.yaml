@@ -1,10 +1,19 @@
 sources:
-  openbb:   { enabled: true,  url: A_VERIFIER, categories: [equity, news, economy], terms: A_VERIFIER }
-            # défaut documenté : `openbb-mcp` écoute sur 127.0.0.1:8001 en streamable HTTP
-  yfinance: { enabled: true,  usage: personnel, terms: A_VERIFIER }
+  openbb:   { enabled: false, url: A_VERIFIER, categories: [equity, news, economy], terms: A_VERIFIER }
+            # reporté au backlog (ADR-013, D3) ; défaut documenté : `openbb-mcp` écoute sur
+            # 127.0.0.1:8001 en streamable HTTP
+  yfinance: { enabled: false, usage: personnel, terms: "refusé : les CGU de Yahoo interdisent la collecte automatisée (R15, ADR-013, vérifié le 2026-10-18)" }
   ccxt:     { enabled: false }
   fred:     { enabled: false, terms: A_VERIFIER }
-  ecb:      { enabled: false, terms: A_VERIFIER }
+  ecb:
+    enabled: true                     # D2
+    url: https://data-api.ecb.europa.eu/service/
+    categories: [fx_reference_rates, estr, yield_curve]
+    usage: personnel
+    terms: >-
+      Réutilisation libre si la BCE est citée comme source et si toute modification (calcul de
+      rendement, par exemple) est signalée ; l'€STR est publié sans frais ni licence
+      (ecb.europa.eu/services/using-our-site/disclaimer et page €STR, vérifiées le 2026-10-18).
 quality:
-  max_staleness_minutes: A_DEFINIR
-  min_quality_score_above_N1: A_DEFINIR
+  max_staleness_sessions: 1           # D12 : données de clôture
+  min_quality_score_above_N1: 0.90    # D12

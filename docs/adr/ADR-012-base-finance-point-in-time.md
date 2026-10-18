@@ -36,6 +36,8 @@ Option 3, dans `var/finance/finance.db` (ignoré par git) :
 
 ## Conséquences
 - Plus simple : aucun service à lancer, tests rapides en mémoire, sauvegarde par copie de fichier.
+- Écart à l'Annexe B : les cours sont des clôtures, donc la fraîcheur se compte en séances de
+  bourse. `quality.max_staleness_minutes` devient `quality.max_staleness_sessions` (D12 : 1).
 - Plus difficile : un seul écrivain à la fois, ce qui suffit pour la CLI de Lucas. La mémoire
   (phase 3, Postgres) restera séparée.
 - Les fondamentaux du fournisseur ne sont pas point-in-time : ils sont marqués comme tels et exclus
