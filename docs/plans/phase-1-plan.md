@@ -201,6 +201,13 @@ Comité (7.2) : phase 3. Porte de risque : phase 4.
 15. `test(evals): add the generaliste pack, golden set, behaviour and injection suites`
 16. `docs: add the phase 1 report with measured scores and costs`
 
+Ajout de périmètre du 18/10/2026 (D14, ADR-011), après le compte rendu :
+
+- `docs(adr): add ADR-011 on automatic self-improvement behind an eval gate`
+- `feat(learning): journal structured error records`
+- `feat(cli): add cerveau feedback`
+- `docs: update the phase 1 report with ADR-011 and the feedback loop`
+
 ## 15. Coût estimé (non mesuré)
 
 - **Requête type** : planificateur Sonnet 5.5 + lecteur Haiku 5.5 + 2 ou 3 recherches Brave ≈ 0,04 à 0,10 $.
@@ -232,5 +239,6 @@ Ce sont des estimations ; les vrais chiffres viendront du grand livre et figurer
 | D11 | Dépendances du §11 acceptées |
 | D12 | Image Langfuse épinglée ≥ 4.59.0 ; Lucas démarre le profil observability et crée les clés |
 | D13 | ADR-001 à 004, `.claude/` et hook B7 validés |
+| D14 | Auto-amélioration tout automatique, sans validation humaine, derrière deux verrous : porte d'évals avant chaque mise en ligne (champion / challenger, retour arrière automatique) et noyau verrouillé (ADR-011, amende la section 11). Ajout de périmètre en phase 1 : enregistrements d'erreurs structurés dans le journal (`ERROR`) et `cerveau feedback` (`FEEDBACK`) ; boucle complète en phase 7, ouverture publique en phase 8 |
 
 Exécution : session ouverte dans `cerveau-plateforme` (choix de Lucas, 18/10/2026), la session précédente n'ayant pas chargé les hooks du projet.
