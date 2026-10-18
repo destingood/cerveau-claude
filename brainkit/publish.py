@@ -3,8 +3,9 @@ skill, marketplace) dans le clone local du dépôt GitHub, le vérifie dans un b
 de la version. Chez un ami, Claude Code installe le plugin une fois, puis le met à jour tout seul (`autoUpdate`) à chaque
 version publiée ; ses souvenirs restent chez lui, dans ~/.claude/brain, et ne partent jamais.
 
-Ne part dans le dépôt que le code (brain.py, brainkit/) : jamais les souvenirs, la configuration ni les tests (ils lisent
-la mémoire de Lucas). L'envoi sur GitHub est une publication : il n'a lieu qu'avec `--push`."""
+Ne part dans le dépôt que le code (brain.py, brainkit/) et les skills (/brain, et les skills métier de skills/<nom>/,
+comme le cerveau e-commerce) : jamais les souvenirs, la configuration ni les tests (ils lisent la mémoire de Lucas).
+L'envoi sur GitHub est une publication : il n'a lieu qu'avec `--push`."""
 from __future__ import annotations
 
 import json
@@ -21,8 +22,10 @@ from .common import CODE_DIR, load_config, read_json, set_config
 
 NAME = MARKET = "cerveau"
 DESC = ("Cerveau persistant pour Claude Code : souvenirs en graphe, rappel automatique à chaque message, wiki Markdown "
-        "tenu par Claude (sources ingérées, coffre Obsidian, dépôt git), cartes de projets, à-faire datés, serveur MCP. "
-        "Tout reste chez toi.")
+        "tenu par Claude (sources ingérées, coffre Obsidian, dépôt git), cartes de projets, à-faire datés, serveur MCP, "
+        "et un cerveau e-commerce qui suit chaque boutique (clients sans pub, SEO, GEO, tunnel de vente, chiffres de "
+        "la semaine). Tout reste chez toi.")
+KEYWORDS = ["mémoire", "memory", "souvenirs", "rappel", "hooks", "mcp", "wiki", "obsidian", "e-commerce", "seo", "geo"]
 SETTINGS_SNIPPET = """{{
   "extraKnownMarketplaces": {{
     "cerveau": {{ "source": {{ "source": "git", "url": "https://github.com/{repo}.git" }}, "autoUpdate": true }}
@@ -73,6 +76,20 @@ décisions et de ce qu'il a appris, d'une session à l'autre.
   communs) nourrit aussi le cerveau de tes amis, et le leur nourrit le tien, presque en temps réel. Claude te le
   propose ; rien ne part avant ton oui, et jamais ton profil, tes préférences ni rien de personnel ou de sensible.
 
+- **Nouveau — le cerveau e-commerce** (skill `/cerveau:ecommerce`) : un expert pour lancer ou faire décoller une
+  boutique en ligne sans publicité et avec des outils gratuits — diagnostic, offre et marges, site et tunnel de vente,
+  premiers clients, vidéo courte et algorithmes, SEO, GEO (ChatGPT, Perplexity, AI Overviews), e-mails, gestion,
+  conformité. Claude peut piloter ton navigateur pour préparer le travail ; rien n'est publié sans ton accord. Le
+  contexte de chaque boutique reste dans ta mémoire, chez toi.
+
+- **Nouveau — le suivi de tes boutiques** : le cerveau suit chaque boutique comme un copilote. Un plan décollage daté
+  (72 h, 14 jours, 30-60-90) dont les échéances te sont rappelées ; chaque lundi, les chiffres de la semaine avec un
+  test statistique qui dit si une hausse est réelle ou du hasard, le canal qui rapporte le plus par heure et le goulot
+  à traiter ; des audits gardés en historique (ce qui a été corrigé) avec contrôle de conformité légale, pages du site
+  et vitesse ; un bilan avec trois priorités. Outils inclus : audit de tout le catalogue et flux Google Shopping,
+  relecture des textes avant publication (allégations interdites, fausse urgence), comparaison des marges entre ta
+  boutique, Etsy, Vinted ou TikTok Shop, modèles de textes prêts à adapter.
+
 Tout reste chez toi, dans `~/.claude/brain` — ou dans ton wiki, sur ton PC et, si tu le choisis, dans ton dépôt
 GitHub privé. Rien n'est envoyé ailleurs, sauf ta part publique si tu rejoins le cerveau commun ; chacun garde sa
 propre mémoire.
@@ -109,6 +126,10 @@ sont jamais touchés par une mise à jour.
 
 Rien à faire : parle normalement à Claude. Pour aller plus loin, demande-lui « qu'est-ce que tu sais sur … ? »,
 « retiens que … », ou tape `/brain`. Vue 3D de ta mémoire : `~/.claude/brain/cerveau.html`.
+
+Pour une boutique : « fais décoller ma boutique », « trouve-moi des clients sans pub », « audite mon site », « quel
+produit vendre ? », « fais le point de la semaine » — le cerveau e-commerce prend le relais tout seul (ou tape
+`/cerveau:ecommerce`) et tient le suivi de chaque boutique (« où en est ma boutique ? »).
 
 Avec un wiki : « ingère cet article », « range cette réponse dans le wiki », « fais le point sur le wiki » (contrôle de
 santé : pages à créer, sources en attente, pages dépassées). Le schéma que suit Claude est dans le `CLAUDE.md` du wiki :
@@ -148,20 +169,25 @@ def build(dest: Path, owner: str = "Lucas", repo: str = "") -> list:
     dest.mkdir(parents=True, exist_ok=True)
     if (dest / "brainkit").exists() and (dest / "graph.json").exists():
         raise RuntimeError(f"{dest} contient des souvenirs (graph.json) : ce n'est pas un dépôt de plugin")
+    if dest.resolve() == CODE_DIR.resolve():
+        raise RuntimeError(f"{dest} est le dossier du code lui-même : donne le clone du dépôt du plugin")
+    from .install import EVENTS, SKILL, SKILL_MARK, skill_sources
+    skills = skill_sources()  # relevées avant le nettoyage du dépôt
     for item in dest.iterdir():
         if item.name != ".git":
             shutil.rmtree(item) if item.is_dir() else item.unlink()
     shutil.copy2(CODE_DIR / "brain.py", dest / "brain.py")
     shutil.copytree(CODE_DIR / "brainkit", dest / "brainkit", ignore=shutil.ignore_patterns("__pycache__", "*.pyc"))
-    from .install import EVENTS, SKILL
     hooks = {event: [{"hooks": [_hook(arg, timeout, status)]}] for event, arg, timeout, status in EVENTS}
     _json(dest / "hooks" / "hooks.json", {"description": "Cerveau : injection au démarrage, rappel à chaque message, "
                                                          "mémorisation en fin de tâche", "hooks": hooks})
     _json(dest / ".mcp.json", {"mcpServers": {"cerveau": {
         "command": "python", "args": ["-I", "-S", "${CLAUDE_PLUGIN_ROOT}/brain.py", "mcp"]}}})
     _lf(dest / "skills" / "brain" / "SKILL.md", SKILL)
+    for name, src in skills.items():  # skills métier (cerveau e-commerce…) : Claude Code les lit dans le plugin
+        shutil.copytree(src, dest / "skills" / name, ignore=shutil.ignore_patterns("__pycache__", "*.pyc", SKILL_MARK))
     plugin = {"name": NAME, "version": __version__, "description": DESC, "author": {"name": owner},
-              "keywords": ["mémoire", "memory", "souvenirs", "rappel", "hooks", "mcp", "wiki", "obsidian"]}
+              "keywords": KEYWORDS}
     if repo:
         plugin["homepage"] = plugin["repository"] = f"https://github.com/{repo}"
     _json(dest / ".claude-plugin" / "plugin.json", plugin)

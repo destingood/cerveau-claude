@@ -1027,6 +1027,10 @@ def cmd_doctor(a):
         ok(claude_md.exists() and "BRAIN:START" in claude_md.read_text(encoding="utf-8", errors="replace"),
            "CLAUDE.md : bloc « cerveau »")
         ok((CLAUDE_HOME / "skills" / "brain" / "SKILL.md").exists(), "skill /brain")
+        from .install import SKILL_MARK, skill_sources
+        for name in skill_sources():
+            there = (CLAUDE_HOME / "skills" / name / SKILL_MARK).exists()
+            ok(there, f"skill métier /{name}" + ("" if there else " absente (→ brain install)"))
     elif present:
         ok(False, f"hooks du cerveau aussi dans settings.json ({', '.join(present)}) : en double avec le plugin "
                   f"(→ brain install --uninstall)")
@@ -1334,6 +1338,46 @@ def cmd_wiki(a):
             wiki.mark_pulled()
     else:
         die(f"action inconnue : {a.action} — init, add, pending, lint, index, log, status, sync, schema")
+
+
+def cmd_boutique(a):
+    """Boutiques en ligne suivies par le cerveau : fiche, plan daté, indicateurs de la semaine, audits, bilan."""
+    from . import boutique
+    act = fold(a.action or "liste")
+    args = list(a.args or [])
+    try:
+        if act in ("liste", "list", "etat", "status"):
+            lines = boutique.liste()
+        elif act in ("ajouter", "add", "nouvelle", "creer"):
+            if not args:
+                die("nom manquant : brain boutique ajouter \"Nom\" [--url …] [--type …] [--chemin plateforme|0euro]")
+            lines = boutique.ajouter(" ".join(args), url=a.url, plateforme=a.plateforme, chemin=a.chemin, type_=a.type,
+                                     marge_commande=a.marge_commande)
+        elif act in ("plan", "planifier"):
+            lines = boutique.plan(args[0] if args else None, debut=a.debut, type_=a.type, court=a.court, force=a.force)
+        elif act in ("kpi", "releve", "semaine", "chiffres"):
+            lines = boutique.kpi(args[0] if args else None, sessions=a.sessions, ajouts=a.ajouts, commandes=a.commandes,
+                                 ca=a.ca, checkouts=a.checkouts, heures=a.heures, marge=a.marge, canaux=a.canal or (),
+                                 semaine=a.semaine, note=a.note)
+        elif act in ("audit", "auditer"):
+            pages = 10 if a.complet and not a.pages else (a.pages or 0)
+            lines = boutique.audit(args[0] if args else None, timeout=a.timeout, legal=a.conformite or a.complet,
+                                   pages=pages, vitesse=a.vitesse or a.complet, rapport=a.rapport)
+        elif act in ("bilan", "revue", "point"):
+            lines = boutique.bilan(args[0] if args else None, semaines=a.semaines, md=a.md)
+        elif act in ("regler", "reglage", "set"):
+            if len(args) < 2:
+                die("brain boutique regler <boutique> cle=valeur … (url, plateforme, nom, chemin, type, marge, "
+                    "seuil.sessions|ajout|paiement|panier_commande)")
+            lines = boutique.regler(args[0], args[1:])
+        else:
+            die(f"action inconnue : {a.action} (liste, ajouter, plan, kpi, audit, bilan, regler)")
+    except (LookupError, ValueError, RuntimeError) as exc:
+        die(str(exc))
+    for line in lines:
+        print(line)
+    if act in ("ajouter", "add", "nouvelle", "creer", "plan", "planifier"):
+        refresh_views()
 
 
 def cmd_commun(a):
@@ -1661,6 +1705,36 @@ def build_parser():
     s.add_argument("--no-push", action="store_true", help="init/sync : ne pas envoyer sur GitHub")
     s.add_argument("--no-pull", action="store_true", help="sync : ne pas récupérer")
     s.add_argument("--auto", action="store_true", help=argparse.SUPPRESS)
+    s = cmd("boutique", cmd_boutique, "boutiques en ligne suivies (données privées) : liste · ajouter \"Nom\" · plan · "
+            "kpi (semaine) · audit · bilan · regler", ["boutiques", "shop"])
+    s.add_argument("action", nargs="?", help="liste (défaut), ajouter, plan, kpi, audit, bilan, regler")
+    s.add_argument("args", nargs="*", help="la boutique (slug ou nom) ; ajouter : son nom ; regler : cle=valeur …")
+    s.add_argument("--url", help="ajouter : adresse de la boutique")
+    s.add_argument("--plateforme", help="ajouter : shopify, woocommerce, prestashop, site statique, marketplace…")
+    s.add_argument("--chemin", help="ajouter : plateforme (abonnement accepté) ou 0euro (aucun coût fixe)")
+    s.add_argument("--type", help="physique, mode, createur, occasion, niche, prevente, local, numerique, b2b")
+    s.add_argument("--marge-commande", dest="marge_commande", help="marge de contribution par commande (€)")
+    s.add_argument("--debut", help="plan : premier jour (défaut aujourd'hui ; demain, 20/10…)")
+    s.add_argument("--court", action="store_true", help="plan : 72 h et 14 jours seulement")
+    s.add_argument("--force", action="store_true", help="plan : recréer (l'ancien plan ouvert est archivé)")
+    s.add_argument("--sessions", help="kpi : visites de la semaine")
+    s.add_argument("--ajouts", help="kpi : sessions avec ajout au panier")
+    s.add_argument("--checkouts", help="kpi : paiements commencés")
+    s.add_argument("--commandes", help="kpi : commandes")
+    s.add_argument("--ca", help="kpi : chiffre d'affaires TTC de la semaine (€)")
+    s.add_argument("--heures", help="kpi : heures passées sur la boutique dans la semaine")
+    s.add_argument("--marge", help="kpi : marge de contribution totale de la semaine (sinon : commandes × marge par commande)")
+    s.add_argument("--canal", action="append", help="kpi : nom:sessions:commandes[:heures] (répétable)")
+    s.add_argument("--semaine", help="kpi : une date de la semaine (défaut : la dernière semaine complète)")
+    s.add_argument("--note", help="kpi : ce qui s'est passé (lancement, vidéo virale, rupture…)")
+    s.add_argument("--semaines", type=int, default=4, help="bilan : semaines affichées (défaut 4)")
+    s.add_argument("--md", help="bilan : écrire aussi le bilan dans ce fichier Markdown")
+    s.add_argument("--timeout", type=float, default=20.0, help="audit : délai par requête (s)")
+    s.add_argument("--conformite", action="store_true", help="audit : pages légales et points de conformité")
+    s.add_argument("--pages", type=int, help="audit : nombre de pages du sitemap à lire (doublons, erreurs, noindex)")
+    s.add_argument("--vitesse", action="store_true", help="audit : Core Web Vitals (PageSpeed Insights, mobile)")
+    s.add_argument("--complet", action="store_true", help="audit : conformité + 10 pages + vitesse")
+    s.add_argument("--rapport", help="audit : écrire aussi le rapport dans ce fichier Markdown")
     s = cmd("commun", cmd_commun, "cerveau commun avec les amis (jamais rien de privé) : etat · apercu · rejoindre --oui · "
             "non · quitter · projet <id> · sync · liste", ["partage"])
     s.add_argument("action", nargs="?", help="etat (défaut), apercu, rejoindre, non, quitter, projet, sync, liste")
@@ -1692,8 +1766,8 @@ def build_parser():
     s.add_argument("--owner", help="nom affiché de l'auteur (défaut : Lucas)")
     s.add_argument("--push", action="store_true", help="envoyer sur GitHub après le commit (publication)")
     s.add_argument("--no-check", action="store_true", help="sans validation ni essai chez un ami fictif")
-    s = cmd("self-update", cmd_selfupdate, "déployer le code (brain.py, brainkit/, tests/) de l'arbre de "
-            "développement vers ~/.claude/brain : sauvegarde, vérifie, revient en arrière si besoin — jamais les "
+    s = cmd("self-update", cmd_selfupdate, "déployer le code (brain.py, brainkit/, tests/, skills métier) de l'arbre "
+            "de développement vers ~/.claude/brain : sauvegarde, vérifie, revient en arrière si besoin — jamais les "
             "données (souvenirs, config…)", ["autodeploy", "deploy", "maj-code"])
     s.add_argument("source", nargs="?", help="dossier de l'arbre de développement (retenu ensuite)")
     s.add_argument("--force", action="store_true", help="déployer même une version plus ancienne, identique, ou qui retire des fichiers")
