@@ -1237,11 +1237,28 @@ def _doctor_plugin(ok):
     need = [CODE_DIR / "hooks" / "hooks.json", CODE_DIR / ".mcp.json", CODE_DIR / "skills" / "brain" / "SKILL.md"]
     gone = [str(p.relative_to(CODE_DIR)) for p in need if not p.exists()]
     ok(not gone, "hooks, serveur MCP et skill du plugin" + (f" — manquants : {', '.join(gone)}" if gone else ""))
+    pcfg = load_config().get("plugin") or {}
     if plugin.classic_install():
-        ok(True, "cerveau classique présent dans ~/.claude/brain : le plugin s'efface (il ne fait rien)")
+        ok(True, "cerveau classique présent dans ~/.claude/brain : " + (
+            "gardé aux commandes (config plugin.garder_classique), le plugin s'efface" if pcfg.get("garder_classique")
+            else "le plugin prendra le relais au prochain démarrage de session (souvenirs intacts)"))
     else:
         plugin.ensure_launcher()
         ok((BRAIN_DIR / "brain.py").exists(), f"lanceur stable : {BRAIN_DIR / 'brain.py'}")
+        if pcfg.get("migre_le"):
+            ok(not (BRAIN_DIR / "brainkit").exists(), f"passé du cerveau classique {pcfg.get('version_classique', '?')} "
+               f"au plugin le {fmt_date(pcfg['migre_le'])} (archive : {pcfg.get('archive')})"
+               + (" — reste de code classique à retirer (→ redémarrer Claude Code)" if (BRAIN_DIR / "brainkit").exists()
+                  else ""))
+    try:
+        settings = json.loads((CLAUDE_HOME / "settings.json").read_text(encoding="utf-8"))
+    except (OSError, ValueError):
+        settings = {}
+    name, _ = plugin._marketplace()
+    if name:
+        auto = ((settings.get("extraKnownMarketplaces") or {}).get(name) or {}).get("autoUpdate") is True
+        ok(auto, f"mises à jour automatiques du marketplace « {name} »" + (
+            "" if auto else " : désactivées (→ /plugin › marketplaces › {0} › Enable auto-update)".format(name)))
 
 
 def _doctor_fix():

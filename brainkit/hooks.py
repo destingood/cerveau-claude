@@ -274,10 +274,13 @@ def on_session_start(data, cfg):
     if PLUGIN:  # plugin : lanceur stable à jour, et les consignes du bloc CLAUDE.md passent par l'injection
         from . import plugin
         try:
+            if (BRAIN_DIR / "brainkit").exists():  # reste du code classique déjà archivé (fichier verrouillé la veille)
+                plugin.remove_classic_code()
             plugin.ensure_launcher()
         except OSError as exc:
             log(f"lanceur du plugin : {exc!r}")
-        text = f"{plugin.instructions()}\n\n{text}"
+        notice = plugin.take_notice()
+        text = f"{plugin.instructions()}\n\n" + (f"{notice}\n\n" if notice else "") + text
     else:  # cerveau classique : skills métier (cerveau e-commerce…) posées ou mises à jour dans ~/.claude/skills
         try:
             from . import install
@@ -577,7 +580,15 @@ def run(event) -> int:
     if PLUGIN:
         from . import plugin
         if plugin.classic_install():
-            return 0  # plugin installé là où le cerveau classique tourne déjà : ses propres hooks font le travail
+            if event != "session-start" or not plugin.migration_wanted():
+                return 0  # cerveau classique aux commandes (gardé exprès, ou bascule au prochain démarrage)
+            try:  # premier démarrage du plugin chez un cerveau classique : il prend le relais, souvenirs intacts
+                plugin.migrate_classic()
+            except Exception as exc:
+                log(f"passage au plugin impossible, le cerveau classique reste aux commandes : {exc!r}")
+                return 0
+            if plugin.classic_install():
+                return 0
     t0 = time.time()
     try:
         handler = HANDLERS.get(event)

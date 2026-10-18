@@ -109,6 +109,10 @@ propre mémoire.
    toi de les autoriser.
 4. **Redémarre Claude Code.** Au premier démarrage, le cerveau crée `~/.claude/brain`.
 
+Tu avais déjà le cerveau en installation classique (code dans `~/.claude/brain`) ? Rien de plus à faire : au premier
+démarrage, le plugin prend le relais tout seul — souvenirs gardés, ancien code archivé dans
+`~/.claude/brain/archives`, anciens hooks retirés, mises à jour automatiques activées.
+
 Variante sans commande, mises à jour automatiques comprises (`"autoUpdate": true`) : ajoute ceci à
 `~/.claude/settings.json` (à fusionner avec ce qui s'y trouve déjà), puis redémarre Claude Code :
 

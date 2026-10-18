@@ -11,7 +11,10 @@ Sommaire : 1. Collecte · 2. Audit express en 15 minutes · 3. Équation et arbr
 1. **Le cerveau** : `brain q "boutique <nom>"` — fiche contexte, chiffres, décisions, tests déjà menés.
 2. **Les connecteurs** : rapports Shopify (sessions, conversion, panier moyen), Search Console, Merchant Center.
 3. **Le site lui-même**, dans le navigateur (section 2).
-4. **L'utilisateur**, pour le reste seulement — 8 questions au maximum :
+4. **Les déductions** : ce qui manque encore, le déduire (prix et coûts lus sur le site et chez les fournisseurs
+   visibles, trafic estimé par la Search Console, comptes sociaux trouvés depuis le site) et l'écrire en
+   `[HYPOTHÈSE]`. Ne demander à l'utilisateur que ce qui reste introuvable et dont dépend une décision, en fin de
+   réponse et au plus 3 questions, choisies dans cette liste :
    1. URL, plateforme, date de lancement.
    2. 1 à 3 produits héros : prix TTC, coût complet par commande (produit + livraison + frais).
    3. 30 derniers jours : sessions, ajouts au panier, checkouts atteints, commandes, CA, panier moyen.
@@ -105,4 +108,4 @@ Shopify, si robots.txt l'autorise) ou `--csv <export de l'admin>` : chaque produ
 textes alternatifs, GTIN, prix barrés, ruptures, allégations à risque), les plus urgents d'abord.
 
 Résultat noté dans le cerveau (`brain boutique audit <boutique>` garde l'historique ; `brain obs` pour le reste),
-corrections en lot 🟠 (module 12).
+corrections appliquées 🟢 puis compte rendu (module 12).

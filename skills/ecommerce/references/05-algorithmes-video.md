@@ -161,8 +161,10 @@ geste raté → réussi.
 - **Outils gratuits** : caméra du téléphone, lumière du jour, micro-cravate bon marché ; montage : CapCut (attention à
   sa licence sur tes contenus), DaVinci Resolve (gratuit, sans les fonctions d'IA) ; visuels : Canva gratuit (usage
   commercial permis, sauf sa musique « populaire »).
-- **Planification** : outils natifs des plateformes (planificateurs de TikTok, Meta, Pinterest, YouTube Studio) ; le
-  cerveau prépare légendes, mots-clés et calendrier (module 14).
+- **Planification et publication** : là où l'API officielle est branchée (YouTube par son connecteur, Pinterest,
+  page Facebook, Instagram professionnel par `scripts/publier.py`), Claude publie lui-même au fil du calendrier, après
+  relecture ; ailleurs, outils natifs des plateformes (planificateurs de TikTok, Meta, Pinterest, YouTube Studio) avec
+  légendes, mots-clés et calendrier préparés par le cerveau (module 14).
 - **Lien en bio** : TikTok l'ouvre à partir de 1 000 abonnés ou avec un compte professionnel enregistré (Profil ›
   Modifier le profil › Liens), pas dans tous les pays [FAIT* — aide TikTok, page non datée] ; ailleurs, conditions à
   lire dans « Modifier le profil » ; plan B : nom de domaine court affiché dans la vidéo.

@@ -531,6 +531,111 @@ c, out = run(SKILL_DIR / "scripts" / "audit_site.py", B2 + "/", "--pages", "beau
 check(c == 1 and "nombre" in out, "audit : --pages non numérique refusé", out)
 srv2.shutdown()
 
+# ------------------------------------------------------------------ 3 sexies. publication par API officielle
+import publier  # noqa: E402
+
+APPELS = []
+
+
+class FakeAPI(http.server.BaseHTTPRequestHandler):
+    statut = {"n": 0}
+
+    def log_message(self, *a):
+        pass
+
+    def _send(self, code, obj):
+        body = json.dumps(obj).encode()
+        self.send_response(code)
+        self.send_header("Content-Type", "application/json")
+        self.send_header("Content-Length", str(len(body)))
+        self.end_headers()
+        self.wfile.write(body)
+
+    def do_GET(self):
+        APPELS.append(("GET", self.path, self.headers.get("Authorization"), None))
+        if self.path.startswith("/pin/v5/boards"):
+            return self._send(200, {"items": [{"id": "b1", "name": "Bougies"}]})
+        if self.path.startswith("/graph/c42"):
+            FakeAPI.statut["n"] += 1
+            return self._send(200, {"status_code": "IN_PROGRESS" if FakeAPI.statut["n"] < 2 else "FINISHED"})
+        self._send(404, {"message": "inconnu"})
+
+    def do_POST(self):
+        raw = self.rfile.read(int(self.headers.get("Content-Length") or 0)).decode()
+        APPELS.append(("POST", self.path, self.headers.get("Authorization"), raw))
+        if self.path == "/pin/v5/pins":
+            return self._send(201, {"id": "987"})
+        if self.path == "/graph/p1/feed":
+            return self._send(200, {"id": "p1_55"})
+        if self.path == "/graph/ig1/media":
+            return self._send(200, {"id": "c42"})
+        if self.path == "/graph/ig1/media_publish":
+            return self._send(200, {"id": "m77"})
+        if self.path == "/graph/refus/feed":
+            return self._send(400, {"error": {"message": "(#200) Permissions error"}})
+        self._send(404, {"message": "inconnu"})
+
+
+api = http.server.ThreadingHTTPServer(("127.0.0.1", 0), FakeAPI)
+threading.Thread(target=api.serve_forever, daemon=True).start()
+APIB = f"http://127.0.0.1:{api.server_address[1]}"
+publier.PINTEREST, publier.GRAPH = APIB + "/pin/v5", APIB + "/graph"
+os.environ["PINTEREST_TOKEN"] = "pin-" + "x" * 30
+os.environ["META_TOKEN"] = "meta-" + "y" * 30
+PUB = [SKILL_DIR / "scripts" / "publier.py"]
+penv = dict(os.environ, PUBLIER_API_PINTEREST=APIB + "/pin/v5", PUBLIER_API_GRAPH=APIB + "/graph")
+c, out = run(*PUB, "pinterest", "--tableau", "b1", "--titre", "Bougie lavande 200 g", "--texte",
+             "Coulée à la main, cire de colza, 40 h de combustion.", "--lien", "https://boutique.example/p/bougie",
+             "--image", "https://cdn.example/b.jpg", env=penv)
+post = [a for a in APPELS if a[0] == "POST" and a[1] == "/pin/v5/pins"]
+body = json.loads(post[-1][3]) if post else {}
+check(c == 0 and "pinterest.com/pin/987" in out and post and post[-1][2] == "Bearer " + os.environ["PINTEREST_TOKEN"]
+      and body.get("board_id") == "b1" and body.get("media_source", {}).get("source_type") == "image_url",
+      "Pinterest : épingle créée par l'API v5 (jeton en en-tête, tableau, image, lien)", out)
+check(os.environ["PINTEREST_TOKEN"] not in out, "le jeton n'apparaît jamais dans la sortie")
+journal = (Path(os.environ["BRAIN_HOME"]) / "acces" / "publications.jsonl")
+check(journal.exists() and '"pinterest"' in journal.read_text(encoding="utf-8"), "publication journalisée")
+c, out = run(*PUB, "pinterest-tableaux", env=penv)
+check(c == 0 and "b1  Bougies" in out, "Pinterest : liste des tableaux", out)
+c, out = run(*PUB, "facebook", "--page", "p1", "--texte", "Nouvel arrivage : bougies au parfum de figue.", "--lien",
+             "https://boutique.example/c/nouveautes", env=penv)
+fb = [a for a in APPELS if a[1] == "/graph/p1/feed"]
+check(c == 0 and "p1_55" in out and fb and "access_token=" in fb[-1][3] and "link=" in fb[-1][3],
+      "Page Facebook : post avec lien", out)
+c, out = run(*PUB, "facebook", "--page", "refus", "--texte", "Bonjour à tous", env=penv)
+check(c == 1 and "Permissions error" in out and "rien de publié" in out, "erreur de l'API rapportée, rien de publié",
+      out)
+FakeAPI.statut["n"] = 0
+r = publier.instagram(os.environ["META_TOKEN"], "ig1", "Le geste qui allume la bougie.", None,
+                      "https://cdn.example/r.mp4", False, attente=0)
+seq = [a[1].split("?")[0] for a in APPELS if a[1].startswith("/graph/ig1") or a[1].startswith("/graph/c42")]
+check(r.get("id") == "m77" and seq[-4:] == ["/graph/ig1/media", "/graph/c42", "/graph/c42", "/graph/ig1/media_publish"],
+      "Instagram : conteneur Reel, attente du traitement, publication", seq[-5:])
+c, out = run(*PUB, "instagram", "--compte", "ig1", "--texte", "Crème écologique qui soigne l'acné", "--image",
+             "https://cdn.example/i.jpg", env=penv)
+check(c == 4 and "relecture" in out and not any("Crème" in (a[3] or "") for a in APPELS),
+      "texte avec un 🔴 : rien n'est envoyé", out)
+c, out = run(*PUB, "instagram", "--compte", "ig1", "--texte", "Ma bougie préférée, code promo LUNA10", "--image",
+             "https://cdn.example/i.jpg", env=penv)
+check(c == 4 and "Publicité" in out, "contenu promotionnel sans mention : rien n'est envoyé", out)
+c, out = run(*PUB, "pinterest", "--tableau", "b1", "--titre", "T", "--texte", "Texte", "--lien",
+             "http://boutique.example", "--image", "https://cdn.example/b.jpg", env=penv)
+check(c == 2 and "https" in out, "lien non https refusé", out)
+for _ in range(publier.PLAFOND["facebook"]):
+    publier.journaliser({"date": publier._dt.datetime.now().isoformat(), "plateforme": "facebook", "id": "x"})
+c, out = run(*PUB, "facebook", "--page", "p1", "--texte", "Encore un post", env=penv)
+check(c == 4 and "plafond du jour" in out, "plafond quotidien : la suite attend demain", out)
+c, out = run(*PUB, "facebook", "--page", "p1", "--texte", "Encore un post", "--essai", env=penv)
+check(c == 0 and '"essai": true' in out, "--essai : requête montrée, rien n'est envoyé, plafond ignoré", out)
+env_sans = {k: v for k, v in penv.items() if k not in ("PINTEREST_TOKEN", "META_TOKEN")}
+c, out = run(*PUB, "pinterest-tableaux", env=env_sans)
+check(c == 3 and "acces pinterest" in out, "sans accès : l'utilisateur le saisit une fois dans son terminal", out)
+c, out = run(*PUB, "acces", "pinterest", env=penv)
+check(c == 2 and "terminal" in out, "accès jamais saisi hors d'un vrai terminal (pas par la conversation)", out)
+api.shutdown()
+os.environ.pop("PINTEREST_TOKEN", None)
+os.environ.pop("META_TOKEN", None)
+
 # ------------------------------------------------------------------ 4. livraison : plugin (brain publish)
 dest = TMP / "plugin"
 files = publish.build(dest, "Lucas", "proprietaire/depot")
