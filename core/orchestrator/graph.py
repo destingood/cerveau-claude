@@ -208,6 +208,7 @@ class RunResult:
     tokens: int
     tool_calls: int
     elapsed_s: float
+    budget_alerts: tuple[str, ...] = ()  # highest daily / monthly threshold reached, for display
 
     def markdown(self) -> str:
         return render_markdown(self.answer)
@@ -253,7 +254,8 @@ class Orchestrator:
     async def ask(self, question: str, *, request_id: str | None = None) -> RunResult:
         request_id = request_id or str(uuid.uuid4())
         now = self._clock()
-        BudgetGate(self.config, self.journal, tz=self._tz).check(now=now, request_id=request_id)
+        gate = BudgetGate(self.config, self.journal, tz=self._tz)
+        alerts = tuple(a.message() for a in gate.check(now=now, request_id=request_id).highest())
         meter = self.router.new_meter()
         clock = {"clock": self._budget_clock} if self._budget_clock is not None else {}
         budget = RequestBudget.from_config(self.config, meter, **clock)
@@ -300,4 +302,5 @@ class Orchestrator:
             tokens=meter.total_tokens,
             tool_calls=budget.tool_calls,
             elapsed_s=round(budget.elapsed_s, 3),
+            budget_alerts=alerts,
         )

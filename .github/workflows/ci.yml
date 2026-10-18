@@ -76,7 +76,7 @@ jobs:
       - run: uv run pip-audit --skip-editable
 
   evals-infra:
-    name: Witness eval and compose validation
+    name: Offline evals and compose validation
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v7
@@ -85,9 +85,13 @@ jobs:
       - uses: actions/setup-node@v7
         with:
           node-version: "24"
-      - run: >-
-          npx -y promptfoo@0.124.1 eval -c evals/promptfoo/promptfooconfig.yaml
-          --no-cache --no-write --no-table --no-progress-bar
+      - uses: astral-sh/setup-uv@v10
+        with:
+          python-version: "3.12"
+          enable-cache: true
+      - run: uv sync --frozen
+      - name: Offline evals (no API key reaches promptfoo)
+        run: uv run cerveau eval
       - name: Validate docker-compose.yml with throwaway secrets
         run: |
           python3 infra/scripts/generate_secrets.py --output "$RUNNER_TEMP/ci.env"

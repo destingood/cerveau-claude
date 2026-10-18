@@ -2,18 +2,16 @@
 # sh (Git Bash, Linux) and cmd.exe (make launched from PowerShell).
 
 UV ?= uv
-NPX ?= npx
-PROMPTFOO ?= promptfoo@0.124.1
 COMPOSE ?= docker compose -f infra/docker-compose.yml
 
 export PROMPTFOO_DISABLE_TELEMETRY := 1
 export PROMPTFOO_DISABLE_UPDATE := 1
 
 .DEFAULT_GOAL := help
-.PHONY: help sync test lint format eval audit-verify secrets-scan audit-deps compose-config hooks ci
+.PHONY: help sync test lint format eval eval-live audit-verify secrets-scan audit-deps compose-config hooks ci
 
 help:
-	@echo Targets: sync test lint format eval audit-verify secrets-scan audit-deps compose-config hooks ci
+	@echo Targets: sync test lint format eval eval-live audit-verify secrets-scan audit-deps compose-config hooks ci
 
 sync:
 	$(UV) sync --frozen
@@ -30,7 +28,11 @@ format:
 	$(UV) run ruff check --fix .
 
 eval:
-	$(NPX) -y $(PROMPTFOO) eval -c evals/promptfoo/promptfooconfig.yaml --no-cache --no-write --no-table --no-progress-bar
+	$(UV) run cerveau eval
+
+# Paid: only for a campaign Lucas agreed to (D8). make eval-live CAMPAIGN=<name> SUITES="<suites>"
+eval-live:
+	$(UV) run cerveau eval --live --campaign "$(CAMPAIGN)" $(SUITES)
 
 audit-verify:
 	$(UV) run cerveau audit verify
