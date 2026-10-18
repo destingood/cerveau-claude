@@ -71,10 +71,19 @@ def moment(as_of: datetime | None, now: datetime) -> datetime:
     return as_of
 
 
+def _home(environ: Mapping[str, str]) -> Path:
+    home = environ.get(HOME_ENV, "").strip()
+    return Path(home) if home else Path(__file__).resolve().parents[2]
+
+
 def store_location(environ: Mapping[str, str]) -> Path:
     """The store of the project a plugin serves: ``CERVEAU_HOME``, else this checkout."""
-    home = environ.get(HOME_ENV, "").strip()
-    return default_store_path(Path(home) if home else Path(__file__).resolve().parents[2])
+    return default_store_path(_home(environ))
+
+
+def config_location(environ: Mapping[str, str]) -> Path:
+    """The ``config/`` directory of the same project."""
+    return _home(environ) / "config"
 
 
 def read_store[T](path: Path, read: Callable[[FinanceStore], T]) -> T:
@@ -498,6 +507,7 @@ __all__ = [
     "MarketData",
     "Snapshot",
     "ViewError",
+    "config_location",
     "market_data",
     "moment",
     "portfolio_snapshot",

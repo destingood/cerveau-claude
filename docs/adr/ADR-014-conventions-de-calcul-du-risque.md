@@ -44,3 +44,45 @@ tolérance donnée. Il faut donc figer chaque définition avant de mesurer.
   définition, et l'écart est écrit ici ; on ne modifie jamais la tolérance (R9).
 - Les paramètres vivent dans `config/risk.yaml` (`market_risk`) ; les changer relance les évals.
 - Réversible : oui, mais tout changement de définition change les chiffres attendus du golden set.
+
+## Précisions de mise en œuvre (plugin `finance_risk`, 18/10/2026)
+- **Lignes** : une ligne par instrument (tous comptes réunis) et une par devise de liquidités
+  (`liquidites-<DEV>`, de prix 1/taux en EUR). Le taux BCE d'une séance est le dernier publié au
+  plus tard ce jour-là. Les poids du portefeuille à `as_of` s'appliquent à toute la fenêtre
+  `[Hypothèse]`.
+- **Écart de définition avec skfolio** : `value_at_risk` et `cvar` de skfolio 1.8.1 prennent un
+  rang empirique, sans interpolation linéaire. La VaR historique est donc contrôlée contre un
+  quantile linéaire (type 7 de Hyndman et Fan) écrit dans le test. skfolio contrôle la volatilité
+  (ddof = 1), le drawdown maximal (richesse composée partant de 1) et le nombre de lignes
+  effectives (1/Σw²). La tolérance n'a pas bougé.
+- **Monte-Carlo** : les tirages passent par la racine carrée symétrique de la covariance, qui est
+  unique. Le résultat ne dépend donc ni du signe ni de l'ordre des vecteurs propres renvoyés par
+  LAPACK, et une ligne de variance nulle (l'euro) est admise. Les pertes simulées se lisent avec
+  les estimateurs historiques.
+  - À 10 000 tirages, l'erreur d'échantillonnage atteint quelques %.
+  - À 100 000 tirages, l'écart à la forme fermée reste sous 2 % (test du portefeuille de
+    référence et de quatre graines).
+- **Concentration** : Herfindahl sur la valeur investie, liquidités exclues.
+- **Variance nulle** : une ligne constante se détecte exactement (max = min). L'écart-type arrondi
+  d'une constante non nulle n'est pas toujours nul.
+- **Stress de taux (+100 pb)** : deux parties, dont la somme est le stress publié.
+  - Les obligations de duration connue passent par la duration modifiée `[Approximation]`.
+  - Les autres lignes en titres passent par une sensibilité estimée par MCO aux variations
+    quotidiennes de l'€STR `[Estimation]`, publiée avec son écart-type et sa p-value. L'€STR est un
+    taux au jour le jour : la sensibilité est bruitée (p = 0,459 sur le portefeuille de référence).
+  - Une obligation sans duration connue n'est pas estimée.
+- **Stress historiques** : trois statuts.
+  - `bloque` : une date ou la source vaut `A_VERIFIER` (D10), ou le début n'est pas avant la fin.
+  - `non_couvert` : l'historique ne couvre pas la fenêtre.
+  - `calcule` : les lignes actuelles subissent les variations de prix entre les dernières clôtures
+    au plus tard au début et à la fin, et la source est citée.
+- **Mesures indisponibles** : elles sont dites indisponibles avec leur raison, jamais estimées.
+  - Bêta et choc actions par le bêta : l'indice de référence est bloqué (ISIN `A_VERIFIER`, D8).
+  - Facteurs : aucune source validée (D9).
+- **Configuration** : les paramètres typés de `market_risk` refusent les marqueurs. Une valeur
+  inconnue y rend la configuration invalide : l'outil refuse, sans recopier la valeur, et la
+  fonction reste bloquée (R7). La porte de fonction `finance.market_risk` ne voit donc jamais de
+  marqueur dans ces champs.
+- **Étiquette de parité** : `[Approximation]`. Le moteur de risque d'Aladdin est approché sans
+  modèle de facteurs, sans indice de référence validé, avec un choc de taux en partie estimé et
+  la règle de √h.

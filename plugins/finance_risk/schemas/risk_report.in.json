@@ -1,0 +1,109 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "type": "object",
+  "$defs": {
+    "SectorShock": {
+      "additionalProperties": false,
+      "description": "A uniform shock on the securities of one sector (as written in the reference data).",
+      "properties": {
+        "sector": {
+          "maxLength": 40,
+          "minLength": 1,
+          "pattern": "^[A-Za-zÀ-ÖØ-öø-ÿ' -]+$",
+          "title": "Sector",
+          "type": "string"
+        },
+        "shock": {
+          "description": "Variation, -0.15 pour -15 %",
+          "exclusiveMinimum": -1.0,
+          "maximum": 1.0,
+          "title": "Shock",
+          "type": "number"
+        }
+      },
+      "required": [
+        "sector",
+        "shock"
+      ],
+      "title": "SectorShock",
+      "type": "object"
+    }
+  },
+  "properties": {
+    "as_of": {
+      "anyOf": [
+        {
+          "format": "date-time",
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "description": "Moment « connu à », ISO 8601 avec fuseau ; défaut : maintenant",
+      "title": "As Of"
+    },
+    "measures": {
+      "anyOf": [
+        {
+          "items": {
+            "enum": [
+              "volatilite",
+              "var",
+              "backtest",
+              "drawdown",
+              "beta",
+              "correlations",
+              "concentration",
+              "contributions",
+              "stress",
+              "facteurs"
+            ],
+            "type": "string"
+          },
+          "maxItems": 10,
+          "minItems": 1,
+          "type": "array"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "description": "Mesures demandées ; défaut : toutes sauf les corrélations",
+      "title": "Measures"
+    },
+    "compare_to": {
+      "anyOf": [
+        {
+          "format": "date-time",
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "description": "Moment antérieur à as_of : ajoute la décomposition de la variation de VaR (effet positions, effet marché)",
+      "title": "Compare To"
+    },
+    "sector_shocks": {
+      "default": [],
+      "description": "Chocs sectoriels du stress, secteur tel qu'écrit dans le référentiel",
+      "items": {
+        "$ref": "#/$defs/SectorShock"
+      },
+      "maxItems": 5,
+      "title": "Sector Shocks",
+      "type": "array"
+    },
+    "strict": {
+      "default": false,
+      "description": "Strict : seuls les imports et les données enregistrés avant as_of comptent (rejeu d'une décision passée)",
+      "title": "Strict",
+      "type": "boolean"
+    }
+  },
+  "title": "risk_reportArguments"
+}
