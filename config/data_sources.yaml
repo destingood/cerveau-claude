@@ -17,3 +17,7 @@ sources:
 quality:
   max_staleness_sessions: 1           # D12 : données de clôture
   min_quality_score_above_N1: 0.90    # D12
+  # ADR-016 : seuils des contrôles « cours aberrants » et « opérations sur titres ». Tant qu'ils
+  # ne sont pas fixés, ces deux sous-scores et le score sont « non évaluables ».
+  outlier_robust_z: A_DEFINIR         # proposé : 3,5 (z modifié, Iglewicz et Hoaglin)
+  max_unexplained_move: A_DEFINIR     # proposé : 0,30, un cours multiplié ou divisé par 1,30

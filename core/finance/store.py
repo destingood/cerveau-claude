@@ -31,7 +31,13 @@ from core.finance.model import (
     local_date,
     utc_text,
 )
-from core.finance.schema import LATEST_VERSION, SchemaError, migrate, schema_version
+from core.finance.schema import (
+    LATEST_VERSION,
+    QUALITY_COLUMNS,
+    SchemaError,
+    migrate,
+    schema_version,
+)
 
 MAX_SOURCE_ID_CHARS = 64
 
@@ -491,6 +497,49 @@ class FinanceStore:
             [*map(_sql, where.values())],
         ).fetchall()
         return [self._stored(record_type, row) for row in rows]
+
+    # Quality scores ---------------------------------------------------------------------------
+
+    def record_quality(
+        self,
+        series_id: str,
+        *,
+        as_of: datetime,
+        sub_scores: dict[str, float | None],
+        score: float | None,
+        details: str,
+        computed_at: datetime,
+    ) -> bool:
+        """One score per series and date: the same one again is a no-op, another one is refused."""
+        if set(sub_scores) != set(QUALITY_COLUMNS):
+            raise FinanceStoreError(f"sous-scores attendus : {', '.join(QUALITY_COLUMNS)}")
+        values = (*(sub_scores[c] for c in QUALITY_COLUMNS), score, details)
+        stamp = utc_text(as_of)
+        with self._write():
+            row = self._conn.execute(
+                f"SELECT {', '.join(QUALITY_COLUMNS)}, score, details "  # noqa: S608 - constants
+                "FROM quality_scores WHERE series_id = ? AND as_of = ?",
+                (series_id, stamp),
+            ).fetchone()
+            if row is not None:
+                if tuple(row) == values:
+                    return False
+                raise FinanceStoreError(
+                    f"{series_id} : un autre score est déjà enregistré à {stamp}"
+                )
+            columns = ", ".join(("series_id", "as_of", *QUALITY_COLUMNS, "score", "details"))
+            self._conn.execute(
+                f"INSERT INTO quality_scores ({columns}, computed_at) "  # noqa: S608 - constants
+                "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)",
+                (series_id, stamp, *values, utc_text(computed_at)),
+            )
+        return True
+
+    def quality_history(self, series_id: str) -> list[dict[str, Any]]:
+        rows = self._conn.execute(
+            "SELECT * FROM quality_scores WHERE series_id = ? ORDER BY as_of", (series_id,)
+        ).fetchall()
+        return [dict(row) for row in rows]
 
 
 def _key_clauses(table: _Table, where: dict[str, Any]) -> list[str]:

@@ -95,6 +95,8 @@ MIGRATIONS: tuple[tuple[int, tuple[str, ...]], ...] = (
     ),
 )
 LATEST_VERSION = MIGRATIONS[-1][0]
+# The four sub-scores of ``quality_scores``, in column order (ADR-016).
+QUALITY_COLUMNS = ("gaps", "corporate_actions", "outliers", "freshness")
 
 
 class SchemaError(Exception):

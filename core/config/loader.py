@@ -242,6 +242,10 @@ class DataQuality(_Strict):
     # Closing prices (ADR-012): staleness is counted in exchange sessions, not minutes.
     max_staleness_sessions: Annotated[int, Field(ge=0)] | Marker
     min_quality_score_above_N1: Annotated[float, Field(ge=0, le=1)] | Marker
+    # Cut-offs of the outlier and corporate action checks (ADR-016).
+    outlier_robust_z: Annotated[float, Field(gt=0, allow_inf_nan=False)] | Marker
+    # Below 0.5, so that the smallest usual split (3 for 2) always shows as a move.
+    max_unexplained_move: Annotated[float, Field(gt=0, lt=0.5)] | Marker
 
 
 class DataSourcesConfig(_Strict):

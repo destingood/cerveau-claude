@@ -85,6 +85,8 @@ son origine et la phase visée ; « ? » signifie « à décider par Lucas ».
 | B56 | Bot Discord et approbations | plan phase 1 §13 | 5 |
 | B57 | Autres packs de domaine et RAG (`knowledge/sources.yaml` vide pour le pack Généraliste) | section 9, plan phase 1 §13 | ? |
 | B58 | Mémoire (section 11) : la spécification ne la place dans aucune phase ; en phase 1 le nœud 8 journalise et la mémoire est désactivée | plan phase 1 §13 | ? |
+| B85 | Contrôles de qualité des séries de change et de taux (calendrier TARGET de la BCE) ; en phase 2 ils ne portent que sur les cours | ADR-016, D12 | 3 |
+| B86 | Reconnaître un grand mouvement vérifié comme réel (une annonce, une faillite) pour que le sous-score « opérations sur titres » ne reste pas à 0 sur toute la fenêtre | ADR-016 | 3 |
 
 ## Évaluations
 | # | Élément | Origine | Phase |

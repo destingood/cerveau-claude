@@ -303,9 +303,27 @@ def test_phase_2_decisions_are_recorded() -> None:
 
 def test_finance_read_only_features_are_available() -> None:
     config = load_config(REPO_ROOT / "config")
-    for feature in ("finance.market_risk", "data.ecb", "data.quality_gate"):
+    for feature in ("finance.market_risk", "data.ecb"):
         config.require(feature)
     assert config.data_sources.sources["yfinance"].enabled is False  # R15, ADR-013
+
+
+def test_the_quality_gate_waits_for_the_two_check_cut_offs() -> None:
+    blockers = load_config(REPO_ROOT / "config").blockers("data.quality_gate")
+    assert len(blockers) == 2  # ADR-016: proposed, not decided by Lucas
+    assert all("outlier_robust_z" in b or "max_unexplained_move" in b for b in blockers)
+
+
+@pytest.mark.parametrize("value", [0.5, 0.0])
+def test_the_move_cut_off_always_catches_a_three_for_two_split(
+    config_dir: Path, value: float
+) -> None:
+    edit_yaml(
+        config_dir / "data_sources.yaml",
+        lambda d: d["quality"].update(max_unexplained_move=value),
+    )
+    with pytest.raises(ConfigError, match="max_unexplained_move"):
+        load_config(config_dir)
 
 
 def test_disabled_source_blocks_its_feature_without_markers(config_dir: Path) -> None:
