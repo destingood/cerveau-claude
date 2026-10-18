@@ -1,0 +1,18 @@
+{"id": "fd-001", "tool": "market_data", "arguments": {"instruments": ["FICT-ACME"], "kind": "fondamentaux"}, "expected": {"is_error": true, "contains": "fondamentaux indisponibles"}}
+{"id": "fd-002", "tool": "market_data", "arguments": {"instruments": ["FICT-INCONNU"]}, "expected": {"is_error": true, "contains": "FICT-INCONNU : absent du référentiel à cette date"}}
+{"id": "fd-003", "tool": "market_data", "arguments": {"instruments": ["FICT-ACME"], "as_of": "2026-10-19T00:00:00Z"}, "expected": {"is_error": true, "contains": "as_of est dans le futur"}}
+{"id": "fd-004", "tool": "market_data", "arguments": {"instruments": ["FICT-ACME"], "as_of": "2026-10-18T13:00:00"}, "expected": {"is_error": true, "contains": "timezone"}}
+{"id": "fd-005", "tool": "market_data", "arguments": {"instruments": ["acme"]}, "expected": {"is_error": true, "contains": "should match pattern"}}
+{"id": "fd-006", "tool": "market_data", "arguments": {"instruments": ["FICT-ACME", "FICT-ACME", "FICT-ACME", "FICT-ACME", "FICT-ACME", "FICT-ACME", "FICT-ACME", "FICT-ACME", "FICT-ACME", "FICT-ACME", "FICT-ACME"]}, "expected": {"is_error": true, "contains": "at most 10 items"}}
+{"id": "fd-007", "tool": "market_data", "arguments": {"instruments": ["FICT-ACME"], "sessions": 261}, "expected": {"is_error": true, "contains": "less than or equal to 260"}}
+{"id": "fd-008", "tool": "market_data", "arguments": {"instruments": ["FICT-ACME"], "kind": "actualites"}, "expected": {"is_error": true, "contains": "'cours', 'referentiel' or 'fondamentaux'"}}
+{"id": "fd-009", "tool": "market_data", "arguments": {"instruments": ["FICT-ACME"], "as_of": "2026-10-18T11:00:00Z", "strict": true}, "expected": {"is_error": true, "contains": "FICT-ACME : absent du référentiel à cette date"}}
+{"id": "fd-010", "tool": "market_data", "arguments": {"instruments": ["FICT-ACME"], "sessions": 3}, "expected": {"is_error": false, "contains": "\"display\":\"42,92\u00a0€\""}}
+{"id": "fd-011", "tool": "market_data", "arguments": {"instruments": ["FICT-ACME"], "sessions": 1, "as_of": "2026-10-15T20:00:00Z"}, "expected": {"is_error": false, "contains": "\"last_session\":\"2026-10-15\""}}
+{"id": "fd-012", "tool": "market_data", "arguments": {"instruments": ["FICT-GLOBEX"], "sessions": 1}, "expected": {"is_error": false, "contains": "\"display\":\"278,10\u00a0USD\""}}
+{"id": "fd-013", "tool": "market_data", "arguments": {"instruments": ["FICT-OAT35"], "kind": "referentiel"}, "expected": {"is_error": false, "contains": "\"display\":\"8,4\u00a0ans\""}}
+{"id": "fd-014", "tool": "market_data", "arguments": {"instruments": ["FICT-GLOBEX"], "sessions": 1}, "expected": {"is_error": false, "contains": "\"display\":\"0,998\",\"unit\":\"score\""}}
+{"id": "fd-015", "tool": "market_data", "arguments": {"instruments": ["FICT-ACME"], "sessions": 1}, "expected": {"is_error": false, "contains": "\"display\":\"2\u00a0jours\""}}
+{"id": "fd-016", "tool": "market_data", "arguments": {"instruments": ["FICT-OAT35"], "sessions": 3}, "expected": {"is_error": false, "contains": "\"display\":\"80,61\u00a0€\""}}
+{"id": "fd-017", "tool": "market_data", "arguments": {"instruments": ["FICT-HELIOS"], "kind": "referentiel"}, "expected": {"is_error": false, "contains": "\"mic\":\"XLON\""}}
+{"id": "fd-018", "tool": "market_data", "arguments": {"instruments": ["FICT-ACME"], "sessions": 1, "as_of": "2026-10-15T20:00:00Z"}, "expected": {"is_error": false, "contains": "\"quality\":null,\"quality_note\":\"aucun score de qualité enregistré à cette date\""}}

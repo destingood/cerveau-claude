@@ -14,11 +14,12 @@ from types import ModuleType
 import httpx
 import pytest
 
-from core.config.loader import DataQuality
 from core.finance.fixtures import (
     FIXTURES_SOURCE,
     REFERENCE_DIR,
     REFERENCE_FETCHED_AT,
+    REFERENCE_QUALITY,
+    REFERENCE_WINDOW,
     ecb_files,
     load_reference,
 )
@@ -27,13 +28,8 @@ from core.finance.portfolio import Book, build_book, import_transactions, reconc
 from core.finance.store import FinanceStore
 from core.finance.sync import SyncResult
 
-SETTINGS = DataQuality(
-    max_staleness_sessions=1,
-    min_quality_score_above_N1=0.9,
-    outlier_robust_z=3.5,
-    max_unexplained_move=0.3,
-)
-WINDOW = 500
+SETTINGS = REFERENCE_QUALITY
+WINDOW = REFERENCE_WINDOW
 NOW = REFERENCE_FETCHED_AT
 
 

@@ -21,6 +21,7 @@ import httpx
 
 from core.config.loader import DataQuality
 from core.finance.model import MarketRecord, local_date
+from core.finance.portfolio import ImportResult, ReconcileResult, import_transactions, reconcile
 from core.finance.providers import (
     CsvCloses,
     CsvCorporateActions,
@@ -34,10 +35,21 @@ from core.finance.sync import SyncResult, import_instruments, reference, referen
 REFERENCE_DIR = Path(__file__).resolve().parents[2] / "tests" / "fixtures" / "finance" / "reference"
 # The Sunday after the last session: the generator leaves out what was published later.
 REFERENCE_FETCHED_AT = datetime(2026, 10, 18, 12, 0, tzinfo=UTC)
+# A moment after every reference record, the quality scores included: what the tools read at.
+REFERENCE_READ_AT = REFERENCE_FETCHED_AT + timedelta(hours=1)
 REFERENCE_FIRST_DAY = date(2023, 10, 16)
 FIXTURES_SOURCE = "fixtures"
 FIXTURE_ECB_URL = "https://ecb.fixtures.invalid/service/"  # .invalid never resolves (RFC 6761)
 ECB_FILES = {"EXR": "bce_change.csv", "EST": "bce_estr.csv"}
+# The settings the anomalies of the reference are tested with. They are test values, not the
+# cut-offs of config/data_sources.yaml, which stay A_DEFINIR until Lucas sets them (ADR-016).
+REFERENCE_QUALITY = DataQuality(
+    max_staleness_sessions=1,
+    min_quality_score_above_N1=0.9,
+    outlier_robust_z=3.5,
+    max_unexplained_move=0.3,
+)
+REFERENCE_WINDOW = 500
 
 
 @dataclass(frozen=True)
@@ -110,3 +122,19 @@ def load_reference(
             sync(store, provider, clock=clock, quality=quality, window_sessions=window_sessions)
         )
     return results
+
+
+def load_reference_portfolio(
+    store: FinanceStore, *, at: datetime = REFERENCE_FETCHED_AT, directory: Path = REFERENCE_DIR
+) -> tuple[ImportResult, ReconcileResult]:
+    """The two fictitious accounts on top of the market data: transactions, then the statement."""
+    imported = import_transactions(store, directory / "transactions.csv", "cerveau", imported_at=at)
+    return imported, reconcile(store, directory / "releve.csv", at=at)
+
+
+def reference_store(path: Path) -> Path:
+    """A store file with the reference market data and the two fictitious accounts."""
+    with FinanceStore.open(path) as store:
+        load_reference(store, quality=REFERENCE_QUALITY, window_sessions=REFERENCE_WINDOW)
+        load_reference_portfolio(store)
+    return path

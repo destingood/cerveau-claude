@@ -1,0 +1,54 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  Questions d'évaluation du plugin finance_portfolio (R8). Chacune se vérifie avec
+  portfolio_snapshot sur le portefeuille de référence fictif (comptes PEA-FICTIF et CTO-FICTIF,
+  chargés par core.finance.fixtures.reference_store), lu au 18/10/2026 13 h UTC sauf mention
+  contraire. Les chiffres attendus sont les affichages de l'outil : la réponse les cite, elle ne
+  les recalcule pas (R1).
+-->
+<evaluation>
+  <qa_pair>
+    <question>Quelle est la valeur totale du portefeuille, en euros ?</question>
+    <answer>111 922,71 €</answer>
+  </qa_pair>
+  <qa_pair>
+    <question>Quelle était la valeur totale du portefeuille le 16 octobre 2026 à 20 h UTC ?</question>
+    <answer>112 449,32 €</answer>
+  </qa_pair>
+  <qa_pair>
+    <question>Quel est le poids de l'euro dans l'exposition par devise ?</question>
+    <answer>68,12 %</answer>
+  </qa_pair>
+  <qa_pair>
+    <question>Quel est le poids du dollar américain dans l'exposition par devise ?</question>
+    <answer>28,46 %</answer>
+  </qa_pair>
+  <qa_pair>
+    <question>Quel est le poids de la livre sterling dans l'exposition par devise ?</question>
+    <answer>3,42 %</answer>
+  </qa_pair>
+  <qa_pair>
+    <question>Quelle part du portefeuille est en liquidités ?</question>
+    <answer>22,97 %</answer>
+  </qa_pair>
+  <qa_pair>
+    <question>Quel est le poids du secteur Technologie ?</question>
+    <answer>21,59 %</answer>
+  </qa_pair>
+  <qa_pair>
+    <question>Combien de parts de FICT-EMERG le compte CTO-FICTIF détient-il ?</question>
+    <answer>200 titres</answer>
+  </qa_pair>
+  <qa_pair>
+    <question>Quel est le prix moyen de revient de FICT-EMERG, frais inclus ?</question>
+    <answer>42,405 USD</answer>
+  </qa_pair>
+  <qa_pair>
+    <question>Quel est le coût de revient de la ligne FICT-GLOBEX ?</question>
+    <answer>14 118,20 USD</answer>
+  </qa_pair>
+  <qa_pair>
+    <question>Le portefeuille est-il rapproché avec le dernier relevé ?</question>
+    <answer>Oui : PEA-FICTIF et CTO-FICTIF sont « ok », relevé du 16/10/2026.</answer>
+  </qa_pair>
+</evaluation>
