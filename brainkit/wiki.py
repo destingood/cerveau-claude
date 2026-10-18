@@ -25,6 +25,10 @@ from .common import (BRAIN_DIR, STATE_DIR, FileLock, fmt_date, fold, load_config
                      short, tokenize, write_json, write_text)
 
 INDEX, LOG, SCHEMA_FILE, README_FILE = "index.md", "log.md", "CLAUDE.md", "README.md"
+JOURNAL_DIR = "journal"  # historique des sessions et des observations, mois par mois (généré)
+MONTHS = ("janvier", "février", "mars", "avril", "mai", "juin", "juillet", "août", "septembre", "octobre", "novembre",
+          "décembre")
+DAYS = ("lundi", "mardi", "mercredi", "jeudi", "vendredi", "samedi", "dimanche")
 TODO_MARK = "⏳ à remplir"
 KNOWLEDGE = ("source", "entity", "concept", "topic", "analysis")
 INDEX_ORDER = ("topic", "concept", "entity", "source", "analysis", "project", "decision", "fact", "learning",
@@ -58,7 +62,8 @@ Ci-dessous, `{cmd}` = `{full}` (Bash comme PowerShell).
 3. **`CLAUDE.md`** (ce fichier) — le schéma. Il évolue avec l'usage : quand une convention gêne, proposer de la changer.
 
 `index.md` : catalogue de toutes les pages, **régénéré par le cerveau** (ne pas l'éditer). `log.md` : journal
-chronologique, on ajoute **en bas** des entrées `## [AAAA-MM-JJ] opération | titre`.
+chronologique du wiki, on ajoute **en bas** des entrées `## [AAAA-MM-JJ] opération | titre`. `journal/AAAA-MM.md` :
+l'historique des sessions et des observations datées, mois par mois (généré par le cerveau, à lire, pas à éditer).
 
 ## Types de pages
 | Dossier | `type` | Pour |
@@ -146,7 +151,8 @@ sources). Le schéma qui guide Claude est dans [CLAUDE.md](CLAUDE.md).
 
 - **`raw/`** : tes sources (articles, PDF, transcriptions, notes). Claude les lit, ne les modifie jamais.
 - **`wiki/`** : les pages tenues par Claude (souvenirs, sources résumées, entités, concepts, sujets, analyses).
-- **[index.md](index.md)** : le catalogue · **[log.md](log.md)** : le journal.
+- **[index.md](index.md)** : le catalogue · **[log.md](log.md)** : le journal du wiki · **`journal/`** : l'historique
+  des sessions et des observations, mois par mois.
 
 ## Sur ton PC
 1. Clone ce dépôt, puis ouvre le dossier dans Obsidian (« Ouvrir un dossier comme coffre »).
@@ -1178,6 +1184,9 @@ def init(path, migrate=True, push=True) -> list:
                           "dans Obsidian)")
         report.append(f"✓ {added} souvenir(s) devenus pages ({rep['written']} fichier(s) écrits)"
                       + (f", {kept} déjà présents" if kept else ""))
+        months = write_journal(root)
+        if months:
+            report.append(f"✓ historique (sessions passées, observations datées) : {months} mois dans {JOURNAL_DIR}/")
         log_append("migration", f"{added} souvenirs du cerveau classique → pages", root=root)
     else:
         set_config("wiki.path", str(root))
@@ -1195,12 +1204,90 @@ def init(path, migrate=True, push=True) -> list:
     return report
 
 
+def journal_pages() -> dict:
+    """L'historique du cerveau (sa mémoire épisodique) en pages : sessions passées et observations datées, archivées
+    comprises, mois par mois → {« journal/AAAA-MM.md »: texte}. Généré : rien ne s'y écrit à la main."""
+    import datetime as _dt
+    from . import journal as jr
+    from . import observations as ob
+    from .privacy import mask
+    days = {}
+
+    def day(d):
+        return days.setdefault(d, {"s": [], "o": {}})
+
+    for sess in (jr.load().get("sessions") or {}).values():
+        d = str(sess.get("end") or sess.get("start") or "")[:10]
+        if len(d) == 10 and (sess.get("title") or sess.get("first") or sess.get("brief")):
+            day(d)["s"].append(sess)
+    olds = []
+    try:
+        with open(ob.ARCHIVE_FILE, encoding="utf-8") as fh:  # observations condensées par le rêve : les originales
+            olds = [json.loads(x) for x in fh if x.strip()]
+    except (OSError, ValueError):
+        olds = []
+    for o in olds + list(ob.load().get("obs") or []):
+        d = str(o.get("at") or "")[:10]
+        if len(d) == 10 and o.get("t"):
+            day(d)["o"][o.get("id") or f"{o['at']}{o['t']}"] = o
+    months = {}
+    for d in sorted(days):
+        months.setdefault(d[:7], []).append(d)
+    pages = {}
+    for m, ds in months.items():
+        mo = int(m[5:7])
+        out = [f"# 🗓️ Journal — {MONTHS[mo - 1]} {m[:4]}", "",
+               "_Généré par le cerveau à partir de ses sessions et de ses observations datées : réécrit en fin de "
+               "session, ne pas modifier. 💬 session · 🔴 décision, blocage · 🟡 avancée · 🟢 détail._", ""]
+        for d in ds:
+            date = _dt.date.fromisoformat(d)
+            out += [f"## {DAYS[date.weekday()]} {date.day} {MONTHS[mo - 1]}", ""]
+            for sess in sorted(days[d]["s"], key=lambda x: str(x.get("end") or "")):
+                bits = [f"💬 {str(sess.get('end') or '')[11:16]} « {short(sess.get('title') or sess.get('first') or sess.get('brief'), 90)} »"]
+                if sess.get("project"):
+                    bits.append(f"projet {sess['project']}")
+                if sess.get("last") and sess.get("last") != sess.get("first"):
+                    bits.append(f"dernière demande : « {short(sess['last'], 140)} »")
+                if sess.get("edits"):
+                    names = ", ".join(os.path.basename(str(e)) for e in sess["edits"][:5])
+                    bits.append(f"modifiés : {names}" + (f" +{len(sess['edits']) - 5}" if len(sess["edits"]) > 5 else ""))
+                out.append("- " + " — ".join(bits))
+            for o in sorted(days[d]["o"].values(), key=lambda x: str(x.get("at") or "")):
+                tail = f" · {o['proj']}" if o.get("proj") else ""
+                out.append(f"- {ob.PRIO.get(o.get('p', 2), '🟡')} {str(o.get('at') or '')[11:16]} {o['t']}{tail}")
+            out.append("")
+        pages[f"{JOURNAL_DIR}/{m}.md"] = mask("\n".join(out).rstrip() + "\n")[0]
+    return pages
+
+
+def write_journal(root=None) -> int:
+    """journal/ à jour dans le wiki (seuls les mois qui changent sont réécrits). → nombre de mois écrits."""
+    root = Path(root or ws.root() or "")
+    if not str(root) or not (root / ws.MARKER).is_file():
+        return 0
+    n = 0
+    for rel, text in journal_pages().items():
+        p = root / rel
+        try:
+            if p.read_text(encoding="utf-8") == text:
+                continue
+        except OSError:
+            pass
+        write_text(p, text)
+        n += 1
+    return n
+
+
 def session_close(brain, project=None) -> str:
     """Fin de session (mode wiki) : index à jour, entrée « session » au journal si des pages ont changé."""
     root = ws.root()
     if not root:
         return ""
     write_index(brain, root)
+    try:
+        write_journal(root)
+    except Exception as exc:
+        log(f"wiki : journal : {exc!r}")
     if not is_repo(root):
         return ""
     rows = [p for _, p in _changes(root) if p.startswith((ws.PAGES + "/", ws.ARCHIVE + "/", ws.RAW + "/"))]

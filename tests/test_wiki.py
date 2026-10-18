@@ -79,6 +79,17 @@ classic["edges"] = [
 ]
 GRAPH_FILE.parent.mkdir(parents=True, exist_ok=True)
 write_json(GRAPH_FILE, classic)
+# historique : sessions passées et observations datées (dont une condensée par le rêve, dans l'archive)
+write_json(TMP / "brain" / "journal" / "sessions.json", {"sessions": {
+    "s-a": {"id": "s-a", "project": "boutique", "title": "Refaire la fiche produit matcha", "first": "refais la fiche",
+            "last": "publie-la", "edits": ["fiche.liquid"], "start": "2026-09-03T10:00:00", "end": "2026-09-03T11:30:00"},
+    "s-b": {"id": "s-b", "project": None, "title": "Jeton ghp_" + "a1B2c3D4e5F6g7H8i9J0k1L2m3N4o5P6q7R8 collé par erreur",
+            "first": "x", "start": "2026-09-04T09:00:00", "end": "2026-09-04T09:10:00"}}})
+write_json(TMP / "brain" / "journal" / "observations.json", {"version": 1, "digests": [], "obs": [
+    {"id": "o1", "at": "2026-09-03T11:00:00", "p": 3, "t": "Lucas choisit Mondial Relay pour les colis", "proj": "boutique"}]})
+(TMP / "brain" / "journal" / "observations-archive.jsonl").write_text(json.dumps(
+    {"id": "o0", "at": "2026-08-20T15:00:00", "p": 2, "t": "Première version du site en ligne", "proj": "boutique"},
+    ensure_ascii=False) + "\n", encoding="utf-8")
 check(ws.resolve()[0] == "classic", "mode classique au départ")
 
 # ------------------------------------------------------------------ 2. init + migration
@@ -118,6 +129,11 @@ check("[[Choix de l" not in page(files["relancer-fournisseur"]["path"]) and 'lie
 idx = page("index.md")
 check("[[Prix du matcha]]" in idx and "Prix du matcha (" not in idx, "index : pages actives seulement")
 check("migration" in page("log.md"), "journal : entrée de migration")
+j9 = page("journal/2026-09.md") if (WIKI / "journal/2026-09.md").is_file() else ""
+check("💬 11:30 « Refaire la fiche produit matcha »" in j9 and "🔴 11:00 Lucas choisit Mondial Relay" in j9
+      and "jeudi 3 septembre" in j9, "historique : sessions et observations dans journal/2026-09.md", j9[:600])
+check("Première version du site en ligne" in page("journal/2026-08.md"), "historique : observations archivées par le rêve aussi")
+check("ghp_a1B2" not in j9, "historique : secrets masqués", j9)
 cs = json.loads(page(".claude/settings.json"))
 check(set(cs.get("hooks", {})) == {"SessionStart", "UserPromptSubmit", "Stop", "PreCompact", "PostCompact", "SessionEnd"}
       and "enabledPlugins" not in cs and (WIKI / ".claude/cerveau.py").is_file(),
