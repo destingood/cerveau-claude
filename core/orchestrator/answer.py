@@ -120,6 +120,11 @@ def signals(guarded: GuardedInput, route: RoutePlan, draft: Draft, links: _Links
             f"{draft.refused_urls} lecture(s) refusée(s) : adresse venue ni d'une recherche ni "
             "de la question (R5)."
         )
+    if draft.masked_urls:
+        notes.append(
+            f"{draft.masked_urls} résultat(s) de recherche écarté(s) : adresse à formulation "
+            "d'instruction (R5)."
+        )
     if links.removed:
         notes.append(
             f"{links.removed} lien(s) ou image(s) vers un domaine hors des sources retiré(s)"

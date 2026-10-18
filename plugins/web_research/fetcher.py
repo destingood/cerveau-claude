@@ -1,11 +1,16 @@
 """``web_read``: guarded fetch and main-text extraction (ADR-006).
 
-Limits: 15 s for the whole read (``robots.txt`` and redirects included), 2 MB of body read as a
-stream and cut at the limit (compressed and decompressed sizes both counted), at most 5
-redirects followed by hand, ``text/html`` and ``text/plain`` only. Each hop is checked again:
-URL, public addresses (``guard``) and ``robots.txt`` of its host. Proxies from the environment
-are ignored (``trust_env=False``) so that pinning holds, and connections are never reused, so a
-TLS session opened for one name never carries a request for another.
+Limits: 15 s for the whole read (``robots.txt``, redirects and text extraction included), 2 MB
+of body read as a stream and cut at the limit (compressed and decompressed sizes both counted), at
+most 5 redirects followed by hand, ``text/html`` and ``text/plain`` only. Each hop is checked
+again: URL, public addresses (``guard``) and ``robots.txt`` of its host. Proxies from the
+environment are ignored (``trust_env=False``) so that pinning holds, and connections are never
+reused, so a TLS session opened for one name never carries a request for another.
+
+A ``robots.txt`` that answered (2xx parsed, 4xx allows all) is kept an hour per origin, below the
+24 h of RFC 9309 §2.4 (B22); one that could not be read (429, 5xx, network) is asked again at the
+next read. The extraction is synchronous: it runs in a thread so that the time limit holds (B72);
+a thread cannot be stopped, so one that overruns ends on its own and its result is dropped.
 """
 
 from __future__ import annotations
@@ -15,7 +20,7 @@ import codecs
 import zlib
 from collections.abc import Callable
 from dataclasses import dataclass, field
-from datetime import UTC, datetime
+from datetime import UTC, datetime, timedelta
 
 import httpx
 from trafilatura import bare_extraction
@@ -28,6 +33,7 @@ from plugins.web_research.guard import (
     host_of,
     pin,
     pinned_request,
+    shown,
     system_resolver,
 )
 from plugins.web_research.models import PageText
@@ -40,6 +46,8 @@ MAX_REDIRECTS = 5
 MAX_TEXT_CHARS = 60_000
 # RFC 9309 §2.5: at least 500 KiB must be parsed; the rest may be ignored.
 ROBOTS_MAX_BYTES = 512_000
+ROBOTS_TTL = timedelta(hours=1)  # RFC 9309 §2.4: 24 h at most
+ROBOTS_CACHE_SIZE = 256  # origins kept; the oldest goes first
 PAGE_TYPES = frozenset({"text/html", "text/plain"})
 USER_AGENT = f"{ROBOTS_AGENT}/{__version__} (assistant personnel, lecture seule)"
 
@@ -74,7 +82,7 @@ async def _read_body(response: httpx.Response, limit: int, *, cut: bool) -> byte
     """Body of at most ``limit`` bytes; beyond it, ``cut`` truncates, otherwise it refuses."""
     encoding = response.headers.get("content-encoding", "identity").strip().lower() or "identity"
     if encoding not in ("identity", "gzip"):
-        raise FetchError(f"encodage « {encoding} » non pris en charge")
+        raise FetchError(f"encodage « {shown(encoding)} » non pris en charge")
     too_big = FetchError(f"page trop volumineuse (plus de {limit / 1_000_000:g} Mo)")
     declared = response.headers.get("content-length", "")
     if not cut and declared.isdigit() and int(declared) > limit:
@@ -98,7 +106,11 @@ async def _read_body(response: httpx.Response, limit: int, *, cut: bool) -> byte
     return bytes(body)
 
 
-def _extract(body: bytes, media: str, charset: str | None, url: str) -> tuple[str | None, ...]:
+Extracted = tuple[str | None, str | None, str]
+Extractor = Callable[[bytes, str, str | None, str], Extracted]
+
+
+def _extract(body: bytes, media: str, charset: str | None, url: str) -> Extracted:
     """(title, published, text) of the page."""
     if media == "text/plain":
         return None, None, _decode(body, charset)
@@ -125,27 +137,25 @@ class WebReader:
     max_redirects: int = MAX_REDIRECTS
     max_text_chars: int = MAX_TEXT_CHARS
     clock: Callable[[], datetime] = _utcnow
+    extract: Extractor = _extract
+    robots_ttl: timedelta = ROBOTS_TTL
+    # origin → (fetched at, policy); only answers from the site are kept.
+    _robots: dict[str, tuple[datetime, RobotsPolicy]] = field(
+        default_factory=dict, init=False, repr=False
+    )
 
     async def read(self, raw_url: str) -> PageText:
         url = check_url(raw_url)
         try:
-            async with asyncio.timeout(self.timeout_s), self._client() as client:
-                robots: dict[str, RobotsPolicy] = {}
-                final, response = await self._open(client, url, _PAGE_HEADERS, robots)
-                try:
-                    if not 200 <= response.status_code < 300:
-                        raise FetchError(f"statut HTTP {response.status_code}")
-                    media, charset = _media_type(response)
-                    if media not in PAGE_TYPES:
-                        raise FetchError(f"type « {media or 'absent'} » non pris en charge")
-                    body = await _read_body(response, self.max_bytes, cut=False)
-                finally:
-                    await response.aclose()
+            async with asyncio.timeout(self.timeout_s):
+                final, media, charset, body = await self._fetch(url)
+                title, published, text = await asyncio.to_thread(
+                    self.extract, body, media, charset, str(final)
+                )
         except (TimeoutError, httpx.TimeoutException):
             raise FetchError(f"délai de {self.timeout_s:g} s dépassé") from None
         except httpx.HTTPError as exc:
             raise FetchError(f"erreur réseau ({type(exc).__name__})") from None
-        title, published, text = _extract(body, media, charset, str(final))
         text = (text or "").strip()
         if not text:
             raise FetchError("aucun texte lisible (page vide ou rendue en JavaScript)")
@@ -160,6 +170,22 @@ class WebReader:
             truncated=truncated,
             retrieved_at=self.clock().isoformat(timespec="seconds"),
         )
+
+    async def _fetch(self, url: httpx.URL) -> tuple[httpx.URL, str, str | None, bytes]:
+        """Final URL, media type, charset and body of the page."""
+        async with self._client() as client:
+            final, response = await self._open(client, url, _PAGE_HEADERS, robots=True)
+            try:
+                if not 200 <= response.status_code < 300:
+                    raise FetchError(f"statut HTTP {response.status_code}")
+                media, charset = _media_type(response)
+                if media not in PAGE_TYPES:
+                    kind = shown(media) if media else "absent"
+                    raise FetchError(f"type « {kind} » non pris en charge")
+                body = await _read_body(response, self.max_bytes, cut=False)
+            finally:
+                await response.aclose()
+        return final, media, charset, body
 
     def _client(self) -> httpx.AsyncClient:
         return httpx.AsyncClient(
@@ -176,13 +202,14 @@ class WebReader:
         client: httpx.AsyncClient,
         url: httpx.URL,
         headers: dict[str, str],
-        robots: dict[str, RobotsPolicy] | None,
+        *,
+        robots: bool,
     ) -> tuple[httpx.URL, httpx.Response]:
-        """Final URL and open response; every hop is checked, ``robots.txt`` when given."""
+        """Final URL and open response; every hop is checked, and its ``robots.txt`` if asked."""
         for _ in range(self.max_redirects + 1):
             address = await pin(url, self.resolver)
-            if robots is not None and not await self._allowed(client, url, robots):
-                raise FetchError(f"robots.txt de {host_of(url)} interdit cette page (R15)")
+            if robots and not await self._allowed(client, url):
+                raise FetchError("le robots.txt du site interdit cette page (R15)")
             response = await client.send(pinned_request(client, url, address, headers), stream=True)
             if response.status_code not in _REDIRECTS:
                 return url, response
@@ -197,30 +224,42 @@ class WebReader:
             url = check_url(joined)
         raise FetchError(f"plus de {self.max_redirects} redirections")
 
-    async def _allowed(
-        self, client: httpx.AsyncClient, url: httpx.URL, robots: dict[str, RobotsPolicy]
-    ) -> bool:
+    async def _allowed(self, client: httpx.AsyncClient, url: httpx.URL) -> bool:
         origin = f"{url.scheme}://{host_of(url)}:{url.port or ''}"
-        if origin not in robots:
-            robots[origin] = await self._robots(client, url)
-        return robots[origin].allows(url.raw_path.decode("ascii"))
+        now = self.clock()
+        cached = self._robots.get(origin)
+        if cached is not None and timedelta(0) <= now - cached[0] < self.robots_ttl:
+            policy = cached[1]
+        else:
+            policy, answered = await self._robots_policy(client, url)
+            self._robots.pop(origin, None)
+            if answered:
+                while len(self._robots) >= ROBOTS_CACHE_SIZE:
+                    del self._robots[next(iter(self._robots))]
+                self._robots[origin] = (now, policy)
+        return policy.allows(url.raw_path.decode("ascii"))
 
-    async def _robots(self, client: httpx.AsyncClient, url: httpx.URL) -> RobotsPolicy:
-        """RFC 9309 §2.3.1: 2xx parsed, 4xx allows all, 429, 5xx or unreachable deny all."""
+    async def _robots_policy(
+        self, client: httpx.AsyncClient, url: httpx.URL
+    ) -> tuple[RobotsPolicy, bool]:
+        """RFC 9309 §2.3.1: 2xx parsed, 4xx allows all, 429, 5xx or unreachable deny all.
+
+        The flag says whether the site answered, in which case the policy may be kept.
+        """
         target = url.copy_with(raw_path=b"/robots.txt")
         try:
-            _, response = await self._open(client, target, _ROBOTS_HEADERS, robots=None)
+            _, response = await self._open(client, target, _ROBOTS_HEADERS, robots=False)
         except (FetchError, httpx.HTTPError):
-            return RobotsPolicy.deny_everything()
+            return RobotsPolicy.deny_everything(), False
         try:
             status = response.status_code
             if 200 <= status < 300:
                 body = await _read_body(response, ROBOTS_MAX_BYTES, cut=True)
-                return parse_robots(body.decode("utf-8", errors="replace"))
+                return parse_robots(body.decode("utf-8", errors="replace")), True
             if 400 <= status < 500 and status != 429:
-                return RobotsPolicy.allow_everything()
-            return RobotsPolicy.deny_everything()
+                return RobotsPolicy.allow_everything(), True
+            return RobotsPolicy.deny_everything(), False
         except (FetchError, httpx.HTTPError):
-            return RobotsPolicy.deny_everything()
+            return RobotsPolicy.deny_everything(), False
         finally:
             await response.aclose()

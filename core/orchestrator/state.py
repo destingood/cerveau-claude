@@ -141,6 +141,7 @@ class Draft(_Node):  # node 4
     tool_outputs: tuple[ToolOutput, ...] = ()  # the figures and texts of the other tool calls
     searches: int = 0
     refused_urls: int = 0  # web_read refused: URL from neither a search nor the question
+    masked_urls: int = 0  # search results whose address reads as an instruction (B68)
     turns: int = 0
 
 

@@ -2,7 +2,9 @@
 
 The planner model asks for tools; the code runs them. web_read only opens an address that came
 from a web_search of this request or from Lucas's question (R5), and the planner never sees a
-page: the reader turns it into checked extracts first (``reader.py``). The other tools (finance)
+page: the reader turns it into checked extracts first (``reader.py``). A search result whose
+address reads as an instruction is shown without it and cannot be opened (B68). The other tools
+(finance)
 compute: the planner reads each figure by its display only, and every result is kept for the R1
 trace. Hitting a request limit gives an honest partial answer built from the verified extracts
 only, without a conclusion.
@@ -14,6 +16,7 @@ import json
 import re
 from dataclasses import dataclass, field
 from typing import Any
+from urllib.parse import unquote_plus
 
 from langchain_core.messages import (
     AIMessage,
@@ -63,6 +66,8 @@ FORMAT_REPAIR = (
     "Ta réponse ne respecte pas le format demandé : {issues}. "
     "Réponds de nouveau uniquement par l'objet JSON corrigé, sans texte autour."
 )
+MASKED_URL = "(adresse masquée : formulation d'instruction)"
+_URL_SEPARATORS = re.compile(r"[-_./+=&?#:%~]+")
 READ_REFUSED = (
     "Refus : web_read n'ouvre que les adresses données par web_search dans cette requête ou "
     "écrites dans la question de Lucas (R5). Lance d'abord une recherche."
@@ -94,6 +99,7 @@ class Session:
     search_texts: list[str] = field(default_factory=list)
     searches: int = 0
     refused_urls: int = 0
+    masked_urls: int = 0
     turns: int = 0
     reader_failures: int = 0
     tool_outputs: list[ToolOutput] = field(default_factory=list)  # for the R1 trace
@@ -108,6 +114,7 @@ class Session:
             tool_outputs=tuple(self.tool_outputs),
             searches=self.searches,
             refused_urls=self.refused_urls,
+            masked_urls=self.masked_urls,
             turns=self.turns,
             **extra,
         )
@@ -178,14 +185,25 @@ def _masked_title(title: str) -> str:
     return "(titre masqué : formulation d'instruction)" if injection_signals(title) else title
 
 
+def _instruction_like_url(url: str) -> bool:
+    """True when the address reads as an instruction, as written or with separators as spaces."""
+    plain = unquote_plus(url)
+    return bool(injection_signals(plain) or injection_signals(_URL_SEPARATORS.sub(" ", plain)))
+
+
 async def _search(session: Session, toolbox: Toolbox, arguments: dict[str, Any]) -> str:
     hits = _Results.model_validate(await toolbox.call(SEARCH, arguments)).results
     session.searches += 1
     lines: list[str] = []
     for position, hit in enumerate(hits, start=1):
-        session.allowed.add(hit.url)
         session.search_texts.append(hit.title)  # the planner sees titles, not snippets
-        lines.append(f"{hit.rank or position}. {_masked_title(hit.title)} — {hit.url}")
+        url = hit.url
+        if _instruction_like_url(url):  # never shown, so never opened (B68)
+            session.masked_urls += 1
+            url = MASKED_URL
+        else:
+            session.allowed.add(url)
+        lines.append(f"{hit.rank or position}. {_masked_title(hit.title)} — {url}")
     body = "\n".join(lines) or "Aucun résultat."
     return (
         mark_untrusted(body, source="web_search")

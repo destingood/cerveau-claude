@@ -29,13 +29,19 @@ outils :
   synthétiques.
 - `web_read(url)` : httpx + trafilatura ; délai 15 s ; 2 Mo au plus (lecture en flux, coupure au
   dépassement) ; 5 redirections au plus, suivies à la main ; types `text/html` et `text/plain`
-  seulement ; schémas `http` / `https` seulement ; `robots.txt` respecté (refus si interdit).
+  seulement ; schémas `http` / `https` seulement ; `robots.txt` respecté (refus si interdit),
+  gardé une heure par origine quand le site a répondu (phase 2, B22) ; extraction comprise dans
+  le délai (phase 2, B72).
 - Anti-SSRF : le nom est résolu, **toutes** les adresses doivent être publiques (refus de
   boucle locale, privé, lien local dont 169.254.x, multicast, réservé, IPv4 mappé en IPv6), puis la
   connexion se fait sur l'adresse validée (épinglage) avec le nom d'hôte gardé pour le SNI et le
   certificat. Le contrôle est refait à chaque redirection. Cela ferme la fenêtre de rebinding DNS.
+  Ports 80 et 443 seulement (phase 2, B24). Les messages d'erreur ne montrent ni l'hôte ni
+  l'adresse résolue (B67), et une valeur contrôlée par la page n'y paraît qu'en jeton court (B66).
 - Provenance : `web_read` n'accepte qu'une URL issue des résultats de recherche de la requête ou
-  de la question de Lucas (contrôle fait côté orchestrateur, qui détient la liste).
+  de la question de Lucas (contrôle fait côté orchestrateur, qui détient la liste). Un résultat
+  dont l'adresse a une formulation d'instruction est montré sans elle et ne peut pas être lu
+  (phase 2, B68).
 
 ## Conséquences
 - Plus simple : le fournisseur se remplace sans toucher au graphe.
