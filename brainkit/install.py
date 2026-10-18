@@ -1,14 +1,17 @@
-"""Installation / réparation / désinstallation : bloc CLAUDE.md global, skill /brain, hooks dans settings.json.
+"""Installation / réparation / désinstallation : bloc CLAUDE.md global, skill /brain, skills métier (cerveau
+e-commerce…), hooks dans settings.json.
 
 Idempotent : relancer `brain install` remplace proprement les éléments du cerveau sans toucher au reste."""
 from __future__ import annotations
 
+import hashlib
 import json
 import os
 import shutil
 import sys
+from pathlib import Path
 
-from .common import BRAIN_PY, CLAUDE_HOME, CMD, write_json, write_text
+from .common import BRAIN_PY, CLAUDE_HOME, CMD, CODE_DIR, load_config, read_json, write_json, write_text
 
 START, END = "<!-- BRAIN:START", "<!-- BRAIN:END -->"
 
@@ -132,6 +135,13 @@ dire à l'utilisateur avec l'aperçu, et n'entrer qu'avec son oui.
 
 Pages des amis : s'en servir, les citer ; pour compléter, écrire sa propre page (elle part). Elles ne se modifient pas.
 
+## Skills métier livrées avec le cerveau
+**Cerveau e-commerce** (`/cerveau:ecommerce` en plugin, `/ecommerce` en installation classique) : faire décoller une
+boutique en ligne sans pub et avec des outils gratuits (diagnostic, offre et marges, site et tunnel de vente, premiers
+clients, vidéo et algorithmes, SEO, GEO, e-mails, gestion, conformité, pilotage du navigateur). Chaque boutique a sa
+fiche dans cette mémoire (`fact` « Boutique <nom> — fiche contexte », chiffres en `--commun non`, `decision`,
+`todo --due`) : `q "boutique <nom>"` la retrouve.
+
 ## Ailleurs que dans l'onglet Code
 | But | Commande |
 |---|---|
@@ -182,6 +192,80 @@ EVENTS = [
     ("PostCompact", "post-compact", 10, None),
     ("SessionEnd", "session-end", 15, None),
 ]
+
+
+SKILL_MARK = ".cerveau"  # dans ~/.claude/skills/<nom>/ : skill métier posée par le cerveau (remplacée quand elle change,
+# retirée à la désinstallation). Un dossier du même nom sans cette marque appartient à l'utilisateur : jamais touché.
+
+
+def skill_sources() -> dict:
+    """Skills métier livrées avec le cerveau, {nom: dossier} : skills/<nom>/SKILL.md à côté du code, hors « brain »
+    (écrite depuis SKILL) ; à défaut, dans l'arbre de développement d'où vient le code (`brain self-update`)."""
+    roots = [CODE_DIR / "skills"]
+    source = (load_config().get("selfupdate") or {}).get("source")
+    if source:
+        roots.append(Path(source) / "skills")
+    found = {}
+    for root in roots:
+        try:
+            dirs = sorted(d for d in root.iterdir() if d.is_dir())
+        except OSError:
+            continue
+        for d in dirs:
+            if d.name != "brain" and d.name not in found and (d / "SKILL.md").is_file():
+                found[d.name] = d
+    return found
+
+
+def _skill_stamp(src: Path) -> str:
+    """Empreinte du contenu d'une skill : elle change dès qu'un de ses fichiers change."""
+    h = hashlib.sha1()
+    for p in sorted(src.rglob("*")):
+        if p.is_file() and "__pycache__" not in p.parts and p.suffix != ".pyc" and p.name != SKILL_MARK:
+            h.update(p.relative_to(src).as_posix().encode("utf-8") + b"\0" + p.read_bytes() + b"\0")
+    return h.hexdigest()[:16]
+
+
+def sync_skills(uninstall=False, quick=False) -> list:
+    """Cerveau classique : pose ou met à jour les skills métier dans ~/.claude/skills (en plugin, Claude Code les lit
+    directement dans le plugin) ; uninstall les retire. quick (démarrage de session) : rien n'est relu tant que la
+    marque porte la version du code. → lignes de compte rendu."""
+    from . import __version__
+    base = CLAUDE_HOME / "skills"
+    done = []
+    if uninstall:
+        for mark in sorted(base.glob(f"*/{SKILL_MARK}")):
+            shutil.rmtree(mark.parent, ignore_errors=True)
+            done.append(f"✓ skill /{mark.parent.name} retirée")
+        return done
+    for name, src in skill_sources().items():
+        dst = base / name
+        mark = dst / SKILL_MARK
+        if dst.exists() and not mark.exists():
+            done.append(f"· skill /{name} : {dst} existe déjà sans la marque du cerveau — laissée telle quelle")
+            continue
+        old = read_json(mark, {}) or {}
+        if quick and old.get("version") == __version__:
+            continue
+        stamp = _skill_stamp(src)
+        if old.get("stamp") != stamp or _skill_stamp(dst) != stamp:  # source changée, ou copie installée abîmée
+            # Préparée à côté de skills/ (Claude Code n'y cherche pas de skill), puis échangée par renommages : un
+            # fichier verrouillé (Windows) fait échouer l'échange en entier, jamais à moitié.
+            stage = CLAUDE_HOME / ".cerveau-skills"
+            tmp, trash = stage / f"{name}.tmp", stage / f"{name}.old"
+            shutil.rmtree(tmp, ignore_errors=True)
+            shutil.rmtree(trash, ignore_errors=True)
+            shutil.copytree(src, tmp, ignore=shutil.ignore_patterns("__pycache__", "*.pyc", SKILL_MARK))
+            write_json(tmp / SKILL_MARK, {"version": __version__, "stamp": stamp})
+            if dst.exists():
+                os.replace(dst, trash)
+            base.mkdir(parents=True, exist_ok=True)
+            os.replace(tmp, dst)
+            shutil.rmtree(trash, ignore_errors=True)
+            done.append(f"✓ skill /{name} → {dst}")
+        else:
+            write_json(mark, {"version": __version__, "stamp": stamp})
+    return done
 
 
 def launcher() -> str:
@@ -263,6 +347,8 @@ def run(dry=False, uninstall=False):
         print(f"- {settings_path} → hooks : " + json.dumps(new_settings.get("hooks", {}), ensure_ascii=False, indent=1))
         print(f"- {claude_md} → bloc cerveau {'retiré' if uninstall else 'présent'} ({len(new_md)} car.)")
         print(f"- {skill_path} → {'supprimé' if uninstall else 'écrit'}")
+        for name in skill_sources():
+            print(f"- {CLAUDE_HOME / 'skills' / name} → skill métier {'retirée' if uninstall else 'posée'}")
         return
 
     if new_settings != settings:
@@ -277,11 +363,15 @@ def run(dry=False, uninstall=False):
     if uninstall:
         if skill_path.exists():
             skill_path.unlink()
-        print("✓ cerveau débranché (hooks, CLAUDE.md, skill). Les données restent dans ~/.claude/brain.")
+        for line in sync_skills(uninstall=True):
+            print(line)
+        print("✓ cerveau débranché (hooks, CLAUDE.md, skills). Les données restent dans ~/.claude/brain.")
     else:
         write_text(skill_path, SKILL)
         print(f"✓ hooks ({', '.join(e for e, *_ in EVENTS)}) → {settings_path}")
         print(f"✓ bloc « cerveau » → {claude_md}")
         print(f"✓ skill /brain → {skill_path}")
+        for line in sync_skills():
+            print(line)
         print("→ hooks actifs tout de suite, même dans les sessions ouvertes ; l'injection de démarrage et CLAUDE.md "
               "s'appliquent au prochain démarrage de session.")

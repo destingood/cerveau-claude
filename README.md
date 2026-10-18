@@ -17,6 +17,12 @@ décisions et de ce qu'il a appris, d'une session à l'autre.
   communs) nourrit aussi le cerveau de tes amis, et le leur nourrit le tien, presque en temps réel. Claude te le
   propose ; rien ne part avant ton oui, et jamais ton profil, tes préférences ni rien de personnel ou de sensible.
 
+- **Nouveau — le cerveau e-commerce** (skill `/cerveau:ecommerce`) : un expert pour lancer ou faire décoller une
+  boutique en ligne sans publicité et avec des outils gratuits — diagnostic, offre et marges, site et tunnel de vente,
+  premiers clients, vidéo courte et algorithmes, SEO, GEO (ChatGPT, Perplexity, AI Overviews), e-mails, gestion,
+  conformité. Claude peut piloter ton navigateur pour préparer le travail ; rien n'est publié sans ton accord. Le
+  contexte de chaque boutique reste dans ta mémoire, chez toi.
+
 Tout reste chez toi, dans `~/.claude/brain` — ou dans ton wiki, sur ton PC et, si tu le choisis, dans ton dépôt
 GitHub privé. Rien n'est envoyé ailleurs, sauf ta part publique si tu rejoins le cerveau commun ; chacun garde sa
 propre mémoire.
@@ -59,6 +65,9 @@ sont jamais touchés par une mise à jour.
 Rien à faire : parle normalement à Claude. Pour aller plus loin, demande-lui « qu'est-ce que tu sais sur … ? »,
 « retiens que … », ou tape `/brain`. Vue 3D de ta mémoire : `~/.claude/brain/cerveau.html`.
 
+Pour une boutique : « fais décoller ma boutique », « trouve-moi des clients sans pub », « audite mon site », « quel
+produit vendre ? » — le cerveau e-commerce prend le relais tout seul (ou tape `/cerveau:ecommerce`).
+
 Avec un wiki : « ingère cet article », « range cette réponse dans le wiki », « fais le point sur le wiki » (contrôle de
 santé : pages à créer, sources en attente, pages dépassées). Le schéma que suit Claude est dans le `CLAUDE.md` du wiki :
 fais-le évoluer avec lui.
@@ -86,4 +95,4 @@ invite tes amis (Settings → Collaborators → Add people), puis rejoins-le le 
 
 `/plugin uninstall cerveau@cerveau`. Tes souvenirs restent dans `~/.claude/brain` (supprime ce dossier pour tout effacer).
 
-Version 8.1.0.
+Version 8.2.0.

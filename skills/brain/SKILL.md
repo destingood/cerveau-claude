@@ -104,6 +104,13 @@ dire à l'utilisateur avec l'aperçu, et n'entrer qu'avec son oui.
 
 Pages des amis : s'en servir, les citer ; pour compléter, écrire sa propre page (elle part). Elles ne se modifient pas.
 
+## Skills métier livrées avec le cerveau
+**Cerveau e-commerce** (`/cerveau:ecommerce` en plugin, `/ecommerce` en installation classique) : faire décoller une
+boutique en ligne sans pub et avec des outils gratuits (diagnostic, offre et marges, site et tunnel de vente, premiers
+clients, vidéo et algorithmes, SEO, GEO, e-mails, gestion, conformité, pilotage du navigateur). Chaque boutique a sa
+fiche dans cette mémoire (`fact` « Boutique <nom> — fiche contexte », chiffres en `--commun non`, `decision`,
+`todo --due`) : `q "boutique <nom>"` la retrouve.
+
 ## Ailleurs que dans l'onglet Code
 | But | Commande |
 |---|---|

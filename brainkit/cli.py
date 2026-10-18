@@ -1027,6 +1027,10 @@ def cmd_doctor(a):
         ok(claude_md.exists() and "BRAIN:START" in claude_md.read_text(encoding="utf-8", errors="replace"),
            "CLAUDE.md : bloc « cerveau »")
         ok((CLAUDE_HOME / "skills" / "brain" / "SKILL.md").exists(), "skill /brain")
+        from .install import SKILL_MARK, skill_sources
+        for name in skill_sources():
+            there = (CLAUDE_HOME / "skills" / name / SKILL_MARK).exists()
+            ok(there, f"skill métier /{name}" + ("" if there else " absente (→ brain install)"))
     elif present:
         ok(False, f"hooks du cerveau aussi dans settings.json ({', '.join(present)}) : en double avec le plugin "
                   f"(→ brain install --uninstall)")
@@ -1692,8 +1696,8 @@ def build_parser():
     s.add_argument("--owner", help="nom affiché de l'auteur (défaut : Lucas)")
     s.add_argument("--push", action="store_true", help="envoyer sur GitHub après le commit (publication)")
     s.add_argument("--no-check", action="store_true", help="sans validation ni essai chez un ami fictif")
-    s = cmd("self-update", cmd_selfupdate, "déployer le code (brain.py, brainkit/, tests/) de l'arbre de "
-            "développement vers ~/.claude/brain : sauvegarde, vérifie, revient en arrière si besoin — jamais les "
+    s = cmd("self-update", cmd_selfupdate, "déployer le code (brain.py, brainkit/, tests/, skills métier) de l'arbre "
+            "de développement vers ~/.claude/brain : sauvegarde, vérifie, revient en arrière si besoin — jamais les "
             "données (souvenirs, config…)", ["autodeploy", "deploy", "maj-code"])
     s.add_argument("source", nargs="?", help="dossier de l'arbre de développement (retenu ensuite)")
     s.add_argument("--force", action="store_true", help="déployer même une version plus ancienne, identique, ou qui retire des fichiers")

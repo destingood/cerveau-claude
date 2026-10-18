@@ -48,8 +48,10 @@ def ensure_launcher() -> bool:
 
 def instructions() -> str:
     """Le bloc CLAUDE.md du cerveau classique, sans ses balises : consignes de chaque session en mode plugin."""
-    from .install import CLAUDE_BLOCK
+    from .install import CLAUDE_BLOCK, skill_sources
     text = "\n".join(line for line in CLAUDE_BLOCK.strip().splitlines() if not line.startswith("<!--"))
     if os.environ.get("CERVEAU_CLOUD"):  # session cloud lancée par le wiki : code récupéré, pas de skill installée
-        return text.replace("skill `/brain`", f"référence complète : {CODE_DIR / 'skills' / 'brain' / 'SKILL.md'}")
+        text = text.replace("skill `/brain`", f"référence complète : {CODE_DIR / 'skills' / 'brain' / 'SKILL.md'}")
+        metier = " · ".join(f"{name} : {src / 'SKILL.md'}" for name, src in skill_sources().items())
+        return text + (f"\nSkills métier (à lire dès qu'une demande s'y rapporte) — {metier}" if metier else "")
     return text.replace("skill `/brain`", "skill `/cerveau:brain`")

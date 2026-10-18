@@ -278,6 +278,12 @@ def on_session_start(data, cfg):
         except OSError as exc:
             log(f"lanceur du plugin : {exc!r}")
         text = f"{plugin.instructions()}\n\n{text}"
+    else:  # cerveau classique : skills métier (cerveau e-commerce…) posées ou mises à jour dans ~/.claude/skills
+        try:
+            from . import install
+            install.sync_skills(quick=True)
+        except Exception as exc:
+            log(f"skills métier (démarrage) : {exc!r}")
     emit("SessionStart", text)
 
 

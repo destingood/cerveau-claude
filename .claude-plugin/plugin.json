@@ -1,7 +1,7 @@
 {
   "name": "cerveau",
-  "version": "8.1.0",
-  "description": "Cerveau persistant pour Claude Code : souvenirs en graphe, rappel automatique à chaque message, wiki Markdown tenu par Claude (sources ingérées, coffre Obsidian, dépôt git), cartes de projets, à-faire datés, serveur MCP. Tout reste chez toi.",
+  "version": "8.2.0",
+  "description": "Cerveau persistant pour Claude Code : souvenirs en graphe, rappel automatique à chaque message, wiki Markdown tenu par Claude (sources ingérées, coffre Obsidian, dépôt git), cartes de projets, à-faire datés, serveur MCP, et un cerveau e-commerce (clients sans pub, SEO, GEO, tunnel de vente). Tout reste chez toi.",
   "author": {
     "name": "Lucas"
   },
@@ -13,7 +13,10 @@
     "hooks",
     "mcp",
     "wiki",
-    "obsidian"
+    "obsidian",
+    "e-commerce",
+    "seo",
+    "geo"
   ],
   "homepage": "https://github.com/destingood/cerveau-claude",
   "repository": "https://github.com/destingood/cerveau-claude"

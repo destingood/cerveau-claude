@@ -1,6 +1,6 @@
-"""Auto-déploiement : `brain self-update` installe le code (brain.py, brainkit/, tests/) depuis l'arbre de
-développement vers le cerveau installé (~/.claude/brain), SANS jamais toucher aux données (souvenirs, config,
-journal, historique, pages HTML). Il sauvegarde d'abord l'ancien code, copie, vérifie (la suite de tests) et
+"""Auto-déploiement : `brain self-update` installe le code (brain.py, brainkit/, tests/, skills métier de skills/<nom>/)
+depuis l'arbre de développement vers le cerveau installé (~/.claude/brain), SANS jamais toucher aux données (souvenirs,
+config, journal, historique, pages HTML). Il sauvegarde d'abord l'ancien code, copie, vérifie (la suite de tests) et
 revient en arrière tout seul si la vérification échoue. « Une fois le changement fait, le cerveau se met en place
 tout seul, quel que soit le changement. »
 
@@ -19,11 +19,13 @@ from .common import CLAUDE_HOME, PLUGIN, load_config, read_json, write_json
 # CODE (remplacé par une mise à jour) vs DONNÉES (jamais touchées : graph.json, config.json, BRAIN.md, history/…).
 CODE_ROOT_FILES = ("brain.py",)
 CODE_DIRS = ("brainkit", "tests")
+SKILLS_DIR = "skills"  # skills métier livrées avec le code (skills/<nom>/, tous leurs fichiers : Markdown, scripts) ;
+# skills/brain n'en fait pas partie (écrite par `brain install` depuis install.SKILL)
 
 
 def _code_files(root: Path) -> dict:
-    """{chemin relatif POSIX -> Path absolu} de tout le CODE sous root : brain.py + brainkit/**.py + tests/**.py
-    (jamais __pycache__ ni aucun fichier de données)."""
+    """{chemin relatif POSIX -> Path absolu} de tout le CODE sous root : brain.py + brainkit/**.py + tests/**.py +
+    skills/<nom>/** (jamais __pycache__ ni aucun fichier de données)."""
     out = {}
     for name in CODE_ROOT_FILES:
         p = root / name
@@ -35,6 +37,13 @@ def _code_files(root: Path) -> dict:
             for p in base.rglob("*.py"):
                 if "__pycache__" not in p.parts:
                     out[p.relative_to(root).as_posix()] = p
+    skills = root / SKILLS_DIR
+    if skills.is_dir():
+        for d in skills.iterdir():
+            if d.is_dir() and d.name != "brain" and (d / "SKILL.md").is_file():
+                for p in d.rglob("*"):
+                    if p.is_file() and "__pycache__" not in p.parts and p.suffix != ".pyc" and p.name != ".cerveau":
+                        out[p.relative_to(root).as_posix()] = p
     return out
 
 
@@ -74,7 +83,8 @@ def _check_source(root: Path) -> str | None:
     if (root / ".claude-plugin" / "plugin.json").exists():
         return f"{root} est un plugin construit (.claude-plugin) : donne l'arbre de développement, pas le dépôt publié"
     # Un arbre de développement peut très bien contenir des données (graph.json…) : ce n'est pas grave, on ne copie
-    # JAMAIS que le code (brain.py, brainkit/, tests/). Le seul vrai garde-fou est « source ≠ cible » (plus bas).
+    # JAMAIS que le code (brain.py, brainkit/, tests/, skills métier). Le seul vrai garde-fou est « source ≠ cible »
+    # (plus bas).
     return None
 
 
@@ -223,7 +233,8 @@ def run(source=None, *, force=False, verify=True, dry_run=False) -> int:
     source = source or cfg.get("source")
     if not source:
         print("✗ aucune source indiquée : brain self-update <dossier de l'arbre de développement>\n"
-              "  le code (brain.py, brainkit/, tests/) y est copié vers ~/.claude/brain ; tes souvenirs n'y touchent pas.\n"
+              "  le code (brain.py, brainkit/, tests/, skills métier) y est copié vers ~/.claude/brain ; tes souvenirs n'y "
+              "touchent pas.\n"
               "  le dossier est retenu ensuite (un simple « brain self-update » le réutilisera).")
         return 1
     return deploy(source, force=force, verify=verify, dry_run=dry_run)
