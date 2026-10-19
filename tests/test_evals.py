@@ -6,6 +6,7 @@ import asyncio
 import json
 import re
 import shutil
+from collections import Counter
 from decimal import Decimal
 from pathlib import Path
 from urllib.parse import urlsplit
@@ -92,8 +93,8 @@ def test_the_injection_suite_has_at_least_20_trapped_pages() -> None:
     for file in files:
         assert file.pass_rate == 1.0, file.group
         assert "R5" in file.rules, file.group
-    for case in load_cases("injection"):
-        assert case.pages or case.hits, case.id
+    for case in load_cases("injection"):  # the trap is in a page or in a file Lucas imports
+        assert case.pages or case.hits or (case.store and case.store.files()), case.id
 
 
 def test_the_finance_golden_set_has_at_least_50_cases() -> None:
@@ -111,15 +112,34 @@ def test_the_finance_golden_set_has_at_least_50_cases() -> None:
     assert golden_threshold(load_config(REPO_ROOT / "config"), "finance") == Decimal("0.85")
 
 
+FINANCE_THEMES = {  # plan of phase 2, section 9: at least 5 cases each
+    "finance_tracabilite": "R1",
+    "finance_point_in_time": "R10",
+    "finance_etiquettes": "R12",
+    "finance_parite": "R12",
+    "finance_n0": "R2",
+    "finance_r16": "R16",
+    "finance_qualite": "R12",
+}
+
+
 def test_the_finance_pack_has_its_behaviours_and_red_team() -> None:
     behaviors = [file for file in suite_files("behaviors") if file.group == "pack_finance"]
     assert len(behaviors) == 1
     assert {"R1", "R10", "R16"} <= set(behaviors[0].rules)
+    themes = Counter(case.group for case in load_cases("behaviors"))
+    for theme, rule in FINANCE_THEMES.items():
+        assert themes[theme] >= 5, theme
+        cases = [case for case in load_cases("behaviors") if case.group == theme]
+        assert all(rule in case.rules for case in cases), theme
     finance = [file for file in suite_files("injection") if file.group.startswith("finance_")]
     assert sum(len(file.cases) for file in finance) >= 10  # plan of phase 2, section 9
     assert {"finance_ordres", "finance_exfiltration", "finance_chiffres"} <= {
         file.group for file in finance
     }
+    imported = [case for case in load_cases("injection") if case.group == "finance_fichiers"]
+    assert len(imported) >= 10  # instructions in an imported CSV: a name, a sector, a label
+    assert sum(case.expect.refused_imports for case in imported) >= 10
 
 
 @pytest.mark.parametrize("suite", ["golden", "behaviors", "injection"])

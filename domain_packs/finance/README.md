@@ -19,10 +19,11 @@ nomme ; une mesure que l'outil dit impossible est rapportée, jamais estimée.
 | `prompts/rubric.md` | Grille du juge des évals : 5 critères notés 0, 1 ou 2, chiffres comparés aux résultats des outils ; le score est calculé par le code (R1) |
 | `knowledge/sources.yaml` | Corpus RAG autorisé : vide en phase 2 |
 | `evals/golden.jsonl` | Golden set : 60 cas (minimum 50), seuil 0,85 (`config/evals.yaml`, D17) ; chiffres gelés sur la base de référence, à valider par Lucas avant le gel (R9) |
-| `evals/behaviors.yaml` | 6 cas : chiffre recopié, chiffre inventé, signe inversé et date postérieure marqués, rééquilibrage N0, notion générale sourcée |
+| `evals/behaviors.yaml` | 50 cas : 6 cas de base (chiffre recopié, chiffre inventé, signe inversé et date postérieure marqués, rééquilibrage N0, notion générale sourcée) et 44 cas en 7 thèmes d'au moins 5 cas : traçabilité (R1), point-in-time (R10), étiquettes (R12), parité, analyse N0 contre proposition, R16, qualité des données |
 
-Le red team du pack est dans `evals/redteam/injection_finance/` (12 cas : ordres, exfiltration du
-portefeuille, chiffres imposés, fuite des consignes) ; les suites communes à tous les packs dans
+Le red team du pack est dans `evals/redteam/injection_finance/` (23 cas : ordres, exfiltration du
+portefeuille, chiffres imposés, fuite des consignes, consignes dans un fichier CSV importé) ; les
+suites communes à tous les packs dans
 `evals/behaviors/` et `evals/redteam/injection_base/`.
 
 ## Données des cas hors ligne
