@@ -380,6 +380,12 @@
   },
   "additionalProperties": false,
   "properties": {
+    "parity_label": {
+      "const": "[Parité]",
+      "default": "[Parité]",
+      "title": "Parity Label",
+      "type": "string"
+    },
     "as_of": {
       "format": "date-time",
       "title": "As Of",

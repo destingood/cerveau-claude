@@ -419,6 +419,86 @@
       "title": "Method",
       "type": "object"
     },
+    "QualityCheck": {
+      "additionalProperties": false,
+      "description": "The recorded quality of the series a calculation reads, against\n``min_quality_score_above_N1`` (D12): below it, or while it cannot be judged, a decision\nstays capped at N1 and the output says so with the scores (plan of phase 2, §3).",
+      "properties": {
+        "threshold": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/Figure"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "gate": {
+          "enum": [
+            "suffisante",
+            "insuffisante",
+            "non_evaluable"
+          ],
+          "title": "Gate",
+          "type": "string"
+        },
+        "decision_cap": {
+          "anyOf": [
+            {
+              "const": "N1",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Decision Cap"
+        },
+        "series": {
+          "items": {
+            "$ref": "#/$defs/SeriesScore"
+          },
+          "title": "Series",
+          "type": "array"
+        },
+        "below": {
+          "items": {
+            "type": "string"
+          },
+          "title": "Below",
+          "type": "array"
+        },
+        "not_evaluated": {
+          "items": {
+            "type": "string"
+          },
+          "title": "Not Evaluated",
+          "type": "array"
+        },
+        "note": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Note"
+        }
+      },
+      "required": [
+        "threshold",
+        "gate",
+        "decision_cap",
+        "series",
+        "below",
+        "not_evaluated"
+      ],
+      "title": "QualityCheck",
+      "type": "object"
+    },
     "RateSplit": {
       "additionalProperties": false,
       "description": "The rate shock in two parts: the bonds by their duration [Approximation], the other\nsecurities by an OLS of their daily euro P&L on the daily change of the risk-free rate, on\nthe window [Estimation]. A p-value far from zero means the estimate is not distinguishable\nfrom no sensitivity at all.",
@@ -496,6 +576,44 @@
         "sessions"
       ],
       "title": "RateSplit",
+      "type": "object"
+    },
+    "SeriesScore": {
+      "additionalProperties": false,
+      "properties": {
+        "instrument_id": {
+          "title": "Instrument Id",
+          "type": "string"
+        },
+        "assessed_at": {
+          "anyOf": [
+            {
+              "format": "date-time",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Assessed At"
+        },
+        "score": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/Figure"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        }
+      },
+      "required": [
+        "instrument_id",
+        "assessed_at",
+        "score"
+      ],
+      "title": "SeriesScore",
       "type": "object"
     },
     "StressResult": {
@@ -793,6 +911,12 @@
   },
   "additionalProperties": false,
   "properties": {
+    "parity_label": {
+      "const": "[Approximation]",
+      "default": "[Approximation]",
+      "title": "Parity Label",
+      "type": "string"
+    },
     "as_of": {
       "format": "date-time",
       "title": "As Of",
@@ -962,6 +1086,9 @@
       ],
       "default": null
     },
+    "data_quality": {
+      "$ref": "#/$defs/QualityCheck"
+    },
     "unavailable": {
       "items": {
         "$ref": "#/$defs/Unavailable"
@@ -984,6 +1111,7 @@
     "value_eur",
     "measures",
     "method",
+    "data_quality",
     "unavailable",
     "warnings"
   ],

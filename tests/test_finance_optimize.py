@@ -8,6 +8,7 @@ Hypothesis properties: weights summing to one, bounds, sector caps and turnover 
 
 from __future__ import annotations
 
+import dataclasses
 from pathlib import Path
 
 import numpy as np
@@ -16,7 +17,7 @@ from hypothesis import given, settings
 from hypothesis import strategies as st
 from scipy.optimize import linprog, minimize
 
-from core.config.loader import load_config
+from core.config.loader import Config, load_config
 from core.finance import risk
 from core.finance.fixtures import REFERENCE_READ_AT, reference_store
 from core.finance.optimize import (
@@ -410,3 +411,41 @@ def test_a_sector_cap_matches_the_sector_whatever_its_case(store: Path) -> None:
     assert souverain.target_weight.value <= 0.25 + TOLERANCE
     weights = [line.target_weight.value for line in proposal.lines]
     assert sum(weights) == pytest.approx(1.0, abs=1e-9)
+
+
+def with_threshold(threshold: float | str) -> Config:
+    quality = CONFIG.data_sources.quality.model_copy(
+        update={"min_quality_score_above_N1": threshold}
+    )
+    sources = CONFIG.data_sources.model_copy(update={"quality": quality})
+    return dataclasses.replace(CONFIG, data_sources=sources)
+
+
+def test_the_proposal_carries_its_parity_label_and_the_quality_of_its_data(store: Path) -> None:
+    content = propose(store, method="variance_minimale")
+    assert content.parity_label == "[Approximation]"  # ADR-019
+    assert content.data_quality.gate == "suffisante"
+    assert content.data_quality.decision_cap is None
+    assert {s.instrument_id for s in content.data_quality.series} == {
+        line.line for line in content.lines
+    }
+
+
+@pytest.mark.parametrize(
+    ("threshold", "gate", "start"),
+    [
+        (0.995, "insuffisante", "qualité des données insuffisante : FICT-BOREAL score 0,992"),
+        ("A_DEFINIR", "non_evaluable", "qualité non évaluable : le seuil"),
+    ],
+)
+def test_a_weak_or_unknown_quality_caps_the_proposal_at_n1(
+    store: Path, threshold: float | str, gate: str, start: str
+) -> None:
+    with FinanceStore.open(store, read_only=True) as db:
+        content = rebalance_proposal(
+            db, with_threshold(threshold), as_of=REFERENCE_READ_AT, method="variance_minimale"
+        )
+    assert (content.data_quality.gate, content.data_quality.decision_cap) == (gate, "N1")
+    (note,) = [w for w in content.warnings if w.startswith(start)]
+    assert note.endswith("toute décision reste plafonnée à N1")
+    assert content.status == "analyse"  # N0 stays an analysis whatever the quality

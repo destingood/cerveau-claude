@@ -538,3 +538,44 @@ def test_the_report_refuses_what_it_cannot_answer(store: Path) -> None:
     shocks = [SectorShock(sector="Technologie", shock=-0.1)] * 6
     with pytest.raises(ViewError, match="au plus 5 chocs"):
         report(store, sector_shocks=shocks)
+
+
+# Parity label and data quality (plan of phase 2, §2 and §3; D12) -------------------------------
+
+
+def test_the_report_carries_its_parity_label_and_the_quality_of_its_data(store: Path) -> None:
+    content = report(store, measures=["var"], quality_threshold=0.9)
+    assert content.parity_label == "[Approximation]"
+    quality = content.data_quality
+    assert (quality.gate, quality.decision_cap, quality.below) == ("suffisante", None, [])
+    assert quality.threshold is not None and quality.threshold.display == "0,900"
+    with FinanceStore.open(store, read_only=True) as db:
+        held = views.portfolio_snapshot(db, as_of=REFERENCE_READ_AT).positions
+    assert {s.instrument_id for s in quality.series} == {p.instrument_id for p in held}
+    assert all(s.score is not None and s.score.value >= 0.9 for s in quality.series)
+    assert not any("qualité" in warning for warning in content.warnings)
+
+
+def test_a_score_under_the_threshold_caps_the_decision_at_n1(store: Path) -> None:
+    content = report(store, measures=["var"], quality_threshold=0.995)
+    quality = content.data_quality
+    assert (quality.gate, quality.decision_cap, quality.below) == (
+        "insuffisante",
+        "N1",
+        ["FICT-BOREAL"],
+    )
+    assert content.var  # the measures are still given, with the warning beside them
+    assert (
+        "qualité des données insuffisante : FICT-BOREAL score 0,992 sous le seuil 0,995 (D12) ; "
+        "toute décision reste plafonnée à N1"
+    ) in content.warnings
+
+
+def test_a_threshold_still_at_a_marker_leaves_the_quality_not_evaluable(store: Path) -> None:
+    content = report(store, measures=["var"])  # quality_threshold defaults to A_DEFINIR (R7)
+    quality = content.data_quality
+    assert (quality.gate, quality.decision_cap, quality.threshold) == ("non_evaluable", "N1", None)
+    assert (
+        "qualité non évaluable : le seuil min_quality_score_above_N1 vaut A_DEFINIR (R7) (D12) ; "
+        "toute décision reste plafonnée à N1"
+    ) in content.warnings

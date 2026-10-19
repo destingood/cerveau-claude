@@ -344,6 +344,12 @@
   },
   "additionalProperties": false,
   "properties": {
+    "parity_label": {
+      "const": "[Approximation]",
+      "default": "[Approximation]",
+      "title": "Parity Label",
+      "type": "string"
+    },
     "kind": {
       "enum": [
         "cours",

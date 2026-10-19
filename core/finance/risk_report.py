@@ -36,7 +36,7 @@ from core.finance.model import Instrument
 from core.finance.portfolio import build_book, value
 from core.finance.risk import Matrix, Moments, Vector
 from core.finance.store import FinanceStore
-from core.finance.views import ViewError
+from core.finance.views import QualityCheck, ViewError, quality_check
 from core.verification.figures import Figure, amount, count, percent, plain
 
 Measure = Literal[
@@ -252,6 +252,7 @@ class Unavailable(_Out):
 
 
 class RiskReport(_Out):
+    parity_label: Literal["[Approximation]"] = "[Approximation]"  # as plugin.yaml (R12)
     as_of: AwareDatetime
     day: date
     strict: bool
@@ -268,6 +269,7 @@ class RiskReport(_Out):
     contributions: list[LineContribution] | None = None
     stress: list[StressResult] | None = None
     var_change: VarChangeView | None = None
+    data_quality: QualityCheck
     unavailable: list[Unavailable]
     warnings: list[str]
 
@@ -1012,9 +1014,12 @@ def risk_report(
     compare_to: datetime | None = None,
     sector_shocks: Sequence[SectorShock] = (),
     strict: bool = False,
+    quality_threshold: float | str = "A_DEFINIR",
 ) -> RiskReport:
     """The measures asked for, on the book known at ``as_of`` (by default, all but the
-    correlations); ``compare_to`` adds the change of the parametric VaR since that moment."""
+    correlations); ``compare_to`` adds the change of the parametric VaR since that moment.
+    ``quality_threshold`` is ``min_quality_score_above_N1`` (D12); a marker leaves the quality
+    of the data not evaluable."""
     if measures is not None and not measures:
         raise ViewError("au moins une mesure")
     wanted = list(dict.fromkeys(measures or DEFAULT_MEASURES))
@@ -1023,7 +1028,9 @@ def risk_report(
     if len(sector_shocks) > MAX_SECTOR_SHOCKS:
         raise ViewError(f"au plus {MAX_SECTOR_SHOCKS} chocs sectoriels")
     try:
-        return _report(store, config, as_of, wanted, compare_to, sector_shocks, strict)
+        return _report(
+            store, config, as_of, wanted, compare_to, sector_shocks, strict, quality_threshold
+        )
     except risk.RiskError as exc:
         raise ViewError(str(exc)) from None
 
@@ -1036,6 +1043,7 @@ def _report(
     compare_to: datetime | None,
     sector_shocks: Sequence[SectorShock],
     strict: bool,
+    quality_threshold: float | str,
 ) -> RiskReport:
     now = holdings(store, as_of=as_of, strict=strict)
     if all(line.is_cash for line in now.lines):
@@ -1049,7 +1057,14 @@ def _report(
     book = _Book(
         config, now.lines, exposures, total, exposures / total, found, window, risk.moments(window)
     )
-    warnings = list(now.warnings)
+    quality = quality_check(
+        store,
+        [line.key for line in now.lines if not line.is_cash],
+        as_of=as_of,
+        strict=strict,
+        threshold=quality_threshold,
+    )
+    warnings = list(now.warnings) + ([quality.note] if quality.note else [])
     unavailable: list[Unavailable] = []
     parts: dict[str, object] = {}
     if "volatilite" in wanted:
@@ -1093,6 +1108,7 @@ def _report(
         value_eur=_eur("valeur_eur", total),
         measures=wanted,
         method=_method(book),
+        data_quality=quality,
         unavailable=unavailable,
         warnings=warnings,
         **parts,  # type: ignore[arg-type]

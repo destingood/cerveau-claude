@@ -126,6 +126,7 @@ def build_server(store: Path, config_dir: Path, clock: Callable[[], datetime] = 
                     compare_to=compare_to,
                     sector_shocks=sector_shocks,
                     strict=strict,
+                    quality_threshold=config.data_sources.quality.min_quality_score_above_N1,
                 ),
             )
         except ConfigError:

@@ -100,6 +100,8 @@ def test_published_tools_match_the_manifest(tmp_path: Path) -> None:
         assert tool.description == spec["description"]
         published = tool.annotations.model_dump(by_alias=True, exclude_none=True)
         assert published == spec["annotations"]
+        label = tool.output_schema["properties"]["parity_label"]  # type: ignore[index]
+        assert label["const"] == label["default"] == MANIFEST["parity_label"]  # R12
         for kind, schema in (
             ("input_schema", tool.input_schema),
             ("output_schema", tool.output_schema),

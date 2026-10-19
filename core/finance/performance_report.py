@@ -10,6 +10,7 @@ from __future__ import annotations
 import math
 from collections import defaultdict
 from datetime import date, datetime
+from typing import Literal
 
 from pydantic import AwareDatetime, BaseModel, ConfigDict
 
@@ -110,6 +111,7 @@ class Attribution(_Out):
 
 
 class PerformanceReport(_Out):
+    parity_label: Literal["[Parité]"] = "[Parité]"  # as plugin.yaml (R12)
     as_of: AwareDatetime
     strict: bool
     notice: str

@@ -44,10 +44,13 @@ from core.verification.figures import (
 )
 
 Kind = Literal["cours", "referentiel", "fondamentaux"]
+QualityGate = Literal["suffisante", "insuffisante", "non_evaluable"]
 HOME_ENV = "CERVEAU_HOME"
 CASH_BUCKET = "liquidites"  # sector and country of a cash balance
 MAX_INSTRUMENTS = 10
 MAX_SESSIONS = 260  # about one year of sessions
+QUALITY_CAP = "N1"  # the highest level a decision keeps while the data quality is not enough
+CAPPED = f"toute décision reste plafonnée à {QUALITY_CAP}"
 NO_FUNDAMENTALS = (
     "fondamentaux indisponibles : aucun fournisseur n'est retenu (ADR-013) ; ils seraient "
     "d'ailleurs révisés par le fournisseur, donc non point-in-time"
@@ -170,6 +173,7 @@ class ReferenceCard(_Out):
 
 
 class MarketData(_Out):
+    parity_label: Literal["[Approximation]"] = "[Approximation]"  # as plugin.yaml (R12)
     kind: Kind
     as_of: AwareDatetime
     day: date
@@ -209,6 +213,79 @@ def _quality(
         freshness=score("freshness"),
         stale_sessions=None if stale is None else count(f"{base}/stale_sessions", stale, "séances"),
         not_evaluated=details.not_evaluated,
+    )
+
+
+class SeriesScore(_Out):
+    instrument_id: str
+    assessed_at: AwareDatetime | None
+    score: Figure | None
+
+
+class QualityCheck(_Out):
+    """The recorded quality of the series a calculation reads, against
+    ``min_quality_score_above_N1`` (D12): below it, or while it cannot be judged, a decision
+    stays capped at N1 and the output says so with the scores (plan of phase 2, §3)."""
+
+    threshold: Figure | None
+    gate: QualityGate
+    decision_cap: Literal["N1"] | None
+    series: list[SeriesScore]
+    below: list[str]
+    not_evaluated: list[str]
+    note: str | None = None
+
+
+def quality_check(
+    store: FinanceStore,
+    instrument_ids: Sequence[str],
+    *,
+    as_of: datetime,
+    strict: bool,
+    threshold: float | str,
+) -> QualityCheck:
+    """The gate of the held series at ``as_of``. A threshold still at a marker, or a series
+    without a complete score at that date, cannot be judged: ``non_evaluable`` (R7)."""
+    marker = isinstance(threshold, str)
+    cut = None if marker else plain("qualite/seuil", float(threshold), "score", 3)
+    series: list[SeriesScore] = []
+    below: list[tuple[str, Figure]] = []
+    missing: list[str] = []
+    for iid in dict.fromkeys(instrument_ids):
+        found = _quality(store, iid, as_of, strict)
+        score = None if found is None else found.score
+        series.append(
+            SeriesScore(
+                instrument_id=iid,
+                assessed_at=None if found is None else found.assessed_at,
+                score=score,
+            )
+        )
+        if score is None:
+            missing.append(iid)
+        elif cut is not None and score.value < cut.value:
+            below.append((iid, score))
+    notes = []
+    if cut is None:
+        notes.append(f"le seuil min_quality_score_above_N1 vaut {threshold} (R7)")
+    if below and cut is not None:
+        scores = ", ".join(f"{iid} score {score.display}" for iid, score in below)
+        notes.append(f"{scores} sous le seuil {cut.display}")
+    if missing:
+        notes.append(f"aucun score complet enregistré à cette date pour {', '.join(missing)}")
+    gate: QualityGate = "insuffisante" if below else "non_evaluable" if notes else "suffisante"
+    note = None
+    if notes:
+        title = "qualité des données insuffisante" if below else "qualité non évaluable"
+        note = f"{title} : {' ; '.join(notes)} (D12) ; {CAPPED}"
+    return QualityCheck(
+        threshold=cut,
+        gate=gate,
+        decision_cap=None if gate == "suffisante" else QUALITY_CAP,
+        series=series,
+        below=[iid for iid, _ in below],
+        not_evaluated=missing,
+        note=note,
     )
 
 
@@ -353,6 +430,7 @@ class AccountStatus(_Out):
 
 
 class Snapshot(_Out):
+    parity_label: Literal["[Parité]"] = "[Parité]"  # as plugin.yaml (R12)
     as_of: AwareDatetime
     day: date
     strict: bool

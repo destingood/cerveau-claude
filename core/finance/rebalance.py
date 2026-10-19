@@ -34,7 +34,7 @@ from core.finance.risk_report import (
 )
 from core.finance.risk_report import _window as window_of
 from core.finance.store import FinanceStore
-from core.finance.views import ViewError
+from core.finance.views import QualityCheck, ViewError, quality_check
 from core.verification.figures import Figure, amount, count, percent, plain, price, quantity
 
 Status = Literal["analyse", "proposition non exécutée"]
@@ -182,6 +182,7 @@ class TradeTotals(_Out):
 
 
 class RebalanceProposal(_Out):
+    parity_label: Literal["[Approximation]"] = "[Approximation]"  # as plugin.yaml (ADR-019)
     as_of: AwareDatetime
     day: date
     strict: bool
@@ -199,6 +200,7 @@ class RebalanceProposal(_Out):
     risk: RiskComparison
     trades: list[Trade] | None = None
     totals: TradeTotals | None = None
+    data_quality: QualityCheck
     unavailable: list[Unavailable]
     warnings: list[str]
 
@@ -453,6 +455,15 @@ def _proposal(
         warnings += extra
         assumptions += TRADE_ASSUMPTIONS
     level = config.autonomy.domains["finance"].level
+    quality = quality_check(
+        store,
+        [line.key for line in securities],
+        as_of=as_of,
+        strict=strict,
+        threshold=config.data_sources.quality.min_quality_score_above_N1,
+    )
+    if quality.note:
+        warnings.append(quality.note)
     return RebalanceProposal(
         as_of=as_of,
         day=now.day,
@@ -502,6 +513,7 @@ def _proposal(
             before=_risk_side("avant", exposures, moments, config),
             after=_risk_side("apres", after, moments, config),
         ),
+        data_quality=quality,
         unavailable=unavailable,
         warnings=list(now.warnings) + warnings,
         **parts,  # type: ignore[arg-type]
