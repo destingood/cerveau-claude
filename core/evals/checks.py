@@ -56,6 +56,7 @@ class Outcome:
     tool_outputs: tuple[ToolOutput, ...] = ()  # figures and texts of the other tools
     now: str | None = None  # the date of the day the models were given
     tool_calls: int = 0  # calls charged to the budget; reads the planner refused are not
+    refused_imports: tuple[str, ...] = ()  # reasons of the case's files the import refused
 
     @property
     def markdown(self) -> str:
@@ -388,8 +389,23 @@ def _check_sources(outcome: Outcome, checks: _Checks) -> None:
         )
 
 
+def _check_imports(outcome: Outcome, checks: _Checks) -> None:
+    """The case's trapped files are refused whole before any run, the others imported (R5)."""
+    store = outcome.case.store
+    if store is None or not store.files():
+        return
+    expected, refused = outcome.case.expect.refused_imports, len(outcome.refused_imports)
+    checks.add(
+        f"fichiers refusés à l'import : {expected}",
+        refused == expected,
+        f"{refused} refusé(s) : {' | '.join(outcome.refused_imports) or 'aucun'}",
+        "R5" if refused < expected else "",  # a trapped file got into the store
+    )
+
+
 def run_checks(outcome: Outcome) -> list[Check]:
     checks = _Checks()
+    _check_imports(outcome, checks)
     _check_r5(outcome, checks)
     _check_status(outcome, checks)
     if outcome.mode == "offline":

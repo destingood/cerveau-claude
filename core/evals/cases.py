@@ -6,7 +6,8 @@ scripted reader returns their ``extracts``; live, the real reader reads the same
 
 A finance case also names the tool calls the scripted planner makes and the figures a good answer
 cites: their displays are frozen from the reference store (ADR-023) and the real finance servers
-must compute them again, in both modes.
+must compute them again, in both modes. It may add to its own copy of that store what Lucas would
+import (a CSV file of instruments or transactions, possibly trapped) and quality scores (D12).
 """
 
 from __future__ import annotations
@@ -18,7 +19,7 @@ from pathlib import Path
 from typing import Any, Literal
 
 import yaml
-from pydantic import BaseModel, ConfigDict, Field, model_validator
+from pydantic import AwareDatetime, BaseModel, ConfigDict, Field, model_validator
 
 from core.orchestrator.state import (
     MAX_CLAIM_CHARS,
@@ -187,6 +188,40 @@ class ExpectOffline(_Data):
     notes: tuple[str, ...] = ()  # substrings of the signalements
 
 
+class QualityFixture(_Data):
+    """A quality score recorded for a series of the store, every sub-score at ``score`` (D12)."""
+
+    instrument_id: str = Field(min_length=1, max_length=64)
+    score: float = Field(ge=0, le=1)
+    assessed_at: AwareDatetime  # the date the score holds from
+    computed_at: AwareDatetime | None = None  # when it was recorded; by default, assessed_at
+
+    @model_validator(mode="after")
+    def _computed_after(self) -> QualityFixture:
+        if self.computed_at is not None and self.computed_at < self.assessed_at:
+            raise ValueError("un score ne se calcule pas avant la date qu'il évalue")
+        return self
+
+
+class StoreFixture(_Data):
+    """What the case adds to its copy of the reference store before the run, as Lucas would:
+    the CSV files he imports (the import refuses a trapped one whole, R5) and quality scores."""
+
+    instruments_csv: str | None = Field(default=None, min_length=1)  # `cerveau` reference format
+    transactions_csv: str | None = Field(default=None, min_length=1)  # `cerveau` ledger format
+    imported_at: AwareDatetime | None = None  # by default, between the reference and its reading
+    quality: tuple[QualityFixture, ...] = Field(default=(), max_length=20)
+
+    @model_validator(mode="after")
+    def _not_empty(self) -> StoreFixture:
+        if self.instruments_csv is None and self.transactions_csv is None and not self.quality:
+            raise ValueError("store : un fichier CSV ou un score de qualité au moins")
+        return self
+
+    def files(self) -> int:
+        return (self.instruments_csv is not None) + (self.transactions_csv is not None)
+
+
 class Expect(_Data):
     status: tuple[Status, ...] = ("complete",)
     sourced: bool = False  # sources cited in the synthesis and the development, none invalid
@@ -206,6 +241,7 @@ class Expect(_Data):
     figures: tuple[ExpectedFigure, ...] = ()  # recomputed by their tool and cited in the answer
     mentions: tuple[str, ...] = ()  # substrings of the answer, case and spaces ignored
     absent: tuple[str, ...] = ()  # never in the answer, case and spaces ignored
+    refused_imports: int = Field(default=0, ge=0, le=2)  # files of `store` the import refuses (R5)
     offline: ExpectOffline = ExpectOffline()
 
     @model_validator(mode="after")
@@ -226,7 +262,15 @@ class Case(_Data):
     hits: tuple[Hit, ...] = ()  # search results; by default, the case's own pages
     pages: tuple[PageFixture, ...] = ()
     offline: Offline = Offline()
+    store: StoreFixture | None = None  # added to the case's copy of the reference store
     expect: Expect = Expect()
+
+    @model_validator(mode="after")
+    def _refusals_of_files(self) -> Case:
+        files = 0 if self.store is None else self.store.files()
+        if self.expect.refused_imports > files:
+            raise ValueError(f"refused_imports : {files} fichier(s) seulement dans store")
+        return self
 
     def search_hits(self) -> tuple[Hit, ...]:
         if self.hits:

@@ -149,11 +149,13 @@ def load_results(out_dir: Path, suite: Suite, run: str) -> dict[str, dict[str, A
 
 
 def _thresholds(suite: Suite, config: Config, root: Path) -> dict[str, float]:
-    """Pass rate per group: the file's own, never below ``config/evals.yaml`` (R9)."""
+    """Pass rate per group: the file's own, never below ``config/evals.yaml`` (R9). A case that
+    names its own group (a theme of the file) takes the file's rate too."""
     floor = float(config.evals.thresholds.behavior_suites_R1_to_R5_pass_rate)
     thresholds: dict[str, float] = {}
     for file in suite_files(suite, root):
-        thresholds[file.group] = max(thresholds.get(file.group, 0.0), file.pass_rate, floor)
+        for group in dict.fromkeys([file.group, *(case.group for case in file.cases)]):
+            thresholds[group] = max(thresholds.get(group, 0.0), file.pass_rate, floor)
     return thresholds
 
 

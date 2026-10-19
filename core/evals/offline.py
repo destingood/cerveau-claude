@@ -5,7 +5,8 @@ descriptions and schemas, same policy check, budget charge and TOOL_CALL entry a
 Only the network is replaced: the search provider and the page reader answer from the case's
 pages and ``evals/fixtures/web.yaml``. The five finance servers run for real too, in memory, on
 a copy of the fictitious reference store read at ``REFERENCE_READ_AT`` (ADR-023): never on the
-store of Lucas.
+store of Lucas. A case that adds files or quality scores to the store gets a copy of its own,
+built with the real import functions: a trapped file is refused as Lucas's import would refuse it.
 
 Offline (CI), scripted models answer instead of Claude. They follow the case: the classifier and
 the router return its verdicts, the reader returns its honest extracts (or the trap of a page when
@@ -21,12 +22,13 @@ import json
 import math
 import re
 import shutil
+import sqlite3
 import tempfile
 import unicodedata
 from collections.abc import AsyncIterator, Callable, Mapping, Sequence
-from contextlib import asynccontextmanager
+from contextlib import asynccontextmanager, closing
 from dataclasses import dataclass, field
-from datetime import UTC, datetime
+from datetime import UTC, datetime, timedelta
 from functools import cache
 from pathlib import Path
 from typing import Any
@@ -41,8 +43,13 @@ from mcp.server import MCPServer
 
 from core.config import load_config
 from core.config.loader import Config
-from core.evals.cases import REPO_ROOT, Case, PageFixture, cached_web
-from core.finance.fixtures import REFERENCE_READ_AT, reference_store
+from core.evals.cases import REPO_ROOT, Case, PageFixture, QualityFixture, cached_web
+from core.finance.fixtures import REFERENCE_FETCHED_AT, REFERENCE_READ_AT, reference_store
+from core.finance.portfolio import PortfolioError, import_transactions
+from core.finance.providers.base import ProviderError
+from core.finance.schema import QUALITY_COLUMNS
+from core.finance.store import FinanceStore, FinanceStoreError
+from core.finance.sync import import_instruments
 from core.guardrails.pii import PiiAnalyzer, Pseudonymiser
 from core.mcp.adapter import McpPlugin, RequestScope
 from core.models.router import ModelRequest, ModelRouter
@@ -65,6 +72,7 @@ WEB_PLUGIN = REPO_ROOT / "plugins" / "web_research"
 FIXTURE_NOW = datetime(2026, 10, 18, 12, 0, tzinfo=UTC)
 # A run that reads the reference store is dated when the tools read it (R10): never before.
 FINANCE_NOW = REFERENCE_READ_AT
+IMPORTED_AT = REFERENCE_FETCHED_AT + timedelta(minutes=30)  # a case's files, before it is read
 FIXTURE_PROVIDER = "fixtures"
 CHARS_PER_TOKEN = 4  # offline cost estimate: no tokenizer, no cache (labelled « simulé »)
 # Values an offline run needs and the repository leaves to Lucas (R7): a temporary copy only.
@@ -169,6 +177,67 @@ def finance_store() -> Path:
     return reference_store(directory / "finance.db")
 
 
+def _record_quality(store: FinanceStore, fixture: QualityFixture) -> None:
+    """A score of ``fixture.score`` on every sub-score; the details are those of the series'
+    last recorded score, so that the record reads like a real one."""
+    history = store.quality_history(fixture.instrument_id)
+    if not history:
+        raise ValueError(f"{fixture.instrument_id} : aucun score de référence à compléter")
+    store.record_quality(
+        fixture.instrument_id,
+        as_of=fixture.assessed_at,
+        sub_scores=dict.fromkeys(QUALITY_COLUMNS, fixture.score),
+        score=fixture.score,
+        details=str(history[-1]["details"]),
+        computed_at=fixture.computed_at or fixture.assessed_at,
+    )
+
+
+def case_store(case: Case, directory: Path) -> tuple[Path, tuple[str, ...]]:
+    """The store the case's run reads, and the reasons of the imports refused (R5).
+
+    Without ``case.store``, the shared reference store. Otherwise a copy of it in ``directory``,
+    to which the case's CSV files are imported as Lucas would import them (instruments first,
+    then transactions), then its quality scores recorded. A refused file changes nothing.
+    """
+    fixture = case.store
+    if fixture is None:
+        return finance_store(), ()
+    path = directory / "finance.db"
+    with (
+        closing(sqlite3.connect(finance_store())) as source,
+        closing(sqlite3.connect(path)) as copy,
+    ):
+        source.backup(copy)
+    at = fixture.imported_at or IMPORTED_AT
+    refused: list[str] = []
+    with FinanceStore.open(path) as store:
+        imports: list[tuple[str, str | None, Callable[[Path], object]]] = [
+            (
+                "instruments.csv",
+                fixture.instruments_csv,
+                lambda file: import_instruments(store, file, recorded_at=at),
+            ),
+            (
+                "transactions.csv",
+                fixture.transactions_csv,
+                lambda file: import_transactions(store, file, "cerveau", imported_at=at),
+            ),
+        ]
+        for name, text, load in imports:
+            if text is None:
+                continue
+            file = directory / name
+            file.write_text(text, encoding="utf-8")
+            try:
+                load(file)
+            except (ProviderError, PortfolioError, FinanceStoreError) as exc:
+                refused.append(_plain(str(exc)))
+        for quality in fixture.quality:
+            _record_quality(store, quality)
+    return path, tuple(refused)
+
+
 ServerFactory = Callable[[Path, Path], MCPServer]  # (store, config directory) → server
 FINANCE_SERVERS: dict[str, ServerFactory] = {
     "finance_data": lambda store, _config: finance_data_server(store, clock=lambda: FINANCE_NOW),
@@ -244,14 +313,15 @@ class LoggedToolbox:
 
 
 def finance_toolboxes(
-    log: FinanceLog, config_dir: Path = REPO_ROOT / "config"
+    log: FinanceLog, config_dir: Path = REPO_ROOT / "config", store: Path | None = None
 ) -> dict[str, ToolboxOpener]:
-    """The real finance servers and MCP adapter, in memory, on the reference store."""
+    """The real finance servers and MCP adapter, in memory, on ``store`` (by default, the
+    reference store)."""
 
     def opener(name: str, factory: ServerFactory) -> ToolboxOpener:
         @asynccontextmanager
         async def open_toolbox(scope: RequestScope) -> AsyncIterator[Toolbox]:
-            server = factory(finance_store(), config_dir)
+            server = factory(store or finance_store(), config_dir)
             async with McpPlugin(REPO_ROOT / "plugins" / name, scope, target=server) as plugin:
                 yield LoggedToolbox(McpToolbox(plugin), log)
 
@@ -262,7 +332,9 @@ def finance_toolboxes(
 
 def uses_finance(case: Case) -> bool:
     """A case whose run reads the reference store, so is dated when the store is read."""
-    return case.group == "finance" or bool(case.offline.calls or case.expect.tools)
+    return case.group == "finance" or bool(
+        case.offline.calls or case.expect.tools or case.store is not None
+    )
 
 
 # --- scripted models ---------------------------------------------------------------------------
@@ -407,15 +479,28 @@ def _limits(log: FinanceLog) -> list[str]:
     return list(dict.fromkeys(lines))
 
 
+def _assumptions(result: Mapping[str, Any]) -> list[str]:
+    """The assumptions a tool states, labelled by the tool itself (R12), wherever they are."""
+    method = result.get("method")
+    found = [*(result.get("assumptions") or ())]
+    if isinstance(method, Mapping):
+        found += method.get("assumptions") or ()
+    return [str(text) for text in found if str(text).strip()]
+
+
 def _frame(log: FinanceLog) -> list[str]:
-    """The frame of the analysis as the tools state it: their notice and their status (R16)."""
+    """The frame of the analysis as the tools state it: their notice, their status (R16), their
+    parity label and their labelled assumptions (R12), each once."""
     lines: list[str] = []
-    for _tool, result in log.results():
+    for tool, result in log.results():
         if result.get("notice"):
             lines.append(f"Cadre : {_plain(str(result['notice']))}.")
         if result.get("status") == "analyse":
             level = _plain(str(result.get("autonomy_level") or ""))
             lines.append(f"Statut : analyse au niveau {level} ; aucun ordre n'est passé.")
+        if result.get("parity_label"):
+            lines.append(f"Étiquette de {tool} : {_plain(str(result['parity_label']))}.")
+        lines += [f"Convention de {tool} : {_plain(text)}." for text in _assumptions(result)]
     return list(dict.fromkeys(lines))
 
 

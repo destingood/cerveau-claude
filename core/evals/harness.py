@@ -32,6 +32,7 @@ from core.evals.offline import (
     Pilot,
     Recorder,
     WebLog,
+    case_store,
     finance_toolboxes,
     fixture_toolbox,
     offline_config,
@@ -183,6 +184,7 @@ def _outcome(
     recorder: Recorder,
     log: WebLog,
     reader: FixtureReader,
+    refused: tuple[str, ...] = (),
 ) -> Outcome:
     hits = case.search_hits() if log.queries else ()
     return Outcome(
@@ -198,6 +200,7 @@ def _outcome(
         now=result.now,
         tool_calls=result.tool_calls,
         tool_outputs=result.tool_outputs,
+        refused_imports=refused,
     )
 
 
@@ -258,6 +261,9 @@ async def _offline(case: Case, root: Path, run: str) -> CaseResult:
             kill = home / KILL_SWITCH_FILE
             kill.parent.mkdir(parents=True)
             kill.write_text("éval R4\n", encoding="utf-8")
+        data = home / "finance"
+        data.mkdir()
+        store, refused = case_store(case, data)
         orchestrator = Orchestrator(
             config,
             project_root=home,
@@ -265,7 +271,7 @@ async def _offline(case: Case, root: Path, run: str) -> CaseResult:
             router=scripted_router(config, pilot),
             toolboxes={
                 WEB_PLUGIN: fixture_toolbox(case, log, root),
-                **finance_toolboxes(finance, root / "config"),
+                **finance_toolboxes(finance, root / "config", store),
             },
             pseudonymiser=lambda: presidio(config),
             callbacks=(recorder,),
@@ -274,7 +280,7 @@ async def _offline(case: Case, root: Path, run: str) -> CaseResult:
         )
         result = await orchestrator.ask(case.question)
         payload = decision_payload(journal, result.request_id)
-    outcome = _outcome(case, "offline", result, payload, recorder, log, reader)
+    outcome = _outcome(case, "offline", result, payload, recorder, log, reader, refused)
     return _result(outcome, result, run)
 
 
@@ -294,21 +300,23 @@ async def _live(case: Case, root: Path, run: str) -> CaseResult:
     reader = FixtureReader(case, log, root)
     # Live, the request keeps the real clock (budgets of the day); the finance tools still read
     # the reference store at its own date, so a finance question names its dates (ADR-023).
-    orchestrator = Orchestrator(
-        config,
-        project_root=root,
-        journal=journal,
-        router=router,
-        toolboxes={
-            WEB_PLUGIN: fixture_toolbox(case, log, root),
-            **finance_toolboxes(finance, live_config_dir(root)),
-        },
-        pseudonymiser=lambda: presidio(config),
-        callbacks=(recorder,),
-    )
-    result = await orchestrator.ask(case.question)
+    with tempfile.TemporaryDirectory(prefix="cerveau-eval-", ignore_cleanup_errors=True) as tmp:
+        store, refused = case_store(case, Path(tmp))
+        orchestrator = Orchestrator(
+            config,
+            project_root=root,
+            journal=journal,
+            router=router,
+            toolboxes={
+                WEB_PLUGIN: fixture_toolbox(case, log, root),
+                **finance_toolboxes(finance, live_config_dir(root), store),
+            },
+            pseudonymiser=lambda: presidio(config),
+            callbacks=(recorder,),
+        )
+        result = await orchestrator.ask(case.question)
     payload = decision_payload(journal, result.request_id)
-    outcome = _outcome(case, "live", result, payload, recorder, log, reader)
+    outcome = _outcome(case, "live", result, payload, recorder, log, reader, refused)
     judgement = None
     pack = case.group if case.suite == "golden" else "generaliste"
     threshold = golden_threshold(config, pack)
