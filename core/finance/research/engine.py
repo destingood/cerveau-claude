@@ -114,7 +114,9 @@ class _Dividend:
     quantity: int = 0
 
 
-def _calendar(history: MarketHistory, start: date, end: date) -> tuple[list[date], np.ndarray]:
+def common_calendar(
+    history: MarketHistory, start: date, end: date
+) -> tuple[list[date], np.ndarray]:
     """The common sessions of [start, end] and the final closes, one column per instrument."""
     if end <= start:
         raise BacktestError("la fenêtre du backtest doit compter au moins deux jours")
@@ -161,7 +163,7 @@ def run(
     """
     if not math.isfinite(initial_cash) or initial_cash <= 0:
         raise BacktestError("le cash initial doit être positif")
-    sessions, closes = _calendar(history, start, end)
+    sessions, closes = common_calendar(history, start, end)
     instruments = history.instruments
     count = len(sessions)
     days = np.array(sessions, dtype="datetime64[D]")
