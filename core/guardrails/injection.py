@@ -56,7 +56,8 @@ _SIGNALS: dict[str, re.Pattern[str]] = {
         ),
         "balise_role": (
             r"<\s*/?\s*(?:donnees_externes|system|assistant|user|human|instructions?)\b|"
-            r"\[/?(?:inst|system|assistant|user|human)\]|<\|[a-z_]+\|>|"
+            r"\[\s*/?\s*(?:inst|system|assistant|user|human)\s*\]|<\|[a-z_]+\|>|"
+            r"<<\s*/?\s*sys\s*>>|(?:^|[.!?]\s)(?:system|assistant|developer)\s*:|"
             r"(?:^|\s)#{1,6}\s*(?:system|instructions?)\b"
         ),
         "dissimulation": (
