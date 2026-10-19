@@ -13,8 +13,8 @@ from pathlib import Path
 
 from . import index as idx
 from . import journal, search
-from .common import (BRAIN_DIR, BRAIN_PY, CMD, SESSIONS_DIR, STATE_DIR, budget_chars, fold, load_config, log, now_iso,
-                     read_json, read_stdin_json, short, tokenize, write_json)
+from .common import (BRAIN_DIR, BRAIN_PY, CMD, SESSIONS_DIR, STATE_DIR, budget_chars, days_since, fold, load_config, log,
+                     now_iso, read_json, read_stdin_json, set_config, short, tokenize, write_json)
 from .store import TYPES, Brain, bump_hits, bump_used
 
 OBS_HOW = (f"une ligne courte chacune, priorisées (🔴 décision, blocage, préférence · 🟡 avancée, constat · 🟢 détail) : "
@@ -231,12 +231,18 @@ def on_session_start(data, cfg):
     st.update({"cwd": cwd, "project": proj["id"] if proj else None, "wiki": bool(wiki_root)})
     eco_line = ""
     ecfg = cfg.get("eco") or {}
-    if ecfg.get("auto", True) and not ecfg.get("applique_le"):
-        try:  # mode éco : réglages officiels de Claude Code posés UNE fois (annulable : `brain eco --annuler`)
+    if (ecfg.get("auto", True) and not ecfg.get("applique_le")) or ecfg.get("annonce"):
+        try:  # mode éco : réglages posés UNE fois (annulable : `brain eco --annuler`) + annonce de la veille des plugins
             from . import eco
-            eco_line = eco.auto_start(cfg)
+            eco_line = eco.start(cfg)
         except Exception as exc:
             log(f"éco (démarrage) : {exc!r}")
+    if ecfg.get("plugins_auto") and days_since(ecfg.get("plugins_vus_le")) >= 1:
+        try:  # veille quotidienne des plugins inutilisés : en arrière-plan (le parcours des transcripts ne tient pas dans le hook)
+            set_config("eco.plugins_vus_le", now_iso())  # jour réservé : une autre session qui démarre n'en lance pas une 2e
+            spawn_background(["eco", "--plugins-auto"])
+        except Exception as exc:
+            log(f"éco (veille des plugins) : {exc!r}")
     if source == "resume" and st.get("started"):
         # Reprise : l'injection de départ est encore dans l'historique (7 reprises sur 7) → les nouveautés seulement.
         text = idx.resume_delta(brain, st.get("injected_at") or st["started"], cfg)

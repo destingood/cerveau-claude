@@ -224,19 +224,15 @@ c, out = W.run("eco", "--appliquer", "--forcer")
 check(c == 0 and W.settings().get("bashOutputMaxChars") == 10000, "variables d'environnement : posé avec --forcer", out)
 
 # ------------------------------------------------------------------ 7. plugins jamais utilisés
-W = World("plugins")
 DAY = 86400
 iso = lambda days: time.strftime("%Y-%m-%dT%H:%M:%S.000Z", time.gmtime(time.time() - days * DAY))  # noqa: E731
 entry = lambda name, days=100: [{"scope": "user", "installPath": f"/x/{name}", "version": "1.0.0",  # noqa: E731
                                  "installedAt": iso(days), "lastUpdated": iso(days)}]
-(W.home / "plugins").mkdir()
-(W.home / "plugins" / "installed_plugins.json").write_text(json.dumps({"version": 2, "plugins": {
-    "alpha@marche": entry("alpha"), "beta@marche": entry("beta"), "gamma@marche": entry("gamma"),
-    "delta@marche": entry("delta"), "epsilon@marche": entry("epsilon", 1), "zeta@marche": entry("zeta"),
-    "cerveau@cerveau": entry("cerveau")}}), encoding="utf-8")
 SKILLS = "\n".join([f"- alpha:run: {'a' * 300}", f"- beta:go: {'b' * 300}", f"- gamma:one: {'g' * 1500}",
                     f"- gamma:two: {'h' * 1500}", f"- delta:x: {'d' * 300}", "- brain: ce plugin-ci"])
 GAMMA_CHARS = len(f"- gamma:one: {'g' * 1500}") + len(f"- gamma:two: {'h' * 1500}") + 2
+AI_SKILLS = "\n".join([f"- anthropic-skills:docx: {'x' * 400}", f"- anthropic-skills:pdf: {'y' * 400}"])  # skills de claude.ai
+AI_CHARS = sum(len(x) + 1 for x in AI_SKILLS.split("\n"))
 
 
 def usage(ctx):
@@ -270,17 +266,31 @@ def write_transcript(path, lines, age_days=0):
         os.utime(path, (t, t))
 
 
-write_transcript(W.home / "projects" / "-work" / "ancienne.jsonl", [
-    prompt("vieux"), asst("o1", 9000, ("Skill", {"skill": "gamma:one"}))], age_days=40)  # hors des 30 jours
-write_transcript(W.home / "projects" / "-work" / "session-a.jsonl", [
-    att("skill_listing", "The following skills are available:\n\n" + SKILLS, content=SKILLS, skillCount=6, isInitial=True),
-    prompt("bonjour"),
-    asst("a1", 20000, ("Skill", {"skill": "alpha:run"})), result("a1", 0),
-    asst("a2", 21000, ("mcp__plugin_beta_srv__do", {})), result("a2", 0),
-    asst("a3", 22000, ("Bash", {"command": "ls"})), result("a3", 0, "x"),
-    {"type": "user", "message": {"role": "user", "content": "<command-name>/zeta:go</command-name>"}},
-    asst("a4", 23000)])
-W.write_settings({"theme": "dark", "enabledPlugins": {"delta@marche": False, "alpha@marche": True}})
+def plugin_world(name, ai=None, **settings):
+    """Faux PC avec 8 plugins installés et une session. ai : None (pas de skills claude.ai listées), « inutilisees »
+    (listées, aucune n'a servi) ou « utilisee » (listées, l'une a servi)."""
+    W = World(name)
+    (W.home / "plugins").mkdir()
+    (W.home / "plugins" / "installed_plugins.json").write_text(json.dumps({"version": 2, "plugins": {
+        "alpha@marche": entry("alpha"), "beta@marche": entry("beta"), "gamma@marche": entry("gamma"),
+        "delta@marche": entry("delta"), "epsilon@marche": entry("epsilon", 1), "zeta@marche": entry("zeta"),
+        "omega@marche": entry("omega"), "cerveau@cerveau": entry("cerveau")}}), encoding="utf-8")
+    listing = SKILLS + ("\n" + AI_SKILLS if ai else "")
+    write_transcript(W.home / "projects" / "-work" / "ancienne.jsonl", [
+        prompt("vieux"), asst("o1", 9000, ("Skill", {"skill": "gamma:one"}))], age_days=40)  # hors des 30 jours
+    write_transcript(W.home / "projects" / "-work" / "session-a.jsonl", [
+        att("skill_listing", "The following skills are available:\n\n" + listing, content=listing, skillCount=6, isInitial=True),
+        prompt("bonjour"),
+        asst("a1", 20000, ("Skill", {"skill": "alpha:run"})), result("a1", 0),
+        asst("a2", 21000, ("mcp__plugin_beta_srv__do", {})), result("a2", 0),
+        asst("a3", 22000, ("Bash", {"command": "ls"})), result("a3", 0, "x"),
+        {"type": "user", "message": {"role": "user", "content": "<command-name>/zeta:go</command-name>"}},
+        asst("a4", 23000)] + ([asst("a5", 24000, ("Skill", {"skill": "anthropic-skills:docx"}))] if ai == "utilisee" else []))
+    W.write_settings({"theme": "dark", "enabledPlugins": {"delta@marche": False, "alpha@marche": True}, **settings})
+    return W
+
+
+W = plugin_world("plugins")
 before_plugins = W.settings()
 c, out = W.run("eco")
 want = f"gamma@marche ≈ {GAMMA_CHARS / 2.2 / 1000:.1f} k tokens"  # 3,0 k car. ÷ 2,2 car./token
@@ -461,8 +471,8 @@ W = World("defauts")
 c, out = W.run("config", "stop_reminder.repeat_after")
 check(out.strip() == "150", "rappel de fin de tâche : repeat_after 150 par défaut", out)
 c, out = W.run("config", "eco")
-check('"auto": true' in out and "10000" in out and "200000" in out and "150000" in out and "300000" in out,
-      "configuration eco par défaut", out)
+check('"auto": true' in out and "10000" in out and "200000" in out and "150000" in out and "300000" in out
+      and '"plugins_auto": false' in out, "configuration eco par défaut (veille des plugins coupée)", out)
 c, out = W.run("--version")
 check("8.5.0" in out, "version 8.5.0", out)
 W.write_settings({"theme": "dark"})
@@ -481,11 +491,98 @@ check(c == 0 and not W.settings_file.exists() and "laissé de côté" in out, "o
 # ------------------------------------------------------------------ 11. référence et README
 from brainkit import install, publish  # noqa: E402
 
-check("`eco`" in install.SKILL and "eco --annuler" in install.SKILL and "eco --desactiver" in install.SKILL,
-      "SKILL : eco dans la référence des commandes")
+check("`eco`" in install.SKILL and "eco --annuler" in install.SKILL and "eco --desactiver" in install.SKILL
+      and "eco --plugins-auto" in install.SKILL, "SKILL : eco dans la référence des commandes")
 check("mode éco" in publish.readme("Moi", "moi/depot"), "README : le mode éco est présenté")
 c, out = World("aide").run("econome")
 check(c == 0 and "Mode éco" in out, "alias « econome »", out)
+
+# ------------------------------------------------------------------ 12. veille quotidienne des plugins inutilisés
+def wait_for(fn, timeout=40):
+    end = time.time() + timeout
+    while time.time() < end:
+        if fn():
+            return True
+        time.sleep(0.2)
+    return False
+
+
+W = plugin_world("veille", ai="inutilisees")
+original = W.settings()
+c, out = W.run("eco")
+check("veille quotidienne des plugins inutilisés : non" in out and "--plugins-auto" in out and "omega@marche (aucune skill listée" in out,
+      "eco : la veille est présentée (coupée par défaut), un plugin sans skill listée est signalé « à vérifier »", out)
+c, out = W.run("eco", "--plugins-auto")
+now = W.settings()
+saved = (GAMMA_CHARS + AI_CHARS) / 2.2
+check(c == 0 and "⚡ Mode éco : 1 plugin(s) inutilisé(s) depuis 30 jours désactivé(s) (gamma@marche)" in out
+      and "skills claude.ai non chargées" in out and f"≈{saved / 1000:.1f} k tokens de moins par session" in out
+      and "eco --annuler" in out, "--plugins-auto : annonce (plugin désactivé, skills claude.ai coupées, tokens gagnés)", out)
+check(now["enabledPlugins"] == {"delta@marche": False, "alpha@marche": True, "gamma@marche": False}
+      and now.get("syncClaudeAiSkills") is False and now["theme"] == "dark",
+      "--plugins-auto : le plugin inutilisé désactivé, syncClaudeAiSkills false ; omega (sans skill listée), alpha, beta, zeta, "
+      "epsilon et le cerveau intacts", now)
+check(W.config("eco.plugins_auto") is True and W.config("eco.plugins_vus_le") and W.config("eco.annonce") == out.splitlines()[0]
+      and (W.home / "settings.json.bak-cerveau-eco").exists(),
+      "--plugins-auto : veille activée, jour noté, annonce gardée, copie de sécurité faite", W.config("eco"))
+c, msg, out = W.hook("session-start", "v1")
+ctx = context_of(msg)
+check("⚡ Mode éco : 1 plugin(s) inutilisé(s)" in ctx and "skills claude.ai non chargées" in ctx and not W.config("eco.annonce"),
+      "démarrage suivant : l'annonce est montrée (et effacée)", out[-500:])
+c, msg, out = W.hook("session-start", "v2")
+check(c == 0 and "skills claude.ai non chargées" not in context_of(msg), "l'annonce n'est montrée qu'une fois", out[-300:])
+c, out = W.run("eco")
+check("veille quotidienne des plugins inutilisés : oui" in out and "plugins-auto off" in out, "eco : la veille est dite active", out)
+c, out = W.run("eco", "--annuler")
+check(c == 0 and W.settings() == original and "réactivé" in out and "syncClaudeAiSkills retiré" in out,
+      "--annuler remet tout : plugin réactivé, syncClaudeAiSkills retiré, réglages comme avant", W.settings())
+check(W.config("eco.plugins_auto") is False and not W.config("eco.annonce"), "--annuler coupe aussi la veille", W.config("eco"))
+
+# une skill de claude.ai a servi → on n'y touche pas ; une valeur de l'utilisateur est respectée
+W = plugin_world("veille-usage", ai="utilisee")
+c, out = W.run("eco", "--plugins-auto")
+check(c == 0 and "syncClaudeAiSkills" not in W.settings() and "skills claude.ai" not in out and "gamma@marche" in out
+      and W.settings()["enabledPlugins"].get("gamma@marche") is False,
+      "skills claude.ai utilisée : syncClaudeAiSkills n'est pas touché, le plugin inutilisé est quand même désactivé", out)
+W = plugin_world("veille-valeur", ai="inutilisees", syncClaudeAiSkills=True)
+c, out = W.run("eco", "--plugins-auto", "on")
+check(c == 0 and W.settings()["syncClaudeAiSkills"] is True and "skills claude.ai" not in out,
+      "syncClaudeAiSkills réglé par l'utilisateur : respecté", W.settings())
+W = World("veille-vide")
+c, out = W.run("eco", "--plugins-auto")
+check(c == 0 and "rien à retirer" in out and W.config("eco.plugins_auto") is True and not W.config("eco.annonce")
+      and not W.settings_file.exists(), "rien à retirer : dit tel quel, aucun réglage écrit", out)
+W.settings_file.write_text("{ cassé", encoding="utf-8")
+c, out = W.run("eco", "--plugins-auto")
+check(c != 0 and "illisible" in out and W.settings_file.read_text(encoding="utf-8") == "{ cassé",
+      "--plugins-auto : réglages illisibles, rien n'est touché", out)
+
+# lancée toute seule au démarrage, en arrière-plan, au plus une fois par jour ; coupée par « off »
+W = plugin_world("veille-fond")
+W.run("config", "eco.plugins_auto", "true")
+W.run("config", "eco.plugins_vus_le", '"2000-01-01T00:00:00"')
+before = W.settings()
+c, msg, out = W.hook("session-start", "f1")
+claimed = W.config("eco.plugins_vus_le")
+check(c == 0 and claimed != "2000-01-01T00:00:00", "démarrage : veille due → jour réservé et tâche lancée en arrière-plan", out[-300:])
+check(wait_for(lambda: W.config("eco.annonce")) and W.settings()["enabledPlugins"].get("gamma@marche") is False
+      and "syncClaudeAiSkills" not in W.settings(), "la tâche de fond désactive le plugin inutilisé (pas de skills claude.ai listées)",
+      W.settings())
+time.sleep(1)
+c, msg, out = W.hook("session-start", "f2")
+check("⚡ Mode éco : 1 plugin(s) inutilisé(s)" in context_of(msg), "démarrage suivant : l'annonce de la tâche de fond", out[-400:])
+half_day = time.strftime("%Y-%m-%dT%H:%M:%S", time.localtime(time.time() - 12 * 3600))
+W.run("config", "eco.plugins_vus_le", json.dumps(half_day))
+c, msg, out = W.hook("session-start", "f3")
+time.sleep(1.5)
+check(W.config("eco.plugins_vus_le") == half_day, "veille faite il y a moins d'un jour : pas relancée", W.config("eco"))
+W.run("config", "eco.plugins_vus_le", '"2000-01-01T00:00:00"')
+c, out = W.run("eco", "--plugins-auto", "off")
+check(c == 0 and W.config("eco.plugins_auto") is False and "coupée" in out, "--plugins-auto off : veille coupée", out)
+c, msg, out = W.hook("session-start", "f4")
+time.sleep(1.5)
+check(W.config("eco.plugins_vus_le") == "2000-01-01T00:00:00", "veille coupée : rien n'est lancé au démarrage", W.config("eco"))
+time.sleep(0.5)
 
 shutil.rmtree(TMP, ignore_errors=True)
 print(f"\n{len(OK)} vérifications OK, {len(FAIL)} échec(s)")

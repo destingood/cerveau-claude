@@ -51,8 +51,10 @@ DEFAULT_CONFIG = {
     # Mode éco (`brain eco`) : réglages officiels de Claude Code posés une fois dans ~/.claude/settings.json (sorties de
     # commandes longues mises en fichier, conversation résumée plus tôt) ; alerte à l'utilisateur quand la conversation
     # passe ces tailles (tokens) : chaque message la relit en entier. `eco.auto` false = ne rien poser tout seul.
+    # `plugins_auto` (à activer : `brain eco --plugins-auto`) : veille quotidienne, en arrière-plan, qui désactive les plugins
+    # sans usage depuis 30 jours et coupe les skills claude.ai si aucune n'a servi.
     "eco": {"auto": True, "bash_output_max_chars": 10000, "auto_compact_window": 200000,
-            "alerte_contexte": [150000, 300000]},
+            "alerte_contexte": [150000, 300000], "plugins_auto": False},
     # Cartographie automatique (en arrière-plan) des dossiers de projet.
     "auto_map": {"enabled": True, "refresh_minutes": 10},
     "map": {"max_files": 15000, "max_file_kb": 768},

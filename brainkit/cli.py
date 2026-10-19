@@ -1167,7 +1167,7 @@ def cmd_optimize(a):
 
 def cmd_eco(a):
     from . import eco
-    code, text = eco.run(a.appliquer, a.annuler, a.forcer, a.sortie, a.fenetre, a.desactiver)
+    code, text = eco.run(a.appliquer, a.annuler, a.forcer, a.sortie, a.fenetre, a.desactiver, a.plugins_auto)
     print(text)
     return code
 
@@ -1694,6 +1694,9 @@ def build_parser():
     s.add_argument("--fenetre", type=int, help="autoCompactWindow en tokens, de 100000 à 1000000 (défaut 200000)")
     s.add_argument("--desactiver", nargs="+", metavar="nom@marketplace",
                    help="désactiver ces plugins inutilisés (après accord de l'utilisateur ; --annuler les réactive)")
+    s.add_argument("--plugins-auto", nargs="?", const="on", choices=["on", "off"],
+                   help="veille quotidienne : désactive tout seul les plugins sans usage depuis 30 j et coupe les skills "
+                        "claude.ai si aucune n'a servi (on : active et lance tout de suite ; off : coupe)")
     s = cmd("history", cmd_history, "instantanés du cerveau (pour revenir en arrière) — --diff <n°|date>", ["historique"])
     s.add_argument("-n", type=int, default=15)
     s.add_argument("--diff", help="ce qui a changé depuis un instantané (n°) ou une date")

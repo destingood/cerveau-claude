@@ -7,7 +7,8 @@ Trois leviers officiels de Claude Code, tous réversibles (`brain eco --annuler`
 - `autoCompactWindow` : la conversation est résumée plus tôt (avec un modèle à 1 M de tokens, Claude Code n'attend que
   vers 967 k par défaut) ;
 - les plugins installés mais jamais utilisés : leurs descriptions sont relues à chaque session. Le cerveau les liste ; il
-  ne les désactive que sur demande (`--desactiver`), après accord de l'utilisateur.
+  ne les désactive que sur demande (`--desactiver`), après accord de l'utilisateur — ou chaque jour tout seul, en arrière-plan,
+  si l'utilisateur active la veille (`--plugins-auto`) : avec les skills claude.ai (`syncClaudeAiSkills`) si aucune n'a servi.
 
 Ces réglages vivent dans les réglages UTILISATEUR (`~/.claude/settings.json`) : le settings.json d'un plugin ne peut pas
 les poser. Le cerveau n'écrase jamais une valeur posée par l'utilisateur (sans `--forcer`), garde une copie du fichier
@@ -33,6 +34,8 @@ PREVIEW_CHARS = 2000   # ce que Claude garde d'une sortie mise en fichier
 UNUSED_DAYS = 30       # un plugin sans aucun usage dans les transcripts de cette période est « inutilisé »
 RECENT_DAYS = 14       # installé depuis moins longtemps : pas assez de recul pour le dire inutilisé
 OWN_PLUGIN = "cerveau"  # jamais proposé : c'est ce plugin-ci
+CLAUDE_AI = "anthropic-skills"  # préfixe des skills de claude.ai synchronisées dans Claude Code
+SYNC_KEY = "syncClaudeAiSkills"  # le réglage (documenté) qui coupe cette synchronisation
 ABSENT = object()      # « clé absente » (jamais écrit dans un fichier)
 
 
@@ -295,7 +298,7 @@ def apply_report(cfg=None) -> tuple:
 
 def undo() -> tuple:
     """Remet exactement l'état d'avant (clés retirées ou valeurs d'origine rétablies, plugins réactivés), efface
-    l'enregistrement et coupe l'application automatique. → (code, texte)."""
+    l'enregistrement et coupe l'application automatique et la veille des plugins. → (code, texte)."""
     settings, err = read_settings()
     if err:
         return 1, f"⚠ {err}"
@@ -339,8 +342,9 @@ def undo() -> tuple:
                 _write(path, new)
         except OSError as exc:
             return 1, f"⚠ écriture de {path} impossible ({exc}) : rien n'a été modifié"
-    _unset("eco.avant", "eco.pose", "eco.applique_le")
+    _unset("eco.avant", "eco.pose", "eco.applique_le", "eco.annonce", "eco.plugins_vus_le")
     set_config("eco.auto", False)
+    set_config("eco.plugins_auto", False)  # sinon la veille referait demain ce qui vient d'être défait
     if not lignes:
         lignes.append("✓ rien à restaurer dans settings.json")
     lignes.append(f"✓ mode éco annulé : plus rien n'est posé tout seul (`{CMD} eco --appliquer` pour le remettre)")
@@ -388,7 +392,9 @@ _COMMAND = re.compile(rb"<command-name>/?([^<\s\\]+)</command-name>")
 
 
 def _scan(names, days=UNUSED_DAYS):
-    """Transcripts des `days` derniers jours → (plugins utilisés parmi `names`, dernière liste de skills vue)."""
+    """Transcripts des `days` derniers jours → (plugins utilisés parmi `names` — et « anthropic-skills » si une skill de
+    claude.ai a servi —, dernière liste de skills vue)."""
+    names = set(names) | {CLAUDE_AI}
     root = CLAUDE_HOME / "projects"
     cut = time.time() - days * 86400
     files = []
@@ -439,26 +445,34 @@ def _weight(listing, name) -> int:
     return chars
 
 
+def _audit(settings, days=UNUSED_DAYS, cpt=CHARS_PER_TOKEN, ai=False) -> tuple:
+    """→ ([(« nom@marketplace », tokens)] des plugins actifs sans aucun usage depuis `days` jours, du plus lourd au plus
+    léger ; tokens des skills claude.ai listées dont aucune n'a servi, ou None). Jamais le cerveau lui-même ; poids = leurs
+    lignes dans la dernière liste de skills. `ai` : chercher aussi les skills claude.ai (sinon, sans plugin candidat, les
+    transcripts ne sont pas parcourus)."""
+    enabled = settings.get("enabledPlugins") if isinstance(settings.get("enabledPlugins"), dict) else {}
+    cands = {key: key.partition("@")[0] for key, entries in installed_plugins().items()
+             if key.partition("@")[0] != OWN_PLUGIN and enabled.get(key) is not False and not _recent(entries)}
+    if not cands and not ai:
+        return [], None
+    used, listing = _scan(set(cands.values()), days)
+    rows = [(key, _weight(listing, name) / cpt) for key, name in cands.items() if name not in used]
+    rows.sort(key=lambda r: (-r[1], r[0]))
+    chars = _weight(listing, CLAUDE_AI)
+    return rows, (chars / cpt if ai and chars and CLAUDE_AI not in used else None)
+
+
 def unused_plugins(settings=None, days=UNUSED_DAYS, cpt=CHARS_PER_TOKEN) -> list:
-    """[(« nom@marketplace », tokens estimés par session)] des plugins actifs sans aucun usage depuis `days` jours,
-    du plus lourd au plus léger. Jamais le cerveau lui-même ; poids = leurs lignes dans la dernière liste de skills."""
+    """[(« nom@marketplace », tokens estimés par session)] des plugins actifs sans aucun usage depuis `days` jours."""
     if settings is None:
         settings, err = read_settings()
         if err:
             return []
-    enabled = settings.get("enabledPlugins") if isinstance(settings.get("enabledPlugins"), dict) else {}
-    cands = {key: key.partition("@")[0] for key, entries in installed_plugins().items()
-             if key.partition("@")[0] != OWN_PLUGIN and enabled.get(key) is not False and not _recent(entries)}
-    if not cands:
-        return []
-    used, listing = _scan(set(cands.values()), days)
-    rows = [(key, _weight(listing, name) / cpt) for key, name in cands.items() if name not in used]
-    rows.sort(key=lambda r: (-r[1], r[0]))
-    return rows
+    return _audit(settings, days, cpt)[0]
 
 
-def disable(keys) -> tuple:
-    """`--desactiver nom@marketplace …` : enabledPlugins à false (avec retour). → (code, texte)."""
+def _disable(keys) -> tuple:
+    """enabledPlugins à false pour ces plugins (avec retour). → (ok, {clé: False posée}, lignes)."""
     installed = installed_plugins()
     wants, lignes = [], []
     for given in keys:
@@ -472,10 +486,78 @@ def disable(keys) -> tuple:
         elif ("plugin", found[0], False) not in wants:
             wants.append(("plugin", found[0], False))
     ok, posees, more = commit(wants)
-    lignes += more
+    return ok and not any(x.startswith("✗") for x in lignes), posees, lignes + more
+
+
+def disable(keys) -> tuple:
+    """`--desactiver nom@marketplace …` : enabledPlugins à false (avec retour). → (code, texte)."""
+    ok, posees, lignes = _disable(keys)
     if posees:
         lignes.append(f"→ pris en compte au prochain démarrage de Claude Code · retour : `{CMD} eco --annuler`")
-    return (0 if ok and not any(x.startswith("✗") for x in lignes) else 1), "\n".join(lignes)
+    return (0 if ok else 1), "\n".join(lignes)
+
+
+def auto_plugins(force=False) -> str:
+    """Veille des plugins inutilisés (`eco.plugins_auto`), au plus une fois par jour sauf `force` : désactive ceux dont
+    aucune skill n'a servi depuis 30 jours (comme `--desactiver`) et coupe les skills claude.ai (`syncClaudeAiSkills` false)
+    si la liste en montre et qu'aucune n'a servi. Seuls les plugins qui listent des skills sont touchés : sans skill, ils
+    agissent peut-être par hooks. Copie de sécurité et retour par `--annuler` ; la valeur de l'utilisateur est respectée.
+    → l'annonce (gardée dans eco.annonce pour le prochain démarrage), ou ''."""
+    if not force and days_since((load_config().get("eco") or {}).get("plugins_vus_le")) < 1:
+        return ""
+    settings, err = read_settings()
+    if err:
+        log(f"éco (veille des plugins) : {err}")
+        return ""
+    rows, ai = _audit(settings, ai=True)
+    rows = [r for r in rows if r[1] > 0]
+    gone, saved = [], 0.0
+    if rows:
+        _, posees, _ = _disable([k for k, _ in rows])
+        gone = [k for k, t in rows if k in posees]
+        saved = sum(t for k, t in rows if k in posees)
+    skills = False
+    if ai:
+        _, posees, _ = commit([("cle", SYNC_KEY, False)])
+        skills = SYNC_KEY in posees
+        saved += ai if skills else 0
+    set_config("eco.plugins_vus_le", now_iso())
+    parts = ([f"{len(gone)} plugin(s) inutilisé(s) depuis {UNUSED_DAYS} jours désactivé(s) ({', '.join(gone)})"] if gone else []) \
+        + (["skills claude.ai non chargées"] if skills else [])
+    if not parts:
+        return ""
+    if saved:
+        parts.append(f"≈{_tok(saved)} tokens de moins par session")
+    line = f"⚡ Mode éco : {' · '.join(parts)} · retour : `{CMD} eco --annuler`"
+    set_config("eco.annonce", line)
+    return line
+
+
+def take_annonce(cfg=None) -> str:
+    """L'annonce laissée par la veille des plugins : montrée une seule fois, au démarrage suivant."""
+    note = ((cfg or load_config()).get("eco") or {}).get("annonce")
+    if note:
+        _unset("eco.annonce")
+    return note if isinstance(note, str) else ""
+
+
+def start(cfg=None) -> str:
+    """Les lignes du mode éco pour le démarrage d'une session : réglages posés une fois + annonce de la veille."""
+    return "\n".join(x for x in (auto_start(cfg), take_annonce(cfg)) if x)
+
+
+def watch_plugins(mode) -> tuple:
+    """`--plugins-auto [on|off]` → (code, texte) : « on » active la veille et la lance tout de suite."""
+    if mode == "off":
+        set_config("eco.plugins_auto", False)
+        return 0, f"✓ veille quotidienne des plugins coupée (ce qui est déjà désactivé le reste : `{CMD} eco --annuler`)"
+    settings, err = read_settings()
+    if err:
+        return 1, f"⚠ {err}"
+    set_config("eco.plugins_auto", True)
+    note = auto_plugins(force=True)
+    return 0, f"{note}\n→ pris en compte au prochain démarrage de Claude Code" if note else \
+        "✓ veille quotidienne des plugins activée : rien à retirer pour l'instant"
 
 
 # ------------------------------------------------------------------------------------------ état et commande
@@ -506,6 +588,9 @@ def status(cfg=None) -> str:
             L.append(f"  {key} : {_val(key, cur)} — réglé par toi, gardé (éco : {_val(key, target)} ; `--forcer` pour le remplacer)")
     done = f"appliqué le {str(eco['applique_le'])[:10]}" if eco.get("applique_le") else "pas encore appliqué"
     L.append(f"  {done} · automatique au démarrage : {'oui' if eco.get('auto', True) else 'non'}")
+    L.append("  veille quotidienne des plugins inutilisés : " + (
+        f"oui · `{CMD} eco --plugins-auto off` pour la couper" if eco.get("plugins_auto") else
+        f"non · `{CMD} eco --plugins-auto` pour l'activer (désactive tout seul plugins et skills claude.ai jamais utilisés)"))
     L += [f"  {w}" for w in warnings(settings)]
     rows = unused_plugins(settings)
     if rows:
@@ -519,7 +604,7 @@ def status(cfg=None) -> str:
     return "\n".join(L)
 
 
-def run(appliquer=False, annuler=False, forcer=False, sortie=None, fenetre=None, desactiver=None) -> tuple:
+def run(appliquer=False, annuler=False, forcer=False, sortie=None, fenetre=None, desactiver=None, plugins_auto=None) -> tuple:
     """Point d'entrée de `brain eco` → (code de sortie, texte)."""
     if appliquer and annuler:
         return 1, "✗ --appliquer et --annuler ensemble : choisis l'un des deux"
@@ -541,6 +626,10 @@ def run(appliquer=False, annuler=False, forcer=False, sortie=None, fenetre=None,
                 L.append(f"→ pris en compte au plus tard au prochain démarrage de Claude Code · retour : `{CMD} eco --annuler`")
     if desactiver:
         c, text = disable(desactiver)
+        L.append(text)
+        code = code or c
+    if plugins_auto:
+        c, text = watch_plugins(plugins_auto)
         L.append(text)
         code = code or c
     return code, "\n".join(L) if L else status()
