@@ -8,11 +8,14 @@ in the NautilusTrader adapter and, from phase 4, in paper trading: only the adap
 from __future__ import annotations
 
 import math
-from collections.abc import Collection, Mapping
+from collections.abc import Collection, Mapping, Sequence
+from datetime import date, time
 from numbers import Real
 from typing import Protocol
 
-from core.finance.research.view import PointInTimeView
+import pandas as pd
+
+from core.finance.research.view import MarketHistory, PointInTimeView
 
 Params = Mapping[str, int | float | str | bool]
 Weights = Mapping[str, float]
@@ -30,6 +33,21 @@ class Strategy(Protocol):
 
     def decide(self, view: PointInTimeView, params: Params) -> Weights:
         """Target weights at the view's date: long only, summing to 1 at most, the rest cash."""
+        ...
+
+
+class VectorStrategy(Strategy, Protocol):
+    """A strategy with an optional vectorised form, for the screening (ADR-024, ADR-025)."""
+
+    def weights_frame(
+        self, history: MarketHistory, params: Params, sessions: Sequence[date], cutoff: time
+    ) -> pd.DataFrame:
+        """The weights of every decision of ``sessions`` at once.
+
+        One row per session, in order, one column per instrument, NaN for no weight. It reads
+        whole arrays, where the view cannot guard a ``shift(-1)``: the truncation-invariance check
+        proves on a sample that it gives back ``decide`` (ADR-026).
+        """
         ...
 
 
