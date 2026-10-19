@@ -220,6 +220,10 @@
           "title": "Status",
           "type": "string"
         },
+        "degenerate": {
+          "title": "Degenerate",
+          "type": "boolean"
+        },
         "next_session": {
           "anyOf": [
             {
@@ -277,6 +281,7 @@
       },
       "required": [
         "status",
+        "degenerate",
         "next_session",
         "long_run",
         "alpha",
@@ -563,6 +568,37 @@
               "type": "null"
             }
           ]
+        },
+        "significant": {
+          "anyOf": [
+            {
+              "type": "boolean"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Significant"
+        },
+        "interval_low_eur": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/Figure"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "interval_high_eur": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/Figure"
+            },
+            {
+              "type": "null"
+            }
+          ]
         }
       },
       "required": [
@@ -573,7 +609,10 @@
         "estimated_eur",
         "standard_error_eur",
         "p_value",
-        "sessions"
+        "sessions",
+        "significant",
+        "interval_low_eur",
+        "interval_high_eur"
       ],
       "title": "RateSplit",
       "type": "object"

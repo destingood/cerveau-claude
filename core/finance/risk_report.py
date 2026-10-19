@@ -106,7 +106,10 @@ class Method(_Out):
 
 
 class GarchView(_Out):
-    status: Literal["estime", "non_converge"]
+    status: Literal["estime", "non_converge"]  # the fit itself
+    # A coefficient on a bound of its domain (α or β at zero, α + β at one): β and the
+    # persistence are then not given, and the forecast barely follows the latest sessions.
+    degenerate: bool
     next_session: Figure | None  # forecast standard deviation of the next session
     long_run: Figure | None  # unconditional standard deviation per session; None if α + β ≥ 1
     alpha: Figure | None
@@ -204,6 +207,11 @@ class RateSplit(_Out):
     standard_error_eur: Figure | None
     p_value: Figure | None
     sessions: Figure | None
+    # Below backtest.significance; the interval is at 1 − that level. When not significant, the
+    # estimate cannot be told from zero: only the duration part is established.
+    significant: bool | None
+    interval_low_eur: Figure | None
+    interval_high_eur: Figure | None
 
 
 class StressResult(_Out):
@@ -472,6 +480,7 @@ def _volatility(book: _Book) -> tuple[Volatility, list[str]]:
         warnings.append("GARCH : l'estimation n'a pas convergé ; aucune prévision n'est donnée")
         garch = GarchView(
             status="non_converge",
+            degenerate=False,
             next_session=None,
             long_run=None,
             alpha=None,
@@ -481,13 +490,24 @@ def _volatility(book: _Book) -> tuple[Volatility, list[str]]:
         )
     else:
         long_run = fit.long_run_sd
+        identified = not fit.degenerate
+        if not identified:
+            warnings.append(
+                "GARCH dégénéré : un coefficient touche la borne de son domaine (α ou β nul, ou "
+                "α + β proche de 1) ; β et la persistance ne sont pas donnés et la prévision, qui "
+                "réagit peu ou pas aux dernières séances, se lit avec la volatilité historique "
+                "[Hypothèse]"
+            )
         garch = GarchView(
             status="estime",
+            degenerate=not identified,
             next_session=_pct("volatilite/garch/prochaine_seance", fit.next_sd),
             long_run=None if long_run is None else _pct("volatilite/garch/long_terme", long_run),
             alpha=plain("volatilite/garch/alpha", fit.alpha, "coefficient", 3),
-            beta=plain("volatilite/garch/beta", fit.beta, "coefficient", 3),
-            persistence=plain("volatilite/garch/persistance", fit.persistence, "coefficient", 3),
+            beta=plain("volatilite/garch/beta", fit.beta, "coefficient", 3) if identified else None,
+            persistence=plain("volatilite/garch/persistance", fit.persistence, "coefficient", 3)
+            if identified
+            else None,
             note=note,
         )
     return (
@@ -841,6 +861,14 @@ def _rate_stress(book: _Book, changes: Vector | None) -> StressResult:
             not_estimated += estimated
     keys = [line.key for line in book.lines]
     base = "stress/taux"
+    significance = book.config.backtest.significance
+    bounds = sorted(b * shift for b in fit.interval(significance)) if fit else None
+    significant = None if fit is None else fit.significant(significance)
+    if significant is False:
+        reason += (
+            " ; sensibilité estimée non significative au seuil du backtest : son intervalle "
+            "contient zéro, seule la part duration est établie [Hypothèse]"
+        )
     split = RateSplit(
         series=book.config.risk_free,
         duration_lines=[keys[i] for i in by_duration],
@@ -852,6 +880,11 @@ def _rate_stress(book: _Book, changes: Vector | None) -> StressResult:
         else _eur(f"{base}/ecart_type_eur", fit.standard_error * abs(shift)),
         p_value=None if fit is None else plain(f"{base}/p_value", fit.p_value, "probabilite", 3),
         sessions=None if fit is None else count(f"{base}/seances", fit.observations, "séances"),
+        significant=significant,
+        interval_low_eur=None if bounds is None else _eur(f"{base}/intervalle_bas_eur", bounds[0]),
+        interval_high_eur=None
+        if bounds is None
+        else _eur(f"{base}/intervalle_haut_eur", bounds[1]),
     )
     total = duration_eur + (fit.slope * shift if fit else 0.0)
     return _result(
@@ -1092,7 +1125,14 @@ def _report(
         parts["contributions"] = _contributions(book)
     if "stress" in wanted:
         changes = rate_changes(store, book, as_of=as_of, day=now.day, strict=strict)
-        parts["stress"] = _stress(book, beta, changes, sector_shocks)
+        stresses = _stress(book, beta, changes, sector_shocks)
+        parts["stress"] = stresses
+        if any(s.rates is not None and s.rates.significant is False for s in stresses):
+            warnings.append(
+                "stress de taux : la sensibilité estimée des titres hors obligations n'est pas "
+                "significative (stress/taux/p_value) ; stress/taux/impact_eur l'inclut, seule "
+                "stress/taux/duration_eur est établie [Hypothèse]"
+            )
     elif sector_shocks:
         warnings.append("chocs sectoriels ignorés : la mesure stress n'est pas demandée")
     if "facteurs" in wanted:

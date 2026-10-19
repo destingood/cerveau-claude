@@ -161,6 +161,9 @@ def rolling_exceptions(
 # Volatility ------------------------------------------------------------------------------------
 
 
+BOUND_TOLERANCE = 1e-3  # a GARCH coefficient this close to a bound of its domain sits on it
+
+
 def annualized(daily: float, sessions: int) -> float:
     return daily * math.sqrt(sessions)
 
@@ -179,6 +182,15 @@ class Garch:
     @property
     def persistence(self) -> float:
         return self.alpha + self.beta
+
+    @property
+    def degenerate(self) -> bool:
+        """α or β on a bound of its domain (zero, or α + β = 1), to the third decimal the report
+        shows. It can be a true optimum, yet with α = 0 the forecast ignores the latest shocks and
+        β is not identified."""
+        return min(self.alpha, self.beta) < BOUND_TOLERANCE or (
+            self.persistence > 1.0 - BOUND_TOLERANCE
+        )
 
     @property
     def long_run_sd(self) -> float | None:
@@ -260,6 +272,14 @@ class Regression:
     standard_error: float
     p_value: float  # two-sided, Student with n − 2 degrees of freedom
     observations: int
+
+    def significant(self, significance: float) -> bool:
+        return self.p_value < significance
+
+    def interval(self, significance: float) -> tuple[float, float]:
+        """Two-sided confidence interval of the slope at 1 − ``significance`` (Student, n − 2)."""
+        t = float(stats.t.ppf(1.0 - significance / 2.0, self.observations - 2))
+        return self.slope - t * self.standard_error, self.slope + t * self.standard_error
 
 
 def regression(y: Vector, x: Vector) -> Regression:

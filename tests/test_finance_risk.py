@@ -235,6 +235,24 @@ def test_garch_recovers_known_parameters() -> None:
     assert abs(fitted.persistence - 0.98) < 0.02
     long_run = fitted.long_run_sd
     assert long_run is not None and abs(long_run / 0.01 - 1) < 0.2  # 1 % per session
+    assert not fitted.degenerate
+
+
+@pytest.mark.parametrize(
+    ("alpha", "beta", "degenerate"),
+    [
+        (0.0, 0.834, True),  # the reference portfolio: the forecast is the long-run level
+        (0.0004, 0.9, True),  # shown as 0,000
+        (0.1, 0.0, True),  # an ARCH(1): β on its lower bound
+        (0.06, 0.9395, True),  # α + β = 1 to the third decimal
+        (0.08, 0.90, False),
+    ],
+)
+def test_a_garch_on_a_bound_of_its_domain_is_degenerate(
+    alpha: float, beta: float, degenerate: bool
+) -> None:
+    fit = risk.Garch(mu=0.0, omega=0.01, alpha=alpha, beta=beta, next_sd=0.01, converged=True)
+    assert fit.degenerate is degenerate
 
 
 @given(arrays(np.float64, st.integers(1, 200), elements=st.floats(-0.3, 0.3)))
@@ -299,6 +317,21 @@ def test_regression_refuses_what_it_cannot_fit() -> None:
         risk.beta(np.arange(5.0), np.ones(5))
     exact = risk.regression(2 * np.arange(5.0), np.arange(5.0))
     assert exact.slope == pytest.approx(2.0) and exact.p_value == 0.0
+
+
+@settings(max_examples=100)
+@given(st.integers(0, 2**32 - 1), st.floats(-2.0, 2.0), st.sampled_from([0.01, 0.05, 0.10]))
+def test_a_slope_is_significant_exactly_when_its_interval_leaves_out_zero(
+    seed: int, slope: float, significance: float
+) -> None:
+    rng = np.random.default_rng(seed)
+    x = rng.normal(0, 0.01, 60)
+    fit = risk.regression(slope * x + rng.normal(0, 0.01, 60), x)
+    low, high = fit.interval(significance)
+    assert low <= fit.slope <= high
+    assert math.isclose(high - fit.slope, fit.slope - low, rel_tol=1e-9)
+    if abs(fit.p_value - significance) > 1e-9:  # away from the edge, where rounding decides
+        assert fit.significant(significance) is not (low <= 0.0 <= high)
 
 
 # Contributions and the VaR change ---------------------------------------------------------------
@@ -528,6 +561,40 @@ def test_a_sector_shock_moves_only_its_lines(store: Path) -> None:
     tech = snapshot_value(store, lambda p: p.sector == "Technologie")
     assert tech > 0
     assert close(figure(content, "stress/secteur/1/impact_eur"), -0.15 * tech)
+
+
+def test_a_rate_sensitivity_not_distinguishable_from_zero_is_said_so(store: Path) -> None:
+    """The reference equities barely follow the €STR (p ≈ 0,46): the total keeps the estimate,
+    yet the report says only the duration part is established and gives the interval."""
+    content = report(store, measures=["stress"])
+    (rates,) = [s for s in content.stress or [] if s.scenario == "taux"]
+    split = rates.rates
+    assert split is not None and split.significant is False
+    assert split.p_value is not None and split.p_value.value >= CONFIG.backtest.significance
+    low, high = (
+        figure(content, "stress/taux/intervalle_bas_eur"),
+        figure(content, "stress/taux/intervalle_haut_eur"),
+    )
+    estimate = figure(content, "stress/taux/estime_eur")
+    assert low < 0.0 < high and low < estimate < high
+    assert close(
+        figure(content, "stress/taux/impact_eur"),
+        figure(content, "stress/taux/duration_eur") + estimate,
+        rel=1e-6,
+    )
+    assert "seule la part duration est établie" in rates.note
+    assert any("stress/taux/duration_eur est établie" in w for w in content.warnings)
+
+
+def test_a_garch_with_alpha_at_zero_gives_no_beta_and_says_why(store: Path) -> None:
+    content = report(store, measures=["volatilite"])
+    assert content.volatility is not None
+    garch = content.volatility.garch
+    assert garch.status == "estime" and garch.degenerate
+    assert garch.beta is None and garch.persistence is None
+    assert garch.alpha is not None and garch.alpha.value < risk.BOUND_TOLERANCE
+    assert garch.next_session is not None  # the model's forecast, read with the history
+    assert any(w.startswith("GARCH dégénéré") for w in content.warnings)
 
 
 def test_the_report_refuses_what_it_cannot_answer(store: Path) -> None:

@@ -32,7 +32,7 @@ from pydantic import AwareDatetime, BaseModel, ConfigDict
 from core.config.loader import DataQuality
 from core.finance.adjust import AdjustmentError
 from core.finance.calendars import exchange_calendar
-from core.finance.model import utc_text
+from core.finance.model import local_date, utc_text
 from core.finance.schema import QUALITY_COLUMNS
 
 if TYPE_CHECKING:
@@ -159,7 +159,7 @@ def assess(
         return report()
     found["last_received"] = received[-1]
 
-    day = as_of.astimezone(UTC).date()
+    day = local_date(as_of)  # Paris, as everywhere else
     first_year = (day - timedelta(days=2 * window_sessions + 30)).year
     calendar = exchange_calendar(instrument.mic, first_year, day.year + 1)
     if calendar is None:
