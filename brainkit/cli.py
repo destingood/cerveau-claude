@@ -758,7 +758,7 @@ def cmd_context(a):
 
 def cmd_recall(a):
     from . import hooks
-    data = {"prompt": " ".join(a.text), "cwd": a.cwd or os.getcwd(), "session_id": None}
+    data = {"prompt": " ".join(a.text), "cwd": a.cwd or os.getcwd(), "session_id": None, "simulation": True}
     buf = io.StringIO()
     saved = hooks.bump_hits
     hooks.bump_hits = lambda ids: None
@@ -1005,9 +1005,12 @@ def cmd_doctor(a):
     from . import commun as _commun
     if _commun.member():
         ok(not _commun.state().get("conflict"), _commun.status(b).replace("\n", " · "))
+    from . import plugin as _plugin
     from .common import PLUGIN
     if PLUGIN:
         _doctor_plugin(ok)
+    if PLUGIN or _plugin.installed():
+        _doctor_python(ok)
     settings = CLAUDE_HOME / "settings.json"
     try:
         hooks = (json.loads(settings.read_text(encoding="utf-8")).get("hooks") or {}) if settings.exists() else {}
@@ -1056,6 +1059,7 @@ def cmd_doctor(a):
         age = f"carte de {fmt_date(m.get('mapped'))}" if mp.exists() else "pas de carte"
         ok(exists, f"projet `{p['id']}` : {m.get('path')} · {age}")
     ok(True, f"journal : {len(journal.load()['sessions'])} sessions")
+    _doctor_journal(ok)
     try:
         from . import fiches, observations
         od = observations.load()
@@ -1267,6 +1271,43 @@ def _doctor_plugin(ok):
         auto = ((settings.get("extraKnownMarketplaces") or {}).get(name) or {}).get("autoUpdate") is True
         ok(auto, f"mises à jour automatiques du marketplace « {name} »" + (
             "" if auto else " : désactivées (→ /plugin › marketplaces › {0} › Enable auto-update)".format(name)))
+
+
+def _doctor_python(ok):
+    """Les hooks du plugin lancent la commande `python` : s'il manque (macOS, Linux : souvent seulement `python3`), rien
+    n'est enregistré, sans aucune erreur visible."""
+    from .plugin import PYTHON_MIN, hook_python
+    exe, ver = hook_python()
+    want = ".".join(map(str, PYTHON_MIN))
+    if exe and ver and ver >= PYTHON_MIN:
+        ok(True, f"commande `python` des hooks : {'.'.join(map(str, ver))} ({exe})")
+        return
+    effet = "→ rien n'est enregistré automatiquement"
+    if not exe:
+        ok(False, f"les hooks du plugin lancent `python`, introuvable ici {effet}")
+        print('  → macOS : mkdir -p ~/.local/bin && ln -sf "$(command -v python3)" ~/.local/bin/python  (puis redémarre Claude Code)')
+        print("  → Debian/Ubuntu : sudo apt install python-is-python3")
+        print("  → Windows : réinstalle Python depuis python.org en cochant « Add python.exe to PATH »")
+        return
+    ok(False, f"les hooks du plugin lancent `python` ({exe}) : "
+       + (f"version {'.'.join(map(str, ver))} trop ancienne (il faut {want} ou plus)" if ver
+          else "il ne se lance pas (alias du Microsoft Store ?)") + f" {effet}")
+    print(f"  → installe Python {want} ou plus récent (python.org), fais-le résoudre par `python` dans le PATH, "
+          "puis redémarre Claude Code")
+
+
+def _doctor_journal(ok):
+    """Sessions de Claude Code des 7 derniers jours absentes du journal : les hooks n'ont rien enregistré."""
+    if not (load_config().get("journal") or {}).get("enabled", True):
+        return
+    lost = journal.missing()
+    if lost:
+        print(f"⚠ {len(lost)} session(s) de Claude Code absentes du journal → `brain journal --backfill` les importe")
+        return
+    known = journal.load()["sessions"]
+    kept = sum(1 for p in journal.recent_transcripts() if p.stem in known)
+    if kept:
+        ok(True, f"sessions des 7 derniers jours : {kept} dans le journal, aucune manquante")
 
 
 def _doctor_fix():
