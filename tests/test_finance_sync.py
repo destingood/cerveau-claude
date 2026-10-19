@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import itertools
 import json
+import re
 import sqlite3
 from collections.abc import Callable
 from datetime import UTC, date, datetime, timedelta
@@ -100,7 +101,9 @@ def test_a_sync_ingests_once_and_scores_the_instruments_it_touched() -> None:
     assert len(store.quality_history("FICT-ACME")) == 1
     payload = result.journal_payload()
     assert payload["inserted"] == 2 and set(payload["quality"]) == {"FICT-ACME"}
-    assert "102" not in json.dumps(payload)  # counts and scores, never the values
+    # Counts and scores, never the values; a whole number only, since the microseconds of
+    # ingested_at may hold these digits by chance.
+    assert not re.search(r"(?<![0-9A-Za-z])102(?![0-9A-Za-z])", json.dumps(payload))
 
 
 def test_a_revision_is_dated_at_the_fetch_that_saw_it() -> None:

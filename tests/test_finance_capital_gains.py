@@ -7,6 +7,7 @@ import dataclasses
 import hashlib
 import io
 import json
+import re
 from collections.abc import Iterator
 from datetime import UTC, date, datetime
 from decimal import Decimal
@@ -415,7 +416,9 @@ def test_cli_writes_the_export_under_var_finance_exports_and_nowhere_else(home: 
         "sha256": hashlib.sha256(data).hexdigest(),
     }
     for amount in ("366", "513", "1357", "1945"):  # the journal never receives an amount
-        assert amount not in json.dumps(payload) and amount not in raw
+        # A whole number only: a random request id or hash may hold these digits by chance.
+        number = re.compile(rf"(?<![0-9A-Za-z]){amount}(?![0-9A-Za-z])")
+        assert not number.search(json.dumps(payload)) and not number.search(raw)
 
 
 def test_cli_replaces_the_export_of_the_same_year(home: Path) -> None:
