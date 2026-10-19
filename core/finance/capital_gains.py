@@ -185,6 +185,15 @@ def _number(value: Decimal) -> str:
     return f"{value:f}".replace(".", ",")
 
 
+FORMULA_START = ("=", "+", "-", "@", "\t", "\r")
+
+
+def _text(value: str) -> str:
+    """A text cell a spreadsheet shows as written: a leading quote keeps a formula from running
+    (a file name or an account typed by Lucas may start with « = » or « @ »)."""
+    return f"'{value}" if value.startswith(FORMULA_START) else value
+
+
 def to_csv(export: CapitalGains) -> str:
     buffer = io.StringIO(newline="")
     writer = csv.writer(buffer, delimiter=";", lineterminator="\r\n")
@@ -194,9 +203,9 @@ def to_csv(export: CapitalGains) -> str:
         writer.writerow(
             (
                 s.trade_date.isoformat(),
-                s.account,
-                s.instrument_id,
-                s.currency,
+                _text(s.account),
+                _text(s.instrument_id),
+                _text(s.currency),
                 _number(s.quantity),
                 _number(s.price),
                 _number(s.fees),
@@ -209,8 +218,8 @@ def to_csv(export: CapitalGains) -> str:
                 _number(d.proceeds_eur),
                 _number(d.cost_eur),
                 _number(d.gain_eur),
-                s.where,
-                export.rules,
+                _text(s.where),
+                _text(export.rules),
             )
         )
     return buffer.getvalue()

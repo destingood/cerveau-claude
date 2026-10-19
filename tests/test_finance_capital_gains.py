@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import csv
+import dataclasses
 import hashlib
 import io
 import json
@@ -21,6 +22,7 @@ from core.audit import AuditJournal
 from core.finance.capital_gains import (
     COLUMNS,
     NOTICE,
+    CapitalGains,
     CapitalGainsError,
     capital_gains,
     default_export_dir,
@@ -204,6 +206,21 @@ def test_the_csv_by_hand(store: FinanceStore) -> None:
     assert acme[11:13] == ["1", ""]
     assert late[12] == "2025-12-24"
     assert text.endswith("\r\n") and text.count("\r\n") == 4
+
+
+def test_a_text_cell_never_runs_as_a_formula() -> None:
+    trapped = dataclasses.replace(
+        sale(Decimal(1), Decimal(1), Decimal(2), "EUR"),
+        account="@SUM(A1)",
+        where='=HYPERLINK("https://evil.example");ligne 2',
+    )
+    export = CapitalGains(2025, NOW, date(2025, 12, 31), "+A_VERIFIER", [], [])
+    export.disposals.append(disposal(trapped, Decimal(1), None))
+    _header, row = rows(to_csv(export))
+    assert row[1] == "'@SUM(A1)"
+    assert row[16] == "'" + trapped.where
+    assert row[17] == "'+A_VERIFIER"
+    assert row[10] == "-1,00"  # a number stays a number
 
 
 def test_the_years_partition_the_sales(store: FinanceStore) -> None:
