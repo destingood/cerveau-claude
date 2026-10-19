@@ -1,4 +1,4 @@
-"""The fictitious reference portfolio of tests and evals, loaded the way Lucas's data is.
+"""The fictitious datasets of tests and evals, loaded the way Lucas's data is.
 
 ``tests/fixtures/finance/reference/`` holds invented instruments and synthetic market data
 (phase 2 plan, §4; its README lists the anomalies placed in them). They go through the real
@@ -6,6 +6,10 @@ providers, so they are dated and checked as a CSV export or an ECB response woul
 then scored like any sync. Every record is stamped ``fixtures``: a synthetic value never passes
 for one from a real source (R12). Nothing here reaches the network; the ECB files are served
 by an in-memory transport behind a host that cannot resolve.
+
+``tests/fixtures/finance/research/`` is the ten-year synthetic dataset of the backtest protocol
+(phase 3 plan, §7): one planted trend, three random walks, fictitious crises and costs, and
+closes that say when they were published.
 """
 
 from __future__ import annotations
@@ -18,18 +22,23 @@ from pathlib import Path
 from typing import Any
 
 import httpx
+import yaml
+from pydantic import ValidationError
 
-from core.config.loader import DataQuality
-from core.finance.model import MarketRecord, local_date
+from core.config.loader import CrisisWindow, DataQuality, TradingCosts
+from core.finance.model import MarketRecord, PriceRow, local_date
 from core.finance.portfolio import ImportResult, ReconcileResult, import_transactions, reconcile
 from core.finance.providers import (
     CsvCloses,
     CsvCorporateActions,
     EcbProvider,
     MarketDataProvider,
+    ProviderError,
+    validation_message,
 )
+from core.finance.providers.csv_files import CsvLayout, read_table
 from core.finance.providers.ecb import CATEGORIES
-from core.finance.store import FinanceStore
+from core.finance.store import FinanceStore, IngestReport
 from core.finance.sync import SyncResult, import_instruments, reference, reference_currencies, sync
 
 REFERENCE_DIR = Path(__file__).resolve().parents[2] / "tests" / "fixtures" / "finance" / "reference"
@@ -50,6 +59,11 @@ REFERENCE_QUALITY = DataQuality(
     max_unexplained_move=0.3,
 )
 REFERENCE_WINDOW = 500
+
+RESEARCH_DIR = REFERENCE_DIR.parent / "research"
+# The Sunday after the last session: every close, late or corrected, is published by then.
+RESEARCH_FETCHED_AT = datetime(2026, 1, 4, 12, 0, tzinfo=UTC)
+PUBLISHED_CLOSES = CsvLayout(("date", "identifiant", "cloture", "devise", "publie_le"))
 
 
 @dataclass(frozen=True)
@@ -122,6 +136,89 @@ def load_reference(
             sync(store, provider, clock=clock, quality=quality, window_sessions=window_sessions)
         )
     return results
+
+
+@dataclass(frozen=True)
+class PublishedCloses:
+    """Closes that say when each one reached the feed: the research dataset's ``cours.csv``.
+
+    A CSV export gives only the session, so CsvCloses dates a close at the session's close. The
+    research dataset also has closes published the next morning and prints corrected the next
+    day: each row keeps its own date (``publie_le``), and the rows come in publication order, so
+    that a correction is stored as a revision of the print before it.
+    """
+
+    path: Path
+    source: str = FIXTURES_SOURCE
+
+    def describe(self) -> dict[str, Any]:
+        return {"kind": "cours publies", "file": self.path.name}
+
+    def fetch(self, *, fetched_at: datetime) -> Sequence[MarketRecord]:
+        table = read_table(self.path, PUBLISHED_CLOSES)
+        rows: list[PriceRow] = []
+        for line, fields in table.rows:
+            try:
+                row = PriceRow.model_validate(
+                    {
+                        "instrument_id": fields["identifiant"],
+                        "session": date.fromisoformat(fields["date"]),
+                        "close": float(fields["cloture"]),
+                        "currency": fields["devise"],
+                        "source": self.source,
+                        "published_at": fields["publie_le"],
+                    }
+                )
+            except ValidationError as exc:
+                raise ProviderError(
+                    f"{table.name}, ligne {line} : {validation_message(exc)}"
+                ) from None
+            except (ValueError, KeyError):
+                raise ProviderError(f"{table.name}, ligne {line} : valeur invalide") from None
+            if row.published_at > fetched_at:
+                raise ProviderError(f"{table.name}, ligne {line} : publié après la récupération")
+            rows.append(row)
+        return sorted(rows, key=lambda r: r.published_at)
+
+
+def load_research(
+    store: FinanceStore,
+    *,
+    directory: Path = RESEARCH_DIR,
+    fetched_at: datetime = RESEARCH_FETCHED_AT,
+) -> list[IngestReport]:
+    """Instruments, corporate actions, then closes, all ingested at ``fetched_at``.
+
+    No quality score: a backtest reads each series as it was published (PointInTimeView), not
+    through the scores of a sync. Load a dataset once into a fresh store: reading the same
+    file again would store each corrected print as a new revision.
+    """
+    instruments = import_instruments(store, directory / "instruments.csv", recorded_at=fetched_at)
+    actions = CsvCorporateActions(directory / "operations.csv", reference(store), FIXTURES_SOURCE)
+    reports = [instruments.report]
+    for provider in (actions, PublishedCloses(directory / "cours.csv")):
+        reports.append(store.ingest(provider.fetch(fetched_at=fetched_at), ingested_at=fetched_at))
+    return reports
+
+
+def research_crises(directory: Path = RESEARCH_DIR) -> dict[str, CrisisWindow]:
+    """The fictitious crisis windows, in the form of risk.yaml › historical_stress."""
+    raw = yaml.safe_load((directory / "crises_fictives.yaml").read_text(encoding="utf-8"))
+    return {name: CrisisWindow.model_validate(window) for name, window in raw.items()}
+
+
+@dataclass(frozen=True)
+class NamedCosts:
+    """Trading costs and the name every output that uses them must show."""
+
+    name: str
+    costs: TradingCosts
+
+
+def research_costs(directory: Path = RESEARCH_DIR) -> NamedCosts:
+    """The fictitious trading costs of the demonstration (D13 of phase 2 stays A_DEFINIR)."""
+    raw = yaml.safe_load((directory / "frais_fictifs.yaml").read_text(encoding="utf-8"))
+    return NamedCosts(raw["nom"], TradingCosts.model_validate(raw["trading_costs"]))
 
 
 def load_reference_portfolio(

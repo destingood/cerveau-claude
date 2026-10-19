@@ -3,3 +3,4 @@
 *.sh text eol=lf
 # Generated test data: the same bytes on every platform, so a regeneration diff is exact.
 tests/fixtures/**/*.csv text eol=lf
+tests/fixtures/**/*.yaml text eol=lf
