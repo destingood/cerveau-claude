@@ -334,11 +334,13 @@ class FinanceStore:
             for record in records:
                 table = _TABLES[type(record)]
                 self._check_reference(record)
-                if record.published_at > ingested_at:
-                    raise FinanceStoreError(
-                        f"{table.name} : publication annoncée après l'ingestion ({record!r})"
-                    )
                 keys, values = _key_values(table, record)
+                if record.published_at > ingested_at:
+                    # The table and the keys only: a refusal never repeats an amount (R11).
+                    raise FinanceStoreError(
+                        f"{table.name} {keys} : publication annoncée après l'ingestion "
+                        f"({utc_text(record.published_at)} > {stamp})"
+                    )
                 last = self._last_revision(table, keys)
                 published = utc_text(record.published_at)
                 if last is not None and [last[v] for v in table.values] == values:

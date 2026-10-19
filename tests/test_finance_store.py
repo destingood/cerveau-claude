@@ -293,6 +293,14 @@ def test_a_revision_cannot_be_published_before_the_previous_one(store: FinanceSt
         store.ingest([price(SESSIONS[0], 10.5, hours=1)], ingested_at=NOW)
 
 
+def test_a_record_published_after_its_ingestion_is_refused_without_its_values(
+    store: FinanceStore,
+) -> None:
+    with pytest.raises(FinanceStoreError, match="publication annoncée après") as refused:
+        store.ingest([price(SESSIONS[0], 1234.5)], ingested_at=close_time(SESSIONS[0], hours=-1))
+    assert "FICT-ACME" in str(refused.value) and "1234" not in str(refused.value)
+
+
 # Point-in-time reads ----------------------------------------------------------------------
 
 
