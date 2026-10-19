@@ -105,10 +105,20 @@ class Rubric:
 
 
 def golden_threshold(config: Config, pack: str) -> Decimal:
-    """The mean judge score the golden set of ``pack`` must reach (``config/evals.yaml``)."""
+    """The mean judge score the golden set of ``pack`` must reach.
+
+    The pack's own threshold (``config/evals.yaml``), raised to the score that promotes the
+    finance pack when that rule sets one (D16): a live report never shows as passed a score the
+    promotion would refuse.
+    """
     if pack not in GOLDEN_THRESHOLDS:
         raise ValueError(f"pack sans seuil de golden set : {pack}")
-    return Decimal(str(getattr(config.evals.thresholds, GOLDEN_THRESHOLDS[pack])))
+    threshold = Decimal(str(getattr(config.evals.thresholds, GOLDEN_THRESHOLDS[pack])))
+    if pack == "finance":
+        promotion = config.autonomy.promotion.finance.N0_to_N1.golden_min_score
+        if not isinstance(promotion, str):
+            threshold = max(threshold, Decimal(str(promotion)))
+    return threshold
 
 
 def load_rubric(root: Path = REPO_ROOT, pack: str = GENERAL_PACK) -> Rubric:

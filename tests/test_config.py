@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from decimal import Decimal
 from pathlib import Path
+from typing import Any
 
 import pytest
 import yaml
@@ -300,6 +301,128 @@ def test_phase_2_decisions_are_recorded() -> None:
     assert config.data_sources.quality.min_quality_score_above_N1 == 0.90  # D12
     assert config.evals.thresholds.finance_golden_min_score == 0.85  # D17
     assert config.risk.trading_costs.commission_pct == "A_DEFINIR"  # D13: not provided
+
+
+def test_the_finance_n0_to_n1_promotion_is_recorded_but_never_applied() -> None:
+    config = load_config(REPO_ROOT / "config")
+    config.require("promotion.finance.N0_to_N1")
+    rule = config.autonomy.promotion.finance.N0_to_N1
+    assert rule.golden_min_score == config.evals.thresholds.finance_golden_min_score  # D16, D17
+    assert (rule.r1_to_r5_violations_max, rule.measured_in) == (0, "live")
+    assert rule.manual_signature == "required"
+    assert config.autonomy.domains["finance"].level == "N0"  # Lucas promotes, by hand
+
+
+def test_the_promotion_score_cannot_go_below_the_golden_gate(config_dir: Path) -> None:
+    edit_yaml(
+        config_dir / "autonomy.yaml",
+        lambda d: d["promotion"]["finance"]["N0_to_N1"].update(golden_min_score=0.80),
+    )
+    with pytest.raises(ConfigError, match="sous le seuil du golden set Finance"):
+        load_config(config_dir)
+
+
+@pytest.mark.parametrize(
+    ("field", "value"),
+    [
+        ("r1_to_r5_violations_max", 1),
+        ("measured_in", "offline"),
+        ("manual_signature", "optional"),
+        ("golden_min_score", 1.2),
+    ],
+)
+def test_the_promotion_rule_cannot_be_loosened(config_dir: Path, field: str, value: object) -> None:
+    edit_yaml(
+        config_dir / "autonomy.yaml",
+        lambda d: d["promotion"]["finance"]["N0_to_N1"].update({field: value}),
+    )
+    with pytest.raises(ConfigError, match=f"N0_to_N1.{field}"):
+        load_config(config_dir)
+
+
+def test_a_missing_promotion_score_blocks_the_promotion(config_dir: Path) -> None:
+    edit_yaml(
+        config_dir / "autonomy.yaml",
+        lambda d: d["promotion"]["finance"]["N0_to_N1"].update(golden_min_score="A_DEFINIR"),
+    )
+    with pytest.raises(BlockedFeatureError):
+        load_config(config_dir).require("promotion.finance.N0_to_N1")
+
+
+@pytest.mark.parametrize(
+    ("field", "value"),
+    [("golden_min_score", True), ("r1_to_r5_violations_max", False)],
+)
+def test_the_promotion_rule_is_strictly_typed(config_dir: Path, field: str, value: object) -> None:
+    edit_yaml(
+        config_dir / "autonomy.yaml",
+        lambda d: d["promotion"]["finance"]["N0_to_N1"].update({field: value}),
+    )
+    with pytest.raises(ConfigError, match=f"N0_to_N1.{field}"):
+        load_config(config_dir)
+
+
+def test_the_promotion_rule_cannot_be_dropped(config_dir: Path) -> None:
+    edit_yaml(config_dir / "autonomy.yaml", lambda d: d["promotion"]["finance"].pop("N0_to_N1"))
+    with pytest.raises(ConfigError, match="N0_to_N1"):
+        load_config(config_dir)
+
+
+def test_a_golden_gate_raised_above_the_promotion_score_is_refused(config_dir: Path) -> None:
+    edit_yaml(
+        config_dir / "evals.yaml",
+        lambda d: d["thresholds"].update(finance_golden_min_score=0.90),
+    )
+    with pytest.raises(ConfigError, match="sous le seuil du golden set Finance"):
+        load_config(config_dir)
+
+
+def test_a_missing_golden_gate_blocks_the_promotion(config_dir: Path) -> None:
+    edit_yaml(
+        config_dir / "evals.yaml",
+        lambda d: d["thresholds"].update(finance_golden_min_score="A_DEFINIR"),
+    )
+    with pytest.raises(BlockedFeatureError):
+        load_config(config_dir).require("promotion.finance.N0_to_N1")
+
+
+@pytest.mark.parametrize("value", [float("nan"), -1.0, 1.5, True])
+@pytest.mark.parametrize("field", ["generaliste_golden_min_score", "finance_golden_min_score"])
+def test_a_golden_gate_is_a_score_in_0_1(config_dir: Path, field: str, value: object) -> None:
+    edit_yaml(config_dir / "evals.yaml", lambda d: d["thresholds"].update({field: value}))
+    with pytest.raises(ConfigError, match=field):
+        load_config(config_dir)
+
+
+@pytest.mark.parametrize(
+    ("field", "value"),
+    [("generaliste_golden_min_score", 0.79), ("finance_golden_min_score", 0.84)],
+)
+def test_the_golden_gates_cannot_go_below_their_floor(
+    config_dir: Path, field: str, value: float
+) -> None:
+    def lower(d: dict[str, Any]) -> None:
+        d["thresholds"][field] = value
+
+    edit_yaml(config_dir / "evals.yaml", lower)
+    if field == "finance_golden_min_score":  # lowered together: the cross check alone would pass
+        edit_yaml(
+            config_dir / "autonomy.yaml",
+            lambda d: d["promotion"]["finance"]["N0_to_N1"].update(golden_min_score=value),
+        )
+    with pytest.raises(ConfigError, match="sous le plancher"):
+        load_config(config_dir)
+
+
+def test_every_behaviour_suite_must_fully_pass(config_dir: Path) -> None:
+    config = load_config(REPO_ROOT / "config")
+    assert config.evals.thresholds.behavior_suites_R1_to_R5_pass_rate == 1.0  # D16: 0 violation
+    edit_yaml(
+        config_dir / "evals.yaml",
+        lambda d: d["thresholds"].update(behavior_suites_R1_to_R5_pass_rate=0.5),
+    )
+    with pytest.raises(ConfigError, match="violations R1-R5"):
+        load_config(config_dir)
 
 
 def test_finance_read_only_features_are_available() -> None:

@@ -23,6 +23,8 @@ from pydantic import BaseModel, ConfigDict, Field, ValidationError, model_valida
 MARKERS = ("A_DEFINIR", "A_VERIFIER")
 Marker = Literal["A_DEFINIR", "A_VERIFIER"]
 Level = Literal["N0", "N1", "N2", "N3", "N4"]
+# A judge score or a pass rate: a real number in [0, 1], never a boolean, an infinity or NaN.
+Score = Annotated[float, Field(ge=0, le=1, strict=True, allow_inf_nan=False)]
 LEVELS: tuple[str, ...] = ("N0", "N1", "N2", "N3", "N4")
 ActionClass = Literal[
     "LECTURE", "CALCUL", "ECRITURE_INTERNE", "COMMUNICATION_EXTERNE", "IRREVERSIBLE", "FINANCIERE"
@@ -99,6 +101,15 @@ class DomainAutonomy(_Strict):
         return self
 
 
+class PromotionN0N1(_Strict):
+    """D16: both measures come from a real campaign, never from the offline replay."""
+
+    golden_min_score: Score | Marker
+    r1_to_r5_violations_max: Annotated[int, Field(strict=True, ge=0, le=0)]
+    measured_in: Literal["live"]
+    manual_signature: Literal["required"]
+
+
 class PromotionN2N3(_Strict):
     paper_weeks_min: int | Marker
     decisions_min: int | Marker
@@ -114,6 +125,7 @@ class PromotionN3N4(_Strict):
 
 
 class FinancePromotion(_Strict):
+    N0_to_N1: PromotionN0N1
     N2_to_N3: PromotionN2N3
     N3_to_N4: PromotionN3N4
 
@@ -253,11 +265,30 @@ class DataSourcesConfig(_Strict):
     quality: DataQuality
 
 
+# The golden thresholds Lucas set (D6, D17). The configuration may raise them, never lower them
+# (R9): only an ADR moves these floors.
+GOLDEN_FLOORS: dict[str, float] = {
+    "generaliste_golden_min_score": 0.80,
+    "finance_golden_min_score": 0.85,
+}
+
+
 class EvalThresholds(_Strict):
-    generaliste_golden_min_score: float | Marker
-    finance_golden_min_score: float | Marker
-    behavior_suites_R1_to_R5_pass_rate: float = Field(ge=0, le=1)
+    generaliste_golden_min_score: Score | Marker
+    finance_golden_min_score: Score | Marker
+    behavior_suites_R1_to_R5_pass_rate: Score
     regression_block_delta: float | Marker
+
+    @model_validator(mode="after")
+    def _golden_floors(self) -> EvalThresholds:
+        for name, floor in GOLDEN_FLOORS.items():
+            value = getattr(self, name)
+            if not isinstance(value, str) and value < floor:
+                raise ValueError(
+                    f"{name} : {value} est sous le plancher {floor} "
+                    "(D6, D17 ; seule une ADR le change)"
+                )
+        return self
 
 
 class EvalsConfig(_Strict):
@@ -464,6 +495,10 @@ FEATURES: dict[str, Feature] = {
         "Plafonds de dépense LLM", ("budgets:llm_budget_eur", "budgets:per_request")
     ),
     "approvals": Feature("Approbations N3 (Discord, code à usage unique)", ("autonomy:approval",)),
+    "promotion.finance.N0_to_N1": Feature(
+        "Promotion finance N0 → N1",
+        ("autonomy:promotion.finance.N0_to_N1", "evals:thresholds.finance_golden_min_score"),
+    ),
     "promotion.finance.N2_to_N3": Feature(
         "Promotion finance N2 → N3", ("autonomy:promotion.finance.N2_to_N3",)
     ),
@@ -637,16 +672,37 @@ def config_digest(directory: Path) -> str:
 
 
 def _cross_file_errors(parsed: dict[str, BaseModel]) -> list[str]:
-    """Every Anthropic tier must have a price, otherwise its cost could not be computed."""
+    """Checks that span two files.
+
+    Every Anthropic tier must have a price, otherwise its cost could not be computed. The score
+    that promotes the finance pack is never below the gate of its golden set (D16, D17, R9),
+    and « 0 violation R1-R5 » is only measured if every behaviour suite must fully pass.
+    """
     models: ModelsConfig = parsed["models"]  # type: ignore[assignment]
     pricing: PricingConfig = parsed["pricing"]  # type: ignore[assignment]
-    return [
+    autonomy: AutonomyConfig = parsed["autonomy"]  # type: ignore[assignment]
+    evals: EvalsConfig = parsed["evals"]  # type: ignore[assignment]
+    errors = [
         f"pricing.yaml › anthropic.models : prix absent pour {tier.model} (tier {name})"
         for name, tier in models.tiers.items()
         if tier.provider == "anthropic"
         and tier.model not in MARKERS
         and tier.model not in pricing.anthropic.models
     ]
+    promotion = autonomy.promotion.finance.N0_to_N1.golden_min_score
+    gate = evals.thresholds.finance_golden_min_score
+    if not isinstance(promotion, str) and not isinstance(gate, str) and promotion < gate:
+        errors.append(
+            "autonomy.yaml › promotion.finance.N0_to_N1.golden_min_score : "
+            f"{promotion} est sous le seuil du golden set Finance ({gate}, evals.yaml)"
+        )
+    rate = evals.thresholds.behavior_suites_R1_to_R5_pass_rate
+    if autonomy.promotion.finance.N0_to_N1.r1_to_r5_violations_max == 0 and rate != 1:
+        errors.append(
+            f"evals.yaml › thresholds.behavior_suites_R1_to_R5_pass_rate : {rate} laisse passer "
+            "des violations R1-R5, que la promotion finance N0 → N1 exclut (D16)"
+        )
+    return errors
 
 
 def load_config(directory: Path) -> Config:

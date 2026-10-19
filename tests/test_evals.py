@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import asyncio
+import dataclasses
 import json
 import re
 import shutil
@@ -110,6 +111,22 @@ def test_the_finance_golden_set_has_at_least_50_cases() -> None:
             assert figure.tool in case.expect.tools, (case.id, figure.id)
     assert sum(len(case.expect.figures) for case in golden) >= 100
     assert golden_threshold(load_config(REPO_ROOT / "config"), "finance") == Decimal("0.85")
+
+
+def test_the_finance_golden_gate_rises_to_the_promotion_score() -> None:
+    config = load_config(REPO_ROOT / "config")
+    rule = config.autonomy.promotion.finance.N0_to_N1.model_copy(update={"golden_min_score": 0.9})
+    promotion = config.autonomy.promotion.finance.model_copy(update={"N0_to_N1": rule})
+    raised = dataclasses.replace(
+        config,
+        autonomy=config.autonomy.model_copy(
+            update={
+                "promotion": config.autonomy.promotion.model_copy(update={"finance": promotion})
+            }
+        ),
+    )
+    assert golden_threshold(raised, "finance") == Decimal("0.9")  # D16: never a pass it refuses
+    assert golden_threshold(raised, "generaliste") == Decimal("0.8")
 
 
 FINANCE_THEMES = {  # plan of phase 2, section 9: at least 5 cases each
