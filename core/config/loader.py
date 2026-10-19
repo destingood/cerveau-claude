@@ -12,13 +12,20 @@ import hashlib
 import re
 from collections.abc import Iterator
 from dataclasses import dataclass
-from datetime import date
+from datetime import date, time
 from decimal import Decimal
 from pathlib import Path
 from typing import Annotated, Any, Literal
 
 import yaml
-from pydantic import BaseModel, ConfigDict, Field, ValidationError, model_validator
+from pydantic import (
+    BaseModel,
+    ConfigDict,
+    Field,
+    ValidationError,
+    field_validator,
+    model_validator,
+)
 
 MARKERS = ("A_DEFINIR", "A_VERIFIER")
 Marker = Literal["A_DEFINIR", "A_VERIFIER"]
@@ -72,8 +79,11 @@ class ModelTier(_Strict):
         return self
 
 
+TierName = Literal["deep", "standard", "fast", "local"]
+
+
 class Judge(_Strict):
-    tier: Literal["deep", "standard", "fast", "local"]
+    tier: TierName
     prefer_different_from_evaluated: bool
 
 
@@ -82,7 +92,7 @@ class Routing(_Strict):
 
 
 class ModelsConfig(_Strict):
-    tiers: dict[Literal["deep", "standard", "fast", "local"], ModelTier]
+    tiers: dict[TierName, ModelTier]
     judge: Judge
     routing: Routing
 
@@ -212,10 +222,18 @@ class PerRequest(_Strict):
     max_seconds: int = Field(gt=0)
 
 
+class PerCommittee(_Strict):
+    # ADR-028, D18: one committee session exceeds a request; no real session until Lucas decides.
+    max_tokens: Annotated[int, Field(gt=0)] | Marker
+    max_seconds: Annotated[int, Field(gt=0)] | Marker
+    max_tool_calls: Annotated[int, Field(gt=0)] | Marker
+
+
 class BudgetsConfig(_Strict):
     llm_budget_eur: LlmBudget
     alerts_pct: list[Annotated[int, Field(gt=0, le=100)]] = Field(min_length=1)
     per_request: PerRequest
+    per_committee: PerCommittee
     on_exceeded: list[
         Literal["refuse_new_requests", "downgrade_to_fast_or_local", "stop_non_critical_tasks"]
     ] = Field(min_length=1)
@@ -462,6 +480,119 @@ class GuardrailsConfig(_Strict):
     pii: PiiConfig
 
 
+# --- research.yaml (ADR-024, ADR-026, ADR-027) -----------------------------------------------
+
+
+class Execution(_Strict):
+    # A naive time, read as UTC. The execution lag (close of t+1) is fixed by the engine, not here.
+    decision_cutoff_utc: time
+
+    @field_validator("decision_cutoff_utc", mode="before")
+    @classmethod
+    def _quoted(cls, value: object) -> object:
+        # Unquoted, YAML 1.1 reads 21:00 as the base-60 integer 1260, which pydantic would take
+        # for a number of seconds (00:21).
+        if not isinstance(value, str):
+            raise ValueError('decision_cutoff_utc s\'écrit entre guillemets, par exemple "21:00"')
+        return value
+
+    @model_validator(mode="after")
+    def _naive(self) -> Execution:
+        if self.decision_cutoff_utc.tzinfo is not None:
+            raise ValueError("decision_cutoff_utc est une heure UTC sans fuseau")
+        return self
+
+
+class Split(_Strict):
+    development_fraction: Annotated[float, Field(gt=0, lt=1, allow_inf_nan=False)]
+    embargo_sessions: Annotated[int, Field(ge=0)]
+
+
+class WalkForward(_Strict):
+    scheme: Literal["anchored"]
+    blocks: Annotated[int, Field(ge=2)]
+
+
+class Pbo(_Strict):
+    partitions: Annotated[int, Field(ge=4)]
+
+    @model_validator(mode="after")
+    def _even(self) -> Pbo:
+        if self.partitions % 2:
+            raise ValueError("CSCV : partitions doit être pair")
+        return self
+
+
+class ResearchGates(_Strict):
+    dsr_min: Score
+    pbo_max: Score
+    final_to_walk_forward_sharpe_min: Annotated[float, Field(gt=0, allow_inf_nan=False)]
+    benchmark_min_sessions: Sessions
+    cost_stress_multiplier: Annotated[float, Field(gt=1, allow_inf_nan=False)]
+
+
+class ResearchCrossCheck(_Strict):
+    nautilus_rel_tolerance: Annotated[float, Field(gt=0, allow_inf_nan=False)]
+    vectorbt_rel_tolerance: Annotated[float, Field(gt=0, allow_inf_nan=False)]
+
+
+class Copilot(_Strict):
+    # A bound on compute time for a backtest the Copilot asks for, not a risk limit.
+    max_window_sessions: Sessions
+
+
+# The D9 gates, the D7 embargo and the D12 tolerances Lucas validated for phase 3, fixed before
+# the first measure. The configuration may make them stricter, never looser (R9): only an ADR
+# moves these bounds.
+RESEARCH_BOUNDS: dict[str, tuple[Literal["min", "max"], float]] = {
+    "gates.dsr_min": ("min", 0.95),
+    "gates.pbo_max": ("max", 0.5),
+    "gates.final_to_walk_forward_sharpe_min": ("min", 0.5),
+    "gates.benchmark_min_sessions": ("min", 252),
+    "gates.cost_stress_multiplier": ("min", 2),
+    "split.embargo_sessions": ("min", 5),
+    "cross_check.nautilus_rel_tolerance": ("max", 1e-6),
+    "cross_check.vectorbt_rel_tolerance": ("max", 1e-9),
+}
+
+
+class ResearchConfig(_Strict):
+    execution: Execution
+    split: Split
+    walk_forward: WalkForward
+    pbo: Pbo
+    gates: ResearchGates
+    cross_check: ResearchCrossCheck
+    copilot: Copilot
+
+    @model_validator(mode="after")
+    def _never_looser(self) -> ResearchConfig:
+        errors: list[str] = []
+        for dotted, (kind, bound) in RESEARCH_BOUNDS.items():
+            section, name = dotted.split(".")
+            value = getattr(getattr(self, section), name)
+            if kind == "min" and value < bound:
+                errors.append(f"{dotted} : {value} est sous le plancher {bound}")
+            if kind == "max" and value > bound:
+                errors.append(f"{dotted} : {value} dépasse le plafond {bound}")
+        if errors:
+            raise ValueError("; ".join(errors) + " (D7, D9, D12 ; seule une ADR les change)")
+        return self
+
+
+# --- committee.yaml (ADR-028) -----------------------------------------------------------------
+
+
+class CommitteePack(_Strict):
+    # Model tier of each active role; an inactive role (no data source) has none.
+    tiers: dict[Annotated[str, Field(pattern=r"^[a-z][a-z_]*$")], TierName] = Field(min_length=1)
+
+
+class CommitteeConfig(_Strict):
+    max_debate_rounds: Annotated[int, Field(ge=1)]
+    finance: CommitteePack
+
+
 FILES: dict[str, tuple[str, type[BaseModel]]] = {
     "models": ("models.yaml", ModelsConfig),
     "autonomy": ("autonomy.yaml", AutonomyConfig),
@@ -474,6 +605,8 @@ FILES: dict[str, tuple[str, type[BaseModel]]] = {
     "risk": ("risk.yaml", RiskConfig),
     "pricing": ("pricing.yaml", PricingConfig),
     "guardrails": ("guardrails.yaml", GuardrailsConfig),
+    "research": ("research.yaml", ResearchConfig),
+    "committee": ("committee.yaml", CommitteeConfig),
 }
 
 
@@ -558,6 +691,20 @@ FEATURES: dict[str, Feature] = {
     "compliance.crypto": Feature("Plateformes crypto autorisées", ("compliance:crypto",)),
     "costs": Feature("Calcul déterministe des coûts (prix, taux de change)", ("pricing:",)),
     "guardrails.pii": Feature("Pseudonymisation Presidio (seuil, entités)", ("guardrails:pii",)),
+    "finance.research": Feature(
+        "Backtest et protocole sur données réelles (frais et glissement, R10)",
+        (
+            "research:",
+            "risk:trading_costs",
+            "risk:market_risk.annualisation_sessions",
+            "risk:market_risk.risk_free",
+        ),
+    ),
+    # Config.blockers adds the model tiers that committee.yaml assigns to the roles.
+    "finance.committee": Feature(
+        "Comité d'investissement (budget d'une séance)",
+        ("committee:", "budgets:llm_budget_eur", "budgets:per_committee"),
+    ),
 }
 
 
@@ -626,6 +773,8 @@ class Config:
     risk: RiskConfig
     pricing: PricingConfig
     guardrails: GuardrailsConfig
+    research: ResearchConfig
+    committee: CommitteeConfig
     markers: tuple[MarkerHit, ...]
     digest: str
 
@@ -642,7 +791,11 @@ class Config:
                 reasons.append(f"data_sources.yaml › sources.{source} absente")
             elif not known.enabled:
                 reasons.append(f"data_sources.yaml › sources.{source}.enabled = false")
-        for req in FEATURES[feature].requires:
+        requires = list(FEATURES[feature].requires)
+        if feature == "finance.committee":
+            tiers = sorted(set(self.committee.finance.tiers.values()))
+            requires.extend(f"models:tiers.{tier}" for tier in tiers)
+        for req in requires:
             file_key, _, prefix = req.partition(":")
             reasons.extend(
                 str(hit)
@@ -676,7 +829,8 @@ def _cross_file_errors(parsed: dict[str, BaseModel]) -> list[str]:
 
     Every Anthropic tier must have a price, otherwise its cost could not be computed. The score
     that promotes the finance pack is never below the gate of its golden set (D16, D17, R9),
-    and « 0 violation R1-R5 » is only measured if every behaviour suite must fully pass.
+    and « 0 violation R1-R5 » is only measured if every behaviour suite must fully pass. Every
+    committee role runs on a tier that models.yaml defines.
     """
     models: ModelsConfig = parsed["models"]  # type: ignore[assignment]
     pricing: PricingConfig = parsed["pricing"]  # type: ignore[assignment]
@@ -696,6 +850,12 @@ def _cross_file_errors(parsed: dict[str, BaseModel]) -> list[str]:
             "autonomy.yaml › promotion.finance.N0_to_N1.golden_min_score : "
             f"{promotion} est sous le seuil du golden set Finance ({gate}, evals.yaml)"
         )
+    committee: CommitteeConfig = parsed["committee"]  # type: ignore[assignment]
+    errors.extend(
+        f"committee.yaml › finance.tiers.{role} : niveau {tier} absent de models.yaml"
+        for role, tier in committee.finance.tiers.items()
+        if tier not in models.tiers
+    )
     rate = evals.thresholds.behavior_suites_R1_to_R5_pass_rate
     if autonomy.promotion.finance.N0_to_N1.r1_to_r5_violations_max == 0 and rate != 1:
         errors.append(
@@ -747,6 +907,8 @@ def load_config(directory: Path) -> Config:
         risk=parsed["risk"],  # type: ignore[arg-type]
         pricing=parsed["pricing"],  # type: ignore[arg-type]
         guardrails=parsed["guardrails"],  # type: ignore[arg-type]
+        research=parsed["research"],  # type: ignore[arg-type]
+        committee=parsed["committee"],  # type: ignore[arg-type]
         markers=tuple(markers),
         digest=config_digest(directory),
     )

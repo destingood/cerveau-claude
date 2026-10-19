@@ -1,0 +1,17 @@
+# Comité d'investissement (ADR-028, décision D17 du plan de phase 3). Les niveaux de modèle sont
+# ceux de config/models.yaml. Le budget d'une séance est dans budgets.yaml › per_committee.
+
+max_debate_rounds: 2
+
+# Niveau de modèle par rôle du Comité Finance : le gestionnaire en deep (spec), les autres en
+# standard. Les analystes fondamental et sentiment sont inactifs (aucune source) : ils n'ont pas
+# de niveau tant qu'ils ne sont pas activés.
+finance:
+  tiers:
+    analyste_technique: standard
+    analyste_actualites_macro: standard
+    analyste_portefeuille: standard
+    defenseur: standard
+    contradicteur: standard
+    gestionnaire: deep
+    controleur_risque: standard

@@ -3,3 +3,6 @@ alerts_pct: [50, 80, 100]
 per_request: { max_tool_calls: 25, max_tokens: 150000, max_seconds: 120 }
 # Décision D9 (2026-10-18) : à 100 % du budget, les nouvelles requêtes sont refusées.
 on_exceeded: [refuse_new_requests]
+# Séance du Comité d'investissement (ADR-028, D18) : elle dépasse le budget d'une requête. Les
+# valeurs attendent la décision de Lucas ; aucune séance réelle n'a lieu avant.
+per_committee: { max_tokens: A_DEFINIR, max_seconds: A_DEFINIR, max_tool_calls: A_DEFINIR }

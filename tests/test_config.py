@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from datetime import time
 from decimal import Decimal
 from pathlib import Path
 from typing import Any
@@ -10,6 +11,7 @@ import pytest
 import yaml
 
 from core.config import FEATURES, BlockedFeatureError, ConfigError, find_markers, load_config
+from core.config.loader import RESEARCH_BOUNDS
 from tests.conftest import REPO_ROOT
 
 
@@ -57,6 +59,8 @@ def test_every_marker_dependent_feature_is_blocked_by_default() -> None:
         "finance.benchmark",
         "finance.trading_costs",
         "finance.mean_variance",
+        "finance.research",
+        "finance.committee",
         "data.openbb",
         "data.yfinance",
     ):
@@ -518,3 +522,171 @@ def test_historical_stress_unblocks_once_dates_and_sources_are_checked(config_di
 
     edit_yaml(config_dir / "risk.yaml", fill)
     load_config(config_dir).require("finance.historical_stress")
+
+
+# --- phase 3: research protocol and investment committee ---------------------------------------
+
+
+def test_phase_3_decisions_are_recorded() -> None:
+    config = load_config(REPO_ROOT / "config")
+    research = config.research
+    assert research.execution.decision_cutoff_utc == time(21, 0)  # D6
+    assert research.split.development_fraction == 0.7  # D7
+    assert research.split.embargo_sessions == 5  # D7
+    assert (research.walk_forward.scheme, research.walk_forward.blocks) == ("anchored", 5)  # D8
+    assert research.pbo.partitions == 16  # ADR-026
+    assert research.gates.model_dump() == {  # D9
+        "dsr_min": 0.95,
+        "pbo_max": 0.5,
+        "final_to_walk_forward_sharpe_min": 0.5,
+        "benchmark_min_sessions": 252,
+        "cost_stress_multiplier": 2,
+    }
+    assert research.cross_check.nautilus_rel_tolerance == 1e-6  # D12
+    assert research.cross_check.vectorbt_rel_tolerance == 1e-9  # D12
+    assert config.committee.max_debate_rounds == 2  # D17
+    tiers = config.committee.finance.tiers
+    assert tiers["gestionnaire"] == "deep"  # D17
+    assert {tier for role, tier in tiers.items() if role != "gestionnaire"} == {"standard"}
+    # D18: proposed to Lucas, not decided; no real committee session before his answer.
+    assert set(config.budgets.per_committee.model_dump().values()) == {"A_DEFINIR"}
+
+
+LOOSER = {
+    "gates.dsr_min": 0.9,
+    "gates.pbo_max": 0.6,
+    "gates.final_to_walk_forward_sharpe_min": 0.4,
+    "gates.benchmark_min_sessions": 251,
+    "gates.cost_stress_multiplier": 1.5,
+    "split.embargo_sessions": 4,
+    "cross_check.nautilus_rel_tolerance": 1e-5,
+    "cross_check.vectorbt_rel_tolerance": 1e-8,
+}
+
+
+def test_every_research_bound_has_a_looser_case() -> None:
+    assert LOOSER.keys() == RESEARCH_BOUNDS.keys()
+
+
+@pytest.mark.parametrize(("dotted", "value"), LOOSER.items())
+def test_the_research_gates_cannot_be_loosened(config_dir: Path, dotted: str, value: float) -> None:
+    section, name = dotted.split(".")
+    edit_yaml(config_dir / "research.yaml", lambda d: d[section].update({name: value}))
+    with pytest.raises(ConfigError, match=r"plancher|plafond") as caught:
+        load_config(config_dir)
+    assert dotted in str(caught.value)
+
+
+def test_the_research_gates_can_be_tightened(config_dir: Path) -> None:
+    def tighten(d: dict[str, Any]) -> None:
+        d["gates"].update(dsr_min=0.99, pbo_max=0.2, cost_stress_multiplier=3)
+        d["split"].update(embargo_sessions=10)
+        d["cross_check"].update(nautilus_rel_tolerance=1e-8)
+
+    edit_yaml(config_dir / "research.yaml", tighten)
+    assert load_config(config_dir).research.gates.pbo_max == 0.2
+
+
+@pytest.mark.parametrize(
+    "line",
+    [
+        "decision_cutoff_utc: 21:00",  # YAML 1.1 base 60: the integer 1260, never 00:21
+        'decision_cutoff_utc: "21:00+02:00"',
+        'decision_cutoff_utc: "25:00"',
+    ],
+)
+def test_the_decision_cutoff_is_a_quoted_naive_utc_time(config_dir: Path, line: str) -> None:
+    path = config_dir / "research.yaml"
+    text = path.read_text(encoding="utf-8")
+    assert 'decision_cutoff_utc: "21:00"' in text
+    path.write_text(text.replace('decision_cutoff_utc: "21:00"', line), encoding="utf-8")
+    with pytest.raises(ConfigError, match="decision_cutoff_utc"):
+        load_config(config_dir)
+
+
+@pytest.mark.parametrize(
+    ("section", "field", "value"),
+    [
+        ("pbo", "partitions", 15),
+        ("pbo", "partitions", 2),
+        ("walk_forward", "blocks", 1),
+        ("walk_forward", "scheme", "rolling"),
+        ("split", "development_fraction", 1.0),
+        ("copilot", "max_window_sessions", 0),
+    ],
+)
+def test_invalid_research_parameters_are_refused(
+    config_dir: Path, section: str, field: str, value: object
+) -> None:
+    edit_yaml(config_dir / "research.yaml", lambda d: d[section].update({field: value}))
+    with pytest.raises(ConfigError, match=r"research\.yaml"):
+        load_config(config_dir)
+
+
+def test_research_on_real_data_waits_for_the_trading_costs(config_dir: Path) -> None:
+    reasons = load_config(REPO_ROOT / "config").blockers("finance.research")
+    assert reasons and all("trading_costs" in reason for reason in reasons)
+    costs = {
+        "commission_pct": "0.1",
+        "min_commission_eur": "1.99",
+        "slippage_bps": "5",
+        "fx_conversion_bps": "25",
+    }
+    edit_yaml(config_dir / "risk.yaml", lambda d: d["trading_costs"].update(costs))
+    load_config(config_dir).require("finance.research")
+
+
+def _decide_committee_budgets(config_dir: Path) -> None:
+    def fill(d: dict[str, Any]) -> None:
+        d["llm_budget_eur"].update(daily="2", monthly="40")
+        d["per_committee"].update(max_tokens=400_000, max_seconds=600, max_tool_calls=40)
+
+    edit_yaml(config_dir / "budgets.yaml", fill)
+
+
+def test_the_committee_waits_for_the_budgets(config_dir: Path) -> None:
+    reasons = load_config(REPO_ROOT / "config").blockers("finance.committee")
+    assert any("per_committee" in reason for reason in reasons)
+    assert any("llm_budget_eur" in reason for reason in reasons)
+    _decide_committee_budgets(config_dir)
+    load_config(config_dir).require("finance.committee")
+
+
+def test_the_committee_is_blocked_by_an_undecided_model_tier(config_dir: Path) -> None:
+    _decide_committee_budgets(config_dir)
+    edit_yaml(
+        config_dir / "committee.yaml", lambda d: d["finance"]["tiers"].update(defenseur="local")
+    )
+    reasons = load_config(config_dir).blockers("finance.committee")
+    assert reasons and all("tiers.local" in reason for reason in reasons)
+
+
+def test_a_committee_tier_must_exist_in_models(config_dir: Path) -> None:
+    edit_yaml(config_dir / "models.yaml", lambda d: d["tiers"].pop("local"))
+    edit_yaml(
+        config_dir / "committee.yaml", lambda d: d["finance"]["tiers"].update(defenseur="local")
+    )
+    with pytest.raises(ConfigError, match=r"absent de models\.yaml"):
+        load_config(config_dir)
+
+
+@pytest.mark.parametrize(
+    ("mutate", "where"),
+    [
+        (lambda d: d.update(max_debate_rounds=0), "max_debate_rounds"),
+        (lambda d: d["finance"]["tiers"].update(defenseur="turbo"), "defenseur"),
+        (lambda d: d["finance"]["tiers"].update({"Défenseur": "standard"}), "tiers"),
+        (lambda d: d["finance"].update(tiers={}), "tiers"),
+    ],
+)
+def test_invalid_committee_parameters_are_refused(config_dir: Path, mutate, where: str) -> None:
+    edit_yaml(config_dir / "committee.yaml", mutate)
+    with pytest.raises(ConfigError, match=where):
+        load_config(config_dir)
+
+
+@pytest.mark.parametrize("field", ["max_tokens", "max_seconds", "max_tool_calls"])
+def test_committee_budget_limits_are_positive(config_dir: Path, field: str) -> None:
+    edit_yaml(config_dir / "budgets.yaml", lambda d: d["per_committee"].update({field: 0}))
+    with pytest.raises(ConfigError, match="per_committee"):
+        load_config(config_dir)
