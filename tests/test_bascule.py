@@ -72,6 +72,11 @@ def hook(code_dir, event, home, sid="s1"):
     return py(code_dir / "brain.py", "hook", event, home=home, inp=payload)
 
 
+def vise(plugin):
+    """Le lanceur stable mène à ce dossier du plugin. Il l'écrit avec repr() : sous Windows, antislashs doublés."""
+    return repr(str(plugin))[1:-1] in (BRAIN / "brain.py").read_text(encoding="utf-8")
+
+
 def settings(home):
     return json.loads((home / "settings.json").read_text(encoding="utf-8"))
 
@@ -124,8 +129,8 @@ check(archive.is_dir() and '"8.0.0"' in (archive / "brainkit" / "__init__.py").r
       and (archive / "brain.py").exists(), "code classique archivé (8.0.0) avant d'être retiré", archive)
 check(graph_titles(BRAIN) == titles_before and "Épingles verticales sur Pinterest" in titles_before,
       "souvenirs intacts", len(titles_before))
-check("runpy" in (BRAIN / "brain.py").read_text(encoding="utf-8") and str(PLUGIN) in (BRAIN / "brain.py").read_text(
-    encoding="utf-8"), "lanceur stable ~/.claude/brain/brain.py vers le code du plugin")
+check("runpy" in (BRAIN / "brain.py").read_text(encoding="utf-8") and vise(PLUGIN),
+      "lanceur stable ~/.claude/brain/brain.py vers le code du plugin")
 
 # ------------------------------------------------------------------ 3. ensuite : tout passe par le plugin
 c, out = py(BRAIN / "brain.py", "--version", home=HOME)
@@ -142,8 +147,7 @@ check("passé du cerveau classique 8.0.0 au plugin" in out and "mises à jour au
 # une nouvelle version du plugin (nouveau dossier dans le cache) : le lanceur suit
 PLUGIN2 = plugin_in_cache(HOME, "8.4.1")
 c, out = hook(PLUGIN2, "session-start", HOME, sid="s3")
-check(c == 0 and str(PLUGIN2) in (BRAIN / "brain.py").read_text(encoding="utf-8"),
-      "mise à jour du plugin : le lanceur vise la nouvelle version au démarrage suivant")
+check(c == 0 and vise(PLUGIN2), "mise à jour du plugin : le lanceur vise la nouvelle version au démarrage suivant")
 # Claude Code installe une version plus récente (nouveau dossier et registre installed_plugins.json) : les commandes
 # du cerveau la prennent aussitôt, sans attendre un démarrage de session
 SUIVANT = plugin_in_cache(HOME, "9.9.9")

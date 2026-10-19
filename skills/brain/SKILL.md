@@ -19,6 +19,10 @@ Commande : `python "$HOME/.claude/brain/brain.py" <commande>` (fonctionne dans B
   demande les observations de la session (le détail n'est plus que résumé).
 - **Usage réel** : un souvenir montré dont les termes ou les chiffres reviennent dans ta réponse ou tes commandes
   compte comme *utilisé* (montré ≠ utilisé) ; le classement de l'index en tient compte.
+- **Réflexes de skills** : quand un message colle à une skill perso (`~/.claude/skills`, ou `.claude/skills` du
+  projet) par un de ses déclencheurs « … », une ligne 🧩 dit de la charger d'abord (outil Skill) — une fois par session,
+  rétrogradée en « peut-être » si le message contient un mot de sa partie « Ne pas utiliser… ». Une méthode ou un
+  prompt structuré collé → 🧩 en faire une skill (`skill new`), ou mettre à jour celle qui lui ressemble.
 - **Fin de session** : journal, vue 3D, et une fois par jour consolidation prudente (doublons évidents, souvenirs
   remplacés via `supersedes`, secrets) puis **rêve** (dates relatives rendues absolues, observations de plus de 7 jours
   condensées en un résumé par semaine et par projet, dossier `REVE.md` des points à trancher ; s'il y en a assez, une
@@ -158,7 +162,8 @@ variables d'env, documents, cycles, TODO, fichiers sensibles jamais lus).
 `journal [-p projet]` sessions passées · `journal -s "mots"` chercher dans leur texte · `journal --backfill` importer celles que les hooks ont manquées · `context` ce qui est injecté ici · `recall "message"` tester le rappel ·
 `consolidate [--dry-run]` fusion doublons/obsolètes · `dream` rêve (entretien : conflits, doublons, corrections entendues ; `--done`) · `stats` · `doctor` diagnostic (`doctor --fix` répare tout) ·
 `bench` banc d'essai (qualité du rappel, faux rappels, tokens par démarrage, vitesse des hooks) · `tokens [--hours 48]` où partent les tokens (contexte relu, coût fixe au démarrage, relances, habitudes coûteuses, mesuré sur les transcripts) · `report` rapport du graphe ·
-`eco` mode éco, moins de tokens sans rien perdre : état + plugins jamais utilisés · `eco --appliquer` (sorties de commandes longues mises en fichier, résumé de la conversation plus tôt ; posé tout seul au 1er démarrage) · `eco --annuler` · `eco --desactiver nom@marketplace` (demande d'abord à l'utilisateur) · `eco --plugins-auto [on|off]` (veille quotidienne : désactive tout seul plugins et skills claude.ai jamais utilisés en 30 j ; seulement si l'utilisateur le demande) ·
+`eco` mode éco, moins de tokens sans rien perdre : état + plugins jamais utilisés · `eco --appliquer` (sorties de commandes longues mises en fichier, résumé de la conversation plus tôt, liste des skills réduite, mémoire auto coupée ; posé tout seul au 1er démarrage) · `eco --annuler` · `eco --poser ID` / `eco --retirer ID` (réglages sur accord : outils, connecteurs, git, effort, lecture, sous-agents — seulement après accord explicite de l'utilisateur) · `eco --cache auto|5m|1h|off` (durée du cache de prompt ; auto = choisie chaque jour d'après les pauses réelles) · `eco --desactiver nom@marketplace` (demande d'abord à l'utilisateur) · `eco --plugins-auto [on|off]` (veille quotidienne : désactive tout seul plugins et skills claude.ai jamais utilisés en 30 j ; seulement si l'utilisateur le demande) ·
 `pc` état du PC (RAM/CPU/GPU) et ce qu'on peut libérer (sessions inactives, serveurs MCP) · `pc --clean` ferme les serveurs MCP orphelins (parent mort) · `pc --history [h]` mesures de la veille ·
+`skill` skills perso (+ combien de fois soufflées et chargées) · `skill test "message"` laquelle se déclencherait · `skill check` contrôle (déclencheurs, liens, longueur) · `skill new <nom> -d "À utiliser quand… « … » Ne pas utiliser pour…" --body-file f` créer ·
 `viz --open` vue 3D (`~/.claude/brain/cerveau.html`, régénérée en fin de session) · `export` (MEMOIRES.md lisible) ·
-`config recall.enabled false` · `install` réparer.
+`config recall.enabled false` · `config skills.paste auto|propose|off` · `install` réparer.

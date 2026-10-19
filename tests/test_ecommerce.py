@@ -22,6 +22,8 @@ for k in ("BRAIN_WIKI", "CLAUDE_CODE_REMOTE", "CERVEAU_CLOUD"):
     os.environ.pop(k, None)
 CODE = Path(__file__).resolve().parent.parent
 SKILL_DIR = CODE / "skills" / "ecommerce"
+# dépôt publié ou copie de travail (qui n'a que le code : ni .claude-plugin, ni README, ni skills/brain générés)
+DEPOT = (CODE / ".claude-plugin" / "plugin.json").exists()
 sys.path.insert(0, str(CODE))
 
 from brainkit import install, publish, selfupdate  # noqa: E402
@@ -36,8 +38,9 @@ def check(cond, label, detail=""):
 
 
 def run(*args, cwd=None, env=None):
+    # stdin fermé : jamais un vrai terminal, même lancé depuis une console (sinon `acces` attend une saisie)
     r = subprocess.run([sys.executable, *map(str, args)], capture_output=True, cwd=str(cwd or TMP), timeout=120,
-                       env=env or os.environ.copy())
+                       env=env or os.environ.copy(), stdin=subprocess.DEVNULL)
     return r.returncode, r.stdout.decode("utf-8", "replace") + r.stderr.decode("utf-8", "replace")
 
 
@@ -679,15 +682,16 @@ plugin_json = json.loads((dest / ".claude-plugin" / "plugin.json").read_text(enc
 check("e-commerce" in plugin_json["keywords"] and "e-commerce" in plugin_json["description"],
       "plugin.json : le cerveau e-commerce est annoncé")
 check("/cerveau:ecommerce" in (dest / "README.md").read_text(encoding="utf-8"), "README du plugin : skill présentée")
-repo_plugin = json.loads((CODE / ".claude-plugin" / "plugin.json").read_text(encoding="utf-8"))
-for key in ("version", "description", "keywords"):
-    check(plugin_json[key] == repo_plugin[key], f"plugin.json du dépôt à jour ({key})")
-gen = json.loads((dest / ".claude-plugin" / "marketplace.json").read_text(encoding="utf-8"))
-repo_market = json.loads((CODE / ".claude-plugin" / "marketplace.json").read_text(encoding="utf-8"))
-check(gen["metadata"]["version"] == repo_market["metadata"]["version"] and gen["plugins"] == repo_market["plugins"],
-      "marketplace.json du dépôt à jour (version, description)")
-readme = (dest / "README.md").read_text(encoding="utf-8").replace("proprietaire/depot", "destingood/cerveau-claude")
-check(readme == (CODE / "README.md").read_text(encoding="utf-8"), "README.md du dépôt identique à celui de publish")
+if DEPOT:
+    repo_plugin = json.loads((CODE / ".claude-plugin" / "plugin.json").read_text(encoding="utf-8"))
+    for key in ("version", "description", "keywords"):
+        check(plugin_json[key] == repo_plugin[key], f"plugin.json du dépôt à jour ({key})")
+    gen = json.loads((dest / ".claude-plugin" / "marketplace.json").read_text(encoding="utf-8"))
+    repo_market = json.loads((CODE / ".claude-plugin" / "marketplace.json").read_text(encoding="utf-8"))
+    check(gen["metadata"]["version"] == repo_market["metadata"]["version"] and gen["plugins"] == repo_market["plugins"],
+          "marketplace.json du dépôt à jour (version, description)")
+    readme = (dest / "README.md").read_text(encoding="utf-8").replace("proprietaire/depot", "destingood/cerveau-claude")
+    check(readme == (CODE / "README.md").read_text(encoding="utf-8"), "README.md du dépôt identique à celui de publish")
 try:
     publish.build(CODE)
     refused = False
@@ -695,6 +699,18 @@ except RuntimeError:
     refused = True
 check(refused and (CODE / "brain.py").exists(), "brain publish refuse d'écrire dans le dossier du code")
 check(publish.secrets_in(dest) == [], "plugin construit : ni secret ni adresse e-mail", publish.secrets_in(dest))
+check(not (dest / "tests").exists(), "brain publish : aucun test n'entre tout seul dans un dépôt neuf")
+depot = TMP / "plugin-depot"  # un dépôt qui a déjà ses tests publics, et un test privé égaré
+(depot / "tests" / "donnees").mkdir(parents=True)
+for name, text in (("test_eco.py", "# ancienne version\n"), ("test_all.py", "# test privé\n"),
+                   ("test_cloud.py", "# ajouté par une session cloud\n"), ("donnees/exemple.json", "{}\n")):
+    (depot / "tests" / name).write_text(text, encoding="utf-8")
+kept = publish.build(depot, "Lucas", "proprietaire/depot")
+check((depot / "tests" / "test_eco.py").read_bytes() == (CODE / "tests" / "test_eco.py").read_bytes()
+      and (depot / "tests" / "test_cloud.py").read_text(encoding="utf-8") == "# ajouté par une session cloud\n"
+      and "tests/donnees/exemple.json" in kept and not (depot / "tests" / "test_all.py").exists(),
+      "brain publish : les tests publics du dépôt restent, à jour depuis le code ; un test privé, jamais",
+      [f for f in kept if f.startswith("tests/")])
 
 # ------------------------------------------------------------------ 5. livraison : self-update (cerveau classique)
 code = selfupdate._code_files(CODE)
@@ -760,9 +776,10 @@ check(c == 0 and "skills/ecommerce/SKILL.md" in out.replace("\\", "/"), "session
 
 # la skill /brain du dépôt est bien celle qu'écrit le cerveau
 # (le test tourne avec un BRAIN_HOME temporaire : la commande du cerveau y pointe, on la ramène à celle des amis)
-check((CODE / "skills" / "brain" / "SKILL.md").read_text(encoding="utf-8")
-      == install.SKILL.replace(install.CMD, 'python "$HOME/.claude/brain/brain.py"'),
-      "skills/brain/SKILL.md identique à install.SKILL")
+if DEPOT:
+    check((CODE / "skills" / "brain" / "SKILL.md").read_text(encoding="utf-8")
+          == install.SKILL.replace(install.CMD, 'python "$HOME/.claude/brain/brain.py"'),
+          "skills/brain/SKILL.md identique à install.SKILL")
 
 shutil.rmtree(TMP, ignore_errors=True)
 print(f"\n{len(OK)} vérifications OK, {len(FAIL)} échec(s)")

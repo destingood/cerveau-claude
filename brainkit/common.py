@@ -46,15 +46,26 @@ DEFAULT_CONFIG = {
     # min_score 5 : sur 27 vrais messages (72 h), les faux rappels notaient 2,4–4,8 et le plus faible vrai 9,3.
     "recall": {"enabled": True, "max_items": 3, "min_cov": 0.5, "min_score": 5.0, "files": True, "max_files": 4,
                "min_cov_files": 0.4, "max_chars": 1200, "session_cap_items": 12, "session_cap_files": 20},
+    # prompts.chat (bibliothèque ouverte de prompts/skills) : sur une demande de prompt, de skill, de rôle ou de contenu
+    # à créer, 0 à max_items modèles proches injectés, filtrés sur le titre ; au plus max_calls recherches (≈ 0,3 s,
+    # cache 7 jours), coupé net au-delà de timeout s ou si le site limite le débit. `brain prompts` à la main.
+    "promptlib": {"auto": True, "max_items": 2, "max_calls": 3, "timeout": 2.5, "session_cap": 6},
+    # Réflexes de skills : souffler la skill perso qui colle au message (une fois par session et par skill) ; une
+    # méthode ou un prompt collé → proposer (« propose ») ou faire tout de suite (« auto ») une skill ; « off » : rien.
+    "skills": {"enabled": True, "max_items": 1, "min_score": 4.0, "session_cap": 6, "exclude": ["brain"],
+               "paste": "propose", "paste_min_chars": 500},
     # Rappel en fin de tâche : « mémorise ce qui est durable » (une fois, seulement si la session a travaillé).
     "stop_reminder": {"enabled": True, "min_tool_calls": 15, "min_edits": 3, "repeat_after": 150},
     # Mode éco (`brain eco`) : réglages officiels de Claude Code posés une fois dans ~/.claude/settings.json (sorties de
-    # commandes longues mises en fichier, conversation résumée plus tôt) ; alerte à l'utilisateur quand la conversation
-    # passe ces tailles (tokens) : chaque message la relit en entier. `eco.auto` false = ne rien poser tout seul.
+    # commandes longues mises en fichier, conversation résumée plus tôt, liste des skills réduite, mémoire auto de Claude
+    # Code coupée une fois importée dans le cerveau) ; alerte à l'utilisateur quand la conversation passe ces tailles
+    # (tokens), ou quand il reprend après une pause qui a vidé le cache (`alerte_pause`) : chaque message la relit en
+    # entier. `eco.auto` false = ne rien poser tout seul. `cache` : durée du cache de prompt — "auto" (simulée une fois par
+    # jour sur les pauses réelles, posée seulement au-delà de 5 % de gain), "5m", "1h" ou "off" (ne jamais y toucher).
     # `plugins_auto` (à activer : `brain eco --plugins-auto`) : veille quotidienne, en arrière-plan, qui désactive les plugins
     # sans usage depuis 30 jours et coupe les skills claude.ai si aucune n'a servi.
     "eco": {"auto": True, "bash_output_max_chars": 10000, "auto_compact_window": 200000,
-            "alerte_contexte": [150000, 300000], "plugins_auto": False},
+            "alerte_contexte": [150000, 300000], "alerte_pause": True, "cache": "auto", "plugins_auto": False},
     # Cartographie automatique (en arrière-plan) des dossiers de projet.
     "auto_map": {"enabled": True, "refresh_minutes": 10},
     "map": {"max_files": 15000, "max_file_kb": 768},
@@ -149,10 +160,11 @@ def log(msg: str) -> None:
 class FileLock:
     """Verrou inter-processus minimal (création exclusive d'un fichier), reprise des verrous périmés."""
 
-    def __init__(self, path, timeout=5.0, stale=30.0):
+    def __init__(self, path, timeout=5.0, stale=30.0, strict=True):
         self.path = str(path)
         self.timeout = timeout
         self.stale = stale
+        self.strict = strict  # False : passé le délai, on continue sans le verrou au lieu d'échouer
         self.held = False
 
     def __enter__(self):
@@ -173,6 +185,9 @@ class FileLock:
                 except OSError:
                     pass
                 if time.time() >= deadline:
+                    if not self.strict:
+                        log(f"verrou occupé, on continue sans : {self.path}")
+                        return self
                     raise TimeoutError(f"verrou occupé : {self.path}")
                 time.sleep(0.05)
 
@@ -201,15 +216,25 @@ def load_config() -> dict:
     return _merge(DEFAULT_CONFIG, read_json(CONFIG_FILE, {}) or {})
 
 
-def set_config(dotted: str, value) -> dict:
-    cfg = read_json(CONFIG_FILE, {}) or {}
-    cur = cfg
-    keys = dotted.split(".")
-    for key in keys[:-1]:
-        cur = cur.setdefault(key, {})
-    cur[keys[-1]] = value
-    write_json(CONFIG_FILE, cfg)
+def update_config(change) -> dict:
+    """Relit la configuration écrite (sans les défauts), la passe à `change` qui la modifie sur place, et la réécrit — le
+    tout sous verrou : deux tâches de fond (plugins, cache…) qui l'écrivent en même temps ne s'écrasent plus. Jamais
+    bloquant : passé 3 s, l'écriture se fait sans le verrou."""
+    with FileLock(str(CONFIG_FILE) + ".lock", timeout=3.0, stale=10.0, strict=False):
+        cfg = read_json(CONFIG_FILE, {}) or {}
+        change(cfg)
+        write_json(CONFIG_FILE, cfg)
     return load_config()
+
+
+def set_config(dotted: str, value) -> dict:
+    def change(cfg):
+        cur = cfg
+        keys = dotted.split(".")
+        for key in keys[:-1]:
+            cur = cur.setdefault(key, {})
+        cur[keys[-1]] = value
+    return update_config(change)
 
 
 # ------------------------------------------------------------------------------------------ dates

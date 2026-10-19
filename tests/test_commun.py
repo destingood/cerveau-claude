@@ -338,6 +338,9 @@ lock = TMP / A / "brain" / "commun" / ".git" / "index.lock"
 lock.write_text("", encoding="utf-8")
 os.utime(lock, (time.time() - 3600, time.time() - 3600))
 code, out = brain(A, "add", "-t", "learning", "-T", "Changer l'eau des vases", "-b", "Tous les deux jours.", "-p", "none")
+t2 = time.time()  # une synchro encore en cours (étape précédente) reprend ce changement en arrière-plan : on l'attend
+while time.time() - t2 < 60 and "membres/alice/wiki/Apprentissages/Changer l'eau des vases.md" not in bare_files():
+    time.sleep(0.5)
 check("membres/alice/wiki/Apprentissages/Changer l'eau des vases.md" in bare_files() and not lock.exists(),
       "verrou git abandonné : retiré, la synchro passe", out)
 

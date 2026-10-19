@@ -4,7 +4,8 @@ de la version. Chez un ami, Claude Code installe le plugin une fois, puis le met
 version publiée ; ses souvenirs restent chez lui, dans ~/.claude/brain, et ne partent jamais.
 
 Ne part dans le dépôt que le code (brain.py, brainkit/) et les skills (/brain, et les skills métier de skills/<nom>/,
-comme le cerveau e-commerce) : jamais les souvenirs, la configuration ni les tests (ils lisent la mémoire de Lucas).
+comme le cerveau e-commerce) : jamais les souvenirs ni la configuration. Les tests publics que le dépôt a déjà
+(tests/) restent, mis à jour depuis le code ; les tests privés (PRIVATE_TESTS : ils lisent la mémoire de Lucas), jamais.
 L'envoi sur GitHub est une publication : il n'a lieu qu'avec `--push`."""
 from __future__ import annotations
 
@@ -15,6 +16,7 @@ import shutil
 import subprocess
 import sys
 import tempfile
+import time
 from pathlib import Path
 
 from . import __version__
@@ -176,9 +178,25 @@ Version {__version__}.
 """
 
 
+PRIVATE_TESTS = {"run_all.py", "test_all.py", "test_mcp.py", "test_units.py", "test_vault.py"}  # mémoire de Lucas
+
+
+def public_tests(dest: Path) -> dict:
+    """Les tests publics que le dépôt a déjà (posés à la main, par une session cloud ou un ami) : build() les garde, pris
+    dans le code quand il les a. Un test n'y entre jamais tout seul, et un test privé jamais. → {chemin sous tests/: octets}"""
+    root = Path(dest) / "tests"
+    found = {}
+    for p in sorted(root.rglob("*")) if root.is_dir() else []:
+        rel = p.relative_to(root)
+        if p.is_file() and p.suffix != ".pyc" and "__pycache__" not in rel.parts and p.name not in PRIVATE_TESTS:
+            mine = CODE_DIR / "tests" / rel
+            found[rel.as_posix()] = (mine if mine.is_file() else p).read_bytes()
+    return found
+
+
 def build(dest: Path, owner: str = "Lucas", repo: str = "") -> list:
-    """Écrit le plugin complet dans dest (le clone du dépôt) : l'ancien contenu est remplacé, .git est gardé.
-    → liste des fichiers écrits (chemins relatifs)."""
+    """Écrit le plugin complet dans dest (le clone du dépôt) : l'ancien contenu est remplacé, .git et les tests publics
+    sont gardés. → liste des fichiers écrits (chemins relatifs)."""
     dest = Path(dest)
     dest.mkdir(parents=True, exist_ok=True)
     if (dest / "brainkit").exists() and (dest / "graph.json").exists():
@@ -187,6 +205,7 @@ def build(dest: Path, owner: str = "Lucas", repo: str = "") -> list:
         raise RuntimeError(f"{dest} est le dossier du code lui-même : donne le clone du dépôt du plugin")
     from .install import EVENTS, SKILL, SKILL_MARK, skill_sources
     skills = skill_sources()  # relevées avant le nettoyage du dépôt
+    tests = public_tests(dest)  # idem
     for item in dest.iterdir():
         if item.name != ".git":
             shutil.rmtree(item) if item.is_dir() else item.unlink()
@@ -211,6 +230,9 @@ def build(dest: Path, owner: str = "Lucas", repo: str = "") -> list:
         "plugins": [{"name": NAME, "source": "./", "description": DESC, "version": __version__}]})
     _lf(dest / "README.md", readme(owner, repo))
     _lf(dest / ".gitignore", "__pycache__/\n*.pyc\n")
+    for rel, data in tests.items():
+        (dest / "tests" / rel).parent.mkdir(parents=True, exist_ok=True)
+        (dest / "tests" / rel).write_bytes(data)
     return sorted(str(p.relative_to(dest)).replace("\\", "/") for p in dest.rglob("*")
                   if p.is_file() and ".git" not in p.relative_to(dest).parts)
 
@@ -244,7 +266,10 @@ def smoke(dest: Path) -> list:
     """Premier démarrage chez un « ami » fictif (profil Claude vide, mémoire vide) : hook de démarrage, rappel d'un
     message, serveur MCP. → liste des problèmes (vide = tout va bien)."""
     problems = []
-    with tempfile.TemporaryDirectory(prefix="cerveau-ami-") as tmp:
+    # Les hooks lancent des tâches de fond détachées (carte du dossier, synchro du wiki…) qui travaillent dans
+    # ~/.claude/brain, ici dans tmp : sous Windows, tant qu'elles tournent, il ne s'efface pas (WinError 32). On ne
+    # plante pas pour autant (ignore_cleanup_errors), et on retente quelques secondes, le temps qu'elles finissent.
+    with tempfile.TemporaryDirectory(prefix="cerveau-ami-", ignore_cleanup_errors=True) as tmp:
         env = {k: v for k, v in os.environ.items() if k not in ("BRAIN_HOME",)}
         env.update(CLAUDE_CONFIG_DIR=str(Path(tmp) / "claude"), CLAUDE_PLUGIN_ROOT=str(dest), APPDATA=str(Path(tmp) / "app"))
         cmd = [sys.executable, "-I", "-S", str(dest / "brain.py")]
@@ -298,6 +323,11 @@ def smoke(dest: Path) -> list:
         r = subprocess.run(cmd + ["mcp"], input=req.encode(), capture_output=True, env=env, cwd=tmp, timeout=60)
         if "memory_search" not in r.stdout.decode("utf-8", "replace"):
             problems.append(f"serveur MCP : {r.stdout[:200]!r} {r.stderr[:200]!r}")
+    for _ in range(40):
+        if not Path(tmp).exists():
+            break
+        time.sleep(0.5)
+        shutil.rmtree(tmp, ignore_errors=True)
     return problems
 
 

@@ -49,7 +49,7 @@ TYPE_ALIASES = {
 }
 RELATIONS = ("relates", "part_of", "depends_on", "uses", "fixes", "supersedes", "contradicts", "about")
 LOCK_FILE = BRAIN_DIR / ".graph.lock"
-WIKILINK = re.compile(r"\[\[([^\]\n]{1,80})\]\]")
+WIKILINK = re.compile(r"\[\[([^\]|#\n]{1,80})(?:[|#][^\]\n]{0,300})?\]\]")  # cible ≤ 80, texte affiché libre
 GLOBAL_REFS = ("none", "aucun", "global", "-")
 
 

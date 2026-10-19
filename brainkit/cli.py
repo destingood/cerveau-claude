@@ -1171,7 +1171,8 @@ def cmd_optimize(a):
 
 def cmd_eco(a):
     from . import eco
-    code, text = eco.run(a.appliquer, a.annuler, a.forcer, a.sortie, a.fenetre, a.desactiver, a.plugins_auto)
+    code, text = eco.run(a.appliquer, a.annuler, a.forcer, a.sortie, a.fenetre, a.desactiver, a.plugins_auto,
+                         a.poser, a.retirer, a.cache)
     print(text)
     return code
 
@@ -1209,6 +1210,76 @@ def cmd_history(a):
         day, hms, _, reason = history.parse(p)
         print(f"{i:3}. {day[6:8]}/{day[4:6]}/{day[:4]} {hms[:2]}:{hms[2:4]}:{hms[4:6]} · {reason:20} · "
               f"{d['active']} souvenirs actifs · {d['edges']} liens · {p.stat().st_size // 1024 or 1} Ko")
+
+
+def cmd_prompts(a):
+    from . import promptlib
+    words = list(a.query)
+    if a.hook:
+        found = promptlib.suggest(a.hook, {**load_config().get("promptlib", {}), "timeout": 10})
+        print("\n".join([promptlib.HEADER] + [promptlib.line(p) for p in found]) if found
+              else "Rien d'injecté pour ce message (pas une demande de prompt/contenu, ou rien d'assez proche).")
+    elif words[:1] == ["get"] and len(words) == 2:
+        print(promptlib.show(words[1]))
+    elif words:
+        print(promptlib.report(" ".join(words), skills=a.skills, n=a.n))
+    else:
+        die('usage : brain prompts "sujet" | brain prompts get <id> | brain prompts --hook "message"')
+
+
+def cmd_skill(a):
+    from . import skills
+    cwd, kc = os.getcwd(), load_config().get("skills", {})
+    act, args = (a.action or "ls"), list(a.args)
+    if act in ("ls", "list"):
+        cat, stats = skills.index(cwd), skills.load_stats()
+        if not cat:
+            print(f"Aucune skill perso dans {skills.SKILLS_DIR}.")
+        for s in cat:
+            n = stats.get(s["name"], {})
+            print(f"- {s['name']} — {len(s['triggers'])} déclencheur(s) · soufflée {n.get('hinted', 0)} fois · chargée "
+                  f"{n.get('used', 0)} fois (dont {n.get('used_after_hint', 0)} juste après)")
+            print(f"    {short(s['description'], 170)}")
+    elif act == "test":
+        msg = " ".join(args) or die('usage : brain skill test "message tel que tu le taperais"')
+        cat = skills.index(cwd)
+        found = skills.match(journal.clean_prompt(msg, 2000), cat, exclude=set(kc.get("exclude", [])),
+                             min_score=kc.get("min_score", 4.0))
+        for r in found[:3]:
+            print(skills.hint_line(r) + f"   [score {r['score']}]")
+        pl = skills.paste_line(msg, {**kc, "paste": kc.get("paste") if kc.get("paste") != "off" else "propose"}, cat)
+        if pl:
+            print(pl)
+        if not found and not pl:
+            print("Aucune skill ne se déclencherait sur ce message.")
+    elif act == "check":
+        probs = skills.check(skills.index(cwd))
+        for lvl, n, m in probs:
+            print(f"{lvl} {n} : {m}")
+        if not any(lvl != "ℹ️" for lvl, _, _ in probs):
+            print("✓ skills perso bien formées : chacune se déclenche sur ses propres mots.")
+    elif act == "new":
+        if len(args) != 1:
+            die('usage : brain skill new <nom> -d "À utiliser quand… « déclencheur »… Ne pas utiliser pour…" '
+                "[-b \"corps\" | --body-file fichier] [--force] [--no-memory]")
+        body = Path(a.body_file).read_text(encoding="utf-8") if a.body_file else (a.body or "")
+        try:
+            path = skills.scaffold(args[0], a.description, body, force=a.force)
+        except (ValueError, FileExistsError, OSError) as exc:
+            die(str(exc))
+        name = path.parent.name
+        print(f"✓ skill créée : {path}")
+        for lvl, n, m in skills.check(skills.index(cwd)):
+            if n == name:
+                print(f"  {lvl} {m}")
+        if not a.no_memory:
+            with Brain.edit() as b:
+                node = b.add("reference", f"Skill perso « {name} »",
+                             f"{' '.join(a.description.split())} Fichier : {path}. Se déclenche seule (réflexe de "
+                             "skills du cerveau) ; tester : `brain skill test \"…\"`.", tags=["skill", name])
+            print(f"✓ fiche dans le cerveau : `{node['id']}`")
+    else:
+        die("usage : brain skill [ls | test \"message\" | check | new <nom> -d \"…\"]")
 
 
 def cmd_pc(a):
@@ -1726,9 +1797,10 @@ def build_parser():
     s.add_argument("--all", action="store_true", help="tout détailler, sans troncature")
     s.add_argument("--hours", type=float, default=48, help="période mesurée pour l'habitude la plus coûteuse (défaut 48 h)")
     s = cmd("eco", cmd_eco, "mode éco : moins de tokens sans rien perdre (sorties longues mises en fichier, résumé plus tôt, "
-            "plugins inutilisés) — --appliquer · --annuler · --desactiver nom@marketplace", ["econome"])
-    s.add_argument("--appliquer", action="store_true", help="écrire bashOutputMaxChars et autoCompactWindow dans "
-                   "~/.claude/settings.json (copie de sécurité, retour possible) ; fait tout seul au 1er démarrage")
+            "plugins inutilisés, skills, mémoire, cache) — --appliquer · --annuler · --poser ID · --cache auto", ["econome"])
+    s.add_argument("--appliquer", action="store_true", help="écrire les leviers sûrs (bashOutputMaxChars, autoCompactWindow, "
+                   "skillListingBudgetFraction, autoMemoryEnabled) dans ~/.claude/settings.json (retour exact "
+                   "possible) ; fait tout seul au 1er démarrage")
     s.add_argument("--annuler", action="store_true", help="remettre exactement les réglages d'avant et couper l'application automatique")
     s.add_argument("--forcer", action="store_true", help="remplacer une valeur que tu avais déjà réglée toi-même")
     s.add_argument("--sortie", type=int, help="bashOutputMaxChars, de 4000 à 128000 (défaut 10000)")
@@ -1738,6 +1810,12 @@ def build_parser():
     s.add_argument("--plugins-auto", nargs="?", const="on", choices=["on", "off"],
                    help="veille quotidienne : désactive tout seul les plugins sans usage depuis 30 j et coupe les skills "
                         "claude.ai si aucune n'a servi (on : active et lance tout de suite ; off : coupe)")
+    s.add_argument("--poser", nargs="+", metavar="ID",
+                   help="poser ces propositions (outils, connecteurs, git, effort, lecture, sous-agents) — seulement après accord de l'utilisateur")
+    s.add_argument("--retirer", nargs="+", metavar="ID", help="retirer ces propositions (état d'avant rétabli)")
+    s.add_argument("--cache", choices=["auto", "5m", "1h", "off"],
+                   help="durée du cache de prompt : auto (choisie chaque jour d'après tes pauses), 5m, 1h, "
+                        "off (le cerveau n'y touche plus)")
     s = cmd("history", cmd_history, "instantanés du cerveau (pour revenir en arrière) — --diff <n°|date>", ["historique"])
     s.add_argument("-n", type=int, default=15)
     s.add_argument("--diff", help="ce qui a changé depuis un instantané (n°) ou une date")
@@ -1762,6 +1840,21 @@ def build_parser():
     s.add_argument("--force", action="store_true", help="recalculer l'analyse")
     s = cmd("viz", cmd_viz, "générer cerveau.html (graphe 3D interactif) et cerveau-2d.html")
     s.add_argument("--open", action="store_true")
+    s = cmd("prompts", cmd_prompts, "prompts.chat : chercher des prompts/skills (FR traduit), get <id> = texte "
+            "complet, --hook \"message\" = ce que le rappel automatique injecterait", ["prompt", "promptschat"])
+    s.add_argument("query", nargs="*")
+    s.add_argument("--skills", action="store_true", help="chercher des skills plutôt que des prompts")
+    s.add_argument("-n", type=int, default=8)
+    s.add_argument("--hook", metavar="MESSAGE", help="simuler le rappel automatique sur ce message")
+    s = cmd("skill", cmd_skill, "skills perso : ls (+ stats), test \"message\" (laquelle se déclencherait), check, "
+            "new <nom> -d \"description\" [--body-file f]", ["skills"])
+    s.add_argument("action", nargs="?", choices=["ls", "list", "test", "check", "new"])
+    s.add_argument("args", nargs="*")
+    s.add_argument("-d", "--description", default="")
+    s.add_argument("-b", "--body", default="")
+    s.add_argument("--body-file")
+    s.add_argument("--force", action="store_true", help="remplacer une skill existante")
+    s.add_argument("--no-memory", action="store_true", help="ne pas créer de fiche dans le cerveau")
     s = cmd("pc", cmd_pc, "RAM/CPU/GPU + ce qu'on peut libérer (sessions, serveurs MCP) — --clean, --history, --all", ["ram"])
     s.add_argument("--all", action="store_true", help="tout détailler, sans troncature")
     s.add_argument("--clean", action="store_true", help="fermer maintenant les serveurs MCP orphelins (parent mort)")

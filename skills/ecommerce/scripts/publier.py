@@ -64,8 +64,24 @@ def lire_acces(nom: str) -> str | None:
         return None
 
 
-def enregistrer_acces(nom: str) -> int:
+def vrai_terminal() -> bool:
+    """Quelqu'un au clavier ? Sous Windows, NUL passe aussi isatty() : seule une vraie console répond à GetConsoleMode."""
     if not sys.stdin.isatty():
+        return False
+    if os.name != "nt":
+        return True
+    try:
+        import ctypes
+        import msvcrt
+        mode = ctypes.c_uint32()
+        handle = ctypes.c_void_p(msvcrt.get_osfhandle(sys.stdin.fileno()))
+        return bool(ctypes.windll.kernel32.GetConsoleMode(handle, ctypes.byref(mode)))
+    except (OSError, ValueError, AttributeError):
+        return False
+
+
+def enregistrer_acces(nom: str) -> int:
+    if not vrai_terminal():
         print("✗ à lancer dans ton propre terminal (invite masquée) : l'accès ne doit pas passer par la conversation",
               file=sys.stderr)
         return 2

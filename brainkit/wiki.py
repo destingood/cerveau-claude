@@ -228,7 +228,10 @@ def main():
         if not os.path.isfile(brain):
             return 0
     os.environ["CERVEAU_CLOUD"] = "1"
-    os.execv(sys.executable, [sys.executable, "-I", "-S", brain, "hook", event])
+    args = [sys.executable, "-I", "-S", brain, "hook", event]
+    if os.name == "nt":  # os.execv ne met pas de guillemets sous Windows : « Program Files » coupé en deux
+        return subprocess.run(args).returncode
+    os.execv(sys.executable, args)
 
 
 if __name__ == "__main__":

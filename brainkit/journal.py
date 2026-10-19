@@ -36,7 +36,7 @@ def clean_prompt(text, n=200) -> str:
 def new_state() -> dict:
     return {"offset": 0, "tools": 0, "edits": [], "prompts": 0, "first": None, "last": None, "title": None,
             "brief": None, "cwd": None, "start": None, "end": None, "last_save_tools": 0, "last_obs_tools": 0,
-            "recent": [], "answer": None, "summary": None}
+            "recent": [], "answer": None, "summary": None, "skills": []}
 
 
 def parse_transcript(path, state=None) -> dict:
@@ -123,6 +123,10 @@ def _consume(st, o):
                 fp = inp.get("file_path") or inp.get("notebook_path")
                 if fp and fp not in st["edits"] and len(st["edits"]) < 40:
                     st["edits"].append(fp)
+            elif name == "Skill" and inp.get("skill"):  # skills chargées : sert à « soufflée puis utilisée »
+                sk = st.setdefault("skills", [])
+                if inp["skill"] not in sk and len(sk) < 40:
+                    sk.append(str(inp["skill"])[:80])
             elif name in ("Bash", "PowerShell") and SAVE_RE.search(str(inp.get("command", ""))):
                 st["last_save_tools"] = st["tools"]
                 if OBS_RE.search(str(inp.get("command", ""))):

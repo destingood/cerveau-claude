@@ -1,12 +1,15 @@
 """Où partent les tokens — mesuré sur les transcripts Claude Code des dernières heures (lecture locale, zéro token).
 Contexte relu par requête, taille des premières requêtes, coût fixe au démarrage (skills, MCP, outils différés, hooks),
 relances du cerveau, et habitudes coûteuses avec ce qu'elles « portent » : leur taille multipliée par le nombre de
-requêtes qui la relisent jusqu'à la compaction suivante. Les leviers renvoient à `brain eco`."""
+requêtes qui la relisent jusqu'à la compaction suivante. Poids réel aux prix relatifs de l'API (`weigh`) : écritures et
+lectures du cache, sortie, compactions, pauses, cache de 5 min et de 1 h simulés. Les leviers renvoient à `brain eco`."""
 from __future__ import annotations
 
 import json
+import math
 import statistics
 import time
+from datetime import datetime
 
 from .common import CHARS_PER_TOKEN, CLAUDE_HOME, load_config, log
 from .journal import AUTO_RE
@@ -282,6 +285,237 @@ def _advice(d, cpt) -> list:
     return L
 
 
+# ------------------------------------------------------------------------------------------ poids réel
+WEIGHTS = {"in": 1.0, "w5": 1.25, "w1h": 2.0, "read": 0.1, "out": 5.0}  # prix relatifs de l'API : la mesure du quota
+TTL_SIM = {"5m": (300, 1.25), "1h": (3600, 2.0)}  # cache de prompt : durée (s), prix d'une écriture
+BIG_WRITE = 20_000  # écriture de cache assez grosse pour en chercher la cause
+PAUSES = (("< 1 min", 60), ("1-5 min", 300), ("5-60 min", 3600), ("> 1 h", math.inf))
+CAUSES = ("début", "compaction", "pause > 1 h", "pause > 5 min", "invalidation")
+
+
+def _epoch(value) -> float:
+    try:
+        return datetime.fromisoformat(str(value).replace("Z", "+00:00")).timestamp()
+    except (TypeError, ValueError):
+        return 0.0
+
+
+def _num(d, key) -> int:
+    try:
+        return int(d.get(key) or 0)
+    except (AttributeError, TypeError, ValueError):
+        return 0
+
+
+def _events(path, seen, sub) -> tuple:
+    """Un transcript → (événements dans l'ordre, titre). ("R", requête {t, in, w5, w1h, read, out, main}) ou ("C", heure,
+    contexte avant, après) pour une compaction. Une requête écrite sur plusieurs lignes, ou recopiée dans un autre
+    transcript (`seen`), ne compte qu'une fois, avec sa sortie la plus grande."""
+    ev, mine, title, ai = [], {}, None, None
+    with open(path, "rb") as fh:
+        for raw in fh:
+            if b'"usage"' in raw and b'"assistant"' in raw:
+                try:
+                    o = json.loads(raw)
+                except ValueError:
+                    continue
+                m = o.get("message") if isinstance(o, dict) and o.get("type") == "assistant" else None
+                u = m.get("usage") if isinstance(m, dict) else None
+                if not isinstance(u, dict):
+                    continue
+                key = o.get("requestId") or m.get("id")
+                if key in mine:
+                    mine[key]["out"] = max(mine[key]["out"], _num(u, "output_tokens"))
+                    continue
+                if key in seen:
+                    continue
+                w = _num(u, "cache_creation_input_tokens")
+                w1h = min(w, _num(u.get("cache_creation"), "ephemeral_1h_input_tokens"))
+                r = {"t": _epoch(o.get("timestamp")), "in": _num(u, "input_tokens"), "w5": w - w1h, "w1h": w1h,
+                     "read": _num(u, "cache_read_input_tokens"), "out": _num(u, "output_tokens"),
+                     "main": not sub and not o.get("isSidechain")}
+                if key:
+                    mine[key] = r
+                ev.append(("R", r))
+            elif b'"compact_boundary"' in raw:
+                try:
+                    o = json.loads(raw)
+                except ValueError:
+                    continue
+                md = o.get("compactMetadata") if isinstance(o, dict) and o.get("subtype") == "compact_boundary" else None
+                if isinstance(md, dict) and not o.get("isSidechain"):
+                    ev.append(("C", _epoch(o.get("timestamp")), _num(md, "preTokens"), _num(md, "postTokens")))
+            elif b'"customTitle"' in raw or b'"aiTitle"' in raw:
+                try:
+                    o = json.loads(raw)
+                except ValueError:
+                    continue
+                if isinstance(o, dict):
+                    title, ai = o.get("customTitle") or title, o.get("aiTitle") or ai
+    seen.update(mine)
+    return ev, title or ai
+
+
+def weigh(hours=168.0) -> dict:
+    """Poids réel des tokens sur `hours` heures, aux prix relatifs de l'API (entrée 1, écriture de cache 1,25 à 5 min ou
+    2 à 1 h, lecture 0,1, sortie 5) → {total, reqs, parts, hidden (coût caché des compactions : relecture 0,1 × avant +
+    résumé 5 × après), compactions, main, sub, causes des écritures > BIG_WRITE, gaps (pauses entre deux requêtes de la
+    conversation principale), ttl {"5m", "1h" : coût du contexte simulé avec ce cache sur ces pauses, reqs, regime : le
+    cache en service}, fenetre (compaction la moins chère B + √(20·K·g) : B contexte après une compaction, g croissance par
+    requête sur les segments qui finissent en compaction, K coût d'une compaction ; ou None), fenetre_calc (B, g, K),
+    sessions (les 3 plus lourdes)}."""
+    root = CLAUDE_HOME / "projects"
+    cut = time.time() - hours * 3600
+    files = []
+    for f in root.rglob("*.jsonl") if root.is_dir() else ():
+        try:
+            if f.stat().st_mtime >= cut:
+                files.append(f)
+        except OSError:
+            continue
+    seen, sessions = set(), {}
+    parts = dict.fromkeys(WEIGHTS, 0.0)
+    causes = {c: [0, 0.0] for c in CAUSES}
+    gaps = {label: 0 for label, _ in PAUSES}
+    sim = dict.fromkeys(TTL_SIM, 0.0)
+    acc = {"reqs": 0, "main": 0.0, "sub": 0.0, "hidden": 0.0, "compactions": 0, "sim": 0, "w5": 0, "w1h": 0}
+    after, kcost, slopes = [], [], []  # après une compaction : contexte, coût ; (croissance, requêtes) par segment
+    for f in sorted(files):
+        sub = "subagents" in f.parts
+        sid = f.parent.parent.name if sub else f.stem
+        try:
+            ev, title = _events(f, seen, sub)
+        except OSError:
+            continue
+        s = sessions.setdefault(sid, [0.0, None])
+        s[1] = s[1] or (None if sub else title)
+        prev, pending, seg = None, None, None  # requête principale précédente (heure, contexte en cache, contexte) ;
+        for e in ev:  # compaction en attente ; segment en cours [contexte au début, requêtes depuis]
+            if e[0] == "C":
+                pending = 0.1 * e[2] + 5 * e[3]  # le résumé : relecture de la conversation + sortie du résumé
+                if not e[1] or e[1] >= cut:
+                    acc["hidden"] += pending
+                    acc["compactions"] += 1
+                    if seg and seg[1] and e[2] > seg[0]:  # pente réelle d'un segment qui finit en compaction
+                        slopes.append((e[2] - seg[0], seg[1]))
+                seg = None
+                continue
+            r = e[1]
+            on = not r["t"] or r["t"] >= cut
+            cost = sum(r[k] * WEIGHTS[k] for k in WEIGHTS)
+            if on:
+                acc["reqs"] += 1
+                for k in WEIGHTS:
+                    parts[k] += r[k] * WEIGHTS[k]
+                s[0] += cost
+                acc["main" if r["main"] else "sub"] += cost
+            if not r["main"]:
+                continue
+            w = r["w5"] + r["w1h"]
+            cached = r["read"] + w
+            ctx = cached + r["in"]
+            gap = r["t"] - prev[0] if prev and r["t"] and prev[0] else 0.0
+            wcost = r["w5"] * WEIGHTS["w5"] + r["w1h"] * WEIGHTS["w1h"]
+            if seg is None:
+                seg = [ctx, 0]
+            else:
+                seg[1] += 1
+            if on:
+                acc["w5"] += r["w5"]
+                acc["w1h"] += r["w1h"]
+                if pending is not None:
+                    after.append(ctx)
+                    kcost.append(pending + wcost)
+                if prev:
+                    gaps[next(label for label, lim in PAUSES if gap < lim)] += 1
+                if w >= BIG_WRITE:
+                    c = ("début" if prev is None else "compaction" if pending is not None else "pause > 1 h"
+                         if gap > 3600 else "pause > 5 min" if gap > 300 else "invalidation")
+                    causes[c][0] += 1
+                    causes[c][1] += wcost
+                acc["sim"] += 1
+                if prev is None or pending is not None:  # tout est écrit, quel que soit le cache
+                    for k, (_, wt) in TTL_SIM.items():
+                        sim[k] += r["in"] + 0.1 * r["read"] + wt * w
+                else:
+                    rr = r["read"]
+                    if rr < 0.5 * prev[1] and gap > 300:  # cache expiré pour de vrai : ce qu'un cache plus long aurait lu
+                        rr = min(prev[1], cached)
+                    for k, (lim, wt) in TTL_SIM.items():
+                        sim[k] += r["in"] + (0.1 * rr + wt * (cached - rr) if gap <= lim else wt * cached)
+            prev, pending = (r["t"] or (prev[0] if prev else 0.0), cached, ctx), None
+    fen, calc = None, None
+    n = sum(x[1] for x in slopes)
+    if len(after) >= 5 and n:  # par requête : 0,1 × contexte moyen (B + W) / 2 + K × g / (W − B) → minimum en
+        b, g, k = statistics.median(after), sum(x[0] for x in slopes) / n, statistics.mean(kcost)  # B + √(20·K·g)
+        fen = int(round(min(1_000_000, max(100_000, b + math.sqrt(20 * k * g))), -4))
+        calc = {"base": round(b), "croissance": round(g), "cout": round(k), "segments": len(slopes)}
+    regime = ("1h" if acc["w1h"] > acc["w5"] else "5m") if acc["w1h"] + acc["w5"] else None
+    top = sorted(((v[0], v[1] or sid[:8]) for sid, v in sessions.items() if v[0] > 0), reverse=True)[:3]
+    return {"hours": hours, "files": len(files), "reqs": acc["reqs"], "total": sum(parts.values()) + acc["hidden"],
+            "parts": parts, "hidden": acc["hidden"], "compactions": acc["compactions"], "main": acc["main"],
+            "sub": acc["sub"], "causes": causes, "gaps": gaps, "ttl": {**sim, "reqs": acc["sim"], "regime": regime},
+            "fenetre": fen, "fenetre_calc": calc, "sessions": top}
+
+
+def _pc(x, total) -> str:
+    return f"{100 * x / total:.1f} %".replace(".", ",") if total else "0 %"
+
+
+def _weigh_lines(b) -> list:
+    """Les lignes « poids réel » du rapport, avec les leviers qui s'y rattachent."""
+    total, p = b["total"], b["parts"]
+    if not total:
+        return []
+    from . import eco
+    L = [f"Poids réel (prix relatifs de l'API : entrée 1 · écriture du cache 1,25 à 5 min, 2 à 1 h · lecture 0,1 · "
+         f"sortie 5) : {_m(total)} sur {b['reqs']} requête(s)",
+         f"  - lecture du cache {_pc(p['read'], total)} · écriture 1 h {_pc(p['w1h'], total)} · écriture 5 min "
+         f"{_pc(p['w5'], total)} · sortie {_pc(p['out'], total)} · entrée {_pc(p['in'], total)} · résumés de "
+         f"compaction (cachés) {_pc(b['hidden'], total)} ({b['compactions']}) · sous-agents {_pc(b['sub'], total)}"]
+    big = [(c, n, w) for c, (n, w) in b["causes"].items() if n]
+    if big:
+        L.append(f"  - grosses écritures du cache (> {BIG_WRITE // 1000} k) : "
+                 + " · ".join(f"{c} {n} ({_pc(w, total)})" for c, n, w in big))
+    if any(b["gaps"].values()):
+        L.append("  - pauses entre deux requêtes : " + " · ".join(f"{k} {v}" for k, v in b["gaps"].items()))
+    t = b["ttl"]
+    if t.get("reqs") and t.get("regime") in TTL_SIM:
+        cur, best = t["regime"], min(TTL_SIM, key=lambda c: (t[c], c != t["regime"]))
+        gain = (t[cur] - t[best]) / total
+        other = next(c for c in TTL_SIM if c != cur)
+        if best == cur:
+            L.append(f"  - cache simulé sur ces pauses : {eco._ttl(cur)} (en service) reste le meilleur ; "
+                     f"{eco._ttl(other)} coûterait {_pc(t[other] - t[cur], total)} de plus")
+        else:
+            L.append(f"  - cache simulé sur ces pauses : {eco._ttl(best)} ferait gagner {_pc(gain * total, total)} "
+                     f"(en service : {eco._ttl(cur)}) → `brain eco --cache auto` le pose tout seul au-delà de "
+                     f"{eco.CACHE_GAIN_NEW * 100:.0f} %")
+    if b["sessions"]:
+        L.append("  - sessions les plus lourdes : " + " · ".join(f"« {str(title)[:40]} » {_pc(w, total)}"
+                                                                 for w, title in b["sessions"]))
+    try:
+        win = eco.targets()[1]
+    except ValueError:
+        win = eco.DEFAULT_WIN
+    cur_win = eco.current().get(eco.WIN_KEY)
+    cur_win = cur_win if isinstance(cur_win, int) and not isinstance(cur_win, bool) else win
+    if b.get("fenetre") and abs(b["fenetre"] - cur_win) >= 20_000:
+        L.append(f"→ fenêtre de compaction la moins chère d'après tes sessions ≈ {b['fenetre'] // 1000} k (en service "
+                 f"{cur_win // 1000} k) : `brain eco --fenetre {b['fenetre']}` (plus bas = résumés plus fréquents)")
+    try:
+        props = eco.proposals()
+    except Exception as exc:  # jamais bloquer le rapport sur un conseil
+        log(f"tokens.propositions : {exc!r}")
+        props = []
+    if props:
+        gain = sum(x[2] for x in props if x[2])
+        L.append(f"→ {len(props)} réglage(s) sur accord ({', '.join(x[0] for x in props)}"
+                 + (f", ≈ {_k(gain)} tok de moins par requête" if gain else "")
+                 + ") : `brain eco` pour le détail, `brain eco --poser ID` après accord")
+    return L
+
+
 def report(hours=48.0) -> str:
     d = measure(hours)
     reqs = d["reqs"]
@@ -314,4 +548,8 @@ def report(hours=48.0) -> str:
         lines += _advice(d, cpt)
     except Exception as exc:  # jamais bloquer le rapport sur un conseil
         log(f"tokens.conseils : {exc!r}")
+    try:
+        lines += _weigh_lines(weigh(hours))
+    except Exception as exc:
+        log(f"tokens.poids : {exc!r}")
     return "\n".join(lines)

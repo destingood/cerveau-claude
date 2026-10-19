@@ -14,7 +14,7 @@ from pathlib import Path
 from . import index as idx
 from . import journal, search
 from .common import (BRAIN_DIR, BRAIN_PY, CMD, SESSIONS_DIR, STATE_DIR, budget_chars, days_since, fold, load_config, log,
-                     now_iso, read_json, read_stdin_json, set_config, short, tokenize, write_json)
+                     now_iso, parse_iso, read_json, read_stdin_json, set_config, short, tokenize, write_json)
 from .store import TYPES, Brain, bump_hits, bump_used
 
 OBS_HOW = (f"une ligne courte chacune, priorisées (🔴 décision, blocage, préférence · 🟡 avancée, constat · 🟢 détail) : "
@@ -241,12 +241,18 @@ def on_session_start(data, cfg):
     st.update({"cwd": cwd, "project": proj["id"] if proj else None, "wiki": bool(wiki_root)})
     eco_line = ""
     ecfg = cfg.get("eco") or {}
-    if (ecfg.get("auto", True) and not ecfg.get("applique_le")) or ecfg.get("annonce"):
-        try:  # mode éco : réglages posés UNE fois (annulable : `brain eco --annuler`) + annonce de la veille des plugins
-            from . import eco
+    if ecfg.get("auto", True) or ecfg.get("annonce"):
+        try:  # mode éco : réglages posés UNE fois, puis les nouveaux leviers d'une version plus récente (annulable :
+            from . import eco  # `brain eco --annuler`) + annonces de la veille (plugins, cache)
             eco_line = eco.start(cfg)
         except Exception as exc:
             log(f"éco (démarrage) : {exc!r}")
+    if ecfg.get("auto", True) and (ecfg.get("cache") or "auto") == "auto" and days_since(ecfg.get("cache_vu_le")) >= 1:
+        try:  # cache adaptatif : durée du cache choisie d'après les pauses réelles, une fois par jour, en arrière-plan
+            set_config("eco.cache_vu_le", now_iso())
+            spawn_background(["eco", "--cache", "auto"])
+        except Exception as exc:
+            log(f"éco (cache) : {exc!r}")
     if ecfg.get("plugins_auto") and days_since(ecfg.get("plugins_vus_le")) >= 1:
         try:  # veille quotidienne des plugins inutilisés : en arrière-plan (le parcours des transcripts ne tient pas dans le hook)
             set_config("eco.plugins_vus_le", now_iso())  # jour réservé : une autre session qui démarre n'en lance pas une 2e
@@ -286,6 +292,14 @@ def on_session_start(data, cfg):
                 text = f"{text}\n\n{note}"
         except Exception as exc:
             log(f"rêve (démarrage) : {exc!r}")
+        try:
+            from . import skills
+            if (cfg.get("skills") or {}).get("enabled", True):
+                warn = skills.notice()
+                if warn:
+                    text = f"{text}\n\n{warn}"
+        except Exception as exc:
+            log(f"skills (démarrage) : {exc!r}")
         try:
             from . import optimize
             tip = optimize.notice(cfg)
@@ -354,10 +368,20 @@ def pc_watch(cfg):
 TAIL_BYTES = 256 * 1024  # fin du transcript lue pour la taille du contexte (élargie si la dernière réponse est plus grosse)
 
 
-def last_context(path) -> int:
-    """Taille du contexte (tokens) à la dernière requête de la conversation, lue dans la FIN du transcript : entrée +
-    cache créé + cache lu de la dernière réponse de l'assistant (les lignes d'une même réponse portent le même usage :
-    jamais additionnées). 0 si introuvable ; aucune erreur ne remonte."""
+PAUSE_MIN_CTX = 100_000  # en dessous, relire la conversation après une pause coûte peu : pas d'alerte
+
+
+def _epoch(value) -> float:
+    d = parse_iso(value)
+    return d.timestamp() if d else 0.0
+
+
+def last_request(path) -> tuple:
+    """Dernière requête de la conversation principale, lue dans la FIN du transcript → (taille du contexte en tokens :
+    entrée + cache créé + cache lu, heure en secondes epoch ou 0, durée du cache vue dans les dernières écritures — 300
+    ou 3600 s — ou 0). Les lignes d'une même réponse portent le même usage : jamais additionnées. (0, 0, 0) si
+    introuvable ; aucune erreur ne remonte."""
+    ctx, ts = 0, 0.0
     try:
         with open(path, "rb") as fh:
             size = fh.seek(0, os.SEEK_END)
@@ -374,36 +398,86 @@ def last_context(path) -> int:
                         u = o["message"]["usage"] if o.get("type") == "assistant" and not o.get("isSidechain") else None
                         total = sum(int(u.get(k) or 0) for k in ("input_tokens", "cache_creation_input_tokens",
                                                                    "cache_read_input_tokens")) if u else 0
+                        cc = u.get("cache_creation") if total else None
+                        h1 = int(cc.get("ephemeral_1h_input_tokens") or 0) if isinstance(cc, dict) else 0
+                        m5 = int(cc.get("ephemeral_5m_input_tokens") or 0) if isinstance(cc, dict) else 0
                     except (ValueError, TypeError, KeyError, AttributeError):
                         continue
-                    if total:
-                        return total
-                if size <= tail:
+                    if not total:
+                        continue
+                    if not ctx:
+                        ctx, ts = total, _epoch(o.get("timestamp"))
+                    if h1 or m5:  # durée du cache : celle des dernières écritures
+                        return ctx, ts, 3600 if h1 >= m5 else 300
+                if ctx or size <= tail:
                     break
     except (OSError, TypeError, ValueError):
         pass
-    return 0
+    return ctx, ts, 0
+
+
+def last_context(path) -> int:
+    """Taille du contexte (tokens) à la dernière requête de la conversation ; 0 si introuvable."""
+    return last_request(path)[0]
+
+
+def _cache_ttl() -> int:
+    """Durée du cache de prompt (s) d'après les réglages, quand le transcript ne la montre pas : 1 h par défaut
+    (abonnement, conversation principale), 5 min quand c'est demandé (variables d'environnement, promptCacheTtl)."""
+    if os.environ.get("FORCE_PROMPT_CACHING_5M", "").strip().lower() not in ("", "0", "false"):
+        return 300
+    v = os.environ.get("CLAUDE_CODE_PROMPT_CACHE_TTL", "").strip().lower()
+    if not v:
+        try:
+            from . import eco
+            settings, _ = eco.read_settings()
+            v = str(settings.get("promptCacheTtl") or "").strip().lower()
+        except Exception:
+            v = ""
+    return 300 if v == "5m" else 3600
+
+
+def _duree(sec) -> str:
+    return f"{round(sec / 86400)} j" if sec >= 86400 else f"{round(sec / 3600)} h" if sec >= 3600 else f"{round(sec / 60)} min"
+
+
+def pause_alert(size, ts, ttl=0, now=None) -> str:
+    """Retour après une pause plus longue que la durée du cache, sur une grosse conversation : ce message relit tout au
+    prix fort. Un message pour l'UTILISATEUR (zéro token pour Claude), ou ''."""
+    if size < PAUSE_MIN_CTX or not ts:
+        return ""
+    gap = (now or time.time()) - ts
+    if gap <= 300 or gap <= (ttl or _cache_ttl()):
+        return ""
+    return (f"⏸ Reprise après {_duree(gap)} : le cache a expiré, ce message relit toute la conversation "
+            f"(≈{round(size / 1000)} k tokens) au prix fort. Après une pause, nouveau sujet → /clear d'abord (le cerveau "
+            "garde l'essentiel).")
 
 
 def context_alert(data, cfg) -> str:
-    """Quand la conversation passe le palier suivant de `eco.alerte_contexte` (pas encore signalé dans cette session) :
-    un message pour l'UTILISATEUR (`systemMessage`), jamais pour Claude — chaque message relit toute la conversation."""
-    steps = sorted(int(x) for x in (cfg.get("eco") or {}).get("alerte_contexte") or [] if isinstance(x, (int, float)))
+    """Un message pour l'UTILISATEUR (`systemMessage`), jamais pour Claude — chaque message relit toute la conversation :
+    reprise après une pause qui a vidé le cache (`eco.alerte_pause`), sinon palier suivant de `eco.alerte_contexte`
+    (signalé une fois par session)."""
+    ecfg = cfg.get("eco") or {}
+    steps = sorted(int(x) for x in ecfg.get("alerte_contexte") or [] if isinstance(x, (int, float)))
+    pause = ecfg.get("alerte_pause", True)
     sid, tp = data.get("session_id"), data.get("transcript_path")
-    if not steps or not sid or not tp:
+    if not (steps or pause) or not sid or not tp:
         return ""
-    size = last_context(tp)
+    size, ts, ttl = last_request(tp)
+    note = pause_alert(size, ts, ttl) if pause else ""
+    if not steps:
+        return note
     reached = max((x for x in steps if size >= x), default=0)
     st = load_state(sid)
     done = st.get("eco_alerte", 0)
-    if reached == done:
-        return ""
-    st["eco_alerte"] = reached  # plus bas qu'avant (compaction, /clear) : les paliers se réarment
-    save_state(sid, st)
-    if reached < done:
-        return ""
-    return (f"💡 Conversation à ≈{round(size / 1000)} k tokens : chaque message la relit en entier. Nouveau sujet ? "
-            "Tape /clear (le cerveau garde l'essentiel) ou /compact.")
+    if reached != done:
+        st["eco_alerte"] = reached  # plus bas qu'avant (compaction, /clear) : les paliers se réarment
+        save_state(sid, st)
+        if reached > done and not note:
+            note = (f"💡 Conversation à ≈{round(size / 1000)} k tokens : chaque message la relit en entier. Nouveau "
+                    "sujet ? Tape /clear (le cerveau garde l'essentiel) ou /compact.")
+    return note
 
 
 # Demande explicite (« retiens que… ») : le hook l'enregistre lui-même.
@@ -593,18 +667,67 @@ def recall_context(data, cfg, raw, saved="") -> str:
         if block:
             out += [title] + block
             used += cost
+    # prompts.chat : modèles de prompts/skills proches, seulement sur une demande de prompt ou de contenu à créer et
+    # seulement s'ils collent vraiment (budget à part : 0 à 2 lignes courtes).
+    plcfg, shown_pl = cfg.get("promptlib") or {}, []
+    if plcfg.get("auto") and len(st.get("prompts", [])) < plcfg.get("session_cap", 6):
+        from . import promptlib
+        shown_pl = promptlib.suggest(raw, plcfg, exclude=set(st.get("prompts", [])))
+        if shown_pl:
+            out += [promptlib.HEADER] + [promptlib.line(p) for p in shown_pl]
+    # Réflexes de skills : la skill perso qui colle au message (une fois par session), et une méthode collée à
+    # transformer en skill. Passent avant les souvenirs : charger la bonne méthode d'abord.
+    sk_lines, sk_names = skill_reflex(raw, st, cfg, cwd)
+    if sk_lines:
+        out = sk_lines + out
     if pcline:  # la veille PC passe toujours, avant les souvenirs
         out = [pcline] + out
     if not out:
         return ""
     ctx = "\n".join(out)
+    if sk_names:
+        st["skills_hinted"] = sorted(set(st.get("skills_hinted", [])) | set(sk_names))
+    if shown_pl:
+        st["prompts"] = st.get("prompts", []) + [p["id"] for p in shown_pl]
     st["recalled"] = recalled + len(shown_mem)
     st["injected"] = sorted(injected | {n["id"] for n in shown_mem})
     st["files"] = sorted(set(st.get("files", [])) | {f["path"] for f in shown_files})
     st["cwd"] = cwd
     save_state(sid, st)
     bump_hits([n["id"] for n in shown_mem])
+    if sk_names:
+        from . import skills
+        skills.bump(sk_names, "hinted")
     return ctx
+
+
+def skill_reflex(raw, st, cfg, cwd=None) -> tuple:
+    """→ (lignes, skills soufflées). Rien sur un brief de sous-agent ni sur une skill déjà soufflée ou chargée."""
+    kc = cfg.get("skills") or {}
+    if not kc.get("enabled", True) or raw.startswith("Background (from"):
+        return [], []
+    try:
+        from . import skills
+        catalog = skills.index(cwd)
+        if not catalog:
+            return [], []
+        lines, names = [], []
+        if st.get("pastes", 0) < 3:
+            pl = skills.paste_line(raw, kc, catalog)
+            if pl:
+                lines.append(pl)
+                st["pastes"] = st.get("pastes", 0) + 1
+        hinted = set(st.get("skills_hinted", []))
+        if len(hinted) < kc.get("session_cap", 6):
+            done = hinted | set((st.get("tx") or {}).get("skills", [])) | set(kc.get("exclude", ["brain"]))
+            text = journal.clean_prompt(raw, 2000)
+            for r in skills.match(text, catalog, exclude=done, min_score=kc.get("min_score", 4.0))[:kc.get("max_items", 1)]:
+                lines.append(skills.hint_line(r))
+                names.append(r["name"])
+        return lines, names
+    except Exception as exc:
+        log(f"skills : {exc!r}")
+        return [], []
 
 
 # ------------------------------------------------------------------------------------------ Montré ≠ utilisé
@@ -663,6 +786,12 @@ def on_stop(data, cfg):
             track_usage(st, scan)
         except Exception as exc:
             log(f"usage : {exc!r}")
+    if tx.get("skills"):
+        try:
+            from . import skills
+            skills.record_usage(st, tx)
+        except Exception as exc:
+            log(f"skills (usage) : {exc!r}")
     if cfg["journal"]["enabled"] and time.time() - st.get("journal_at", 0) > 60:
         brain = Brain.load()
         proj = brain.project_for_path(tx.get("cwd") or data.get("cwd") or st.get("cwd") or "")
@@ -715,6 +844,12 @@ def on_session_end(data, cfg, event="session-end"):
             track_usage(st, scan)
         except Exception as exc:
             log(f"usage : {exc!r}")
+    if tx.get("skills"):
+        try:
+            from . import skills
+            skills.record_usage(st, tx)
+        except Exception as exc:
+            log(f"skills (usage) : {exc!r}")
     if event == "pre-compact" and sid and cfg["stop_reminder"]["enabled"]:
         st["obs_due"] = tx.get("tools", 0)  # PreCompact ne peut rien dire à Claude : le Stop suivant demandera les observations
     save_state(sid, st)

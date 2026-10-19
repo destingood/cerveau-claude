@@ -15,7 +15,9 @@ from pathlib import Path
 TMP = Path(tempfile.mkdtemp(prefix="cerveau-eco-test-"))
 CODE = Path(__file__).resolve().parent.parent
 OK, FAIL = [], []
-for k in ("BRAIN_WIKI", "CLAUDE_CODE_REMOTE", "CERVEAU_CLOUD", "BASH_MAX_OUTPUT_LENGTH", "CLAUDE_CODE_AUTO_COMPACT_WINDOW"):
+for k in ("BRAIN_WIKI", "CLAUDE_CODE_REMOTE", "CERVEAU_CLOUD", "BASH_MAX_OUTPUT_LENGTH", "CLAUDE_CODE_AUTO_COMPACT_WINDOW",
+          "CLAUDE_CODE_SUBAGENT_MODEL", "CLAUDE_CODE_FILE_READ_MAX_OUTPUT_TOKENS", "CLAUDE_CODE_DISABLE_AUTO_MEMORY",
+          "FORCE_PROMPT_CACHING_5M", "CLAUDE_CODE_PROMPT_CACHE_TTL", "ENABLE_PROMPT_CACHING_1H"):
     os.environ.pop(k, None)
 os.environ["CLAUDE_CONFIG_DIR"] = str(TMP / "unite" / "claude")  # import en direct de hooks.py : jamais le vrai PC
 os.environ["BRAIN_HOME"] = str(TMP / "unite" / "brain")
@@ -190,9 +192,38 @@ check(c == 0 and not W.settings_file.exists() and "Mode éco activé" not in con
 W = World("existant")
 W.write_settings({"bashOutputMaxChars": 20000, "autoCompactWindow": 300000})
 c, msg, out = W.hook("session-start", "e1")
-check(c == 0 and "Mode éco activé" not in context_of(msg) and W.settings() == {"bashOutputMaxChars": 20000, "autoCompactWindow": 300000}
-      and W.config("eco.applique_le"), "valeurs de l'utilisateur déjà là : rien posé, rien annoncé, pas d'essai à chaque démarrage",
-      W.settings())
+ctx = context_of(msg)
+eco_line = next((ln for ln in ctx.splitlines() if "⚡ Mode éco" in ln), "")
+check(c == 0 and "⚡ Mode éco activé" in eco_line and "liste des skills plafonnée à 0,5 %" in eco_line
+      and "mises en fichier" not in eco_line and "résumée vers" not in eco_line,
+      "valeurs de l'utilisateur déjà là : gardées, seuls les autres leviers sont posés et annoncés", out[-400:])
+check(W.settings() == {"bashOutputMaxChars": 20000, "autoCompactWindow": 300000, "skillListingBudgetFraction": 0.005,
+                       "autoMemoryEnabled": False} and W.config("eco.applique_le"),
+      "valeurs de l'utilisateur gardées ; liste des skills et mémoire auto posées (rien à importer)", W.settings())
+c, msg, out = W.hook("session-start", "e2")
+check(c == 0 and "⚡ Mode éco" not in context_of(msg) and W.settings()["bashOutputMaxChars"] == 20000,
+      "démarrage suivant : rien de plus (pas d'essai à chaque démarrage)", out[-300:])
+W = World("tout-regle")
+mine = {"bashOutputMaxChars": 20000, "autoCompactWindow": 300000, "skillListingBudgetFraction": 0.02, "autoMemoryEnabled": True}
+W.write_settings(mine)
+c, msg, out = W.hook("session-start", "t1")
+check(c == 0 and "⚡ Mode éco" not in context_of(msg) and W.settings() == mine and W.config("eco.applique_le"),
+      "tout déjà réglé par l'utilisateur : rien posé, rien annoncé, application notée", W.settings())
+# installation qui avait déjà le mode éco (1re version des leviers) : les nouveaux leviers posés une fois, annoncés à part
+W = World("leviers-v2")
+W.write_settings({"bashOutputMaxChars": 10000, "autoCompactWindow": 200000})
+W.run("config", "eco.applique_le", '"2026-10-01T00:00:00"')
+c, msg, out = W.hook("session-start", "l1")
+eco_line = next((ln for ln in context_of(msg).splitlines() if "⚡ Mode éco" in ln), "")
+check(c == 0 and "⚡ Mode éco — nouveaux réglages" in eco_line and "liste des skills plafonnée à 0,5 %" in eco_line
+      and "mémoire auto de Claude Code coupée" in eco_line and "mises en fichier" not in eco_line,
+      "nouveaux leviers d'une version plus récente : posés une fois, annonce « nouveaux réglages »", out[-400:])
+check(W.settings() == {"bashOutputMaxChars": 10000, "autoCompactWindow": 200000, "skillListingBudgetFraction": 0.005,
+                       "autoMemoryEnabled": False} and W.config("eco.leviers") == 2
+      and W.config("eco.applique_le") == "2026-10-01T00:00:00",
+      "nouveaux leviers : posés, eco.leviers à 2, date d'application d'origine gardée", (W.settings(), W.config("eco")))
+c, msg, out = W.hook("session-start", "l2")
+check(c == 0 and "⚡ Mode éco" not in context_of(msg), "nouveaux leviers annoncés une seule fois", out[-300:])
 # cerveau classique (code dans le dossier des souvenirs, pas de .claude-plugin) : même ligne, ajoutée à l'injection
 classic = TMP / "classique-code"
 classic.mkdir()
@@ -472,7 +503,8 @@ c, out = W.run("config", "stop_reminder.repeat_after")
 check(out.strip() == "150", "rappel de fin de tâche : repeat_after 150 par défaut", out)
 c, out = W.run("config", "eco")
 check('"auto": true' in out and "10000" in out and "200000" in out and "150000" in out and "300000" in out
-      and '"plugins_auto": false' in out, "configuration eco par défaut (veille des plugins coupée)", out)
+      and '"plugins_auto": false' in out and '"cache": "auto"' in out and '"alerte_pause": true' in out,
+      "configuration eco par défaut (veille des plugins coupée, cache adaptatif, alerte de pause)", out)
 c, out = W.run("--version")
 from brainkit import __version__  # noqa: E402
 check(__version__ in out, f"version {__version__}", out)
@@ -493,7 +525,8 @@ check(c == 0 and not W.settings_file.exists() and "laissé de côté" in out, "o
 from brainkit import install, publish  # noqa: E402
 
 check("`eco`" in install.SKILL and "eco --annuler" in install.SKILL and "eco --desactiver" in install.SKILL
-      and "eco --plugins-auto" in install.SKILL, "SKILL : eco dans la référence des commandes")
+      and "eco --plugins-auto" in install.SKILL and "eco --poser" in install.SKILL and "eco --cache" in install.SKILL,
+      "SKILL : eco dans la référence des commandes")
 check("mode éco" in publish.readme("Moi", "moi/depot"), "README : le mode éco est présenté")
 c, out = World("aide").run("econome")
 check(c == 0 and "Mode éco" in out, "alias « econome »", out)
@@ -583,6 +616,207 @@ check(c == 0 and W.config("eco.plugins_auto") is False and "coupée" in out, "--
 c, msg, out = W.hook("session-start", "f4")
 time.sleep(1.5)
 check(W.config("eco.plugins_vus_le") == "2000-01-01T00:00:00", "veille coupée : rien n'est lancé au démarrage", W.config("eco"))
+time.sleep(0.5)
+
+# ------------------------------------------------------------------ 13. réglages sur accord : proposés, posés, retirés
+from brainkit import eco  # noqa: E402
+
+W = World("propositions")
+write_transcript(W.home / "projects" / "-x" / "s.jsonl", [
+    att("deferred_tools_delta", "outils différés", addedNames=["mcp__monserveur__outil1", "mcp__monserveur__outil2",
+                                                                "mcp__ccd_session__x", "mcp__autre__y"]),
+    prompt("bonjour"), asst("m1", 5000, ("mcp__autre__y", {}))])
+orig = {"permissions": {"allow": ["Bash(ls)"]}}
+W.write_settings(orig)
+c, out = W.run("eco")
+check(c == 0 and "Sur accord de l'utilisateur seulement" in out and "monserveur (2 outils)" in out
+      and "autre (" not in out and "ccd_session" not in out,
+      "eco : connecteur jamais utilisé proposé ; celui qui a servi et ceux de l'app, jamais", out)
+check(W.settings() == orig, "eco sans option : aucune proposition n'est posée", W.settings())
+c, out = W.run("eco", "--poser", "outils", "connecteurs", "git", "lecture")
+now = W.settings()
+check(c == 0 and now["permissions"]["deny"] == list(eco.TOOL_WEIGHTS) + ["mcp__monserveur"]
+      and now["permissions"]["allow"] == ["Bash(ls)"] and now.get("includeGitInstructions") is False
+      and now.get("env") == {"CLAUDE_CODE_FILE_READ_MAX_OUTPUT_TOKENS": "12000"},
+      "--poser : règles de refus (outils, connecteur), consignes git retirées, lecture plafonnée ; le reste gardé", now)
+check(set(W.config("eco.propositions") or {}) == {"outils", "connecteurs", "git", "lecture"}
+      and "eco --retirer outils connecteurs git lecture" in out, "--poser : retenu dans la configuration, retour indiqué", out)
+c, out = W.run("eco")
+check("✓ git posé" in out and "--poser effort sous-agents" in out, "eco : les posés marqués ✓, restent effort et sous-agents", out)
+c, out = W.run("eco", "--retirer", "outils", "connecteurs", "git", "lecture")
+check(c == 0 and W.settings() == orig and not W.config("eco.propositions"),
+      "--retirer : réglages exactement comme avant", (W.settings(), out))
+c, out = W.run("eco", "--poser", "bidon")
+check(c != 0 and "proposition inconnue" in out and W.settings() == orig, "--poser inconnu : refusé, rien n'est écrit", out)
+c, out = W.run("eco", "--retirer", "git")
+check(c == 0 and "rien à retirer" in out, "--retirer ce qui n'est pas posé : dit tel quel", out)
+W.run("eco", "--poser", "outils", "git")
+c, out = W.run("eco", "--annuler")
+check(c == 0 and W.settings() == orig, "--annuler retire aussi les réglages posés sur accord", W.settings())
+
+
+# ------------------------------------------------------------------ 14. cache adaptatif (promptCacheTtl)
+def ts_ago(sec):
+    return time.strftime("%Y-%m-%dT%H:%M:%S.000Z", time.gmtime(time.time() - sec))
+
+
+def req(mid, t, inp, w, read, out, w1h=None, **extra):
+    """Une requête comme dans un vrai transcript : heure, entrée, cache écrit (dont w1h pour 1 h), cache lu, sortie."""
+    w1h = w if w1h is None else w1h
+    return {"type": "assistant", "timestamp": t, "requestId": f"req-{mid}", **extra,
+            "message": {"id": mid, "role": "assistant", "content": [], "usage": {
+                "input_tokens": inp, "cache_creation_input_tokens": w, "cache_read_input_tokens": read, "output_tokens": out,
+                "cache_creation": {"ephemeral_5m_input_tokens": w - w1h, "ephemeral_1h_input_tokens": w1h}}}}
+
+
+def quiet(fn):
+    try:
+        return fn()
+    except (ValueError, OSError):
+        return None
+
+
+W = World("cache")
+c, out = W.run("eco", "--cache", "5m")
+check(c == 0 and W.settings() == {"promptCacheTtl": "5m"} and "cache fixé à 5 min" in out and W.config("eco.cache") == "5m",
+      "--cache 5m : valeur fixée, plus de choix automatique", out)
+c, out = W.run("eco", "--cache", "off")
+check(c == 0 and "promptCacheTtl" not in W.settings() and "cache adaptatif coupé" in out and W.config("eco.cache") == "off",
+      "--cache off : réglage retiré (état d'avant), cache adaptatif coupé", out)
+W.run("eco", "--cache", "1h")
+c, out = W.run("eco", "--cache", "auto")
+check(c == 0 and "cache adaptatif actif" in out and "pas encore assez de requêtes" in out
+      and W.settings() == {"promptCacheTtl": "1h"}, "--cache auto sans assez de requêtes : rien ne change, c'est dit", out)
+W = World("cache-env", CLAUDE_CODE_PROMPT_CACHE_TTL="1h")
+c, out = W.run("eco", "--cache", "auto")
+check(c == 0 and "⚠ CLAUDE_CODE_PROMPT_CACHE_TTL=1h (variable d'environnement)" in out and "pas encore assez" not in out
+      and not W.settings_file.exists(), "variable d'environnement du cache : signalée, rien n'est posé", out)
+c, out = W.run("eco")
+check("réglé par variable d'environnement" in out, "eco : cache réglé par variable d'environnement, dit tel quel", out)
+W = World("cache-perso")
+W.write_settings({"promptCacheTtl": "1h"})
+c, out = W.run("eco", "--cache", "auto")
+check(c == 0 and "réglé par toi, gardé" in out and "pas encore assez" not in out and W.settings() == {"promptCacheTtl": "1h"},
+      "valeur du cache réglée par l'utilisateur : gardée", out)
+W.run("eco", "--cache", "5m")
+c, out = W.run("eco", "--cache", "off")
+check(W.settings() == {"promptCacheTtl": "1h"}, "--cache 5m puis off : la valeur de l'utilisateur revient", (W.settings(), out))
+
+PAUSES_COURTES = [req("k0", ts_ago(20000), 0, 55000, 0, 100)] + [  # 520 requêtes à 30 s d'écart, cache écrit pour 1 h
+    req(f"k{i}", ts_ago(20000 - 30 * i), 0, 5000, 50000, 100) for i in range(1, 520)]
+W = World("cache-simule")
+write_transcript(W.home / "projects" / "-c" / "s.jsonl", PAUSES_COURTES)
+c, out = W.run("eco", "--cache", "auto")
+check(c == 0 and W.settings() == {"promptCacheTtl": "5m"} and "cache gardé 5 min" in out and "−24,4 %" in out
+      and W.config("eco.bilan.meilleur") == "5m" and W.config("eco.annonce"),
+      "cache adaptatif : pauses toujours courtes → 5 min posé (−24,4 % du poids des tokens), annonce gardée", out)
+c, out = W.run("eco")
+check("5 min posé, −24,4 %" in out, "eco : le cache adaptatif dit ce qu'il a posé et le gain simulé", out)
+c, out = W.run("eco", "--cache", "auto")
+check(c == 0 and "5 min est le meilleur" in out and W.settings() == {"promptCacheTtl": "5m"},
+      "cache adaptatif relancé : 5 min reste le meilleur, rien ne bouge", out)
+c, out = W.run("eco", "--cache", "off")
+check(c == 0 and "promptCacheTtl" not in W.settings(), "--cache off : le 5 min posé par le cerveau est retiré", out)
+W = World("cache-fond")
+write_transcript(W.home / "projects" / "-c" / "s.jsonl", PAUSES_COURTES)
+W.run("config", "eco.cache_vu_le", '"2000-01-01T00:00:00"')
+c, msg, out = W.hook("session-start", "c1")
+check(c == 0 and W.config("eco.cache_vu_le") != "2000-01-01T00:00:00",
+      "démarrage : cache adaptatif dû → jour noté, lancé en arrière-plan", out[-300:])
+check(wait_for(lambda: quiet(lambda: W.settings().get("promptCacheTtl") == "5m" and W.config("eco.annonce"))),
+      "la tâche de fond pose le cache de 5 min et garde l'annonce", quiet(W.settings))
+time.sleep(1)
+c, msg, out = W.hook("session-start", "c2")
+check("cache gardé 5 min" in context_of(msg), "démarrage suivant : l'annonce du cache adaptatif", out[-400:])
+
+# ------------------------------------------------------------------ 15. brain tokens : le poids réel des tokens (en direct)
+from brainkit import tokens  # noqa: E402
+
+eco._SCANS.clear()
+P = TMP / "unite" / "claude" / "projects" / "-w"
+T0 = time.time() - 26 * 3600
+ts = lambda s: time.strftime("%Y-%m-%dT%H:%M:%S.000Z", time.gmtime(T0 + s))  # noqa: E731
+write_transcript(P / "sa.jsonl", [
+    {"type": "custom-title", "customTitle": "Refonte du site"},
+    req("a1", ts(0), 100, 30000, 0, 1000),
+    req("a2", ts(30), 100, 2000, 30000, 50), req("a2", ts(30), 100, 2000, 30000, 500),  # une réponse sur 2 lignes
+    req("a3", ts(630), 100, 32000, 0, 500),  # après 10 min : cache de 5 min perdu, 1 h gardé
+    req("a4", ts(7830), 100, 33000, 0, 500),  # après 2 h : tout est réécrit
+    req("a5", ts(7850), 100, 25000, 10000, 500)])  # 20 s plus tard, gros cache réécrit : invalidation
+write_transcript(P / "sa" / "subagents" / "agent-1.jsonl", [
+    req("s1", ts(100), 0, 10000, 0, 200, w1h=0, isSidechain=True),
+    req("s2", ts(130), 0, 1000, 10000, 200, w1h=0, isSidechain=True)])
+sb = [{"type": "ai-title", "aiTitle": "Compactions en série"}]
+for k in range(6):
+    sb += [req(f"b{k}1", ts(90 * k), 0, 20000, 0, 100), req(f"b{k}2", ts(90 * k + 30), 0, 10000, 20000, 100),
+           req(f"b{k}3", ts(90 * k + 60), 0, 10000, 30000, 100)]
+    if k < 5:
+        sb.append({"type": "system", "subtype": "compact_boundary", "timestamp": ts(90 * k + 75),
+                   "compactMetadata": {"preTokens": 40000, "postTokens": 5000}})
+write_transcript(P / "sb.jsonl", sb)
+write_transcript(P / "sc.jsonl", [req("a1", ts(0), 100, 30000, 0, 1000),  # requête déjà comptée (session reprise)
+                                  req("c1", ts(20000), 50, 1000, 30000, 100, w1h=0)])
+write_transcript(P / "old.jsonl", [req("o1", ts(0), 0, 90000, 0, 100)], age_days=10)  # hors des 7 jours
+b = tokens.weigh(168)
+near = lambda x, y: abs(x - y) < 0.01  # noqa: E731
+check(b["files"] == 4 and b["reqs"] == 26 and b["compactions"] == 5 and near(b["hidden"], 145000),
+      "weigh : 4 fichiers récents, 26 requêtes (doublons écartés), 5 compactions et leurs résumés cachés", b)
+check(all(near(b["parts"].get(k, -1), v) for k, v in {"in": 550, "w5": 15000, "w1h": 724000, "read": 38000, "out": 26500}.items())
+      and near(b["total"], 949050) and near(b["main"], 787300) and near(b["sub"], 16750),
+      "weigh : poids par poste (entrée 1, cache écrit 1,25 / 2, lu 0,1, sortie 5), conversation / sous-agents", b)
+check({k: (n, round(w)) for k, (n, w) in b["causes"].items()} == {
+    "début": (2, 100000), "compaction": (5, 200000), "pause > 1 h": (1, 66000), "pause > 5 min": (1, 64000),
+    "invalidation": (1, 50000)}, "weigh : causes des écritures de cache (début, compaction, pauses, invalidation)", b["causes"])
+check(b["gaps"] == {"< 1 min": 19, "1-5 min": 0, "5-60 min": 1, "> 1 h": 1}, "weigh : pauses entre requêtes", b["gaps"])
+check(near(b["ttl"]["5m"], 491300) and near(b["ttl"]["1h"], 702750) and b["ttl"]["reqs"] == 24 and b["ttl"]["regime"] == "1h",
+      "weigh : cache de 5 min et de 1 h simulés sur les vraies pauses", b["ttl"])
+check(b["fenetre"] == 140000 and b["fenetre_calc"] == {"base": 20000, "croissance": 10000, "cout": 69000, "segments": 5},
+      "weigh : fenêtre de résumé la moins chère d'après les compactions", (b["fenetre"], b["fenetre_calc"]))
+check([(round(w), n) for w, n in b["sessions"]] == [(519000, "Compactions en série"), (280250, "Refonte du site"), (4800, "sc")],
+      "weigh : sessions les plus lourdes, avec leur titre (sous-agents comptés avec leur session)", b["sessions"])
+lines = "\n".join(tokens._weigh_lines(b))
+for want in ("949 k sur 26 requête(s)",
+             "lecture du cache 4,0 % · écriture 1 h 76,3 % · écriture 5 min 1,6 % · sortie 2,8 % · entrée 0,1 % · "
+             "résumés de compaction (cachés) 15,3 % (5) · sous-agents 1,8 %",
+             "début 2 (10,5 %) · compaction 5 (21,1 %) · pause > 1 h 1 (7,0 %) · pause > 5 min 1 (6,7 %) · invalidation 1 (5,3 %)",
+             "< 1 min 19 · 1-5 min 0 · 5-60 min 1 · > 1 h 1",
+             "5 min ferait gagner 22,3 % (en service : 1 h)",
+             "« Compactions en série » 54,7 % · « Refonte du site » 29,5 % · « sc » 0,5 %",
+             "≈ 140 k (en service 200 k) : `brain eco --fenetre 140000`",
+             "5 réglage(s) sur accord (outils, git, effort, lecture, sous-agents, ≈ 5.6 k tok de moins par requête)"):
+    check(want in lines, f"brain tokens : « {want[:50]}… »", lines)
+
+# ------------------------------------------------------------------ 16. reprise après une pause qui a vidé le cache
+PT = TMP / "pause.jsonl"
+
+
+def paused(ago, kind):
+    write_transcript(PT, [prompt("salut"), {"type": "assistant", "timestamp": ts_ago(ago), "message": {
+        "id": "p1", "role": "assistant", "content": [], "usage": {
+            "input_tokens": 2, "cache_creation_input_tokens": 1000, "cache_read_input_tokens": 148998, "output_tokens": 20,
+            "cache_creation": {kind: 1000}}}}])
+
+
+paused(7200, "ephemeral_5m_input_tokens")
+size, when, ttl = hooks.last_request(PT)
+check(size == 150000 and abs(when - (time.time() - 7200)) < 5 and ttl == 300,
+      "last_request : taille du contexte, heure et cache de 5 min lus dans le transcript", (size, when, ttl))
+paused(7200, "ephemeral_1h_input_tokens")
+check(hooks.last_request(PT)[2] == 3600, "last_request : cache de 1 h vu dans les écritures", hooks.last_request(PT))
+t_now = time.time()
+note = hooks.pause_alert(150000, t_now - 600, 300, t_now)
+check(note.startswith("⏸ Reprise après 10 min") and "≈150 k tokens" in note and "/clear" in note,
+      "pause plus longue que le cache, grosse conversation : alerte avec la durée et la taille", note)
+check(hooks.pause_alert(150000, t_now - 600, 3600, t_now) == "", "pause plus courte que le cache de 1 h : rien")
+check(hooks.pause_alert(50000, t_now - 7200, 300, t_now) == "", "petite conversation : rien")
+check(hooks.pause_alert(150000, t_now - 200, 0, t_now) == "", "pause de moins de 5 min : rien")
+check(hooks.pause_alert(150000, t_now - 7200, 0, t_now).startswith("⏸ Reprise après 2 h"),
+      "durée du cache inconnue : 1 h par défaut, pause de 2 h signalée")
+W = World("pause")
+paused(7200, "ephemeral_1h_input_tokens")
+c, msg, out = W.hook("prompt", "z1", prompt="On reprend le travail d'hier", transcript_path=str(PT))
+check(c == 0 and msg and "⏸ Reprise après 2 h" in msg.get("systemMessage", "") and "Reprise" not in context_of(msg),
+      "message après 2 h de pause : signalé à l'utilisateur seulement (systemMessage)", out[-400:])
 time.sleep(0.5)
 
 shutil.rmtree(TMP, ignore_errors=True)

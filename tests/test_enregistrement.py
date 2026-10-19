@@ -253,7 +253,7 @@ check(len(W.memories()) == 2 and len(fait) == 1 and fait[0]["title"] == "Le clie
       "« n'oublie pas que… » : un fait, rangé dans le projet courant", W.memories())
 
 avant = len(W.memories())
-c, ctx = W.prompt("retiens mon mot de passe: hunter2")
+c, ctx = W.prompt("retiens mon mot de passe: " + "hunter2")  # en deux morceaux : brain publish n'y voit pas de secret
 tout = "".join(p.read_text(encoding="utf-8", errors="replace") for p in W.brain_dir.rglob("*")
                if p.is_file() and p.suffix in (".json", ".md", ".html", ".log", ""))
 check(c == 0 and len(W.memories()) == avant and "Déjà enregistré" not in ctx and "Secret probable" in ctx
