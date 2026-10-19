@@ -86,7 +86,7 @@ def _why(va, vb, label, n=3):
 
 
 def _short_title(title) -> str:
-    """« Boutique Takumi Matcha (Shopify, dropshipping) » → « Boutique Takumi Matcha »."""
+    """« Boutique Atelier Lune (Shopify, dropshipping) » → « Boutique Atelier Lune »."""
     t = re.split(r"\s[(—–-]", str(title))[0].strip()
     return t or str(title)
 
@@ -103,7 +103,7 @@ KNOWN = """Shopify|AutoDS|Leboncoin|Gmail|Google Calendar|Google Agenda|Google A
 Lighthouse|Python|PowerShell|Git Bash|Node.js|Windows|BIOS|UEFI|Claude Code|claude.ai|Claude|MCP|Discord|iPhone|iVCam|
 WO Mic|Canva|Ahrefs|AliExpress|Stripe|PayPal|Facebook|Instagram|TikTok|Pinterest|YouTube|Notion|Excel|Google Sheets|n8n|
 Zapier|ChatGPT|Anthropic|Légifrance|EUR-Lex|GPSR|DEEE|CGV|CGU|RGPD|SEO|CRO|AMD|Ryzen|Gigabyte|NVIDIA|G-Assist|DDR5|
-EXPO|MSIX|Microsoft Store|Takumi Matcha|matcha|mousseur|coffret|kit|thème|hooks|skills|plugins|connecteur|tokens|
+EXPO|MSIX|Microsoft Store|matcha|mousseur|coffret|kit|thème|hooks|skills|plugins|connecteur|tokens|
 graphify|planificateur de tâches|tâche planifiée|copie de thème|bandeau|FAQ|redirection|301"""
 KNOWN_TERMS = sorted({t.strip() for t in KNOWN.replace("\n", "").split("|") if t.strip()}, key=len, reverse=True)
 KNOWN_DISPLAY = {fold(t): t for t in KNOWN_TERMS}
@@ -195,7 +195,7 @@ def _concepts(nodes):
         out.append({"key": key, "label": disp[key].most_common(1)[0][0], "kind": kind[key], "members": sorted(mem)})
     keys = {c["key"]: c for c in out}
     final = []
-    for c in out:  # « Takumi » disparaît derrière « Takumi Matcha » s'il ne dit rien de plus
+    for c in out:  # « Atelier » disparaît derrière « Atelier Lune » s'il ne dit rien de plus
         longer = [o for o in out if o is not c and len(o["key"]) > len(c["key"])
                   and (o["key"].startswith(c["key"])
                        or re.search(rf"(?<![a-z0-9]){re.escape(c['key'])}(?![a-z0-9])", o["key"]))]

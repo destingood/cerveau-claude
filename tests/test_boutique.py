@@ -222,6 +222,10 @@ check(c == 0 and "Atelier Lumière" in out and "plan 0/17" in out and "audit du"
       out)
 
 # ------------------------------------------------------------------ 6 bis. la vue 3D montre la boutique et le cerveau e-commerce
+PROJET = TMP / "Boutique Atelier Lumière"  # le dossier du site, cartographié : son projet porte le nom de la boutique
+PROJET.mkdir()
+(PROJET / "app.py").write_text("def main():\n    return 1\n", encoding="utf-8")
+brain("map", PROJET)
 c, out = brain("viz")
 html = (TMP / "brain" / "cerveau.html").read_text(encoding="utf-8") if (TMP / "brain" / "cerveau.html").exists() else ""
 try:
@@ -245,6 +249,22 @@ check(data["stats"].get("shops") == 1 and data["stats"].get("skills") == 1
       "vue 3D : compteurs (boutiques, compétences ; les souvenirs ne les comptent pas)", data["stats"])
 check({"Cerveau e-commerce", "Boutiques suivies"} <= {c_["label"] for c_ in data["comms"]},
       "vue 3D : groupes « Cerveau e-commerce » et « Boutiques suivies » dans la légende")
+menu = {v["label"]: v for v in data.get("views", [])}
+eco, shop_view = menu.get("Cerveau e-commerce", {}), menu.get("Atelier Lumière", {})
+check(eco.get("icon") == "🛒" and "skill:ecommerce" in (eco.get("members") or []) and len(eco["members"]) >= 20,
+      "menu des vues : entrée « 🛒 Cerveau e-commerce » (ses fiches et ses outils)", list(menu))
+projet_id = next((n["id"] for n in data["nodes"] if n["t"] == "project" and "Atelier Lumière" in n["title"]), None)
+check(shop_view.get("icon") == "🏪" and projet_id and {"boutique:atelier-lumiere", projet_id, fiche_id, "skill:ecommerce"}
+      <= set(shop_view.get("members") or []) and ("boutique:atelier-lumiere", projet_id) in links,
+      "menu des vues : une entrée par boutique, reliée au projet qui porte son nom", (projet_id, shop_view))
+html2d = (TMP / "brain" / "cerveau-2d.html").read_text(encoding="utf-8")
+check('value="v:${i}"' in html and 'startsWith("v:")' in html and "memoryView(new Set(g.members))" in html2d,
+      "menu des vues : branché dans la vue 3D et dans la vue 2D")
+vide = {**os.environ, "BRAIN_HOME": str(TMP / "cerveau-sans-boutique")}
+c, out = brain("viz", env=vide)
+html_vide = (TMP / "cerveau-sans-boutique" / "cerveau.html").read_text(encoding="utf-8") if c == 0 else ""
+check("Aucune boutique suivie pour l'instant" in html_vide and "Cerveau e-commerce" in html_vide,
+      "menu des vues sans boutique suivie : il dit où elle apparaîtra", out[-300:])
 
 # ------------------------------------------------------------------ 7. sauvegarde et restauration
 c, out = brain("backup", "--to", TMP / "sauvegardes")

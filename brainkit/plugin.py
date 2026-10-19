@@ -26,11 +26,32 @@ NOTICE = []  # lignes du passage au plugin, injectées une fois au démarrage de
 LAUNCHER = '''#!/usr/bin/env python3
 """🧠 Lanceur du cerveau (plugin Claude Code), réécrit à chaque démarrage de session : il lance le code du plugin,
 que Claude Code met à jour tout seul. Les souvenirs restent dans ce dossier."""
+import json
 import os
 import runpy
 import sys
 
 CODE = {code!r}
+
+
+def active(code):
+    """La version que Claude Code a installée (plugins/installed_plugins.json) : une mise à jour sert aussitôt aux
+    commandes, sans attendre le prochain démarrage de session. Registre illisible ou absent : la version d'ici."""
+    plugin, market = os.path.dirname(code), os.path.dirname(os.path.dirname(code))
+    registry = os.path.join(os.path.dirname(os.path.dirname(market)), "installed_plugins.json")
+    try:
+        with open(registry, encoding="utf-8") as f:
+            entries = json.load(f)["plugins"][os.path.basename(plugin) + "@" + os.path.basename(market)]
+        for entry in sorted(entries, key=lambda e: e.get("scope") != "user"):
+            path = entry.get("installPath")
+            if path and os.path.isfile(os.path.join(path, "brain.py")):
+                return path
+    except Exception:
+        pass
+    return code
+
+
+CODE = active(CODE)
 os.environ.setdefault("BRAIN_HOME", os.path.dirname(os.path.abspath(__file__)))
 sys.argv[0] = os.path.join(CODE, "brain.py")
 runpy.run_path(sys.argv[0], run_name="__main__")
