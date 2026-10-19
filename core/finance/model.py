@@ -92,6 +92,11 @@ class Instrument(_Record):
             raise ValueError("valid_to doit suivre valid_from")
         if (self.asset_class == "bond") != (self.duration is not None):
             raise ValueError("une duration se déclare pour une obligation, et pour elle seule")
+        # A tool shows the name beside the sector: an instruction split between them is refused.
+        if injection_signals(f"{self.name} {self.sector}"):
+            raise ValueError(
+                "texte refusé : le nom et le secteur, lus ensemble, ressemblent à une consigne (R5)"
+            )
         return self
 
 

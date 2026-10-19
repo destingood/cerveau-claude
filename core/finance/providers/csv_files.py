@@ -44,6 +44,7 @@ from core.finance.providers.base import (
     published,
     validation_message,
 )
+from core.guardrails.injection import injection_signals
 
 CSV_SOURCE = "csv"
 MAX_FILE_BYTES = 64_000_000
@@ -230,6 +231,13 @@ def read_instruments(path: Path) -> tuple[CsvTable, list[Instrument]]:
         )
 
     versions = _unique(rows, rows.build(convert), lambda i: (i.instrument_id, i.valid_from))
+    # A tool lists the instruments one after the other: an instruction split across rows is refused
+    # with the whole file, like one held in a single field (R5).
+    if injection_signals(" ".join(f"{i.name} {i.sector}" for i in versions)):
+        raise ProviderError(
+            f"{table.name} : les noms et les secteurs, lus à la suite, ressemblent à "
+            "une consigne (R5)"
+        )
     return table, sorted(versions, key=lambda i: (i.instrument_id, i.valid_from))
 
 
