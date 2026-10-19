@@ -7,7 +7,10 @@ fixed format, so that text comparison in SQLite is time comparison.
 
 from __future__ import annotations
 
+import hashlib
+import json
 import re
+from collections.abc import Mapping
 from datetime import UTC, date, datetime, time, timedelta
 from decimal import Decimal
 from typing import Annotated, Literal
@@ -186,6 +189,65 @@ class RateObservation(_Published):
 
 
 MarketRecord = PriceRow | CorporateAction | FxRate | RateObservation
+
+
+# Research trials (ADR-026, D10) -----------------------------------------------------------------
+
+TrialOrigin = Literal["criblage", "protocole", "protocole-final", "copilote"]
+TRIAL_ORIGINS: tuple[TrialOrigin, ...] = ("criblage", "protocole", "protocole-final", "copilote")
+Sha256 = Annotated[str, Field(pattern=r"^[0-9a-f]{64}$")]
+StrategyId = Annotated[str, Field(pattern=r"^[a-z][a-z0-9_]{0,63}$")]
+ParamName = Annotated[str, Field(pattern=r"^[a-z][a-z0-9_]{0,31}$")]
+ParamValue = bool | int | float | str
+
+
+def canonical_json(value: object) -> str:
+    """Sorted keys, no spaces, no NaN: the same parameters always give the same text."""
+    return json.dumps(
+        value, sort_keys=True, separators=(",", ":"), ensure_ascii=False, allow_nan=False
+    )
+
+
+def params_sha256(params: Mapping[str, ParamValue]) -> str:
+    return hashlib.sha256(canonical_json(dict(params)).encode()).hexdigest()
+
+
+class ResearchTrial(_Record):
+    """One evaluated configuration of a strategy: a row of the trial journal (ADR-026, D10).
+
+    Every configuration evaluated counts, kept or not: N of the deflated Sharpe ratio is the raw
+    count of the strategy's rows, all versions and origins. The doubled-cost variant of the
+    protocol is not a trial: it can only fail a strategy, never select one.
+    """
+
+    strategy: StrategyId
+    code_sha256: Sha256  # the strategy module's source (ADR-027)
+    params: dict[ParamName, ParamValue]
+    params_sha256: Sha256
+    origin: TrialOrigin
+    start: date  # the first and last sessions of the backtest
+    end: date
+    sessions: int = Field(ge=2)  # daily returns measured
+    sharpe_daily: FiniteFloat | None  # None: returns without spread
+    sharpe_annual: FiniteFloat | None
+    series_sha256: Sha256  # the daily returns (``trials.series_sha256``)
+    costs: str = Field(min_length=1, max_length=MAX_NAME_CHARS)
+    engine: str = Field(min_length=1, max_length=MAX_NAME_CHARS)
+    source: str | None = Field(default=None, min_length=1, max_length=MAX_NAME_CHARS)
+
+    @model_validator(mode="after")
+    def _consistent(self) -> ResearchTrial:
+        if self.end <= self.start:
+            raise ValueError("un essai couvre au moins deux séances")
+        if (self.sharpe_daily is None) != (self.sharpe_annual is None):
+            raise ValueError(
+                "Sharpe quotidien et annualisé : tous deux connus ou tous deux absents"
+            )
+        if self.params_sha256 != params_sha256(self.params):
+            raise ValueError("empreinte des paramètres différente des paramètres")
+        if (self.source is not None) != (self.origin == "copilote"):
+            raise ValueError("seul un essai du Copilot porte la référence de son entrée d'audit")
+        return self
 
 
 # Portfolio (ADR-018) ----------------------------------------------------------------------------

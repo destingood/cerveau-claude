@@ -6,6 +6,10 @@
 - ``engine``: the in-house daily engine, the reference of every cross-check (ADR-024);
 - ``lookahead``: the truncation-invariance check that fails a decision reading later data (ADR-026);
 - ``nautilus``: the NautilusTrader replay and its cross-check with the reference (ADR-024, D12).
+- ``trials``: the fingerprints and measures of a trial for the append-only journal (ADR-026,
+  ADR-027);
+- ``screening``: the vectorbt screening of a grid and its cross-check with the reference
+  (ADR-025, D12).
 
 Nothing here calls a language model: every figure comes from these deterministic functions (R1).
 """

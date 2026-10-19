@@ -135,6 +135,52 @@ MIGRATIONS: tuple[tuple[int, tuple[str, ...]], ...] = (
             ) STRICT""",
         ),
     ),
+    (
+        3,
+        (
+            # The trial journal (ADR-026, D10): append-only, enforced by triggers. A REPLACE
+            # deletes without firing delete triggers, hence the insert trigger. DROP TABLE and
+            # DROP TRIGGER are beyond their reach: the CLI, the only writer, never issues them.
+            """CREATE TABLE research_trials (
+                trial_id INTEGER PRIMARY KEY CHECK (trial_id >= 1),
+                strategy TEXT NOT NULL,
+                code_sha256 TEXT NOT NULL CHECK (length(code_sha256) = 64),
+                params TEXT NOT NULL,
+                params_sha256 TEXT NOT NULL CHECK (length(params_sha256) = 64),
+                origin TEXT NOT NULL CHECK (
+                    origin IN ('criblage', 'protocole', 'protocole-final', 'copilote')
+                ),
+                window_start TEXT NOT NULL,
+                window_end TEXT NOT NULL,
+                sessions INTEGER NOT NULL CHECK (sessions >= 2),
+                sharpe_daily REAL,
+                sharpe_annual REAL,
+                series_sha256 TEXT NOT NULL CHECK (length(series_sha256) = 64),
+                costs TEXT NOT NULL,
+                engine TEXT NOT NULL,
+                source TEXT,
+                recorded_at TEXT NOT NULL
+            ) STRICT""",
+            "CREATE INDEX research_trials_strategy ON research_trials (strategy)",
+            "CREATE UNIQUE INDEX research_trials_source ON research_trials (source) "
+            "WHERE source IS NOT NULL",
+            """CREATE TRIGGER research_trials_no_overwrite BEFORE INSERT ON research_trials
+            WHEN EXISTS (
+                SELECT 1 FROM research_trials WHERE trial_id = NEW.trial_id OR source = NEW.source
+            )
+            BEGIN
+                SELECT RAISE(ABORT, 'research_trials : un essai enregistré ne se remplace pas');
+            END""",
+            """CREATE TRIGGER research_trials_no_update BEFORE UPDATE ON research_trials
+            BEGIN
+                SELECT RAISE(ABORT, 'research_trials : un essai enregistré ne se modifie pas');
+            END""",
+            """CREATE TRIGGER research_trials_no_delete BEFORE DELETE ON research_trials
+            BEGIN
+                SELECT RAISE(ABORT, 'research_trials : un essai enregistré ne se supprime pas');
+            END""",
+        ),
+    ),
 )
 LATEST_VERSION = MIGRATIONS[-1][0]
 # The four sub-scores of ``quality_scores``, in column order (ADR-016).

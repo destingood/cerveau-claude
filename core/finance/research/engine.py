@@ -42,7 +42,7 @@ from core.finance.performance import (
 )
 from core.finance.research.execution import Costs, Cut, Fill, Order, schedule, target_orders
 from core.finance.research.strategy import Params, Strategy, StrategyError, checked_weights
-from core.finance.research.view import MarketHistory, decision_time
+from core.finance.research.view import MarketHistory, PointInTimeView, decision_time
 
 CURRENCY = "EUR"
 SPLIT_TOLERANCE = 1e-9  # q·r this close to a whole number is that number, not a fraction
@@ -141,6 +141,48 @@ def common_calendar(
     return sessions, np.column_stack([c.to_numpy() for c in columns])
 
 
+def split_ratios(history: MarketHistory, instrument_id: str) -> list[tuple[date, float]]:
+    """The (ex-date, ratio) of each split of the instrument, in the order of its events."""
+    return [
+        (event.action.ex_date, float(event.action.value))
+        for event in history.events(instrument_id)
+        if event.action.kind == "split"
+    ]
+
+
+def known_close(
+    view: PointInTimeView, instrument_id: str, splits: Sequence[tuple[date, float]]
+) -> float | None:
+    """The last close the view knows, in shares of its day; None before the first one.
+
+    A close older than a split effective by then is divided by its ratio, so that target
+    quantities are counted in the shares the order will trade (ADR-024).
+    """
+    last = view.last_close(instrument_id)
+    if last is None:
+        return None
+    session, close = last
+    return close / math.prod(ratio for ex_date, ratio in splits if session < ex_date <= view.day)
+
+
+def known_closes(history: MarketHistory, sessions: Sequence[date], cutoff: time) -> np.ndarray:
+    """The close each decision of ``sessions`` sizes its orders with, one column per instrument.
+
+    NaN where no close is known yet. The same ``known_close`` as ``run``: the screening sizes its
+    orders exactly as the reference does (ADR-025).
+    """
+    instruments = history.instruments
+    splits = {i: split_ratios(history, i) for i in instruments}
+    known = np.full((len(sessions), len(instruments)), np.nan)
+    for row, day in enumerate(sessions):
+        view = history.view(day, cutoff)
+        for column, instrument_id in enumerate(instruments):
+            close = known_close(view, instrument_id, splits[instrument_id])
+            if close is not None:
+                known[row, column] = close
+    return known
+
+
 def _effective(sessions: np.ndarray, day: date) -> int:
     """The index of the first session on or after ``day``: when an action takes effect."""
     return int(np.searchsorted(sessions, np.datetime64(day, "D")))
@@ -168,6 +210,7 @@ def run(
     count = len(sessions)
     days = np.array(sessions, dtype="datetime64[D]")
     splits: dict[str, list[_Split]] = {}
+    ratios = {i: split_ratios(history, i) for i in instruments}
     dividends: list[_Dividend] = []
     for instrument_id in instruments:
         splits[instrument_id] = []
@@ -268,16 +311,12 @@ def run(
             for instrument_id in instruments:
                 if not weights.get(instrument_id) and not held[instrument_id]:
                     continue
-                last = view.last_close(instrument_id)
-                if last is None:
+                close = known_close(view, instrument_id, ratios[instrument_id])
+                if close is None:
                     raise StrategyError(
                         f"décision du {day} : poids sur {instrument_id} sans aucun cours connu"
                     )
-                session, close = last
-                ratio = math.prod(
-                    s.ratio for s in splits[instrument_id] if session < s.ex_date <= day
-                )
-                known[instrument_id] = close / ratio
+                known[instrument_id] = close
             value = cash + math.fsum(held[i] * known[i] for i in known)
             pending = target_orders(weights, held, known, value)
 

@@ -33,7 +33,7 @@ from core.finance.portfolio import (
     value,
 )
 from core.finance.providers import ProviderError
-from core.finance.schema import MIGRATIONS, SchemaError, migrate, schema_version
+from core.finance.schema import LATEST_VERSION, MIGRATIONS, SchemaError, migrate, schema_version
 from core.finance.store import FinanceStore, PortfolioFile
 from core.finance.sync import reference
 from interfaces.cli import portfolio as portfolio_cli
@@ -648,8 +648,8 @@ def test_a_schema_1_store_gains_the_portfolio_tables(tmp_path: Path) -> None:
     with pytest.raises(SchemaError, match="cerveau finance sync"):
         FinanceStore.open(path, read_only=True)
     with FinanceStore.open(path) as s:
-        assert s.schema_version == 2
+        assert s.schema_version == LATEST_VERSION
         assert s.portfolio_files("transactions") == []
     conn = sqlite3.connect(path)
-    assert schema_version(conn) == 2
+    assert schema_version(conn) == LATEST_VERSION
     conn.close()

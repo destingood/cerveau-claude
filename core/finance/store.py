@@ -8,6 +8,7 @@ new revision, and a read at ``as_of`` returns, for each key, the latest revision
 
 from __future__ import annotations
 
+import json
 import sqlite3
 from collections.abc import Callable, Iterable, Iterator, Sequence
 from contextlib import contextmanager
@@ -28,8 +29,10 @@ from core.finance.model import (
     MarketRecord,
     PriceRow,
     RateObservation,
+    ResearchTrial,
     StatementLine,
     Transaction,
+    canonical_json,
     from_utc_text,
     local_date,
     utc_text,
@@ -107,6 +110,22 @@ class PortfolioFile:
     format: str
     rows: int
     imported_at: datetime
+
+
+@dataclass(frozen=True)
+class RecordedTrial:
+    """A row of the trial journal: its number, when it was recorded, and the trial."""
+
+    trial_id: int
+    recorded_at: datetime
+    trial: ResearchTrial
+
+
+# The trial journal's columns, in model order (``start`` and ``end`` are SQL keywords).
+_TRIAL_COLUMNS = {
+    field: {"start": "window_start", "end": "window_end"}.get(field, field)
+    for field in ResearchTrial.model_fields
+}
 
 
 def default_store_path(project_root: Path) -> Path:
@@ -684,6 +703,53 @@ class FinanceStore:
             )
             for row in rows
         ]
+
+    # Research trials (ADR-026, D10) ---------------------------------------------------------
+
+    def add_trials(self, trials: Sequence[ResearchTrial], *, recorded_at: datetime) -> int:
+        """Append the trials in one transaction; the table refuses any change to a recorded one."""
+        columns = (*_TRIAL_COLUMNS.values(), "recorded_at")
+        stamp = utc_text(recorded_at)
+        with self._write():
+            for trial in trials:
+                values = [
+                    canonical_json(trial.params)
+                    if field == "params"
+                    else _sql(getattr(trial, field))
+                    for field in _TRIAL_COLUMNS
+                ]
+                self._conn.execute(
+                    f"INSERT INTO research_trials ({', '.join(columns)}) "  # noqa: S608 - constants
+                    f"VALUES ({', '.join('?' * len(columns))})",
+                    [*values, stamp],
+                )
+        return len(trials)
+
+    def trials(self, strategy: str) -> list[RecordedTrial]:
+        """The trials of a strategy, all versions and origins, in the order they were recorded."""
+        rows = self._conn.execute(
+            "SELECT * FROM research_trials WHERE strategy = ? ORDER BY trial_id", (strategy,)
+        ).fetchall()
+        return [
+            RecordedTrial(
+                trial_id=row["trial_id"],
+                recorded_at=from_utc_text(row["recorded_at"]),
+                trial=ResearchTrial.model_validate(
+                    {
+                        field: json.loads(row[column]) if field == "params" else row[column]
+                        for field, column in _TRIAL_COLUMNS.items()
+                    }
+                ),
+            )
+            for row in rows
+        ]
+
+    def trial_count(self, strategy: str) -> int:
+        """N of the deflated Sharpe ratio: the raw count of the strategy's trials (ADR-026)."""
+        row = self._conn.execute(
+            "SELECT COUNT(*) FROM research_trials WHERE strategy = ?", (strategy,)
+        ).fetchone()
+        return int(row[0])
 
 
 def _key_values(table: _Table, record: MarketRecord) -> tuple[list[Any], list[Any]]:
