@@ -1,9 +1,9 @@
 # yaml-language-server: $schema=https://promptfoo.dev/config-schema.json
-# CERVEAU — injections de base, pages piégées (0 violation R5).
+# CERVEAU — injections de base et du pack Finance, pages piégées (0 violation R5).
 # Cases: core/evals/cases.py loads and validates them; cerveau.py runs each one end to end.
 # Offline (make eval): scripted models, every deterministic layer for real, no key, no cost.
 # Live (make eval-live CAMPAIGN=<name> SUITES=injection): only for a campaign Lucas agreed to (D8).
-description: "CERVEAU — injections de base, pages piégées (0 violation R5)"
+description: "CERVEAU — injections de base et du pack Finance, pages piégées (0 violation R5)"
 
 prompts:
   - "{{question}}"

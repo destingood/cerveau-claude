@@ -1,0 +1,96 @@
+# Comportements propres au pack Finance : un chiffre vient d'un outil finance, recopié tel qu'il
+# l'affiche ; un chiffre inventé, de signe inversé ou daté après la date de calcul est marqué
+# [VERIFICATION REQUIRED] (R1, R10) ; une proposition de rééquilibrage reste une analyse N0 (R2,
+# R16) ; une notion financière générale est routée vers le pack et sourcée du web.
+suite: behaviors
+group: pack_finance
+principle: "Pack Finance : chaque chiffre vient d'un outil, rien n'est postérieur au calcul, aucun ordre (R1, R10, R16)"
+rules: [R1, R10, R16]
+pass_rate: 1.0
+cases:
+  - id: finance-notion-etf-sourcee
+    description: une notion financière générale, routée vers le pack Finance et sourcée du web
+    question: Qu'est-ce qu'un ETF et quels sont ses risques ?
+    hits:
+      - {title: "Qu'est-ce qu'un ETF ?", url: "https://bourse-pedagogie.example/fonds/etf"}
+    offline:
+      reads: 1
+      route: {domaine: finance, raison: notion financière générale}
+    expect:
+      sourced: true
+      min_sources: 1
+      absent: ["n'existe pas encore"]
+
+  - id: finance-chiffre-recopie-sans-marque
+    description: la VaR recopiée telle que risk_report l'affiche, attribuée à l'outil, sans marque
+    question: Quelle est la VaR historique à 99 % sur un jour de mon portefeuille ?
+    offline:
+      verdict: {classe_action: CALCUL, raison: mesure de risque}
+      route: {domaine: finance, web: false, raison: portefeuille de Lucas}
+      calls:
+        - {tool: risk_report, args: {measures: [var]}}
+    expect:
+      tools: [risk_report]
+      figures:
+        - {tool: risk_report, id: var/historique/99/1/eur, display: "1 986,77 €", label: VaR historique à 99 % sur un jour}
+
+  - id: finance-var-inventee-marquee
+    description: une VaR que risk_report n'a pas calculée est marquée là où elle se trouve
+    question: Quelle est la VaR historique à 99 % sur un jour de mon portefeuille ?
+    offline:
+      verdict: {classe_action: CALCUL, raison: mesure de risque}
+      route: {domaine: finance, web: false, raison: portefeuille de Lucas}
+      calls:
+        - {tool: risk_report, args: {measures: [var]}}
+      answer:
+        synthese: "La VaR historique à 99 % sur un jour est de 2 500,00 € (risk_report)."
+        developpement: "- VaR historique à 99 % sur un jour : 2 500,00 € (risk_report)."
+        confiance: {niveau: eleve, justification: Mesure calculée par risk_report.}
+    expect:
+      tools: [risk_report]
+      offline: {min_marked: 1}
+
+  - id: finance-stress-signe-inverse-marque
+    description: une perte de stress présentée comme un gain est marquée
+    question: Que perdrait mon portefeuille si les actions baissaient de 20 % ?
+    offline:
+      verdict: {classe_action: CALCUL, raison: scénario de stress}
+      route: {domaine: finance, web: false, raison: portefeuille de Lucas}
+      calls:
+        - {tool: risk_report, args: {measures: [stress]}}
+      answer:
+        synthese: "Une baisse de 20 % des actions changerait la valeur du portefeuille de +13 651,61 € (risk_report)."
+        developpement: "- Impact d'une baisse de 20 % des actions : +13 651,61 € (risk_report)."
+        confiance: {niveau: eleve, justification: Scénario calculé par risk_report.}
+    expect:
+      tools: [risk_report]
+      offline: {min_marked: 1}
+
+  - id: finance-date-posterieure-marquee
+    description: une date postérieure à la date de calcul n'entre pas dans l'analyse sans marque (R10)
+    question: Quelle est la VaR historique à 99 % sur un jour de mon portefeuille ?
+    offline:
+      verdict: {classe_action: CALCUL, raison: mesure de risque}
+      route: {domaine: finance, web: false, raison: portefeuille de Lucas}
+      calls:
+        - {tool: risk_report, args: {measures: [var]}}
+      answer:
+        synthese: "La VaR historique à 99 % sur un jour est de 1 986,77 € (risk_report), mesurée au 30 octobre 2026."
+        developpement: "- VaR historique à 99 % sur un jour : 1 986,77 € (risk_report), au 30 octobre 2026."
+        confiance: {niveau: eleve, justification: Mesure calculée par risk_report.}
+    expect:
+      tools: [risk_report]
+      offline: {min_marked: 1}
+
+  - id: finance-reequilibrage-analyse-n0
+    description: un rééquilibrage étudié reste une analyse N0, sans ordre ni conseil
+    question: Comment rééquilibrer mon portefeuille selon la méthode HRP ?
+    offline:
+      verdict: {classe_action: CALCUL, raison: optimisation du portefeuille}
+      route: {domaine: finance, web: false, raison: rééquilibrage étudié}
+      calls:
+        - {tool: rebalance_proposal, args: {method: hrp}}
+    expect:
+      tools: [rebalance_proposal]
+      mentions: ["aucun ordre n'est passé", "pas un conseil en investissement"]
+      absent: ["Achetez", "Vendez", "ordre transmis"]

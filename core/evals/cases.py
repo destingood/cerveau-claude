@@ -3,6 +3,10 @@
 A case holds a question of Lucas, the fixture web it may search and read, what the scripted models
 answer offline, and what a good run must show. The fixture pages serve both modes: offline, the
 scripted reader returns their ``extracts``; live, the real reader reads the same text.
+
+A finance case also names the tool calls the scripted planner makes and the figures a good answer
+cites: their displays are frozen from the reference store (ADR-023) and the real finance servers
+must compute them again, in both modes.
 """
 
 from __future__ import annotations
@@ -30,13 +34,22 @@ from core.verification.quotes import check_quote
 from plugins.web_research.fetcher import _extract  # the plugin's own extraction of HTML pages
 
 REPO_ROOT = Path(__file__).resolve().parents[2]
-PACK_DIR = Path("domain_packs") / "generaliste"
+PACKS_DIR = Path("domain_packs")
+PACK_DIR = PACKS_DIR / "generaliste"
 GOLDEN_FILE = PACK_DIR / "evals" / "golden.jsonl"
 PACK_BEHAVIORS = PACK_DIR / "evals" / "behaviors.yaml"
+FINANCE_PACK_DIR = PACKS_DIR / "finance"
+FINANCE_GOLDEN = FINANCE_PACK_DIR / "evals" / "golden.jsonl"
+FINANCE_BEHAVIORS = FINANCE_PACK_DIR / "evals" / "behaviors.yaml"
+GOLDEN_FILES = (GOLDEN_FILE, FINANCE_GOLDEN)  # the group of a case is its pack
+PACK_BEHAVIOR_FILES = (PACK_BEHAVIORS, FINANCE_BEHAVIORS)
 BEHAVIOR_DIR = Path("evals") / "behaviors"
 INJECTION_DIR = Path("evals") / "redteam" / "injection_base"
+FINANCE_INJECTION_DIR = Path("evals") / "redteam" / "injection_finance"
 WEB_FIXTURES = Path("evals") / "fixtures" / "web.yaml"
 CASE_ID = r"^[a-z0-9][a-z0-9-]{2,63}$"
+TOOL_NAME = r"^[a-z][a-z0-9_]{1,63}$"
+MAX_LABEL_CHARS = 120
 
 Suite = Literal["golden", "behaviors", "injection"]
 SUITES: tuple[Suite, ...] = ("golden", "behaviors", "injection")
@@ -122,12 +135,30 @@ class Attack(_Data):
     reader: bool = True  # the reader returns the trap extracts of the pages
 
 
+class ToolCallFixture(_Data):
+    """A call of a computing tool the scripted planner makes; the real server answers it."""
+
+    tool: str = Field(pattern=TOOL_NAME)
+    args: dict[str, Any] = Field(default_factory=dict)
+
+
+class ExpectedFigure(_Data):
+    """A figure a good answer cites: the display the tool must compute again, frozen."""
+
+    tool: str = Field(pattern=TOOL_NAME)
+    id: str = Field(min_length=1, max_length=200)
+    display: str = Field(min_length=1)
+    # The words before the figure in a scripted answer: part of one sentence, so no full stop.
+    label: str = Field(min_length=1, max_length=MAX_LABEL_CHARS, pattern=r"^[^.!?\n]+$")
+
+
 class Offline(_Data):
     """The scripted models of an offline run; the deterministic layers run for real."""
 
     verdict: Verdict = Verdict()
     route: Route = Route()
     reads: int = Field(default=2, ge=0, le=10)  # search results the planner opens
+    calls: tuple[ToolCallFixture, ...] = Field(default=(), max_length=10)  # before any search
     answer: DraftAnswer | None = None  # replaces the answer written from the extracts
     attack: Attack | None = None
     factual: tuple[int, ...] = ()  # the verifier's answer: uncited passages that are factual
@@ -135,8 +166,12 @@ class Offline(_Data):
 
     @model_validator(mode="after")
     def _answer_without_web(self) -> Offline:
-        if self.verdict.decision == "ok" and not self.route.web and self.answer is None:
-            raise ValueError("une question sans web exige une réponse scriptée (offline.answer)")
+        scripted = self.answer is not None or bool(self.calls)
+        if self.verdict.decision == "ok" and not self.route.web and not scripted:
+            raise ValueError(
+                "une question sans web exige une réponse scriptée (offline.answer) "
+                "ou des appels d'outils (offline.calls)"
+            )
         return self
 
 
@@ -167,7 +202,18 @@ class Expect(_Data):
     min_points: int = 0  # points à vérifier the verification adds
     max_tool_calls: int | None = None  # effort in proportion to the stakes
     key_points: tuple[str, ...] = ()  # what a complete answer covers: judged live (golden)
+    tools: tuple[str, ...] = ()  # computing tools the run must call (R1)
+    figures: tuple[ExpectedFigure, ...] = ()  # recomputed by their tool and cited in the answer
+    mentions: tuple[str, ...] = ()  # substrings of the answer, case and spaces ignored
+    absent: tuple[str, ...] = ()  # never in the answer, case and spaces ignored
     offline: ExpectOffline = ExpectOffline()
+
+    @model_validator(mode="after")
+    def _figures_of_expected_tools(self) -> Expect:
+        missing = sorted({figure.tool for figure in self.figures} - set(self.tools))
+        if missing:
+            raise ValueError(f"chiffre attendu d'un outil non attendu : {', '.join(missing)}")
+        return self
 
 
 class Case(_Data):
@@ -237,30 +283,41 @@ def load_web(root: Path = REPO_ROOT) -> dict[str, PageFixture]:
 
 
 def load_golden(root: Path = REPO_ROOT) -> list[Case]:
-    path = root / GOLDEN_FILE
+    """The golden sets of the packs: the general one is required, another pack's is optional."""
     cases = []
-    for number, line in enumerate(path.read_text(encoding="utf-8").splitlines(), start=1):
-        if not line.strip():
+    for relative in GOLDEN_FILES:
+        path = root / relative
+        if relative != GOLDEN_FILE and not path.is_file():
             continue
-        try:
-            data = json.loads(line)
-        except json.JSONDecodeError as exc:
-            raise CaseError(f"{path}:{number} : JSON invalide ({exc})") from exc
-        data = {"suite": "golden", "group": "generaliste", **data}
-        cases.append(_validated(Case, data, f"{path}:{number}"))
+        group = relative.parent.parent.name
+        for number, line in enumerate(path.read_text(encoding="utf-8").splitlines(), start=1):
+            if not line.strip():
+                continue
+            try:
+                data = json.loads(line)
+            except json.JSONDecodeError as exc:
+                raise CaseError(f"{path}:{number} : JSON invalide ({exc})") from exc
+            data = {"suite": "golden", "group": group, **data}
+            cases.append(_validated(Case, data, f"{path}:{number}"))
     return cases
 
 
 def load_suite_files(root: Path, directory: Path, *extra: Path) -> list[SuiteFile]:
-    paths = [*sorted((root / directory).glob("*.yaml")), *(root / path for path in extra)]
+    """Every ``*.yaml`` of ``directory``, then each ``extra`` place (a missing file is an error).
+
+    An extra place is a file, or a directory whose ``*.yaml`` files are all read.
+    """
+    paths = sorted((root / directory).glob("*.yaml"))
+    for place in (root / path for path in extra):
+        paths += sorted(place.glob("*.yaml")) if place.is_dir() else [place]
     return [_validated(SuiteFile, _yaml(path), str(path)) for path in paths]
 
 
 def suite_files(suite: Suite, root: Path = REPO_ROOT) -> list[SuiteFile]:
     if suite == "behaviors":
-        return load_suite_files(root, BEHAVIOR_DIR, PACK_BEHAVIORS)
+        return load_suite_files(root, BEHAVIOR_DIR, *PACK_BEHAVIOR_FILES)
     if suite == "injection":
-        return load_suite_files(root, INJECTION_DIR)
+        return load_suite_files(root, INJECTION_DIR, FINANCE_INJECTION_DIR)
     return []
 
 

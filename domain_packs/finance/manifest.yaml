@@ -36,5 +36,16 @@ sources_autorisees:
   base: var/finance
   # Pages web publiques trouvées par web_search puis lues par web_read, dans les limites du plugin.
   web: pages publiques renvoyées par la recherche de la même requête
+  # Corpus RAG : vide en phase 2 (knowledge/sources.yaml).
+  rag: knowledge/sources.yaml
 prompts:
-  role: prompts/role.md  # inséré dans le prompt système (core/orchestrator/prompts.py)
+  role: prompts/role.md      # inséré dans le prompt système (core/orchestrator/prompts.py)
+  rubric: prompts/rubric.md  # prompt système du juge des évals (core/evals/judge.py)
+evals:
+  golden: evals/golden.jsonl
+  # Seuil du score moyen du juge : config/evals.yaml, thresholds.finance_golden_min_score (D17).
+  golden_seuil: config/evals.yaml#thresholds.finance_golden_min_score
+  behaviors: evals/behaviors.yaml
+  # Red team du pack : evals/redteam/injection_finance/ (R5). Suites communes à tous les packs :
+  # evals/behaviors/ (principes de l'Annexe D) et evals/redteam/injection_base/ (R5).
+  # Commande : make eval.

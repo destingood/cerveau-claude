@@ -21,7 +21,7 @@ from core.config.loader import Config
 from core.evals.cases import REPO_ROOT, Case, Suite, load_cases, suite_files
 from core.evals.checks import Mode
 from core.evals.harness import CASES_DIR
-from core.evals.judge import CRITERIA
+from core.evals.judge import CRITERIA, golden_threshold
 
 REPORT_MD = "report.md"
 REPORT_JSON = "report.json"
@@ -52,6 +52,7 @@ class Group:
     cases: int
     passed: int
     threshold: float  # pass rate a group must reach
+    members: tuple[str, ...] = ()  # case ids
 
     @property
     def rate(self) -> float:
@@ -173,7 +174,7 @@ def suite_report(
     for name in names:
         members = [case.id for case in cases if case.group == name]
         passed = sum(1 for case_id in members if results.get(case_id, {}).get("passed"))
-        groups.append(Group(name, len(members), passed, thresholds.get(name, 1.0)))
+        groups.append(Group(name, len(members), passed, thresholds.get(name, 1.0), tuple(members)))
     report = SuiteReport(suite, found, missing, groups)
     report.gates = _gates(report, mode, config)
     return report
@@ -195,19 +196,24 @@ def _gates(report: SuiteReport, mode: Mode, config: Config) -> list[Gate]:
     required, cited = report.sourcing
     if required:
         gates.append(Gate(suite, "sourçage", "100 %", _rate(cited, required), cited == required))
-    if suite == "golden" and mode == "live":
-        threshold = Decimal(str(config.evals.thresholds.generaliste_golden_min_score))
-        scores = [Decimal(r["judgement"]["score"]) for r in report.judged]
-        average = mean(scores)
-        gates.append(
-            Gate(
-                suite,
-                "score moyen du juge",
-                f"≥ {threshold}",
-                f"{average:.2f} sur {len(scores)} cas jugés",
-                bool(scores) and average >= threshold,
+    if suite == "golden" and mode == "live":  # one gate per pack, at the pack's own threshold
+        for group in report.groups:
+            threshold = golden_threshold(config, group.name)
+            scores = [
+                Decimal(r["judgement"]["score"])
+                for r in report.judged
+                if r["case"] in group.members
+            ]
+            average = mean(scores)
+            gates.append(
+                Gate(
+                    suite,
+                    f"score moyen du juge : {group.name}",
+                    f"≥ {threshold}",
+                    f"{average:.2f} sur {len(scores)} cas jugés",
+                    bool(scores) and average >= threshold,
+                )
             )
-        )
         return gates
     for group in report.groups:  # offline golden: every deterministic check, every case
         gates.append(

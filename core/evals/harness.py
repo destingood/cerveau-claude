@@ -23,17 +23,21 @@ from core.config import load_config
 from core.config.loader import Config
 from core.evals.cases import REPO_ROOT, Case, Suite
 from core.evals.checks import Check, Mode, Outcome, r5_breaches, run_checks, sourcing_ok
-from core.evals.judge import Judgement, judge
+from core.evals.judge import Judgement, golden_threshold, judge
 from core.evals.offline import (
+    FINANCE_NOW,
     FIXTURE_NOW,
+    FinanceLog,
     FixtureReader,
     Pilot,
     Recorder,
     WebLog,
+    finance_toolboxes,
     fixture_toolbox,
     offline_config,
     presidio,
     scripted_router,
+    uses_finance,
 )
 from core.learning.errors import journal_errors, judge_error
 from core.models.router import ModelRouter
@@ -158,6 +162,19 @@ def _pages_read(log: WebLog, reader: FixtureReader) -> list[tuple[str, str]]:
     return [(page.url, page.text) for page in pages if page is not None]
 
 
+def _computed(finance: FinanceLog) -> list[tuple[str, str]]:
+    """What the finance tools computed, as the judge reads it: figures, warnings, limits."""
+    references = []
+    for number, (tool, result) in enumerate(finance.results(), start=1):
+        lines = [f"{figure.id} : {figure.display}" for figure in finance.figures(tool, result)]
+        lines += [f"avertissement : {warning}" for warning in result.get("warnings") or ()]
+        lines += [
+            f"indisponible : {item.get('reason', '')}" for item in result.get("unavailable") or ()
+        ]
+        references.append((f"outil:{tool}#{number}", "\n".join(lines) or "(aucun chiffre)"))
+    return references
+
+
 def _outcome(
     case: Case,
     mode: Mode,
@@ -229,9 +246,11 @@ def _result(
 
 async def _offline(case: Case, root: Path, run: str) -> CaseResult:
     config = offline_config(root / "config")
-    log, recorder = WebLog(), Recorder()
+    log, recorder, finance = WebLog(), Recorder(), FinanceLog()
     reader = FixtureReader(case, log, root)
-    pilot = Pilot(case, reader)
+    pilot = Pilot(case, reader, finance)
+    # A run on the reference store is dated when the store is read (R10, ADR-023).
+    now = FINANCE_NOW if uses_finance(case) else FIXTURE_NOW
     with tempfile.TemporaryDirectory(prefix="cerveau-eval-", ignore_cleanup_errors=True) as tmp:
         home = Path(tmp)  # no plugin directory, a journal of its own
         journal = AuditJournal(home / "audit" / "journal.jsonl")
@@ -244,10 +263,13 @@ async def _offline(case: Case, root: Path, run: str) -> CaseResult:
             project_root=home,
             journal=journal,
             router=scripted_router(config, pilot),
-            toolboxes={WEB_PLUGIN: fixture_toolbox(case, log, root)},
+            toolboxes={
+                WEB_PLUGIN: fixture_toolbox(case, log, root),
+                **finance_toolboxes(finance, root / "config"),
+            },
             pseudonymiser=lambda: presidio(config),
             callbacks=(recorder,),
-            clock=lambda: FIXTURE_NOW,
+            clock=lambda: now,
             tz=UTC,
         )
         result = await orchestrator.ask(case.question)
@@ -256,22 +278,31 @@ async def _offline(case: Case, root: Path, run: str) -> CaseResult:
     return _result(outcome, result, run)
 
 
+def live_config_dir(root: Path) -> Path:
+    return Path(os.environ.get(CONFIG_ENV) or root / "config")
+
+
 def live_config(root: Path) -> Config:
-    return load_config(Path(os.environ.get(CONFIG_ENV) or root / "config"))
+    return load_config(live_config_dir(root))
 
 
 async def _live(case: Case, root: Path, run: str) -> CaseResult:
     config = live_config(root)
     journal = AuditJournal(default_journal_path(root))
     router = ModelRouter(config)
-    log, recorder = WebLog(), Recorder()
+    log, recorder, finance = WebLog(), Recorder(), FinanceLog()
     reader = FixtureReader(case, log, root)
+    # Live, the request keeps the real clock (budgets of the day); the finance tools still read
+    # the reference store at its own date, so a finance question names its dates (ADR-023).
     orchestrator = Orchestrator(
         config,
         project_root=root,
         journal=journal,
         router=router,
-        toolboxes={WEB_PLUGIN: fixture_toolbox(case, log, root)},
+        toolboxes={
+            WEB_PLUGIN: fixture_toolbox(case, log, root),
+            **finance_toolboxes(finance, live_config_dir(root)),
+        },
         pseudonymiser=lambda: presidio(config),
         callbacks=(recorder,),
     )
@@ -279,17 +310,19 @@ async def _live(case: Case, root: Path, run: str) -> CaseResult:
     payload = decision_payload(journal, result.request_id)
     outcome = _outcome(case, "live", result, payload, recorder, log, reader)
     judgement = None
-    threshold = Decimal(str(config.evals.thresholds.generaliste_golden_min_score))
+    pack = case.group if case.suite == "golden" else "generaliste"
+    threshold = golden_threshold(config, pack)
     if case.suite == "golden" and not case.expect.pii:
         judgement = await judge(
             case,
             outcome.markdown,
-            _pages_read(log, reader),
+            [*_pages_read(log, reader), *_computed(finance)],
             config=config,
             router=router,
             journal=journal,
             now=datetime.now().astimezone(),
             root=root,
+            pack=pack,
         )
         grades = judgement.as_dict()["grades"]
         low = judge_error(case.id, judgement.score, threshold, grades)

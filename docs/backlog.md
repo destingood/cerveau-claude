@@ -99,6 +99,7 @@ son origine et la phase visée ; « ? » signifie « à décider par Lucas ».
 | B96 | Sortie d'outil trop longue (plus de 64 000 caractères en vue compacte) : le planificateur reçoit un refus et doit restreindre sa demande ; envisager une pagination ou un résumé déterministe par l'outil | `core/orchestrator/planner.py` (`MAX_VIEW_CHARS`) | 3 |
 | B97 | Kill switch au milieu d'une requête : l'entrée `DECISION` reprend l'état reçu par le nœud interrompu, pas ce qu'il avait déjà produit (les appels d'outil restent journalisés un par un par l'adaptateur) | `core/orchestrator/graph.py` (`halted_state`), R4, R11 | 3 |
 | B98 | Pack Finance : cinq plugins (six avec le web) ouverts côte à côte à chaque requête, un sous-processus chacun ; mesurer la latence de démarrage et, si besoin, n'ouvrir un plugin qu'à l'appel de son premier outil (schémas tirés du manifeste) | `core/orchestrator/runtime.py` (`open_tools`), `A_VERIFIER` | 3 |
+| B99 | Détection de consignes : un ordre de bourse en clair (« achète 500 actions Acme », « vends toute la ligne », « sell all shares »), sans tournure d'instruction, n'est pas signalé et passe comme un fait cité ; ajouter un motif « ordre » (verbe d'achat ou de vente à l'impératif suivi d'une quantité ou d'une ligne) mesuré contre les faux positifs des pages d'actualité | `core/guardrails/injection.py`, `evals/redteam/README.md`, B38, R5 | 3 |
 
 ## Évaluations
 | # | Élément | Origine | Phase |

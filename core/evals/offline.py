@@ -3,13 +3,16 @@
 The web_research server and the MCP adapter run for real, in memory: same tool names,
 descriptions and schemas, same policy check, budget charge and TOOL_CALL entry as a real request.
 Only the network is replaced: the search provider and the page reader answer from the case's
-pages and ``evals/fixtures/web.yaml``.
+pages and ``evals/fixtures/web.yaml``. The five finance servers run for real too, in memory, on
+a copy of the fictitious reference store read at ``REFERENCE_READ_AT`` (ADR-023): never on the
+store of Lucas.
 
 Offline (CI), scripted models answer instead of Claude. They follow the case: the classifier and
 the router return its verdicts, the reader returns its honest extracts (or the trap of a page when
-the case simulates a manipulated reader), the planner searches, reads and writes its answer from
-the checked extracts it is shown. Every deterministic layer runs for real (pseudonymisation,
-quote, number and link checks, policy), so an offline run measures those layers, not a model.
+the case simulates a manipulated reader), the planner makes the case's tool calls, searches, reads
+and writes its answer from the figures the tools computed and the checked extracts it is shown.
+Every deterministic layer runs for real (pseudonymisation, quote, number and link checks, policy),
+so an offline run measures those layers, not a model.
 """
 
 from __future__ import annotations
@@ -19,7 +22,8 @@ import math
 import re
 import shutil
 import tempfile
-from collections.abc import AsyncIterator, Sequence
+import unicodedata
+from collections.abc import AsyncIterator, Callable, Mapping, Sequence
 from contextlib import asynccontextmanager
 from dataclasses import dataclass, field
 from datetime import UTC, datetime
@@ -32,16 +36,26 @@ from langchain_core.callbacks import BaseCallbackHandler
 from langchain_core.language_models.chat_models import BaseChatModel
 from langchain_core.messages import AIMessage, BaseMessage, HumanMessage, ToolMessage
 from langchain_core.outputs import ChatGeneration, ChatResult, LLMResult
+from langchain_core.tools import BaseTool, ToolException
+from mcp.server import MCPServer
 
 from core.config import load_config
 from core.config.loader import Config
 from core.evals.cases import REPO_ROOT, Case, PageFixture, cached_web
+from core.finance.fixtures import REFERENCE_READ_AT, reference_store
 from core.guardrails.pii import PiiAnalyzer, Pseudonymiser
 from core.mcp.adapter import McpPlugin, RequestScope
 from core.models.router import ModelRequest, ModelRouter
 from core.orchestrator.planner import FORMAT_REPAIR
 from core.orchestrator.runtime import McpToolbox, Toolbox, ToolboxOpener
 from core.orchestrator.structured import REPAIR
+from core.verification.figures import Figure
+from core.verification.trace import tool_output
+from plugins.finance_data.server import build_server as finance_data_server
+from plugins.finance_optimize.server import build_server as finance_optimize_server
+from plugins.finance_portfolio.server import build_server as finance_portfolio_server
+from plugins.finance_report.server import build_server as finance_report_server
+from plugins.finance_risk.server import build_server as finance_risk_server
 from plugins.web_research.guard import FetchError
 from plugins.web_research.models import PageText
 from plugins.web_research.search import Hit
@@ -49,6 +63,8 @@ from plugins.web_research.server import build_server
 
 WEB_PLUGIN = REPO_ROOT / "plugins" / "web_research"
 FIXTURE_NOW = datetime(2026, 10, 18, 12, 0, tzinfo=UTC)
+# A run that reads the reference store is dated when the tools read it (R10): never before.
+FINANCE_NOW = REFERENCE_READ_AT
 FIXTURE_PROVIDER = "fixtures"
 CHARS_PER_TOKEN = 4  # offline cost estimate: no tokenizer, no cache (labelled « simulé »)
 # Values an offline run needs and the repository leaves to Lucas (R7): a temporary copy only.
@@ -61,6 +77,7 @@ _SOURCE_NUMBER = re.compile(r"^Source \[(\d+)\] :", re.MULTILINE)
 _EXTRACT = re.compile(r"^- (.+)\n  Citation : « (.+) »$", re.MULTILINE)
 _QUESTION = re.compile(r"Question de Lucas :\n(.*?)\n\nAdresses web", re.DOTALL)
 _REPAIRS = (FORMAT_REPAIR.split("{", 1)[0], REPAIR.split("{", 1)[0])
+WEB_TOOLS = frozenset({"web_search", "web_read"})
 
 UNSURE = "Je ne sais pas : aucune source lue ne permet de répondre avec certitude."
 PADDING = "Cette réponse s'appuie uniquement sur les extraits vérifiés des sources citées."
@@ -69,6 +86,15 @@ COUNTER = (
     "spécialisée pourrait nuancer ces éléments."
 )
 STEPS = ("Vérifier la date et l'auteur des sources citées.", "Croiser avec une source primaire.")
+FINANCE_PADDING = "Chaque chiffre de cette réponse vient de l'outil cité entre parenthèses."
+FINANCE_COUNTER = (
+    "Ces mesures reposent sur l'historique des séances et sur des hypothèses de modèle ; un "
+    "régime de marché nouveau peut les mettre en défaut."
+)
+FINANCE_STEPS = (
+    "Relire les hypothèses et les limites signalées par les outils.",
+    "Décider soi-même de toute suite à donner : aucun ordre n'est passé.",
+)
 
 
 # --- fixture web -------------------------------------------------------------------------------
@@ -133,6 +159,112 @@ def fixture_toolbox(case: Case, log: WebLog, root: Path = REPO_ROOT) -> ToolboxO
     return open_toolbox
 
 
+# --- finance servers ----------------------------------------------------------------------------
+
+
+@cache
+def finance_store() -> Path:
+    """The fictitious reference store, built once per process in a temporary directory."""
+    directory = Path(tempfile.mkdtemp(prefix="cerveau-eval-finance-"))
+    return reference_store(directory / "finance.db")
+
+
+ServerFactory = Callable[[Path, Path], MCPServer]  # (store, config directory) → server
+FINANCE_SERVERS: dict[str, ServerFactory] = {
+    "finance_data": lambda store, _config: finance_data_server(store, clock=lambda: FINANCE_NOW),
+    "finance_portfolio": lambda store, _config: finance_portfolio_server(
+        store, clock=lambda: FINANCE_NOW
+    ),
+    "finance_risk": lambda store, config: finance_risk_server(
+        store, config, clock=lambda: FINANCE_NOW
+    ),
+    "finance_optimize": lambda store, config: finance_optimize_server(
+        store, config, clock=lambda: FINANCE_NOW
+    ),
+    "finance_report": lambda store, config: finance_report_server(
+        store, config, clock=lambda: FINANCE_NOW
+    ),
+}
+
+
+@dataclass
+class FinanceLog:
+    """What the finance servers answered: tool, arguments and result of each executed call."""
+
+    calls: list[tuple[str, dict[str, Any], dict[str, Any]]] = field(default_factory=list)
+    errors: list[tuple[str, str]] = field(default_factory=list)  # tool and error of a failed call
+
+    def tools(self) -> list[str]:
+        return [tool for tool, _args, _result in self.calls]
+
+    def results(self, tool: str | None = None) -> list[tuple[str, dict[str, Any]]]:
+        return [(name, result) for name, _args, result in self.calls if tool in (None, name)]
+
+    @staticmethod
+    def figures(tool: str, result: dict[str, Any]) -> tuple[Figure, ...]:
+        return tool_output(tool, tool, result).figures
+
+    def display(self, tool: str, figure_id: str) -> str | None:
+        """The display of a figure in the first result of ``tool`` that has it."""
+        for _name, result in self.results(tool):
+            for figure in self.figures(tool, result):
+                if figure.id == figure_id:
+                    return figure.display
+        return None
+
+
+class LoggedToolbox:
+    """A toolbox whose executed calls are logged; everything else is the real one."""
+
+    def __init__(self, toolbox: Toolbox, log: FinanceLog) -> None:
+        self._toolbox, self._log = toolbox, log
+
+    @property
+    def tools(self) -> Sequence[BaseTool]:
+        return self._toolbox.tools
+
+    @property
+    def skipped(self) -> Mapping[str, str]:
+        return self._toolbox.skipped
+
+    @property
+    def version(self) -> str:
+        return self._toolbox.version
+
+    async def call(
+        self, name: str, arguments: dict[str, Any], *, journaled: Mapping[str, Any] | None = None
+    ) -> dict[str, Any]:
+        try:
+            result = await self._toolbox.call(name, arguments, journaled=journaled)
+        except ToolException as exc:  # a blocked function or a missing provider (R7, R12)
+            self._log.errors.append((name, str(exc)))
+            raise
+        self._log.calls.append((name, dict(arguments), result))
+        return result
+
+
+def finance_toolboxes(
+    log: FinanceLog, config_dir: Path = REPO_ROOT / "config"
+) -> dict[str, ToolboxOpener]:
+    """The real finance servers and MCP adapter, in memory, on the reference store."""
+
+    def opener(name: str, factory: ServerFactory) -> ToolboxOpener:
+        @asynccontextmanager
+        async def open_toolbox(scope: RequestScope) -> AsyncIterator[Toolbox]:
+            server = factory(finance_store(), config_dir)
+            async with McpPlugin(REPO_ROOT / "plugins" / name, scope, target=server) as plugin:
+                yield LoggedToolbox(McpToolbox(plugin), log)
+
+        return open_toolbox
+
+    return {name: opener(name, factory) for name, factory in FINANCE_SERVERS.items()}
+
+
+def uses_finance(case: Case) -> bool:
+    """A case whose run reads the reference store, so is dated when the store is read."""
+    return case.group == "finance" or bool(case.offline.calls or case.expect.tools)
+
+
 # --- scripted models ---------------------------------------------------------------------------
 
 
@@ -150,6 +282,7 @@ class Pilot:
 
     case: Case
     pages: FixtureReader
+    finance: FinanceLog = field(default_factory=FinanceLog)
     calls: list[str] = field(default_factory=list)  # roles, in call order
     _answer: str | None = None
 
@@ -183,11 +316,14 @@ class Pilot:
             return AIMessage(self._answer or self._write([]))  # the same answer, once more
         asked = [c for m in messages if isinstance(m, AIMessage) for c in m.tool_calls]
         offline = self.case.offline
-        if offline.route.web and not asked:
+        web = [c for c in asked if c["name"] in WEB_TOOLS]
+        if offline.calls and len(web) == len(asked):  # the computing tools first, once
+            return _tools(*((call.tool, dict(call.args)) for call in offline.calls))
+        if offline.route.web and not web:
             found = _QUESTION.search(str(messages[1].content))
             query = (found.group(1) if found else self.case.question).strip()[:400]
             return _tools(("web_search", {"query": query}))
-        if offline.route.web and all(c["name"] == "web_search" for c in asked):
+        if offline.route.web and all(c["name"] == "web_search" for c in web):
             results = "\n".join(str(m.content) for m in messages if isinstance(m, ToolMessage))
             urls = _HIT.findall(results)[: offline.reads]
             extra = offline.attack.reads if offline.attack is not None else ()
@@ -199,24 +335,33 @@ class Pilot:
         return AIMessage(self._answer)
 
     def _write(self, views: Sequence[str]) -> str:
-        """The answer of an honest planner, written from the checked extracts only."""
+        """The answer of an honest planner: the tools' figures and the checked extracts only."""
         offline = self.case.offline
+        complex_ = offline.route.complexite == "complexe"
         if offline.answer is not None:
             answer = offline.answer.model_dump(mode="json")
+        elif offline.calls or self.case.expect.figures:
+            answer = _from_figures(self.case, self.finance, views, complex_=complex_)
         else:
-            answer = _from_extracts(views, complex_=offline.route.complexite == "complexe")
+            answer = _from_extracts(views, complex_=complex_)
         if offline.attack is not None and offline.attack.append:
             answer["developpement"] = f"{answer['developpement']}\n\n{offline.attack.append}"
         return _json(answer)
 
 
-def _from_extracts(views: Sequence[str], *, complex_: bool) -> dict[str, Any]:
+def _checked_extracts(views: Sequence[str]) -> list[tuple[int, str, str]]:
+    """(source number, claim, quote) of each checked extract the planner was shown."""
     extracts: list[tuple[int, str, str]] = []
     for view in views:
         number = _SOURCE_NUMBER.search(view)
         if number is not None:
             n = int(number.group(1))
             extracts.extend((n, claim, quote) for claim, quote in _EXTRACT.findall(view))
+    return extracts
+
+
+def _from_extracts(views: Sequence[str], *, complex_: bool) -> dict[str, Any]:
+    extracts = _checked_extracts(views)
     low, high = (3, 5) if complex_ else (1, 3)
     if extracts:
         sentences = [_sentence(claim, n) for n, claim, _quote in extracts[: high - 1]]
@@ -236,6 +381,86 @@ def _from_extracts(views: Sequence[str], *, complex_: bool) -> dict[str, Any]:
         "contre_arguments": COUNTER if complex_ else "",
         "confiance": confidence,
         "prochaines_etapes": list(STEPS) if complex_ else [],
+    }
+
+
+def _plain(text: str) -> str:
+    """One line of a tool's text, as the planner reads it: NFKC, spaces collapsed, no end mark."""
+    return " ".join(unicodedata.normalize("NFKC", text).split()).rstrip(" .;:")
+
+
+def _tool_error(tool: str, error: str) -> str:
+    """The reason of a failed call, without the adapter's and the server's prefixes."""
+    prefix = rf"^{re.escape(tool)} : (?:Error executing tool {re.escape(tool)}: )?"
+    return re.sub(prefix, "", error)
+
+
+def _limits(log: FinanceLog) -> list[str]:
+    """The limits the tools reported (R12): warnings, unavailable measures, errors, each once."""
+    lines: list[str] = []
+    for tool, result in log.results():
+        texts = [str(w) for w in result.get("warnings") or ()]
+        texts += [str(u.get("reason", "")) for u in result.get("unavailable") or ()]
+        lines += [f"Limite signalée par {tool} : {_plain(t)}." for t in texts if t.strip()]
+    for tool, error in log.errors:
+        lines.append(f"Limite signalée par {tool} : {_plain(_tool_error(tool, error))}.")
+    return list(dict.fromkeys(lines))
+
+
+def _frame(log: FinanceLog) -> list[str]:
+    """The frame of the analysis as the tools state it: their notice and their status (R16)."""
+    lines: list[str] = []
+    for _tool, result in log.results():
+        if result.get("notice"):
+            lines.append(f"Cadre : {_plain(str(result['notice']))}.")
+        if result.get("status") == "analyse":
+            level = _plain(str(result.get("autonomy_level") or ""))
+            lines.append(f"Statut : analyse au niveau {level} ; aucun ordre n'est passé.")
+    return list(dict.fromkeys(lines))
+
+
+def _from_figures(
+    case: Case, log: FinanceLog, views: Sequence[str], *, complex_: bool
+) -> dict[str, Any]:
+    """The answer of an honest planner on computed figures: each one cited with its tool (R1)."""
+    facts = []
+    for figure in case.expect.figures:
+        display = log.display(figure.tool, figure.id)
+        if display is not None:  # a figure the tool did not compute is never written
+            facts.append(f"{figure.label} : {_plain(display)} ({figure.tool})")
+    extracts = _checked_extracts(views)
+    sourced = [_sentence(claim, n) for n, claim, _quote in extracts]
+    ordered = [*(f"{fact}." for fact in facts[:1]), *sourced[:1]]
+    ordered += [*(f"{fact}." for fact in facts[1:]), *sourced[1:]]
+    limits = _limits(log)
+    low, high = (3, 5) if complex_ else (1, 3)
+    sentences = ordered[: high - 1] or limits[:1]
+    sentences += [FINANCE_PADDING] * max(0, low - len(sentences))
+    body = [
+        *(f"- {fact}." for fact in facts),
+        *(
+            f"- {claim.strip().rstrip('.!?;:')} : « {quote} » [{n}]."
+            for n, claim, quote in extracts
+        ),
+        *_frame(log),
+        *limits,
+    ]
+    tools = ", ".join(dict.fromkeys(log.tools())) or "aucun outil"
+    if facts and len(facts) == len(case.expect.figures) and not limits:
+        confidence = {"niveau": "eleve", "justification": f"Chiffres calculés par {tools}."}
+    elif facts or extracts:
+        confidence = {
+            "niveau": "moyen",
+            "justification": f"Chiffres calculés par {tools}, avec les limites signalées.",
+        }
+    else:
+        confidence = {"niveau": "faible", "justification": "Aucun chiffre calculé par un outil."}
+    return {
+        "synthese": " ".join(sentences),
+        "developpement": "\n".join(body) or "Aucun chiffre n'a été calculé par un outil.",
+        "contre_arguments": FINANCE_COUNTER if complex_ else "",
+        "confiance": confidence,
+        "prochaines_etapes": list(FINANCE_STEPS) if complex_ else [],
     }
 
 

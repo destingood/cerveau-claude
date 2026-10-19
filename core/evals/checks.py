@@ -8,6 +8,7 @@ same checks run offline and live, and the judge (live, golden set) only adds a s
 from __future__ import annotations
 
 import re
+import unicodedata
 from collections.abc import Iterable, Sequence
 from dataclasses import dataclass, field
 from functools import cache
@@ -19,7 +20,7 @@ from core.orchestrator.answer import render_markdown
 from core.orchestrator.prompts import PACKS_DIR, PROMPTS_DIR, strip_header
 from core.orchestrator.state import MARKER, Answer
 from core.verification.citations import citation_numbers, units
-from core.verification.trace import Evidence, ToolOutput, trace
+from core.verification.trace import FIGURE_ORIGIN, Evidence, ToolOutput, trace
 
 Mode = Literal["offline", "live"]
 
@@ -36,6 +37,7 @@ INVALID_CITATIONS = ("citation_orpheline", "citation_inexacte")
 _PLACEHOLDER = re.compile(r"\{\{\w+\}\}")
 _WORD = re.compile(r"\w+", re.UNICODE)
 _SPACES = re.compile(r"\s+")
+_NUMBER_PART = re.compile(r"^[^\d+\-−]*([+\-−]?\d[\d\s.,]*)")
 
 
 @dataclass(frozen=True)
@@ -313,6 +315,55 @@ def _check_numbers(outcome: Outcome, checks: _Checks) -> None:
     )
 
 
+def _nfkc(text: str) -> str:
+    return unicodedata.normalize("NFKC", text)
+
+
+def _number_part(display: str) -> str:
+    """The number of a display without its unit: « 1 986,77 € » → « 1 986,77 »."""
+    found = _NUMBER_PART.match(_nfkc(display))
+    return found.group(1).strip(" .,") if found else _nfkc(display)
+
+
+def _check_tools(outcome: Outcome, checks: _Checks) -> None:
+    """R1: the expected tools computed, again, the frozen figures, and the answer cites them."""
+    expect, answer = outcome.case.expect, outcome.answer
+    # A call that failed (blocked function, strict replay) is still a call: its error is a limit.
+    called = {output.tool for output in outcome.tool_outputs}
+    called |= {name for name, _args in outcome.requested}
+    for tool in expect.tools:
+        checks.add(f"outil appelé : {tool}", tool in called, "outil non appelé", "R1")
+    drafted = [_nfkc(text) for text in _drafted(answer)]
+    for expected in expect.figures:
+        computed = next(
+            (
+                figure.display
+                for output in outcome.tool_outputs
+                if output.tool == expected.tool
+                for figure in output.figures
+                if figure.id == expected.id
+            ),
+            None,
+        )
+        checks.add(
+            f"chiffre de référence : {expected.tool}{FIGURE_ORIGIN}{expected.id}",
+            computed is not None and _nfkc(computed) == _nfkc(expected.display),
+            f"calculé : {computed or 'absent'}, attendu : {expected.display}",
+            "R1",
+        )
+        if answer.statut in ("complete", "partielle"):
+            checks.add(
+                f"chiffre cité : {expected.id}",
+                _found(_number_part(expected.display), drafted),
+                f"« {expected.display} » absent de la réponse",
+            )
+    texts = [_nfkc(text) for text in free_texts(answer)]
+    for part in expect.mentions:
+        checks.add(f"mention : {part}", _found(_nfkc(part), texts), "mention attendue absente")
+    for part in expect.absent:
+        checks.add(f"absent : {part}", not _found(_nfkc(part), texts), "mention interdite présente")
+
+
 def _check_sources(outcome: Outcome, checks: _Checks) -> None:
     expect, answer = outcome.case.expect, outcome.answer
     if expect.min_sources:
@@ -346,6 +397,7 @@ def run_checks(outcome: Outcome) -> list[Check]:
     _check_format(outcome, checks)
     _check_calibration(outcome, checks)
     _check_numbers(outcome, checks)
+    _check_tools(outcome, checks)
     _check_sources(outcome, checks)
     return checks.items
 

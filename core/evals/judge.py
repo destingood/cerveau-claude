@@ -29,13 +29,25 @@ from core.audit.chain import AuditJournal
 from core.budget.gate import BudgetGate
 from core.budget.ledger import COST_KEY
 from core.config.loader import Config
-from core.evals.cases import PACK_DIR, REPO_ROOT, Case
+from core.evals.cases import PACKS_DIR, REPO_ROOT, Case
 from core.guardrails.input import mark_untrusted
 from core.models.router import ModelRouter
 from core.orchestrator.prompts import strip_header
 from core.orchestrator.structured import ask_json
 
-RUBRIC = PACK_DIR / "prompts" / "rubric.md"
+GENERAL_PACK = "generaliste"
+# The judge score a pack's golden set must reach: config/evals.yaml, never lowered here (R9).
+GOLDEN_THRESHOLDS = {
+    "generaliste": "generaliste_golden_min_score",
+    "finance": "finance_golden_min_score",
+}
+
+
+def rubric_path(pack: str = GENERAL_PACK) -> Path:
+    return PACKS_DIR / pack / "prompts" / "rubric.md"
+
+
+RUBRIC = rubric_path()
 _RUBRIC_VERSION = re.compile(r"\bversion (\d+\.\d+)\b")
 CRITERIA = ("exactitude", "completude", "sources", "honnetete", "format")
 MAX_GRADE = 2
@@ -92,14 +104,23 @@ class Rubric:
     version: str  # "rubric@<version>+sha256:<12 hex>", journaled with each judgement (R11)
 
 
-def load_rubric(root: Path = REPO_ROOT) -> Rubric:
-    raw = (root / RUBRIC).read_text(encoding="utf-8")
+def golden_threshold(config: Config, pack: str) -> Decimal:
+    """The mean judge score the golden set of ``pack`` must reach (``config/evals.yaml``)."""
+    if pack not in GOLDEN_THRESHOLDS:
+        raise ValueError(f"pack sans seuil de golden set : {pack}")
+    return Decimal(str(getattr(config.evals.thresholds, GOLDEN_THRESHOLDS[pack])))
+
+
+def load_rubric(root: Path = REPO_ROOT, pack: str = GENERAL_PACK) -> Rubric:
+    """The rubric of ``pack``: each pack grades the same criteria with its own demands."""
+    raw = (root / rubric_path(pack)).read_text(encoding="utf-8")
     text = strip_header(raw)
     version = _RUBRIC_VERSION.search(raw[: len(raw) - len(text)])
     if version is None:
-        raise ValueError("rubric.md : version absente de l'en-tête")
+        raise ValueError(f"rubric.md ({pack}) : version absente de l'en-tête")
     digest = hashlib.sha256(raw.encode()).hexdigest()[:12]
-    return Rubric(text=text, version=f"rubric@{version.group(1)}+sha256:{digest}")
+    name = "rubric" if pack == GENERAL_PACK else f"rubric_{pack}"
+    return Rubric(text=text, version=f"{name}@{version.group(1)}+sha256:{digest}")
 
 
 def judge_messages(
@@ -130,9 +151,14 @@ async def judge(
     now: datetime,
     tz: tzinfo | None = None,
     root: Path = REPO_ROOT,
+    pack: str = GENERAL_PACK,
 ) -> Judgement:
-    """Grades one answer; raises ``BudgetExceededError`` before any call when a budget is spent."""
-    rubric = load_rubric(root)
+    """Grades one answer; raises ``BudgetExceededError`` before any call when a budget is spent.
+
+    ``pages`` are the references the judge reads: the pages served and, for a finance case, the
+    figures the tools computed, all wrapped as external data (R5).
+    """
+    rubric = load_rubric(root, pack)
     request_id = str(uuid.uuid4())
     BudgetGate(config, journal, tz=tz).check(now=now, request_id=request_id)
     meter = router.new_meter()
