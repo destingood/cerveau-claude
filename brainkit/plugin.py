@@ -63,6 +63,34 @@ def classic_install() -> bool:
     return (BRAIN_DIR / "brainkit").is_dir() and not (load_config().get("plugin") or {}).get("migre_le")
 
 
+def installed() -> bool:
+    """Le plugin est-il installé dans Claude Code (registre plugins/installed_plugins.json) ? Vrai aussi quand le code
+    qui tourne est celui d'un cerveau classique : les hooks du plugin, eux, lancent `python`."""
+    registry = read_json(CLAUDE_HOME / "plugins" / "installed_plugins.json", {})
+    plugins = registry.get("plugins") if isinstance(registry, dict) else None
+    return isinstance(plugins, dict) and any(str(key).startswith("cerveau@") for key in plugins)
+
+
+PYTHON_MIN = (3, 10)  # README : « Python 3.10 ou plus récent »
+
+
+def hook_python(timeout=5):
+    """La commande `python` que lancent les hooks du plugin (`python -I -S brain.py hook …`, voir publish._hook), telle
+    que ce PATH la résout → (chemin, version). (None, None) : introuvable ; (chemin, None) : ne se lance pas (alias
+    du Microsoft Store, interpréteur cassé)."""
+    import subprocess
+    exe = shutil.which("python")
+    if not exe:
+        return None, None
+    try:
+        r = subprocess.run([exe, "-c", "import sys; print('%d.%d.%d' % sys.version_info[:3])"], capture_output=True,
+                           text=True, errors="replace", timeout=timeout)
+        found = re.search(r"(\d+)\.(\d+)\.(\d+)", r.stdout) if r.returncode == 0 else None
+    except (OSError, subprocess.SubprocessError):
+        found = None
+    return exe, tuple(int(x) for x in found.groups()) if found else None
+
+
 def migration_wanted() -> bool:
     """Le plugin doit-il prendre le relais du cerveau classique ? (oui, sauf `config plugin.garder_classique true`)"""
     return PLUGIN and classic_install() and not (load_config().get("plugin") or {}).get("garder_classique")

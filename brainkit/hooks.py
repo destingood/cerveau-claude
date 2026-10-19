@@ -150,6 +150,16 @@ def wiki_start(brain, cfg) -> str:
     return wiki.notice(brain)
 
 
+def journal_catchup(cfg, sid) -> bool:
+    """Rattrapage du journal, au plus une fois par jour : des sessions de Claude Code des 7 derniers jours que les hooks
+    n'ont pas vues (`python` introuvable, plugin tout neuf…) → import en arrière-plan, jamais dans le délai du hook."""
+    jc = cfg.get("journal") or {}
+    if not jc.get("enabled", True) or days_since(jc.get("rattrapage_le")) < 1:
+        return False
+    set_config("journal.rattrapage_le", now_iso())  # jour réservé : une autre session qui démarre n'en lance pas une 2e
+    return bool(journal.missing(exclude=(sid,), limit=1)) and spawn_background(["journal", "--backfill"])
+
+
 # ------------------------------------------------------------------------------------------ SessionStart
 COMPACT_MAX_AGE = 600  # s : un résumé gardé plus vieux n'est pas celui de cette compaction
 COMPACT_MIN_SCORE, COMPACT_MIN_COV, COMPACT_ITEMS = 20, 0.10, 3
@@ -243,6 +253,10 @@ def on_session_start(data, cfg):
             spawn_background(["eco", "--plugins-auto"])
         except Exception as exc:
             log(f"éco (veille des plugins) : {exc!r}")
+    try:  # sessions que les hooks ont manquées (une fois par jour) : importées au journal en arrière-plan
+        journal_catchup(cfg, sid)
+    except Exception as exc:
+        log(f"rattrapage du journal : {exc!r}")
     if source == "resume" and st.get("started"):
         # Reprise : l'injection de départ est encore dans l'historique (7 reprises sur 7) → les nouveautés seulement.
         text = idx.resume_delta(brain, st.get("injected_at") or st["started"], cfg)
@@ -392,6 +406,110 @@ def context_alert(data, cfg) -> str:
             "Tape /clear (le cerveau garde l'essentiel) ou /compact.")
 
 
+# Demande explicite (« retiens que… ») : le hook l'enregistre lui-même.
+REM_BLOCK_RX = re.compile(r"```.*?```|<pasted_content[^>]*>.*?</pasted_content>|<(system-reminder|ide_[a-z_]+)[^>]*>.*?</\1>",
+                          re.S)
+REM_LEAD_RX = re.compile(r"(?:(?:ok|okay|bon|alors|donc|et|puis|aussi|dis|[ée]coute|stp|svp|please)\b[\s,;:!.\-–—]*)*", re.I)
+REM_LINK_RX = re.compile(r"[\s,;:!\-–—]*(?:(?:bien|[çc]a|cela|ceci)\b[\s,;:!\-–—]*)*(?:(?:que\b|qu['’]|that\b|to\b)\s*)?", re.I)
+REM_STATEMENT_RX = re.compile(r"\s*(?:qu(?:e\b|['’])|that\b|:)", re.I)  # « n'oublie pas que… » : un fait, pas un rappel
+REM_OBJECT_RX = re.compile(r"\s*(?:qu(?:e\b|['’])|that\b|[çc]a\b|cela\b|ceci\b|bien\b|:)", re.I)
+REM_ANAPHORA_RX = re.compile(r"(?:tout\s+)?ce\s+(?:que|qu['’]|qui)\b[^:]*:?", re.I)  # « retiens ce que je viens de dire »
+REM_TITLE, REM_BODY, REM_MAX = 80, 600, 3  # car. du titre, du texte gardé ; phrases enregistrées par message
+
+
+def remember_texts(raw) -> list:
+    """Les phrases à retenir d'un message « retiens… » : celle du déclencheur, sans lui ni ses liaisons (« retiens que… »,
+    « n'oublie pas de… »). Rien (Claude, lui, voit de quoi il s'agit) si le déclencheur n'ouvre pas la phrase (« ne retiens
+    pas… »), si c'est une question, si rien ne suit ou si ça renvoie à autre chose (« retiens ça », « ce que je viens de
+    dire »), si « n'oublie pas de… » ou « souviens-toi de… » ne sont qu'un rappel ou un appel au souvenir (il faut « que… »
+    ou une règle : « toujours », « jamais »…), ou si « mémorise les résultats » parle de code.
+    Un déclencheur suivi de « : » prend la suite du paragraphe (liste)."""
+    out = []
+    for para in re.split(r"\n\s*\n", REM_BLOCK_RX.sub(" ", str(raw)[:20000])):
+        sents = [re.sub(r"^\s*(?:[-*•>]+|\d+[.)])\s*", "", x).strip() for x in re.split(r"(?<=[.!?…])\s+|\n", para)]
+        sents = [x for x in sents if x]
+        for i, sent in enumerate(sents):
+            m = REMEMBER_RX.search(sent)
+            head = sent[:m.start()].strip() if m else ""
+            if not m or sent.endswith("?") or (head and not head.endswith((",", ";", ":")) and not REM_LEAD_RX.fullmatch(head)):
+                continue
+            end = m.end()
+            while end < len(sent) and sent[end].isalpha():  # « mémoris » → « mémorise »
+                end += 1
+            word, tail = fold(m.group(0)), sent[end:]
+            if (word.startswith("memoris") and not REM_OBJECT_RX.match(tail)) \
+                    or (word.startswith(("n'oublie", "souviens", "remember"))
+                        and not (REM_STATEMENT_RX.match(tail) or CAPTURE_RX.search(tail))):
+                continue
+            tail = tail[REM_LINK_RX.match(tail).end():]
+            if word.startswith(("n'oublie", "souviens")):
+                tail = re.sub(r"^(?:de\b|d['’])\s*", "", tail, flags=re.I)
+            text = f"{'' if REM_LEAD_RX.fullmatch(head) else head} {tail}"
+            if sent.endswith(":"):
+                text += " ; ".join([""] + sents[i + 1:])
+            text = " ".join(text.split()).strip(" ;,:-–—").rstrip(".!?… ")
+            if REM_ANAPHORA_RX.match(text):  # ce que je viens de dire : toujours pnpm → ce qui suit les deux-points
+                text = text.split(":", 1)[1].strip() if ":" in text else ""
+            if len(tokenize(text, keep_stop=True)) >= 3 and text[:1].upper() + text[1:] not in out:
+                out.append(text[:1].upper() + text[1:])
+            if sent.endswith(":"):
+                break
+    return out[:REM_MAX]
+
+
+def _remember_one(b, text, cwd) -> str:
+    """Un souvenir enregistré comme `brain add` : complète celui qui dit déjà ça, remplace celui dont la valeur change,
+    sinon en crée un (règle si c'est une préférence, sinon fait du projet courant). → son id."""
+    from . import reconcile
+    from .common import fmt_date
+    ntype = "feedback" if CAPTURE_RX.search(text) else "fact"
+    title, body = short(text, REM_TITLE), f"{short(text, REM_BODY)} (noté le {fmt_date(now_iso())})"
+    proj = None if ntype == "feedback" else b.project_for_path(cwd)
+    pid = proj["id"] if proj else None
+    dec = reconcile.decide(b, ntype, title, text, pid)  # comparé sans la date : le même propos redit un autre jour = doublon
+    if dec["action"] == "merge":
+        old = dec["target"]
+        has = fold(text) in fold(old.get("body", ""))
+        b.update(old["id"], body=old.get("body", "") if has else f"{old.get('body', '')}\n{body}".strip())
+        b.adjust_confidence(old["id"], +0.1)  # redit : un peu plus sûr
+        return old["id"]
+    node = b.add(ntype, title, body, project=pid, source="auto")
+    if dec["action"] == "update":  # même sujet, valeur changée : l'ancien est archivé (consultable)
+        b.supersede(node["id"], dec["target"]["id"])
+    return node["id"]
+
+
+def remember_now(data, raw) -> str:
+    """Demande explicite (« retiens que… ») : enregistrée par le hook lui-même — zéro token, et rien n'est perdu si Claude
+    oublie. Mêmes règles que `brain add` : anti-doublon, jamais de secret (la phrase est alors écartée).
+    → la ligne pour Claude, ou '' si le hook ne peut pas s'en charger (Claude fait alors `add`, comme avant)."""
+    from .privacy import find
+    found = {t: find(t) for t in remember_texts(raw)}
+    leaks = sorted({x for v in found.values() for x in v})
+    texts, ids = [t for t, v in found.items() if not v], []
+    if texts and data.get("simulation"):  # `brain recall` : montrer sans enregistrer
+        return "🧠 (simulation) serait enregistré tel quel : " + " · ".join(
+            f"[{TYPES['feedback' if CAPTURE_RX.search(t) else 'fact']}] « {short(t, REM_TITLE)} »" for t in texts)
+    if texts:
+        with Brain.edit(timeout=2.5) as b:
+            ids = [_remember_one(b, text, data.get("cwd")) for text in texts]
+        sid = data.get("session_id")
+        if sid:  # déjà montrés à Claude : ni rappelés dans ce message, ni redemandés en fin de tâche
+            st = load_state(sid)
+            st["injected"] = sorted(set(st.get("injected", [])) | set(ids))
+            said = journal.clean_prompt(raw, 300)
+            st["auto_saved"] = [x for x in st.get("auto_saved", []) if x != said][-9:] + [said]
+            save_state(sid, st)
+    lines = []
+    if ids:
+        many = len(ids) > 1
+        lines.append(f"🧠 Déjà enregistré{'s tels quels' if many else ' tel quel'} ({', '.join(f'`{x}`' for x in ids)}) : "
+                     f"complète-{'les' if many else 'le'} avec `{CMD} edit {'<id>' if many else ids[0]}` seulement si c'est utile")
+    if leaks:
+        lines.append(f"🧠 Secret probable dans le message ({', '.join(leaks)}) : non enregistré, ne le copie jamais dans le cerveau")
+    return "\n".join(lines)
+
+
 def on_prompt(data, cfg):
     raw = (data.get("prompt") or "").strip()
     try:  # cerveau commun : les pages des amis, récupérées en arrière-plan (au plus une fois par minute)
@@ -405,12 +523,20 @@ def on_prompt(data, cfg):
             alert = context_alert(data, cfg)
         except Exception as exc:
             log(f"alerte contexte : {exc!r}")
-    ctx = recall_context(data, cfg, raw) if cfg["recall"]["enabled"] and len(raw) >= 6 and not raw.startswith("/") else ""
+    saved = ""
+    if not raw.startswith("/") and REMEMBER_RX.search(raw):
+        try:  # « retiens que… » : enregistré ici même, indépendamment du rappel automatique
+            saved = remember_now(data, raw)
+        except Exception as exc:
+            log(f"mémorisation automatique : {exc!r}")
+    ctx = recall_context(data, cfg, raw, saved) if cfg["recall"]["enabled"] and len(raw) >= 6 and not raw.startswith("/") \
+        else saved
     emit("UserPromptSubmit", ctx, alert)
 
 
-def recall_context(data, cfg, raw) -> str:
-    """Rappel automatique du message : souvenirs et fichiers liés (texte pour Claude), ou ''."""
+def recall_context(data, cfg, raw, saved="") -> str:
+    """Rappel automatique du message : souvenirs et fichiers liés (texte pour Claude), ou ''. `saved` : la ligne de
+    l'enregistrement automatique d'une demande « retiens… » (sinon Claude est prié de la mémoriser)."""
     rc = cfg["recall"]
     pcline = pc_watch(cfg)
     query = recall_query(raw)
@@ -421,7 +547,9 @@ def recall_context(data, cfg, raw) -> str:
     proj = brain.project_for_path(cwd) if cwd else None
     injected = set(st.get("injected", []))
     lines = []
-    if REMEMBER_RX.search(raw):
+    if saved:
+        lines.append(saved)
+    elif REMEMBER_RX.search(raw):
         lines.append(f"🧠 L'utilisateur demande de mémoriser : enregistre-le avec `{CMD} add -t <type> -T … -b …` "
                      "(vérifie d'abord les doublons avec `q`).")
     elif RECALL_RX.search(raw):
@@ -565,7 +693,9 @@ def on_stop(data, cfg):
     elif block:
         reason = STOP_REASON
         base = tx.get("last_save_tools", 0)
-        cands = [p["t"] for p in tx.get("recent", []) if p.get("i", 0) >= base and CAPTURE_RX.search(p["t"])][-3:]
+        done = st.get("auto_saved", [])  # demandes « retiens… » déjà enregistrées par le hook
+        cands = [p["t"] for p in tx.get("recent", []) if p.get("i", 0) >= base and CAPTURE_RX.search(p["t"])
+                 and p["t"] not in done][-3:]
         if cands:  # capture assistée : les phrases de l'utilisateur qui ressemblent à une préférence ou une décision
             reason += " Candidats repérés dans ses messages : " + " · ".join(f"« {short(c, 160)} »" for c in cands) + "."
         if st.get("wiki"):

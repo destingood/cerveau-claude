@@ -58,7 +58,9 @@ DEFAULT_CONFIG = {
     # Cartographie automatique (en arrière-plan) des dossiers de projet.
     "auto_map": {"enabled": True, "refresh_minutes": 10},
     "map": {"max_files": 15000, "max_file_kb": 768},
-    "journal": {"enabled": True, "keep": 500},
+    # Journal des sessions. `rattrapage_le` : dernier contrôle quotidien (au démarrage) des sessions de Claude Code des 7
+    # derniers jours absentes du journal (hooks muets) ; elles sont alors importées en arrière-plan.
+    "journal": {"enabled": True, "keep": 500, "rattrapage_le": None},
     # Sauvegarde quotidienne hors du disque système (dossier auto : D:\\Sauvegardes-cerveau-Claude, sinon E:…).
     "backup": {"enabled": True, "dir": None, "keep": 14},
     # Échéances : les à-faire datés apparaissent au démarrage quand ils approchent (ou sont en retard).

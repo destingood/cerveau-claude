@@ -5,6 +5,7 @@ from __future__ import annotations
 import json
 import os
 import re
+import time
 
 from .common import CLAUDE_HOME, JOURNAL_FILE, FileLock, fmt_date, fold, is_scratch, read_json, short, write_json
 
@@ -260,6 +261,44 @@ def transcripts() -> list:
     if not root.is_dir():
         return []
     return sorted(root.glob("*/*.jsonl"), key=lambda p: p.stat().st_mtime)
+
+
+def recent_transcripts(days=7, quiet=300) -> list:
+    """Transcripts des sessions principales de Claude Code (pas ceux des sous-agents) modifiés ces `days` derniers
+    jours, hors ceux encore actifs (modifiés il y a moins de `quiet` s : le journal se remplit à la fin de chaque tour)."""
+    root, now, out = CLAUDE_HOME / "projects", time.time(), []
+    for path in (root.glob("*/*.jsonl") if root.is_dir() else ()):
+        try:
+            age = now - path.stat().st_mtime
+        except OSError:
+            continue
+        if quiet <= age <= days * 86400 and not path.name.startswith("agent-"):
+            out.append(path)
+    return sorted(out)
+
+
+def _importable(path) -> bool:
+    """L'import (backfill) retiendrait-il cette session, c.-à-d. a-t-elle au moins une demande de l'utilisateur ? Un très
+    gros transcript n'est pas relu : oui par défaut."""
+    try:
+        if os.path.getsize(path) > 20_000_000:
+            return True
+    except OSError:
+        return False
+    st = parse_transcript(path)
+    return bool(st.get("prompts") or st.get("brief"))
+
+
+def missing(exclude=(), limit=None, **kw) -> list:
+    """Transcripts récents (voir recent_transcripts) dont la session est absente du journal alors que l'import la
+    retiendrait : les hooks n'ont rien vu (`python` introuvable, plugin tout neuf…). `limit` : s'arrête au n-ième."""
+    known, out = load()["sessions"], []
+    for path in recent_transcripts(**kw):
+        if path.stem not in known and path.stem not in exclude and _importable(path):
+            out.append(path)
+            if limit and len(out) >= limit:
+                break
+    return out
 
 
 def search_transcripts(query, limit=8):

@@ -474,7 +474,8 @@ c, out = W.run("config", "eco")
 check('"auto": true' in out and "10000" in out and "200000" in out and "150000" in out and "300000" in out
       and '"plugins_auto": false' in out, "configuration eco par défaut (veille des plugins coupée)", out)
 c, out = W.run("--version")
-check("8.5.0" in out, "version 8.5.0", out)
+from brainkit import __version__  # noqa: E402
+check(__version__ in out, f"version {__version__}", out)
 W.write_settings({"theme": "dark"})
 c, out = W.run("optimize")
 check("Mode éco" in out and "optimize --apply" in out, "optimize (rapport) propose le mode éco", out)
