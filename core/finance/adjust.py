@@ -19,6 +19,8 @@ from itertools import pairwise
 from math import prod
 from typing import Literal
 
+import numpy as np
+
 from core.finance.model import CorporateAction
 
 Adjustment = Literal["none", "split", "total_return"]
@@ -45,18 +47,37 @@ def adjusted_closes(
         raise ValueError("séances strictement croissantes attendues")
     if mode == "none":
         return list(closes)
-    factors = [1.0] * len(closes)
+    values = np.asarray(closes, dtype=float)
+    days = np.array(sessions, dtype="datetime64[D]")
+    return (values * adjustment_factors(days, values, actions, mode)).tolist()
+
+
+def adjustment_factors(
+    sessions: np.ndarray,
+    closes: np.ndarray,
+    actions: Sequence[CorporateAction],
+    mode: Adjustment,
+) -> np.ndarray:
+    """The factor of each close, for ``datetime64[D]`` sessions in strictly increasing order.
+
+    The core of adjusted_closes, on arrays: the backtest view adjusts a series at every decision
+    date and cannot afford a loop over the sessions. Each factor is the product of the same
+    floats in the same order, so both give the same closes to the last bit.
+    """
+    factors = np.ones(len(closes))
+    if mode == "none":
+        return factors
     splits = [a for a in actions if a.kind == "split"]
     for action in sorted(actions, key=lambda a: (a.ex_date, a.kind)):
-        if not is_effective(sessions, action):
+        first = int(np.searchsorted(sessions, np.datetime64(action.ex_date, "D")))
+        if not 0 < first < len(sessions):  # is_effective
             continue
-        first = bisect_left(sessions, action.ex_date)
         if action.kind == "split":
             factor = 1 / action.value
         elif mode == "total_return":
             previous = sessions[first - 1]
             between = [s.value for s in splits if previous < s.ex_date <= action.ex_date]
-            factor = 1 - action.value * prod(between) / closes[first - 1]
+            factor = 1 - action.value * prod(between) / float(closes[first - 1])
             if factor <= 0:
                 raise AdjustmentError(
                     f"{action.instrument_id} : dividende du {action.ex_date} supérieur ou égal "
@@ -64,6 +85,5 @@ def adjusted_closes(
                 )
         else:
             continue
-        for i in range(first):
-            factors[i] *= factor
-    return [close * factor for close, factor in zip(closes, factors, strict=True)]
+        factors[:first] *= factor
+    return factors
