@@ -5,14 +5,14 @@
   },
   "metadata": {
     "description": "Le cerveau persistant de Lucas pour Claude Code",
-    "version": "8.4.1"
+    "version": "8.5.0"
   },
   "plugins": [
     {
       "name": "cerveau",
       "source": "./",
       "description": "Cerveau persistant pour Claude Code : souvenirs en graphe, rappel automatique à chaque message, wiki Markdown tenu par Claude (sources ingérées, coffre Obsidian, dépôt git), cartes de projets, à-faire datés, serveur MCP, et un cerveau e-commerce qui suit chaque boutique (clients sans pub, SEO, GEO, tunnel de vente, chiffres de la semaine). Tout reste chez toi.",
-      "version": "8.4.1"
+      "version": "8.5.0"
     }
   ]
 }

@@ -6,7 +6,8 @@ le rappel par message, la taille du corpus — puis on liste, chiffré, ce qu'on
 
 Comme `brain pc` : rapport seul par défaut ; `--apply` applique ce qui est **sûr et réversible**
 (ménage du corpus via la consolidation, qui pose sa propre sauvegarde ; rappel ciblé de l'habitude la plus coûteuse
-au démarrage). Ce qui touche au contenu des souvenirs ou aux habitudes est listé et chiffré, jamais fait tout seul.
+au démarrage ; mode éco = réglages officiels de Claude Code, copie de sécurité et `brain eco --annuler`). Ce qui touche
+au contenu des souvenirs ou aux habitudes est listé et chiffré, jamais fait tout seul.
 """
 from __future__ import annotations
 
@@ -97,8 +98,10 @@ def measure(cfg=None) -> dict:
     todos_old = [n for n in active if n["type"] == "todo" and days_since(n.get("updated")) > TODO_DAYS]
 
     hb, rps = habit()
+    ecfg = cfg.get("eco") or {}
     return {
         "cfg": cfg,
+        "eco_a_poser": bool(ecfg.get("auto", True)) and not ecfg.get("applique_le"),
         "startup_global": _tok(gtext), "startup_global_truncated": len(gtext) >= cap - 2,
         "startup_projects": projs, "max_budget": int(inj["max_tokens"]),
         "recall_mem_tok": int(rc.get("max_chars", 1200) / CHARS_PER_TOKEN),
@@ -134,6 +137,12 @@ def plan(m) -> list:
                     "text": f"Rappel au démarrage de ton plus gros poste mesuré ({hb['label']}, {hb['pct']:.0f} % du "
                             f"contexte relu sur 48 h) : nudge comportemental, pas un gain direct (coûte ≈ 30 tok/session, "
                             f"bénéfice indirect) → `brain optimize --apply` ; `brain config inject.habit_tip false` pour l'enlever"})
+    # 2 bis. Mode éco : réglages officiels de Claude Code (sorties longues en fichier, résumé plus tôt), sans perte.
+    if m["eco_a_poser"]:
+        out.append({"saved": 0, "auto": True,
+                    "text": "Mode éco : sorties de commandes longues mises en fichier (aperçu seul dans la conversation) "
+                            "et conversation résumée plus tôt — réglages officiels de Claude Code, sans perte, "
+                            "annulable → `brain optimize --apply` (ou `brain eco`)"})
     # 3. Souvenirs trop longs : à résumer (sensible, jamais touché seul).
     if m["oversize"]:
         gain = sum(t - OVERSIZE for _, t in m["oversize"])
@@ -203,7 +212,7 @@ def report(hours=48.0, show_all=False, cfg=None) -> str:
         L += ["", f"Levier le plus lourd, hors cerveau (mesuré sur {hours:g} h) : {hb['label']} — "
                   f"porté {_m(hb['carried'])} = {hb['pct']:.0f} % du contexte relu (exposition cumulée, "
                   f"pas un gain direct) → {hb['tip']}"]
-    L += ["", "Détail de tous les tokens : `brain tokens` · matériel (RAM/CPU/GPU) : `brain pc`"]
+    L += ["", "Détail de tous les tokens : `brain tokens` · mode éco : `brain eco` · matériel (RAM/CPU/GPU) : `brain pc`"]
     return "\n".join(L)
 
 
@@ -233,10 +242,24 @@ def apply(cfg=None) -> str:
         cfg = load_config()
         done.append(f"rappel d'habitude activé au démarrage ({hb['key']})")
 
+    # 3. Mode éco : sorties de commandes longues mises en fichier, conversation résumée plus tôt (réglages de Claude Code)
+    eco_note, eco_done = "", False
+    try:
+        from . import eco
+        posees, eco_note = eco.apply_report(cfg)
+        if posees:
+            eco_done = True
+            done.append(f"mode éco activé : {eco.summary(posees)}")
+        cfg = load_config()
+    except Exception as exc:
+        log(f"optimize.apply éco : {exc!r}")
+
     after = measure(cfg)
     L = ["🔧 Optimisation appliquée (sûr et réversible) :" if done else "Rien de sûr à appliquer pour l'instant."]
     for d in done:
         L.append(f"  ✓ {d}")
+    if eco_note:
+        L.append(f"  · mode éco : {eco_note}")
     dc = before["corpus_tok"] - after["corpus_tok"]
     dn = before["nodes"] - after["nodes"]
     if dn or dc:
@@ -248,5 +271,6 @@ def apply(cfg=None) -> str:
         for a in rest[:6]:
             L.append(f"  - {a['text']}")
     if done:
-        L += ["", "Réversible : `brain restore 1` (corpus) · `brain config inject.habit_tip false` (rappel)"]
+        L += ["", "Réversible : `brain restore 1` (corpus) · `brain config inject.habit_tip false` (rappel)"
+              + (" · `brain eco --annuler` (mode éco)" if eco_done else "")]
     return "\n".join(L)
