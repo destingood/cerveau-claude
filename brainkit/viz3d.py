@@ -577,7 +577,9 @@ function redraw(){
      .linkVisibility(l => linkVis(l));
   });
 }
-function autoFit(ms){ if (G && !st.userMoved) G.zoomToFit(ms, 80); }  // cadrage tant que l'utilisateur n'a pas bougé la vue
+function autoFit(ms){  // cadrage tant que l'utilisateur n'a pas bougé la vue (sur le groupe choisi dans le menu, s'il y en a un)
+  if (G && !st.userMoved) G.zoomToFit(ms, 80, st.groupFocus && st.groupFocus.size ? n => st.groupFocus.has(n.id) : undefined);
+}
 function flyTo(n, ms){
   if (n.x == null) return;
   const d = (n.kind === "file" ? 90 : 135) + 16 * Math.sqrt(nodeVal(n)), r = Math.hypot(n.x, n.y, n.z) || 1, k = 1 + d / r;
@@ -980,8 +982,10 @@ function setStats(){
 function setView(v){
   st.view = v; st.sel = null; st.hover = null; st.q = ""; st.groupFocus = null; st.focus = null; st.path = null; st.until = null;
   st.hidden.clear(); $("#q").value = ""; FX.pool = null;
-  const m = v === "mem" ? null : (DATA.maps || []).find(x => "map:" + x.pid === v);
+  const g = v.startsWith("v:") ? (DATA.views || [])[+v.slice(2)] : null;  // Cerveau e-commerce, une boutique…
+  const m = v === "mem" || g ? null : (DATA.maps || []).find(x => "map:" + x.pid === v);
   cur = m ? mapData(m) : memData();
+  if (g && g.members){ st.groupFocus = new Set(g.members.filter(id => cur.byId.has(id))); st.focusLabel = g.label; computeFocus(); }
   $("#color").disabled = !!m; $("#infBtn").disabled = !!m; $("#conBtn").disabled = !!m;
   initTimeline();
   closePanel();
@@ -997,7 +1001,10 @@ function setView(v){
 }
 function buildViews(){
   const sel = $("#view");
-  sel.innerHTML = `<option value="mem">🧠 Mémoire</option>` + (DATA.maps || []).map(m =>
+  sel.innerHTML = `<option value="mem">🧠 Mémoire</option>` + (DATA.views || []).map((g, i) => g.members
+      ? `<option value="v:${i}">${g.icon} ${esc(short(g.label, 42))} (${g.members.length})</option>`
+      : `<option disabled>${g.icon} ${esc(g.label)}</option>`).join("")
+    + (DATA.maps || []).map(m =>
     `<option value="map:${esc(m.pid)}">🗺️ Carte · ${esc(short(m.name, 42))} (${m.nodes.length})</option>`).join("");
   sel.onchange = () => setView(sel.value);
 }
@@ -1064,7 +1071,8 @@ function controls(){
   addEventListener("keydown", ev => {
     if (ev.target.matches("input,select,textarea")) return;
     if (ev.key === "/"){ ev.preventDefault(); q.focus(); }
-    else if (ev.key === "Escape"){ st.sel = null; st.path = null; st.groupFocus = null; st.q = ""; q.value = ""; computeFocus(); redraw(); closePanel(); toggleTable(false); }
+    else if (ev.key === "Escape"){ st.sel = null; st.path = null; st.groupFocus = null; st.q = ""; q.value = ""; computeFocus(); redraw(); closePanel(); toggleTable(false);
+      if (String(st.view).startsWith("v:")){ st.view = "mem"; $("#view").value = "mem"; } }
     else if (ev.key === "r" || ev.key === "R") toggleRotate();
     else if (ev.key === "e" || ev.key === "E") toggleFX();
     else if (ev.key === "f" || ev.key === "F") G && G.zoomToFit(900, 80);

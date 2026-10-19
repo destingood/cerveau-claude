@@ -768,7 +768,8 @@ def cmd_recall(a):
     finally:
         hooks.bump_hits = saved
     out = buf.getvalue()
-    print(json.loads(out)["hookSpecificOutput"]["additionalContext"] if out else "(rien ne serait injecté pour ce message)")
+    ctx = (json.loads(out).get("hookSpecificOutput") or {}).get("additionalContext") if out else None
+    print(ctx or "(rien ne serait injecté pour ce message)")
 
 
 def cmd_journal(a):
@@ -1162,6 +1163,13 @@ def cmd_optimize(a):
         print(optimize.apply())
     else:
         print(optimize.report(a.hours, show_all=a.all))
+
+
+def cmd_eco(a):
+    from . import eco
+    code, text = eco.run(a.appliquer, a.annuler, a.forcer, a.sortie, a.fenetre, a.desactiver, a.plugins_auto)
+    print(text)
+    return code
 
 
 def cmd_history(a):
@@ -1668,13 +1676,27 @@ def build_parser():
     s.add_argument("--auto", action="store_true", help=argparse.SUPPRESS)
     s = cmd("bench", cmd_bench, "banc d'essai : qualité du rappel, faux rappels, tokens, vitesse des hooks")
     s.add_argument("--quick", action="store_true", help="sans la mesure de vitesse")
-    s = cmd("tokens", cmd_tokens, "où partent les tokens : contexte relu, 1res requêtes, habitudes coûteuses (transcripts)")
+    s = cmd("tokens", cmd_tokens, "où partent les tokens : contexte relu, 1res requêtes, coût fixe au démarrage, relances du cerveau, "
+            "habitudes coûteuses (transcripts)")
     s.add_argument("--hours", type=float, default=48, help="période mesurée (défaut 48 h)")
     s = cmd("optimize", cmd_optimize, "optimiser le cerveau (tokens d'abord) : coût réel de l'injection/du rappel/du "
             "corpus + ce qu'on peut alléger — --apply applique le sûr et réversible", ["optimise", "opti"])
-    s.add_argument("--apply", action="store_true", help="appliquer les actions sûres et réversibles (ménage du corpus, rappel d'habitude)")
+    s.add_argument("--apply", action="store_true", help="appliquer les actions sûres et réversibles (ménage du corpus, rappel d'habitude, mode éco)")
     s.add_argument("--all", action="store_true", help="tout détailler, sans troncature")
     s.add_argument("--hours", type=float, default=48, help="période mesurée pour l'habitude la plus coûteuse (défaut 48 h)")
+    s = cmd("eco", cmd_eco, "mode éco : moins de tokens sans rien perdre (sorties longues mises en fichier, résumé plus tôt, "
+            "plugins inutilisés) — --appliquer · --annuler · --desactiver nom@marketplace", ["econome"])
+    s.add_argument("--appliquer", action="store_true", help="écrire bashOutputMaxChars et autoCompactWindow dans "
+                   "~/.claude/settings.json (copie de sécurité, retour possible) ; fait tout seul au 1er démarrage")
+    s.add_argument("--annuler", action="store_true", help="remettre exactement les réglages d'avant et couper l'application automatique")
+    s.add_argument("--forcer", action="store_true", help="remplacer une valeur que tu avais déjà réglée toi-même")
+    s.add_argument("--sortie", type=int, help="bashOutputMaxChars, de 4000 à 128000 (défaut 10000)")
+    s.add_argument("--fenetre", type=int, help="autoCompactWindow en tokens, de 100000 à 1000000 (défaut 200000)")
+    s.add_argument("--desactiver", nargs="+", metavar="nom@marketplace",
+                   help="désactiver ces plugins inutilisés (après accord de l'utilisateur ; --annuler les réactive)")
+    s.add_argument("--plugins-auto", nargs="?", const="on", choices=["on", "off"],
+                   help="veille quotidienne : désactive tout seul les plugins sans usage depuis 30 j et coupe les skills "
+                        "claude.ai si aucune n'a servi (on : active et lance tout de suite ; off : coupe)")
     s = cmd("history", cmd_history, "instantanés du cerveau (pour revenir en arrière) — --diff <n°|date>", ["historique"])
     s.add_argument("-n", type=int, default=15)
     s.add_argument("--diff", help="ce qui a changé depuis un instantané (n°) ou une date")

@@ -8,6 +8,7 @@ décisions et de ce qu'il a appris, d'une session à l'autre.
   phonétique et synonymes compris).
 - **En fin de tâche** : Claude note ce qui mérite d'être retenu (décisions, pièges, préférences).
 - Cartes de tes projets (fichiers clés, où est défini quoi), à-faire datés, vue 3D, serveur MCP.
+- **Nouveau — le mode éco** : moins de tokens sans rien perdre — les sorties de commandes très longues vont dans un fichier (aperçu seul dans la conversation), la conversation est résumée plus tôt, et `brain eco` liste les plugins jamais utilisés ; posé une fois au démarrage, `brain eco --annuler` pour revenir.
 - **Nouveau — le cerveau en wiki** (le « LLM Wiki » d'Andrej Karpathy) : `brain wiki init <dossier>` range chaque
   souvenir dans une page Markdown d'un dossier que tu ouvres dans Obsidian (idéalement un dépôt GitHub privé). Tu y
   déposes des sources (articles, PDF, transcriptions, notes) ; Claude les lit et tient à jour des pages de synthèse
@@ -111,4 +112,4 @@ invite tes amis (Settings → Collaborators → Add people), puis rejoins-le le 
 
 `/plugin uninstall cerveau@cerveau`. Tes souvenirs restent dans `~/.claude/brain` (supprime ce dossier pour tout effacer).
 
-Version 8.4.0.
+Version 8.5.0.

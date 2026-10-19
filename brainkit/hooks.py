@@ -13,25 +13,27 @@ from pathlib import Path
 
 from . import index as idx
 from . import journal, search
-from .common import (BRAIN_DIR, BRAIN_PY, CMD, SESSIONS_DIR, STATE_DIR, budget_chars, fold, load_config, log, now_iso,
-                     read_json, read_stdin_json, short, tokenize, write_json)
+from .common import (BRAIN_DIR, BRAIN_PY, CMD, SESSIONS_DIR, STATE_DIR, budget_chars, days_since, fold, load_config, log,
+                     now_iso, read_json, read_stdin_json, set_config, short, tokenize, write_json)
 from .store import TYPES, Brain, bump_hits, bump_used
 
 OBS_HOW = (f"une ligne courte chacune, priorisées (🔴 décision, blocage, préférence · 🟡 avancée, constat · 🟢 détail) : "
            f"`{CMD} obs \"🔴 …\" \"🟡 …\"`")
 STOP_REASON = (
-    f"🧠 Cerveau — avant de conclure : 1) note 3 à 5 observations datées de cette session, {OBS_HOW} ; "
-    "2) enregistre le durable (0 à 3 entrées) : préférence ou correction de l'utilisateur (feedback), info sur lui "
-    "(user), décision (decision), état d'un travail en cours (fact), piège résolu / solution qui marche (learning), "
-    f"ressource (reference), suite à faire (todo) — doublons : `{CMD} q \"…\"` (sinon `edit <id>`), puis "
+    "🧠 Cerveau — avant de conclure, en UN SEUL appel Bash (commandes enchaînées avec &&) : 1) note 3 à 5 observations "
+    f"datées de cette session, {OBS_HOW} ; 2) enregistre le durable (0 à 3 entrées) : préférence ou correction de "
+    "l'utilisateur (feedback), info sur lui (user), décision (decision), état d'un travail en cours (fact), piège "
+    "résolu / solution qui marche (learning), ressource (reference), suite à faire (todo) — "
     f"`{CMD} add -t <type> -T \"titre court\" -b \"fait + pourquoi + comment l'appliquer\"` (`-p none` si hors du "
-    "projet courant). Jamais de secrets, mots de passe ni infos sensibles sur des tiers."
+    "projet courant ; `add` écarte seul les doublons évidents, `edit <id>` corrige un souvenir). Jamais de secrets, "
+    "mots de passe ni infos sensibles sur des tiers."
 )
 WIKI_REASON = (" 3) Wiki : une réponse qui vaut d'être gardée (synthèse, comparaison, analyse) → page Analyses "
                f"(`{CMD} add -t analyse -T … -b - --resume …`) puis `{CMD} wiki log query \"…\"` ; une source lue ou "
                f"citée → `{CMD} wiki add` puis la méthode du CLAUDE.md du wiki.")
 OBS_REASON = ("🧠 Cerveau — le contexte vient d'être compacté : avant de conclure, note 3 à 5 observations datées de "
-              f"cette session (d'après le résumé et la suite), {OBS_HOW}.")
+              "cette session (d'après le résumé et la suite) en UN SEUL appel Bash (commandes enchaînées avec &&), "
+              f"{OBS_HOW}.")
 REMEMBER_RX = re.compile(r"\b(souviens[- ]toi|retiens|m[ée]moris|note (?:que|bien|[çc]a)|n'oublie pas|"
                          r"garde (?:[çc]a |le |la |les )?en m[ée]moire|remember|ajoute (?:[çc]a |le |la )?(?:au|dans le) cerveau)",
                          re.I)
@@ -61,10 +63,16 @@ def label(n) -> str:
     return TYPES.get(n["type"], n["type"]) + (f" 🤝 {who}" if who else "")
 
 
-def emit(event, context):
+def emit(event, context, message=None):
+    """Sortie du hook : un seul objet JSON — `additionalContext` (lu par Claude) et/ou `systemMessage` (vu par
+    l'utilisateur seulement : aucun token de contexte)."""
+    out = {}
+    if message:
+        out["systemMessage"] = message
     if context:
-        sys.stdout.write(json.dumps({"hookSpecificOutput": {"hookEventName": event, "additionalContext": context}},
-                                    ensure_ascii=False))
+        out["hookSpecificOutput"] = {"hookEventName": event, "additionalContext": context}
+    if out:
+        sys.stdout.write(json.dumps(out, ensure_ascii=False))
         sys.stdout.flush()
 
 
@@ -221,11 +229,27 @@ def on_session_start(data, cfg):
     st = load_state(sid)
     source = data.get("source") or "startup"
     st.update({"cwd": cwd, "project": proj["id"] if proj else None, "wiki": bool(wiki_root)})
+    eco_line = ""
+    ecfg = cfg.get("eco") or {}
+    if (ecfg.get("auto", True) and not ecfg.get("applique_le")) or ecfg.get("annonce"):
+        try:  # mode éco : réglages posés UNE fois (annulable : `brain eco --annuler`) + annonce de la veille des plugins
+            from . import eco
+            eco_line = eco.start(cfg)
+        except Exception as exc:
+            log(f"éco (démarrage) : {exc!r}")
+    if ecfg.get("plugins_auto") and days_since(ecfg.get("plugins_vus_le")) >= 1:
+        try:  # veille quotidienne des plugins inutilisés : en arrière-plan (le parcours des transcripts ne tient pas dans le hook)
+            set_config("eco.plugins_vus_le", now_iso())  # jour réservé : une autre session qui démarre n'en lance pas une 2e
+            spawn_background(["eco", "--plugins-auto"])
+        except Exception as exc:
+            log(f"éco (veille des plugins) : {exc!r}")
     if source == "resume" and st.get("started"):
         # Reprise : l'injection de départ est encore dans l'historique (7 reprises sur 7) → les nouveautés seulement.
         text = idx.resume_delta(brain, st.get("injected_at") or st["started"], cfg)
         st["injected_at"] = now_iso()
         save_state(sid, st)
+        if eco_line:
+            text = f"{text}\n\n{eco_line}".strip()
         if text:
             emit("SessionStart", text)
         return
@@ -279,9 +303,13 @@ def on_session_start(data, cfg):
             plugin.ensure_launcher()
         except OSError as exc:
             log(f"lanceur du plugin : {exc!r}")
+        if eco_line:
+            plugin.NOTICE.append(eco_line)  # même canal que le passage au plugin : annoncé une fois à l'utilisateur
         notice = plugin.take_notice()
         text = f"{plugin.instructions()}\n\n" + (f"{notice}\n\n" if notice else "") + text
     else:  # cerveau classique : skills métier (cerveau e-commerce…) posées ou mises à jour dans ~/.claude/skills
+        if eco_line:  # comme le passage au plugin : annoncé une fois à l'utilisateur
+            text = f"{text}\n\n{eco_line} (dis-le à l'utilisateur en une phrase au début de ta réponse)"
         try:
             from . import install
             install.sync_skills(quick=True)
@@ -309,16 +337,81 @@ def pc_watch(cfg):
 
 
 # ------------------------------------------------------------------------------------------ UserPromptSubmit
+TAIL_BYTES = 256 * 1024  # fin du transcript lue pour la taille du contexte (élargie si la dernière réponse est plus grosse)
+
+
+def last_context(path) -> int:
+    """Taille du contexte (tokens) à la dernière requête de la conversation, lue dans la FIN du transcript : entrée +
+    cache créé + cache lu de la dernière réponse de l'assistant (les lignes d'une même réponse portent le même usage :
+    jamais additionnées). 0 si introuvable ; aucune erreur ne remonte."""
+    try:
+        with open(path, "rb") as fh:
+            size = fh.seek(0, os.SEEK_END)
+            for tail in (TAIL_BYTES, 4 * TAIL_BYTES, 16 * TAIL_BYTES):
+                fh.seek(max(0, size - tail))
+                lines = fh.read().split(b"\n")
+                if size > tail:
+                    lines = lines[1:]  # la première ligne est coupée
+                for raw in reversed(lines):
+                    if b'"usage"' not in raw or b'"assistant"' not in raw:
+                        continue
+                    try:
+                        o = json.loads(raw)
+                        u = o["message"]["usage"] if o.get("type") == "assistant" and not o.get("isSidechain") else None
+                        total = sum(int(u.get(k) or 0) for k in ("input_tokens", "cache_creation_input_tokens",
+                                                                   "cache_read_input_tokens")) if u else 0
+                    except (ValueError, TypeError, KeyError, AttributeError):
+                        continue
+                    if total:
+                        return total
+                if size <= tail:
+                    break
+    except (OSError, TypeError, ValueError):
+        pass
+    return 0
+
+
+def context_alert(data, cfg) -> str:
+    """Quand la conversation passe le palier suivant de `eco.alerte_contexte` (pas encore signalé dans cette session) :
+    un message pour l'UTILISATEUR (`systemMessage`), jamais pour Claude — chaque message relit toute la conversation."""
+    steps = sorted(int(x) for x in (cfg.get("eco") or {}).get("alerte_contexte") or [] if isinstance(x, (int, float)))
+    sid, tp = data.get("session_id"), data.get("transcript_path")
+    if not steps or not sid or not tp:
+        return ""
+    size = last_context(tp)
+    reached = max((x for x in steps if size >= x), default=0)
+    st = load_state(sid)
+    done = st.get("eco_alerte", 0)
+    if reached == done:
+        return ""
+    st["eco_alerte"] = reached  # plus bas qu'avant (compaction, /clear) : les paliers se réarment
+    save_state(sid, st)
+    if reached < done:
+        return ""
+    return (f"💡 Conversation à ≈{round(size / 1000)} k tokens : chaque message la relit en entier. Nouveau sujet ? "
+            "Tape /clear (le cerveau garde l'essentiel) ou /compact.")
+
+
 def on_prompt(data, cfg):
-    rc = cfg["recall"]
     raw = (data.get("prompt") or "").strip()
     try:  # cerveau commun : les pages des amis, récupérées en arrière-plan (au plus une fois par minute)
         from . import commun
         commun.maybe_pull(wait=2.5)
     except Exception as exc:
         log(f"commun (message) : {exc!r}")
-    if not rc["enabled"] or len(raw) < 6 or raw.startswith("/"):
-        return
+    alert = ""
+    if not raw.startswith("/"):
+        try:
+            alert = context_alert(data, cfg)
+        except Exception as exc:
+            log(f"alerte contexte : {exc!r}")
+    ctx = recall_context(data, cfg, raw) if cfg["recall"]["enabled"] and len(raw) >= 6 and not raw.startswith("/") else ""
+    emit("UserPromptSubmit", ctx, alert)
+
+
+def recall_context(data, cfg, raw) -> str:
+    """Rappel automatique du message : souvenirs et fichiers liés (texte pour Claude), ou ''."""
+    rc = cfg["recall"]
     pcline = pc_watch(cfg)
     query = recall_query(raw)
     sid = data.get("session_id")
@@ -375,7 +468,7 @@ def on_prompt(data, cfg):
     if pcline:  # la veille PC passe toujours, avant les souvenirs
         out = [pcline] + out
     if not out:
-        return
+        return ""
     ctx = "\n".join(out)
     st["recalled"] = recalled + len(shown_mem)
     st["injected"] = sorted(injected | {n["id"] for n in shown_mem})
@@ -383,7 +476,7 @@ def on_prompt(data, cfg):
     st["cwd"] = cwd
     save_state(sid, st)
     bump_hits([n["id"] for n in shown_mem])
-    emit("UserPromptSubmit", ctx)
+    return ctx
 
 
 # ------------------------------------------------------------------------------------------ Montré ≠ utilisé

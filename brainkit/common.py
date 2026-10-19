@@ -47,7 +47,14 @@ DEFAULT_CONFIG = {
     "recall": {"enabled": True, "max_items": 3, "min_cov": 0.5, "min_score": 5.0, "files": True, "max_files": 4,
                "min_cov_files": 0.4, "max_chars": 1200, "session_cap_items": 12, "session_cap_files": 20},
     # Rappel en fin de tâche : « mémorise ce qui est durable » (une fois, seulement si la session a travaillé).
-    "stop_reminder": {"enabled": True, "min_tool_calls": 15, "min_edits": 3, "repeat_after": 60},
+    "stop_reminder": {"enabled": True, "min_tool_calls": 15, "min_edits": 3, "repeat_after": 150},
+    # Mode éco (`brain eco`) : réglages officiels de Claude Code posés une fois dans ~/.claude/settings.json (sorties de
+    # commandes longues mises en fichier, conversation résumée plus tôt) ; alerte à l'utilisateur quand la conversation
+    # passe ces tailles (tokens) : chaque message la relit en entier. `eco.auto` false = ne rien poser tout seul.
+    # `plugins_auto` (à activer : `brain eco --plugins-auto`) : veille quotidienne, en arrière-plan, qui désactive les plugins
+    # sans usage depuis 30 jours et coupe les skills claude.ai si aucune n'a servi.
+    "eco": {"auto": True, "bash_output_max_chars": 10000, "auto_compact_window": 200000,
+            "alerte_contexte": [150000, 300000], "plugins_auto": False},
     # Cartographie automatique (en arrière-plan) des dossiers de projet.
     "auto_map": {"enabled": True, "refresh_minutes": 10},
     "map": {"max_files": 15000, "max_file_kb": 768},

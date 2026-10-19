@@ -11,13 +11,14 @@ from __future__ import annotations
 import json
 from collections import Counter
 
-from .common import (BRAIN_DIR, GRAPH_FILE, PLUGIN, PROJECTS_DIR, STATE_DIR, VIZ2D_FILE, VIZ_FILE, log, now_iso,
-                     read_json, write_json, write_text)
+from .common import (BRAIN_DIR, GRAPH_FILE, PLUGIN, PROJECTS_DIR, STATE_DIR, VIZ2D_FILE, VIZ_FILE, fold, log,
+                     now_iso, read_json, write_json, write_text)
 from .store import Brain
 
 VIZMAP_DIR = STATE_DIR / "vizmaps"
 VIZMAP_VERSION = 2
 SKILL_LABELS = {"ecommerce": "Cerveau e-commerce"}
+SKILL_ICONS = {"ecommerce": "🛒"}
 VIRTUAL = ("skill", "boutique")  # nœuds de la vue qui ne sont pas des souvenirs
 
 
@@ -47,9 +48,10 @@ def _first(path, chars=360) -> tuple:
     return title, " ".join(para)[:chars]
 
 
-def _skills_and_shops(ids: set, comms: list, prs: dict) -> tuple:
-    """Skills métier (avec modules et outils) et boutiques suivies, en nœuds de la vue. → (nœuds, liens, groupes)."""
-    nodes, edges, groups = [], [], []
+def _skills_and_shops(ids: set, comms: list, prs: dict, projects: dict = None) -> tuple:
+    """Skills métier (avec modules et outils) et boutiques suivies, en nœuds de la vue ; une boutique est reliée au
+    projet qui porte son nom. → (nœuds, liens, groupes, entrées du menu des vues : une par skill, une par boutique)."""
+    nodes, edges, groups, views = [], [], [], []
     top = max(prs.values(), default=0.02) or 0.02
     next_id = max((c["id"] for c in comms if isinstance(c.get("id"), int)), default=-1) + 1
 
@@ -86,6 +88,7 @@ def _skills_and_shops(ids: set, comms: list, prs: dict) -> tuple:
             members.append(nid)
         groups.append({"id": cid, "label": label, "size": len(members), "project": None, "words": [name],
                        "members": members})
+        views.append({"icon": SKILL_ICONS.get(name, "🧩"), "label": label, "members": members})
     try:
         from . import boutique
         shops = boutique.all_shops() if (BRAIN_DIR / "boutiques").is_dir() else []
@@ -119,9 +122,17 @@ def _skills_and_shops(ids: set, comms: list, prs: dict) -> tuple:
             if s.get("fiche") in ids:
                 edges.append({"s": bid, "t": s["fiche"], "r": "relates"})
             edges += [{"s": p["id"], "t": bid, "r": "part_of"} for p in plan if p.get("id") in ids]
+            name = fold(s["nom"]).strip()
+            if len(name) >= 4:  # « Atelier Lune » ↔ projet « Boutique Atelier Lune (Shopify…) » (et sa carte)
+                edges += [{"s": bid, "t": pid, "r": "relates"} for pid, title in (projects or {}).items()
+                          if name in fold(title)]
+            near = {e["t"] if e["s"] == bid else e["s"] for e in edges if bid in (e["s"], e["t"])}
+            views.append({"icon": "🏪", "label": s["nom"], "members": [bid, *sorted(near)]})
         groups.append({"id": cid, "label": "Boutiques suivies", "size": len(members), "project": None,
                        "words": ["boutique"], "members": members})
-    return nodes, edges, groups
+    elif "ecommerce" in hubs:  # le menu dit où les boutiques apparaîtront
+        views.append({"icon": "🏪", "label": "Aucune boutique suivie pour l'instant", "members": None})
+    return nodes, edges, groups, views
 
 
 def _map_payload(p):
@@ -211,11 +222,12 @@ def render(brain=None):
     maps = [m for m in (_map_payload_cached(p) for p in brain.projects()) if m]
     comms = [{"id": c["id"], "label": c["label"], "size": c["size"], "project": c.get("project"), "words": c.get("words", []),
               "members": [i for i in c["members"] if i in ids]} for c in an.get("communities", [])]
-    extra, extra_edges, extra_comms = _skills_and_shops(ids, comms, prs)
+    projects = {n["id"]: n["title"] for n in nodes if n["t"] == "project"}
+    extra, extra_edges, extra_comms, views = _skills_and_shops(ids, comms, prs, projects)
     nodes += extra
     edges += extra_edges
     comms += extra_comms
-    data = {"generated": now_iso(), "nodes": nodes, "edges": edges, "maps": maps,
+    data = {"generated": now_iso(), "nodes": nodes, "edges": edges, "maps": maps, "views": views,
             "inf": [e for e in an.get("inferred", []) if e["s"] in ids and e["t"] in ids],
             "comms": comms, "key": an.get("key", []),
             "concepts": [{"id": c["id"], "label": c["label"], "kind": c["kind"], "members": [i for i in c["members"] if i in ids]}
@@ -350,10 +362,11 @@ function swatch(fam, shape){
   svg.append(p); return svg;
 }
 
-function memoryView(){
-  const nodes = DATA.nodes.map(n => ({...n, label:n.title, r: n.t === 'project' ? 11 : 5 + (n.imp || 3) * 1.2 + Math.min(n.hits || 0, 10) * 0.3}));
+function memoryView(keep){  // keep : seulement ces nœuds (entrée « Cerveau e-commerce », une boutique…)
+  const src = keep ? DATA.nodes.filter(n => keep.has(n.id)) : DATA.nodes;
+  const nodes = src.map(n => ({...n, label:n.title, r: n.t === 'project' ? 11 : 5 + (n.imp || 3) * 1.2 + Math.min(n.hits || 0, 10) * 0.3}));
   const legend = Object.entries(TYPES).map(([k, [label, fam, shape]]) => ({key:k, label, fam, shape, count:nodes.filter(n => n.t === k).length})).filter(x => x.count);
-  return {nodes, edges:DATA.edges, legend, shapesNote:'',
+  return {nodes, edges:keep ? DATA.edges.filter(e => keep.has(e.s) && keep.has(e.t)) : DATA.edges, legend, shapesNote:'',
     keyOf:n => n.t, famOf:n => TYPES[n.t][1], shapeOf:n => TYPES[n.t][2],
     always:n => n.t === 'project' || (n.imp || 3) >= 4,
     text:n => [n.title, n.body, (n.tags || []).join(' '), n.id].join(' ').toLowerCase(),
@@ -383,7 +396,10 @@ function mapView(m){
     row:n => [n.id, (KIND[n.k] || KIND.other)[0], n.mod ?? '—', (n.pr || 0).toFixed(4), n.d],
     sort:(a, b) => (b.pr || 0) - (a.pr || 0)};
 }
-const views = [['mem', 'Mémoire (' + DATA.stats.memories + ' souvenirs, ' + DATA.stats.projects + ' projets)', memoryView]]
+const views = [['mem', 'Mémoire (' + DATA.stats.memories + ' souvenirs, ' + DATA.stats.projects + ' projets)', () => memoryView()]]
+  .concat((DATA.views || []).map((g, i) => g.members
+    ? ['v:' + i, `${g.icon} ${g.label} (${g.members.length})`, () => memoryView(new Set(g.members))]
+    : ['v:' + i, `${g.icon} ${g.label}`, null, true]))
   .concat(DATA.maps.map(m => ['map:' + m.pid, `Carte · ${m.name} (${m.total} fichiers)`, () => mapView(m)]));
 
 function setView(id){
@@ -567,7 +583,7 @@ $('#fit').onclick = () => { state.moved = false; fit(); draw(); };
 $('#q').addEventListener('input', e => { state.q = e.target.value.trim().toLowerCase(); draw(); buildTable(); });
 $('#q').addEventListener('keydown', e => { if (e.key === 'Enter') { const n = state.view.nodes.find(x => visible(x) && matches(x)); if (n) select(n, true); } });
 $('#tableBtn').onclick = e => { const w = $('#tablewrap'); w.hidden = !w.hidden; e.target.setAttribute('aria-pressed', String(!w.hidden)); };
-const sel = $('#view'); views.forEach(([id, label]) => { const o = el('option', label); o.value = id; sel.append(o); });
+const sel = $('#view'); views.forEach(([id, label, , off]) => { const o = el('option', label); o.value = id; o.disabled = !!off; sel.append(o); });
 sel.onchange = () => setView(sel.value);
 const themes = ['auto', 'light', 'dark'], tlabel = {auto:'auto', light:'clair', dark:'sombre'};
 let theme = 'auto'; try { theme = localStorage.getItem('cerveau-theme') || 'auto'; } catch (e) {}

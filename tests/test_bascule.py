@@ -5,6 +5,7 @@ des plugins de Claude Code. Le premier démarrage du plugin doit prendre le rela
 Lancement : python tests/test_bascule.py   (sortie : « N vérifications OK, M échec(s) »)"""
 import json
 import os
+import re
 import shutil
 import subprocess
 import sys
@@ -143,6 +144,25 @@ PLUGIN2 = plugin_in_cache(HOME, "8.4.1")
 c, out = hook(PLUGIN2, "session-start", HOME, sid="s3")
 check(c == 0 and str(PLUGIN2) in (BRAIN / "brain.py").read_text(encoding="utf-8"),
       "mise à jour du plugin : le lanceur vise la nouvelle version au démarrage suivant")
+# Claude Code installe une version plus récente (nouveau dossier et registre installed_plugins.json) : les commandes
+# du cerveau la prennent aussitôt, sans attendre un démarrage de session
+SUIVANT = plugin_in_cache(HOME, "9.9.9")
+init = SUIVANT / "brainkit" / "__init__.py"
+init.write_text(re.sub(r'__version__ = "[^"]+"', '__version__ = "9.9.9"', init.read_text(encoding="utf-8")),
+                encoding="utf-8")
+REGISTRE = HOME / "plugins" / "installed_plugins.json"
+REGISTRE.write_text(json.dumps({"version": 2, "plugins": {"cerveau@cerveau": [
+    {"scope": "user", "installPath": str(SUIVANT), "version": "9.9.9"}]}}), encoding="utf-8")
+c, out = py(BRAIN / "brain.py", "--version", home=HOME)
+check(c == 0 and "9.9.9" in out, "plugin mis à jour : les commandes suivent aussitôt la version installée", out)
+REGISTRE.write_text(json.dumps({"version": 2, "plugins": {"cerveau@cerveau": [
+    {"scope": "user", "installPath": str(HOME / "plugins" / "cache" / "cerveau" / "cerveau" / "absent")}]}}),
+    encoding="utf-8")
+c, out = py(BRAIN / "brain.py", "--version", home=HOME)
+check(c == 0 and __version__ in out, "registre vers un dossier absent : le lanceur garde sa version", out)
+REGISTRE.write_text("{ illisible", encoding="utf-8")
+c, out = py(BRAIN / "brain.py", "--version", home=HOME)
+check(c == 0 and __version__ in out, "registre illisible : le lanceur garde sa version", out)
 
 # ------------------------------------------------------------------ 4. garder le cerveau classique exprès
 HOME2 = TMP / "garde" / ".claude"

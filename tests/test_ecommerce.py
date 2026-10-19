@@ -3,6 +3,7 @@ installation classique) — dans des dossiers temporaires, jamais sur la vraie m
 
 Lancement : python tests/test_ecommerce.py   (sortie : « N vérifications OK, M échec(s) »)"""
 import csv
+import hashlib
 import http.server
 import json
 import os
@@ -61,9 +62,16 @@ for ref in refs:
     for cible in set(re.findall(r"`((?:references|scripts|assets)/[\w./-]+)`", text)):
         check((SKILL_DIR / cible).exists(), f"{ref} : {cible} existe")
 
-every = "\n".join(p.read_text(encoding="utf-8", errors="replace") for p in SKILL_DIR.rglob("*") if p.is_file())
-for mot in ("TAKUMI", "Takumi", "takumi", "Droppilot", "Caen", "Normandie", "DesTinGOOD"):
-    check(mot not in every, f"skill générique : aucune donnée personnelle (« {mot} »)")
+# données personnelles du propriétaire (boutique, ville, pseudo…) : jamais dans le dépôt public, ni même dans ce test,
+# qui ne garde que leurs empreintes (sha256 des mots, en minuscules ; casse exacte pour le pseudo)
+PERSO_MIN = {'484ebb0894eed8b9', '3e696b474f1fad2e', '6b6a8aca6ed7c6fd', 'a30636d43f7d683f'}
+PERSO_EXACT = {'ad3700db8e231084'}
+empreinte = lambda mot: hashlib.sha256(mot.encode("utf-8")).hexdigest()[:16]  # noqa: E731
+public = [p for p in CODE.rglob("*") if p.is_file() and not ({".git", "tests", "__pycache__"} & set(p.relative_to(CODE).parts))]
+for p in public:
+    mots = set(re.findall(r"\w+", p.read_text(encoding="utf-8", errors="replace")))
+    perso = sorted(m for m in mots if empreinte(m.lower()) in PERSO_MIN or empreinte(m) in PERSO_EXACT)
+    check(not perso, f"dépôt public sans donnée personnelle : {p.relative_to(CODE)}", f"{len(perso)} mot(s) à retirer")
 check(not publish.secrets_in(SKILL_DIR), "skill : ni secret ni adresse e-mail (contrôle de brain publish)",
       publish.secrets_in(SKILL_DIR))
 
