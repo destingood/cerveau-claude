@@ -125,6 +125,16 @@ def signals(guarded: GuardedInput, route: RoutePlan, draft: Draft, links: _Links
             f"{draft.masked_urls} résultat(s) de recherche écarté(s) : adresse à formulation "
             "d'instruction (R5)."
         )
+    if draft.refused_searches:
+        notes.append(
+            f"{draft.refused_searches} recherche(s) refusée(s) : la requête reprenait un chiffre "
+            "ou un identifiant de tes données (R6)."
+        )
+    if draft.refused_outputs:
+        notes.append(
+            f"{draft.refused_outputs} résultat(s) d'outil écarté(s) : texte à formulation "
+            "d'instruction, à vérifier dans tes fichiers importés (R5)."
+        )
     if links.removed:
         notes.append(
             f"{links.removed} lien(s) ou image(s) vers un domaine hors des sources retiré(s)"

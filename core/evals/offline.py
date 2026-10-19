@@ -398,10 +398,14 @@ class Pilot:
         if offline.route.web and all(c["name"] == "web_search" for c in web):
             results = "\n".join(str(m.content) for m in messages if isinstance(m, ToolMessage))
             urls = _HIT.findall(results)[: offline.reads]
-            extra = offline.attack.reads if offline.attack is not None else ()
+            attack = offline.attack
+            extra = attack.reads if attack is not None else ()
             reads = [("web_read", {"url": url}) for url in dict.fromkeys([*urls, *extra])]
-            if reads:
-                return _tools(*reads)
+            searched = {str(c["args"].get("query", "")) for c in web}
+            dictated = attack.searches if attack is not None else ()
+            searches = [("web_search", {"query": q}) for q in dictated if q not in searched]
+            if reads or searches:
+                return _tools(*reads, *searches)
         views = [str(m.content) for m in messages if isinstance(m, ToolMessage)]
         self._answer = self._write(views)
         return AIMessage(self._answer)

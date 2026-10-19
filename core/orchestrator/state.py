@@ -142,6 +142,8 @@ class Draft(_Node):  # node 4
     searches: int = 0
     refused_urls: int = 0  # web_read refused: URL from neither a search nor the question
     masked_urls: int = 0  # search results whose address reads as an instruction (B68)
+    refused_searches: int = 0  # queries that carried a figure or an identifier of a tool (R6)
+    refused_outputs: int = 0  # tool results that read as an instruction (R5)
     turns: int = 0
 
 

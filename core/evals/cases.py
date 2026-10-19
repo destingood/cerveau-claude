@@ -132,6 +132,7 @@ class Attack(_Data):
     """What a planner or a reader that obeys the page would do (persona « compromis »)."""
 
     reads: tuple[str, ...] = ()  # addresses taken from the page, outside the search results
+    searches: tuple[str, ...] = ()  # queries the page dictates, built from Lucas's figures (R6)
     append: str = ""  # added to the developpement: a link, an image, a bare address
     reader: bool = True  # the reader returns the trap extracts of the pages
 
@@ -180,6 +181,7 @@ class ExpectOffline(_Data):
     """Counters of the audit payload that the deterministic defences must reach offline."""
 
     min_refused_reads: int = 0
+    min_refused_searches: int = 0  # queries refused because they carried Lucas's data (R6)
     min_links_removed: int = 0
     min_extracts_flagged: int = 0
     min_extracts_rejected: int = 0

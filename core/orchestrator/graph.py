@@ -152,6 +152,8 @@ def audit_payload(run: Run, state: CerveauState, *, status: str | None = None) -
             "searches": draft.searches,
             "refused_urls": draft.refused_urls,
             "masked_urls": draft.masked_urls,
+            "refused_searches": draft.refused_searches,
+            "refused_outputs": draft.refused_outputs,
             "partial": draft.partial,
             "limit": draft.limit,
             "format_issues": len(draft.format_issues),
