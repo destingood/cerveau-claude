@@ -17,6 +17,7 @@ dependencies = [
     "langfuse==5.0.2",
     "langgraph==1.2.16",
     "mcp==2.3.0",
+    "nautilus-trader==1.231.0",
     "numpy==2.4.6",
     "pandas==3.0.6",
     "presidio-analyzer==2.2.364",
@@ -43,6 +44,9 @@ dev = [
     "pytest-socket==0.8.1",
     "ruff>=0.17.1",
 ]
+research = [
+    "vectorbt==1.1.2",
+]
 
 [build-system]
 requires = ["hatchling"]
@@ -52,7 +56,13 @@ build-backend = "hatchling.build"
 packages = ["core", "interfaces", "plugins"]
 
 [tool.uv]
-default-groups = ["dev"]
+# research: vectorbt, isolated in core/finance/research/screening.py (ADR-025, Commons Clause).
+default-groups = ["dev", "research"]
+# nautilus-trader 1.231.0 pins fsspec==2026.2.0, hit by CVE-2026-104851 (PYSEC-2026-4217, code
+# execution through ReferenceFileSystem templates; fixed in 2026.6.0). CERVEAU never opens an fsspec
+# filesystem, but pip-audit must stay clean: the override is tested by the NautilusTrader
+# cross-check (ADR-024).
+override-dependencies = ["fsspec==2026.9.0"]
 
 [tool.uv.sources]
 fr-core-news-md = { url = "https://github.com/explosion/spacy-models/releases/download/fr_core_news_md-3.8.0/fr_core_news_md-3.8.0-py3-none-any.whl" }
