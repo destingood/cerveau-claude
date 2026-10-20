@@ -77,7 +77,7 @@ def test_features_without_markers_are_available() -> None:
 
 def test_blocker_messages_name_file_and_path() -> None:
     reasons = load_config(REPO_ROOT / "config").blockers("paper_trading")
-    assert "risk_limits.paper.yaml › max_order_pct = A_DEFINIR" in reasons
+    assert "risk_limits.paper.yaml › universe = A_DEFINIR" in reasons
 
 
 def test_live_stays_blocked_while_disabled_even_without_markers(config_dir: Path) -> None:
@@ -96,7 +96,7 @@ def test_filling_markers_unblocks_the_feature(config_dir: Path) -> None:
     edit_yaml(config_dir / "risk.yaml", lambda d: fill(d["trading_costs"]))
     config = load_config(config_dir)
     config.require("paper_trading")  # no longer raises
-    assert config.risk_limits_paper.max_order_pct == 1
+    assert config.risk.trading_costs.commission_pct == 1
     assert config.risk_limits_paper.universe == ["FICT-A"]
 
 

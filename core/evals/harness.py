@@ -199,7 +199,7 @@ def committee_texts(root: Path, payload: dict[str, Any]) -> tuple[str, ...]:
 
 def paper_limits(config: Config, case: Case) -> PaperRiskLimits:
     """The paper limits of the run: the configuration's, or the case's values over a copy of
-    them (never the file: the limits of Lucas stay ``A_DEFINIR``, R7)."""
+    them (never the file, which only Lucas changes)."""
     given = case.offline.paper_limits
     if given is None:
         return config.risk_limits_paper

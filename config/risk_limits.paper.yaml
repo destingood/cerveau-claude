@@ -4,20 +4,21 @@
 # perte glissante : en % du capital de référence ; drawdown : en % du plus haut de la valeur du
 # compte ; bande de prix : en % du dernier cours connu. La limite de devise porte sur chaque devise
 # autre que l'euro, celle de pays sur chaque pays. Volume moyen : en titres.
-capital_reference_eur: A_DEFINIR
-max_order_pct: A_DEFINIR
-max_position_pct: A_DEFINIR
-max_sector_pct: A_DEFINIR
-max_country_pct: A_DEFINIR
-max_currency_pct: A_DEFINIR
-max_daily_loss_pct: A_DEFINIR
-max_rolling_loss_pct: A_DEFINIR
-rolling_loss_sessions: A_DEFINIR
-max_drawdown_pct: A_DEFINIR
-max_orders_per_hour: A_DEFINIR
-max_orders_per_day: A_DEFINIR
-limit_price_collar_pct: A_DEFINIR
-min_avg_daily_volume: A_DEFINIR
-avg_volume_sessions: A_DEFINIR
+# Valeurs fixées par Lucas le 20/10/2026 (D3, plan de phase 4) ; les changer relance les évals (R9).
+capital_reference_eur: 10000     # capital fictif
+max_order_pct: 5
+max_position_pct: 10
+max_sector_pct: 30
+max_country_pct: 60
+max_currency_pct: 50
+max_daily_loss_pct: 2
+max_rolling_loss_pct: 5
+rolling_loss_sessions: 20
+max_drawdown_pct: 10
+max_orders_per_hour: 10
+max_orders_per_day: 20
+limit_price_collar_pct: 2
+min_avg_daily_volume: 100000
+avg_volume_sessions: 20
 universe: A_DEFINIR              # liste des instruments autorisés (identifiants de la base Finance)
 allow: { leverage: false, short_selling: false, derivatives: false }

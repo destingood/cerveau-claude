@@ -200,7 +200,8 @@ class Offline(_Data):
     # Replies of committee members, by member, taken in order (repairs and rounds included)
     # before their honest replies: what a manipulated or mistaken member would say.
     committee: dict[str, tuple[CommitteeTurn, ...]] = Field(default_factory=dict)
-    # Paper limits the case's committee checks instead of risk_limits.paper.yaml (all A_DEFINIR).
+    # Paper limits the case's committee checks over a copy of risk_limits.paper.yaml: a key left
+    # out keeps the file's value, so a case about an unknown limit marks it A_DEFINIR itself.
     paper_limits: dict[str, Any] | None = None
 
     @model_validator(mode="after")

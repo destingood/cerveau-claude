@@ -179,15 +179,22 @@ def test_a_committee_file_that_breaks_annex_e_is_refused(
 
 
 @pytest.mark.parametrize("choice", ["agir", "ne_pas_agir", "attendre"])
-def test_every_session_blocks_while_the_paper_limits_are_undefined(
-    config: Any, choice: str
-) -> None:
-    """R7: the versioned limits are all A_DEFINIR, so no proposal can be cleared today."""
+def test_every_session_blocks_while_a_paper_limit_is_undefined(config: Any, choice: str) -> None:
+    """R7: Lucas set every limit but the universe (D3), so no proposal can be cleared today."""
+    limits = config.risk_limits_paper
+    undefined = [name for name in CHECKED if isinstance(getattr(limits, name), str)]
+    assert undefined == ["universe"]
     checks = finance_committee(config).limit_checks(decision(choice), [])
-    assert [(c.name, c.ok) for c in checks] == [(name, None) for name in CHECKED]
-    assert all("A_DEFINIR dans config/risk_limits.paper.yaml" in c.reason for c in checks)
-    verdict, reasons = final_verdict(checks, report())
-    assert verdict == "BLOQUER" and len(reasons) == len(CHECKED)
+    for check in checks:
+        if check.name in undefined:
+            assert check.ok is None
+            assert "A_DEFINIR dans config/risk_limits.paper.yaml" in check.reason
+        elif choice == "agir":
+            assert (check.ok, check.reason) == (None, NO_SIZE)
+        else:
+            assert check.ok is True
+    verdict, _ = final_verdict(checks, report())
+    assert verdict == "BLOQUER"
 
 
 def test_a_decision_to_act_stays_unknown_until_the_order_intent(config: Any) -> None:

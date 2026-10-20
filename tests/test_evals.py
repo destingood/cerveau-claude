@@ -63,7 +63,6 @@ from core.orchestrator.graph import committee_file
 from core.orchestrator.state import MARKER, Answer, CommitteeView, Confiance, SourceRef
 from core.verification.figures import percent
 from core.verification.trace import ToolOutput
-from plugins.finance_committee.limits import CHECKED
 from tests.conftest import REPO_ROOT
 
 PRINCIPLES = ("p1_", "p2_", "p3_", "p4_", "p5_", "p6_", "p7_", "p8_")
@@ -675,12 +674,12 @@ def finding_texts(finding: dict[str, str]) -> tuple[str, ...]:
 
 def test_the_case_limits_cover_a_copy_of_the_configuration() -> None:
     config = load_config(REPO_ROOT / "config")
-    assert unknown_limits(config.risk_limits_paper) == CHECKED  # R7: still A_DEFINIR
+    assert unknown_limits(config.risk_limits_paper) == ("universe",)  # R7: still A_DEFINIR
     case = cached_cases("behaviors")["comite-analyse-n0-aucun-ordre"]
     limits = paper_limits(config, case)
     assert unknown_limits(limits) == ()
     assert limits.max_order_pct == 5  # percent, D4
-    assert unknown_limits(config.risk_limits_paper) == CHECKED  # the configuration is untouched
+    assert unknown_limits(config.risk_limits_paper) == ("universe",)  # the file is untouched
     plain = cached_cases("behaviors")["comite-deux-tours-de-debat"]
     assert paper_limits(config, plain) == config.risk_limits_paper
 
