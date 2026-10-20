@@ -198,11 +198,19 @@ def is_stale() -> bool:
         return True
 
 
+def _wiki_path(root, files, nid):
+    """Chemin absolu de la page du wiki d'un souvenir (bouton « Ouvrir dans Obsidian »), None hors mode wiki."""
+    rel = (files.get(nid) or {}).get("path") if root else None
+    return str(root.joinpath(*rel.split("/"))) if rel else None
+
+
 def render(brain=None):
-    from . import graph
+    from . import graph, wikistore
     from .viz3d import LIBS, TEMPLATE_3D
     brain = brain or Brain.load()
     an = graph.ensure(brain)
+    wroot = wikistore.root()
+    wfiles = ((brain.data.get("wiki") or {}).get("files") or {}) if wroot else {}
     comm, prs, deg = an.get("comm", {}), an.get("pr", {}), an.get("deg", {})
     nodes = []
     for n in brain.nodes.values():
@@ -214,6 +222,7 @@ def render(brain=None):
                       "tags": n.get("tags", []), "p": n.get("project"), "imp": n.get("importance", 3),
                       "hits": n.get("hits", 0), "upd": (n.get("updated") or "")[:10],
                       "path": (n.get("meta") or {}).get("path") if n["type"] == "project" else None,
+                      "wpath": _wiki_path(wroot, wfiles, n["id"]),
                       "c": comm.get(n["id"]), "pr": prs.get(n["id"], 0), "deg": deg.get(n["id"], 0),
                       "cre": (n.get("created") or "")[:10]})
     ids = {n["id"] for n in nodes}
@@ -268,6 +277,7 @@ h1{font-size:22px;margin:0;font-weight:650}
 .filters{display:flex;flex-wrap:wrap;gap:8px;align-items:center;margin-bottom:12px}
 select,input[type=search],button{font:inherit;color:var(--ink);background:var(--surface);border:1px solid var(--ring);border-radius:8px;padding:6px 10px}
 button{cursor:pointer}button:hover,select:hover{background:var(--hover)}
+.obs{display:inline-block;margin:2px 0 10px;font-size:12.5px;color:var(--ink);background:var(--surface);border:1px solid var(--ring);border-radius:8px;padding:6px 10px;text-decoration:none}.obs:hover{background:var(--hover)}
 input[type=search]{min-width:160px;flex:1 1 200px}
 .legend{display:flex;flex-wrap:wrap;gap:6px;align-items:center}
 .leg{display:inline-flex;align-items:center;gap:6px;padding:4px 9px;font-size:13px;color:var(--ink2)}
@@ -509,6 +519,8 @@ function showTip(n, p){
   tip.style.left = Math.min(state.w - tw - 8, p.x + 14) + 'px'; tip.style.top = Math.min(state.h - th - 8, p.y + 14) + 'px';
 }
 const hideTip = () => { tip.style.display = 'none'; };
+// Page du wiki ouverte dans Obsidian (URI officielle : path absolu, encodé)
+const obsUrl = p => 'obsidian://open?path=' + encodeURIComponent(p);
 function showPanel(n){
   panel.replaceChildren();
   if (!n) { panel.append(el('h2', 'Mode d’emploi'), el('p', 'Survole un point pour un aperçu, clique pour le détail. Molette ou boutons pour zoomer, glisser pour déplacer le graphe ou un point. Les puces de légende filtrent ; la recherche estompe le reste.', 'muted'), el('p', 'Couleur = famille, forme = type. La vue tableau donne exactement le même contenu.', 'muted small')); return; }
@@ -516,6 +528,7 @@ function showPanel(n){
   const chip = el('div', '', 'chip'); chip.append(swatch(v.famOf(n), v.shapeOf(n)), document.createTextNode(d.sub));
   panel.append(el('h2', d.title), chip);
   if (d.meta) panel.append(el('p', d.meta, 'muted small'));
+  if (n.wpath) { const a = el('a', 'Ouvrir dans Obsidian', 'obs'); a.href = obsUrl(n.wpath); a.title = n.wpath; panel.append(a); }
   if (d.body) panel.append(el('div', d.body, 'body'));
   const neigh = [...v.adj.get(n)];
   if (neigh.length) {

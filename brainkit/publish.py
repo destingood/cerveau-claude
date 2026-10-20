@@ -23,6 +23,7 @@ from . import __version__
 from .common import CODE_DIR, load_config, read_json, set_config
 
 NAME = MARKET = "cerveau"
+KEEP = {".git", "CONTRIBUTORS.md"}  # tenus dans le dépôt lui-même, jamais effacés par la construction
 DESC = ("Cerveau persistant pour Claude Code : souvenirs en graphe, rappel automatique à chaque message, wiki Markdown "
         "tenu par Claude (sources ingérées, coffre Obsidian, dépôt git), cartes de projets, à-faire datés, serveur MCP, "
         "et un cerveau e-commerce qui suit chaque boutique (clients sans pub, SEO, GEO, tunnel de vente, chiffres de "
@@ -207,7 +208,7 @@ def build(dest: Path, owner: str = "Lucas", repo: str = "") -> list:
     skills = skill_sources()  # relevées avant le nettoyage du dépôt
     tests = public_tests(dest)  # idem
     for item in dest.iterdir():
-        if item.name != ".git":
+        if item.name not in KEEP:
             shutil.rmtree(item) if item.is_dir() else item.unlink()
     shutil.copy2(CODE_DIR / "brain.py", dest / "brain.py")
     shutil.copytree(CODE_DIR / "brainkit", dest / "brainkit", ignore=shutil.ignore_patterns("__pycache__", "*.pyc"))

@@ -393,6 +393,11 @@ for args in (["doctor"], ["consolidate"], ["dream", "--no-apply"], ["report"], [
              ["todo"], ["ls"], ["context"], ["recall", "thé japonais Kyoto"], ["history"]):
     code, out = brain(*args)
     check(code == 0 and "Traceback" not in out, f"`{' '.join(args)}` en mode wiki", out[-500:])
+html = (TMP / "brain" / "cerveau.html").read_text(encoding="utf-8")
+wp = [n["wpath"] for n in json.loads(html.split("const DATA = ", 1)[1].split(";</script>", 1)[0])["nodes"] if n.get("wpath")]
+check(wp and all(Path(p).is_file() and Path(p).resolve().is_relative_to(WIKI.resolve()) for p in wp)
+      and "obsidian://open?path=" in html and "obsidian://open?path=" in (TMP / "brain" / "cerveau-2d.html").read_text(encoding="utf-8"),
+      "vues 3D et 2D : bouton « Ouvrir dans Obsidian » vers la page du wiki", str(wp[:3]))
 code, out = brain("doctor")
 check("✓ wiki :" in out, "doctor : ligne du wiki", out)
 code, out = brain("dream", "--no-apply")

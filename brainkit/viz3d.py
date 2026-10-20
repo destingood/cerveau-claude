@@ -841,6 +841,8 @@ function showConcept(n){
     + `<h2>${esc(n.name)}</h2><div class="meta"><span>${mem.length} souvenirs en parlent</span></div>`
     + `<h3>Souvenirs</h3><ul class="list">${mem.map(m => item(m.id, (TYPES[m.t] || [m.t])[0])).join("")}</ul>`);
 }
+// Page du wiki ouverte dans Obsidian (URI officielle : path absolu, encodé)
+const obsUrl = p => "obsidian://open?path=" + encodeURIComponent(p);
 function showNode(n){
   if (n.kind === "concept") return showConcept(n);
   if (n.kind === "file") return showFile(n);
@@ -859,6 +861,7 @@ function showNode(n){
     + `<span>importance ${n.imp || 3}/5</span><span>rappelé ${n.hits || 0}×</span><span>maj ${esc(n.upd || "?")}</span>`
     + `<span>centralité ${(n.pr || 0).toFixed(2)}</span></div>`;
   if (n.path) h += `<div class="meta" style="margin-top:6px"><code>${esc(n.path)}</code></div>`;
+  if (n.wpath) h += `<p style="margin:10px 0 0"><a class="btn" href="${obsUrl(n.wpath)}" title="${esc(n.wpath)}">Ouvrir dans Obsidian</a></p>`;
   if (n.tags && n.tags.length) h += `<div class="chips">${n.tags.map(x => `<span class="chip">#${esc(x)}</span>`).join("")}</div>`;
   if (n.body) h += `<div class="body">${md(n.body)}</div>`;
   if (n.t === "project"){

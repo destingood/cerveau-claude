@@ -528,6 +528,13 @@ check("`eco`" in install.SKILL and "eco --annuler" in install.SKILL and "eco --d
       and "eco --plugins-auto" in install.SKILL and "eco --poser" in install.SKILL and "eco --cache" in install.SKILL,
       "SKILL : eco dans la référence des commandes")
 check("mode éco" in publish.readme("Moi", "moi/depot"), "README : le mode éco est présenté")
+dest = Path(tempfile.mkdtemp(prefix="cerveau-publish-"))
+(dest / "CONTRIBUTORS.md").write_text("# Contributeurs", encoding="utf-8")
+(dest / "ancien.txt").write_text("x", encoding="utf-8")
+publish.build(dest, "Moi", "moi/depot")
+check((dest / "CONTRIBUTORS.md").is_file() and not (dest / "ancien.txt").exists() and (dest / "brainkit").is_dir(),
+      "publish : CONTRIBUTORS.md du dépôt gardé, le reste reconstruit")
+shutil.rmtree(dest, ignore_errors=True)
 c, out = World("aide").run("econome")
 check(c == 0 and "Mode éco" in out, "alias « econome »", out)
 
