@@ -121,6 +121,12 @@ class RecordedTrial:
     trial: ResearchTrial
 
 
+# A strategy's trials, and those of any strategy sharing one of its code versions or the
+# given one (parameters: strategy, code, strategy).
+_FAMILY = (
+    "strategy = ? OR code_sha256 = ? OR code_sha256 IN "
+    "(SELECT code_sha256 FROM research_trials WHERE strategy = ?)"
+)
 # The trial journal's columns, in model order (``start`` and ``end`` are SQL keywords).
 _TRIAL_COLUMNS = {
     field: {"start": "window_start", "end": "window_end"}.get(field, field)
@@ -727,8 +733,28 @@ class FinanceStore:
 
     def trials(self, strategy: str) -> list[RecordedTrial]:
         """The trials of a strategy, all versions and origins, in the order they were recorded."""
+        return self._recorded("strategy = ?", (strategy,))
+
+    def family(self, strategy: str, code_sha256: str | None = None) -> list[RecordedTrial]:
+        """The family of N (ADR-026): the strategy's trials and those of any strategy that shares
+        one of its code versions or ``code_sha256``, in the order they were recorded.
+
+        A module copied under a new identifier keeps its history (quant review of phase 3, M3).
+        """
+        return self._recorded(_FAMILY, (strategy, code_sha256, strategy))
+
+    def family_count(self, strategy: str, code_sha256: str | None = None) -> int:
+        """N of the deflated Sharpe ratio: the raw count of the family's trials (ADR-026)."""
+        row = self._conn.execute(
+            f"SELECT COUNT(*) FROM research_trials WHERE {_FAMILY}",  # noqa: S608 - constant
+            (strategy, code_sha256, strategy),
+        ).fetchone()
+        return int(row[0])
+
+    def _recorded(self, where: str, values: tuple[Any, ...]) -> list[RecordedTrial]:
         rows = self._conn.execute(
-            "SELECT * FROM research_trials WHERE strategy = ? ORDER BY trial_id", (strategy,)
+            f"SELECT * FROM research_trials WHERE {where} ORDER BY trial_id",  # noqa: S608 - constant
+            values,
         ).fetchall()
         return [
             RecordedTrial(
@@ -745,7 +771,7 @@ class FinanceStore:
         ]
 
     def trial_count(self, strategy: str) -> int:
-        """N of the deflated Sharpe ratio: the raw count of the strategy's trials (ADR-026)."""
+        """The raw count of the strategy's own trials; N counts its family (``family_count``)."""
         row = self._conn.execute(
             "SELECT COUNT(*) FROM research_trials WHERE strategy = ?", (strategy,)
         ).fetchone()

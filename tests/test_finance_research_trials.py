@@ -215,6 +215,25 @@ def test_trials_are_appended_and_read_back_in_order(store: FinanceStore) -> None
     assert store.trial_count("inconnue") == 0
 
 
+def test_a_copy_under_another_name_shares_the_family(store: FinanceStore) -> None:
+    """Quant review of phase 3, M3: N follows the code, not only the identifier."""
+    other = "d" * 64
+    store.add_trials(
+        [a_trial(), a_trial(strategy="copie"), a_trial(strategy="autre", code_sha256=other)],
+        recorded_at=NOW,
+    )
+    assert [r.trial.strategy for r in store.family("copie")] == ["rotation_test", "copie"]
+    assert (store.family_count("rotation_test"), store.trial_count("rotation_test")) == (2, 1)
+    assert store.family_count("autre") == 1
+    assert store.family_count("nouvelle") == 0
+    assert store.family_count("nouvelle", HASH) == 2
+    assert [r.trial.strategy for r in store.family("autre", HASH)] == [
+        "rotation_test",
+        "copie",
+        "autre",
+    ]
+
+
 def test_the_same_trial_twice_is_two_trials(store: FinanceStore) -> None:
     # N counts every evaluation (ADR-026): re-running a configuration is not free.
     store.add_trials([a_trial(), a_trial()], recorded_at=NOW)

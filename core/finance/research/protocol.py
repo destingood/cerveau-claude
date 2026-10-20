@@ -549,12 +549,12 @@ def run_protocol(
     trials.append(trial(final, "protocole-final"))
     readings = sum(
         1
-        for row in store.trials(strategy_id)
+        for row in store.family(strategy_id, code)
         if row.trial.code_sha256 == code and _reads_final(row.trial, split.final)
     )
     store.add_trials(trials, recorded_at=recorded_at)
     dsr, dsr_reason = _deflated(
-        returns[:, chosen], trials[chosen], store.trials(strategy_id), trials[: len(runs)]
+        returns[:, chosen], trials[chosen], store.family(strategy_id, code), trials[: len(runs)]
     )
     # Returns run from the second session: return row k ends at session k + 1.
     folds = tuple(

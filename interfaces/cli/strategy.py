@@ -267,7 +267,7 @@ def _trial_counts(spec: StrategySpec, store: Path) -> str:
     if not store.is_file():
         return "aucune base"
     with FinanceStore.open(store, read_only=True) as db:
-        counts = Counter(t.trial.origin for t in db.trials(spec.id))
+        counts = Counter(t.trial.origin for t in db.family(spec.id))
     if not counts:
         return "0"
     detail = ", ".join(f"{origin} {n}" for origin, n in sorted(counts.items()))
@@ -366,7 +366,7 @@ def strategy_screen(
             )
             trials = screening.trials(spec.id, code, run_inputs.sessions_per_year)
             db.add_trials(trials, recorded_at=now())
-            family = len(db.trials(spec.id))
+            family = db.family_count(spec.id, code)
     run.record(
         "TOOL_CALL",
         {
@@ -467,7 +467,7 @@ def strategy_protocol(
                 initial_cash=cash,
                 config=config.research,
                 crises=run_inputs.crises,
-                trials=db.trials(spec.id),
+                trials=db.family(spec.id, result.code_sha256),
                 grid_sha256=grid_sha256(spec),
                 generated_at=now(),
             )

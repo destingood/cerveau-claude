@@ -156,7 +156,9 @@ def _fixture_history(universe: tuple[str, ...]) -> MarketHistory:
         return MarketHistory.load(store, universe)
 
 
-def _read(spec: StrategySpec, root: Path, *, history: bool) -> tuple[MarketHistory | None, int]:
+def _read(
+    spec: StrategySpec, root: Path, code: str, *, history: bool
+) -> tuple[MarketHistory | None, int]:
     """The history of the universe (when asked) and N, the trials recorded for the family."""
     if spec.donnees == "synthetiques":
         path = synthetic_store_path(root)
@@ -168,7 +170,7 @@ def _read(spec: StrategySpec, root: Path, *, history: bool) -> tuple[MarketHisto
         path,
         lambda db: (
             MarketHistory.load(db, spec.univers) if history else None,
-            db.trial_count(spec.id),
+            db.family_count(spec.id, code),
         ),
     )
 
@@ -338,7 +340,7 @@ def strategy_lab(
     strategy = load_strategy(spec)
     code = strategy_code_sha256(strategy)
     point = None if params is None else copilot.grid_point(spec, params)
-    history, trials = _read(spec, root, history=mode != "protocole")
+    history, trials = _read(spec, root, code, history=mode != "protocole")
     found = latest_report(spec.id, default_reports_dir(root))
     latest = None if found is None else _protocol(spec, *found, code)
     synthetic = spec.donnees == "synthetiques"

@@ -73,7 +73,9 @@ Option 3, déterministe et sans modèle de langage (`cerveau strategy protocol <
   - La variante à frais doublés n'est pas un essai : elle ne peut que faire échouer, jamais
     sélectionner.
 - **DSR** :
-  - N est le nombre brut de lignes de la famille (même stratégie, toutes versions et origines) ;
+  - N est le nombre brut de lignes de la famille : la stratégie, toutes versions et origines, et
+    toute stratégie qui partage l'une de ses versions de code (une copie du module sous un autre
+    identifiant garde son historique, revue quantitative de phase 3, M3) ;
     V est la plus grande de trois variances (ddof = 1) de Sharpe quotidiens : celle de la
     famille, celle de ses séries distinctes (fenêtre et empreinte de la série) et celle de la grille
     en cours. Des copies d'un essai moyen baissaient V et relevaient le DSR ; répéter un essai ne

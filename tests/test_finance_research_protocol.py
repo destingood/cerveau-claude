@@ -614,6 +614,21 @@ def test_a_backtest_over_the_final_sample_counts_as_a_reading(
     journal.close()
 
 
+def test_a_copy_under_another_name_keeps_the_family(
+    market: dict[str, MarketHistory], config: ResearchConfig, costs: Costs
+) -> None:
+    """Quant review of phase 3, M3: the same module under a new identifier starts neither N
+    nor its final readings again."""
+    journal = FinanceStore.memory()
+    protocol(MovingAverages(), market[TREND], journal, config, costs)
+    copy = protocol(MovingAverages(), market[TREND], journal, config, costs, strategy_id="copie")
+    assert copy.evaluation is not None and copy.evaluation.dsr is not None
+    assert copy.evaluation.dsr.trials == 20
+    assert copy.evaluation.final_readings_before == 1
+    assert journal.trial_count("copie") == 10
+    journal.close()
+
+
 def test_a_random_walk_fails(
     market: dict[str, MarketHistory], config: ResearchConfig, costs: Costs
 ) -> None:
