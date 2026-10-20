@@ -16,6 +16,8 @@ nomme ; une mesure que l'outil dit impossible est rapportée, jamais estimée.
 |---|---|
 | `manifest.yaml` | Périmètre, plugins (`finance_data`, `finance_portfolio`, `finance_risk`, `finance_optimize`, `finance_report`, `finance_research`, `web_research`), renvoi à l'autonomie et aux seuils, sources autorisées |
 | `prompts/role.md` | Rôle et méthode du domaine, insérés dans le prompt système (Annexe D) |
+| `committee.yaml` | Comité d'investissement (§7.2, Annexe E, ADR-028) : trois analystes et leurs boîtes à outils de lecture et de calcul, défenseur, contradicteur et gestionnaire sans outil, contrôleur de risque avec `risk_report` ; analystes fondamental et sentiment inactifs (aucune source). Agent `plugins/finance_committee`, niveaux de modèle dans `config/committee.yaml` |
+| `prompts/committee/` | Une fiche par membre actif : mission, sorties, règles et interdits de l'Annexe E ; toute modification change la version du Comité et relance les évals (R9) |
 | `prompts/rubric.md` | Grille du juge des évals : 5 critères notés 0, 1 ou 2, chiffres comparés aux résultats des outils ; le score est calculé par le code (R1) |
 | `knowledge/sources.yaml` | Corpus RAG autorisé : vide en phase 2 |
 | `evals/golden.jsonl` | Golden set : 60 cas (minimum 50), seuil 0,85 (`config/evals.yaml`, D17) ; chiffres gelés sur la base de référence, à valider par Lucas avant le gel (R9) |

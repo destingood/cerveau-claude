@@ -92,8 +92,9 @@ class Runtime(_Strict):
 class Agent(_Strict):
     """How the orchestrator loads an in-process agent (6.1, ADR-028): ``<module>:<function>``.
 
-    The function returns the agent's LangGraph subgraph. An agent publishes no tool: its roles call
-    the other plugins' tools through the orchestrator, under the same policy (R2, R5).
+    The function returns the agent's specification, which a generic engine runs as a LangGraph
+    subgraph (``core.committee`` for a committee). An agent publishes no tool: its roles call the
+    other plugins' tools through the orchestrator, under the same policy (R2, R5).
     """
 
     entrypoint: str = Field(pattern=rf"^{_MODULE}:[a-z_][a-z0-9_]*$")

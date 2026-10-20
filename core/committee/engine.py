@@ -104,7 +104,7 @@ class Card:
 
 @dataclass(frozen=True)
 class CommitteeSpec:
-    """What a pack gives the committee (commit 16 for Finance)."""
+    """What a pack gives the committee (``plugins/finance_committee`` for Finance)."""
 
     pack: str
     feature: str  # the feature ``config.require`` checks (``finance.committee``)
