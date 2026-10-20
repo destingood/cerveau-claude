@@ -586,6 +586,34 @@ def test_a_second_reading_counts_every_trial_and_is_reported(
     journal.close()
 
 
+def test_a_backtest_over_the_final_sample_counts_as_a_reading(
+    market: dict[str, MarketHistory], config: ResearchConfig, costs: Costs
+) -> None:
+    """Quant review of phase 3, M2: a Copilot backtest that reached the final sample has read
+    it; one inside the development sample has not."""
+    first = FinanceStore.memory()
+    result = protocol(MovingAverages(), market[TREND], first, config, costs)
+    model = first.trials("moyennes_mobiles")[0].trial
+    first.close()
+    split = result.partition
+    windows = [(START, split.development[1]), (START, split.final[0])]
+    journal = FinanceStore.memory()
+    journal.add_trials(
+        [
+            model.model_copy(
+                update={"origin": "copilote", "source": f"audit:{n}", "start": s, "end": e}
+            )
+            for n, (s, e) in enumerate(windows, start=1)
+        ],
+        recorded_at=RECORDED,
+    )
+    second = protocol(MovingAverages(), market[TREND], journal, config, costs)
+    assert second.evaluation is not None
+    assert second.evaluation.final_readings_before == 1
+    assert second.evaluation.dsr is not None and second.evaluation.dsr.trials == 12
+    journal.close()
+
+
 def test_a_random_walk_fails(
     market: dict[str, MarketHistory], config: ResearchConfig, costs: Costs
 ) -> None:

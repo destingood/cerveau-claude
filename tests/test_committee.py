@@ -22,7 +22,7 @@ from pydantic import ValidationError
 from core.audit.chain import AuditJournal
 from core.budget.gate import RequestBudget
 from core.committee import Card, CommitteeSpec, LimitCheck, Sitting, run_committee, seat_for
-from core.committee.engine import _Committee, digest
+from core.committee.engine import LAB_MODE, _Committee, digest
 from core.committee.rules import QUESTION as QUESTION_ORIGIN
 from core.committee.rules import final_verdict, injection_errors, manager_errors
 from core.committee.schemas import ControllerReport, ManagerDecision
@@ -540,6 +540,20 @@ def test_a_page_is_evidence_through_its_kept_quotes_only(rig: Rig) -> None:
     committee = _Committee(rig.run, SPEC, sitting, question=QUESTION, now=NOW)
     rows = trace("3 usines ; 437 actions à 182,40 EUR", committee._evidence())
     assert [row.traced for row in rows] == [True, False, False]
+
+
+def test_a_committee_member_reads_strategy_signals_only(rig: Rig) -> None:
+    """Quant review of phase 3, M2: a backtest's window could reach the protocol's final
+    sample, so the committee never runs one, whatever the card allows."""
+    card = Card("analyste_technique", "analyste", "Tu es l'analyste technique.", ("strategy_lab",))
+    sitting = Sitting(record_id="cmt-1", question=QUESTION, pack="finance", version="test@1")
+    committee = _Committee(rig.run, SPEC, sitting, question=QUESTION, now=NOW)
+    session = Session(call_prefix="analyste_technique:")
+    for mode in ("backtest", "protocole", None):
+        args = {"strategie": "moyennes_mobiles"} | ({} if mode is None else {"mode": mode})
+        call: Any = {"name": "strategy_lab", "args": args, "id": "k1"}
+        assert asyncio.run(committee._tool(card, session, call)) == LAB_MODE
+    assert rig.toolbox.calls == []
 
 
 def test_an_instruction_in_a_role_output_is_refused(rig: Rig) -> None:

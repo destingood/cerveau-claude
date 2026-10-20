@@ -47,7 +47,9 @@ Option 3, déterministe et sans modèle de langage (`cerveau strategy protocol <
     futur et une propriété Hypothesis.
 - **Découpage (D7)** : 70 % pour le développement, un embargo de 5 séances, puis 30 % pour
   l'échantillon final. L'échantillon final n'est lu qu'une fois par version (code et grille), et
-  chaque lecture entre au journal.
+  chaque lecture entre au journal. Un backtest du Copilot ou un criblage dont la fenêtre atteint
+  l'échantillon final compte aussi comme une lecture, et au Comité `strategy_lab` ne sert qu'en
+  mode signaux (revue quantitative de phase 3, M2).
 - **Walk-forward (D8)** :
   - chaque combinaison de la grille tourne une fois, en continu, sur tout l'échantillon de
     développement ;

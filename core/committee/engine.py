@@ -81,6 +81,11 @@ REPAIR = (
     "échec et le Comité ne conclut pas."
 )
 NO_TOOL = "Erreur : l'outil « {name} » n'est pas disponible pour ce rôle."
+# A member reads the signals of the registry's strategies, never a backtest: its window could
+# reach the protocol's final sample (quant review of phase 3, M2).
+LAB = "strategy_lab"
+LAB_MODES = frozenset({"signaux"})
+LAB_MODE = "Erreur : au Comité, strategy_lab ne sert qu'en mode signaux."
 TOO_MANY_TURNS = f"aucune réponse valide en {MAX_ROLE_TURNS} appels"
 
 # Order of the role records: stage, then debate round, then the member's place.
@@ -313,6 +318,8 @@ class _Committee:
     async def _tool(self, card: Card, session: Session | None, call: ToolCall) -> str:
         if session is None or call["name"] not in card.tools:
             return NO_TOOL.format(name=call["name"])
+        if call["name"] == LAB and (call.get("args") or {}).get("mode") not in LAB_MODES:
+            return LAB_MODE
         return await _execute(self.run, session, self.run.toolbox, call, self.question)
 
     async def _speak[T: RoleOutput](

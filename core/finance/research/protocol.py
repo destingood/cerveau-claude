@@ -165,7 +165,7 @@ class Evaluation:
     benchmark_label: str | None
     benchmark_sharpe: float | None  # annual, on the final sample
     crises: tuple[CrisisMeasure, ...]
-    final_readings_before: int  # protocole-final rows of this code version before this one
+    final_readings_before: int  # earlier rows of this code version over the final sample
     trials_recorded: int
 
 
@@ -389,6 +389,14 @@ def _column_sharpes(runs: Sequence[BacktestResult]) -> list[float]:
     return [_or_zero(sharpe(value_returns(r.values).tolist(), 1)) for r in runs]
 
 
+def _reads_final(trial: ResearchTrial, final: tuple[date, date]) -> bool:
+    """A final reading of the protocol, or any other backtest whose window reaches the final
+    sample: a Copilot or screening run has read it too (quant review of phase 3, M2)."""
+    if trial.origin == "protocole-final":
+        return True
+    return trial.origin != "protocole" and trial.start <= final[1] and trial.end >= final[0]
+
+
 def _variance(family: Sequence[RecordedTrial], grid: Sequence[ResearchTrial]) -> float:
     """V: the largest variance of the family's Sharpe ratios, of its distinct return series and
     of the current grid's development runs.
@@ -542,7 +550,7 @@ def run_protocol(
     readings = sum(
         1
         for row in store.trials(strategy_id)
-        if row.trial.origin == "protocole-final" and row.trial.code_sha256 == code
+        if row.trial.code_sha256 == code and _reads_final(row.trial, split.final)
     )
     store.add_trials(trials, recorded_at=recorded_at)
     dsr, dsr_reason = _deflated(
