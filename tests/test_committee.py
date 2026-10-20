@@ -23,7 +23,7 @@ from core.audit.chain import AuditJournal
 from core.budget.gate import RequestBudget
 from core.committee import Card, CommitteeSpec, LimitCheck, Sitting, run_committee, seat_for
 from core.committee.engine import digest
-from core.committee.rules import final_verdict
+from core.committee.rules import final_verdict, injection_errors
 from core.committee.schemas import ControllerReport, ManagerDecision
 from core.config import BlockedFeatureError, load_config
 from core.config.loader import Config
@@ -489,6 +489,17 @@ def test_an_instruction_in_a_role_output_is_refused(rig: Rig) -> None:
     sitting = rig.sit()
     assert sitting.status == "echec"
     assert "signaux[1] : formulation d'instruction (R5)" in (sitting.reason or "")
+
+
+def test_a_role_may_argue_for_the_order_the_question_considers() -> None:
+    fields = [
+        ("proposition", "Vendre toute la ligne FICT-A réduirait la concentration."),
+        ("these", "Allégez votre position : le recul de FICT-A dure."),
+    ]
+    assert injection_errors(fields) == []  # B99: an order is looked for in what roles read
+    assert injection_errors([("signaux[1]", INJECTION)]) == [
+        "signaux[1] : formulation d'instruction (R5)"
+    ]
 
 
 def test_no_finding_means_no_decision(rig: Rig) -> None:

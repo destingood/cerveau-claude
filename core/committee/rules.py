@@ -5,7 +5,8 @@
 - the manager treats every argument exactly once, and a figure in an invalidation condition
   comes from a tool output (R1);
 - every number and date of every role is traced to its evidence (R1), and no text reads as an
-  instruction (R5);
+  instruction (R5); a stock order is what the roles argue about, so it is looked for in the pages
+  and tool outputs they read, not in what they write (B99);
 - the controller's verdict starts from the pack's deterministic limit checks: an exceeded or
   unknown limit blocks, and the model may harden the verdict, never soften it (D21).
 
@@ -29,7 +30,7 @@ from core.committee.schemas import (
     Verdict,
     text_fields,
 )
-from core.guardrails.injection import injection_signals
+from core.guardrails.injection import ORDER_SIGNAL, injection_signals
 from core.verification.trace import FIGURE_ORIGIN, Evidence, trace
 
 _SOURCE = re.compile(r"^source \[([1-9][0-9]*)\]$")
@@ -78,7 +79,7 @@ def injection_errors(fields: Iterable[tuple[str, str]]) -> list[str]:
     return [
         f"{name} : formulation d'instruction (R5)"
         for name, text in fields
-        if injection_signals(text)
+        if injection_signals(text, skip=(ORDER_SIGNAL,))
     ]
 
 
