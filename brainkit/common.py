@@ -45,7 +45,12 @@ DEFAULT_CONFIG = {
     # Rappel automatique à chaque message : souvenirs + fichiers pertinents, seulement si vraiment liés.
     # min_score 5 : sur 27 vrais messages (72 h), les faux rappels notaient 2,4–4,8 et le plus faible vrai 9,3.
     "recall": {"enabled": True, "max_items": 3, "min_cov": 0.5, "min_score": 5.0, "files": True, "max_files": 4,
-               "min_cov_files": 0.4, "max_chars": 1200, "session_cap_items": 12, "session_cap_files": 20},
+               "min_cov_files": 0.4, "max_chars": 1200, "session_cap_items": 12, "session_cap_files": 20,
+               # Neurone du rappel (neurone.py), appris sur les échanges de cet utilisateur : « auto » (il prend la
+               # main une fois assez d'exemples et s'il fait mieux que la règle), « off » (la règle seule). Ligne
+               # complète si sa probabilité d'être utile atteint neurone_haut ; sinon titre seul pour ce que la règle
+               # accepte (à partir de neurone_bas ; 0 : il ne cache jamais ce que la règle aurait montré).
+               "neurone": "auto", "neurone_haut": 0.6, "neurone_bas": 0.0},
     # prompts.chat (bibliothèque ouverte de prompts/skills) : sur une demande de prompt, de skill, de rôle ou de contenu
     # à créer, 0 à max_items modèles proches injectés, filtrés sur le titre ; au plus max_calls recherches (≈ 0,3 s,
     # cache 7 jours), coupé net au-delà de timeout s ou si le site limite le débit. `brain prompts` à la main.

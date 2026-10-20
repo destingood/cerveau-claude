@@ -52,6 +52,14 @@ def recall_query(raw) -> str:
     return NUM_NOISE.sub(" ", journal.clean_prompt(raw, 600))
 
 
+def context_query(raw, query) -> str:
+    """Requête gardée dans l'état de la session, contexte des messages suivants pour le neurone du rappel : sans secret
+    ni coordonnées de tiers, comme au journal."""
+    from .privacy import redact_contacts
+    clean = redact_contacts(raw)
+    return query if clean == raw else recall_query(re.sub(r"«[^»]*»", " ", clean))
+
+
 def gist(n, chars=220) -> str:
     """Ce qu'on montre d'un souvenir : le résumé d'une page du wiki s'il existe, sinon le début de son contenu."""
     return short((n.get("meta") or {}).get("resume") or n.get("body", ""), chars)
@@ -608,6 +616,63 @@ def on_prompt(data, cfg):
     emit("UserPromptSubmit", ctx, alert)
 
 
+MEM_HEADER = "🧠 Souvenirs pertinents (cerveau) :"
+
+
+def memory_line(n, full=True) -> str:
+    """Ligne d'un souvenir dans le rappel : complète (type, titre, résumé, id) ou titre seul (`show <id>` au besoin)."""
+    if full:
+        return f"- [{label(n)}] {n['title']} — {gist(n)} `{n['id']}`"
+    return f"- [{label(n)}] {n['title']} `{n['id']}`"
+
+
+def _rule_picks(found, injected, rc, accept) -> list:
+    """Règle fixe : dans l'ordre du classement, les souvenirs que le filtre anti-bruit laisse passer."""
+    out = []
+    for r in found:
+        n = r["node"]
+        if n["id"] in injected or n["type"] == "project" or not accept(r):
+            continue
+        out.append((n, memory_line(n)))
+        if len(out) >= rc["max_items"]:
+            break
+    return out
+
+
+def pick_memories(brain, query, rc, project=None, injected=(), before=None, prev=(), raw=None, log_to=None) -> list:
+    """Souvenirs à injecter pour un message → [(souvenir, ligne)].
+    Règle fixe (`recall.neurone` « off », ou neurone pas encore appris) : ceux que `accept_recall` laisse passer, en
+    ligne complète. Neurone appris sur les échanges de cet utilisateur (neurone.py) : les meilleurs candidats classés
+    par probabilité d'être utiles ; ligne complète si elle est forte (≥ neurone_haut), titre seul pour les autres que la
+    règle accepte (rien de ce qu'elle aurait montré n'est caché) — Claude lit le reste d'un `show` s'il en a besoin.
+    `before` : rejeu (seuls les souvenirs écrits avant) ; `prev` : requêtes des messages précédents de la session ;
+    `log_to` : liste qui reçoit les candidats et leurs traits (apprentissage, étiquetés au Stop)."""
+    learn = rc.get("neurone", "auto") != "off"
+    found = search.search_memories(brain, query, limit=30 if before or learn else 10, project=project, expand=False)
+    if before:
+        found = [r for r in found if (r["node"].get("created") or "")[:19] <= before]
+
+    def accept(r):
+        return search.accept_recall(r, rc["min_cov"], rc["min_score"], query=query)
+
+    if not learn:
+        return _rule_picks(found, injected, rc, accept)
+    from . import neurone
+    cands = [r for r in found if r["node"]["type"] != "project"][:neurone.TOP]
+    accs = [accept(r) for r in cands]
+    feats = neurone.features(search.memory_index(brain), query, cands, accs, project, prev, before or now_iso(),
+                             len(raw or query))
+    if log_to is not None:
+        log_to.extend({"id": r["node"]["id"], "f": [round(x, 4) for x in f],
+                       "c": [len(memory_line(r["node"])), len(memory_line(r["node"], False))]}
+                      for r, f in zip(cands, feats))
+    model = neurone.load()
+    if model is None:  # pas encore assez d'exemples (ou pas mieux que la règle) : la règle, comme avant
+        return _rule_picks(found if before else found[:10], injected, rc, accept)
+    probs = [model.predict(f) for f in feats]
+    return [(r["node"], memory_line(r["node"], full)) for r, full in neurone.choose(cands, probs, accs, injected, rc)]
+
+
 def recall_context(data, cfg, raw, saved="") -> str:
     """Rappel automatique du message : souvenirs et fichiers liés (texte pour Claude), ou ''. `saved` : la ligne de
     l'enregistrement automatique d'une demande « retiens… » (sinon Claude est prié de la mémoriser)."""
@@ -628,18 +693,22 @@ def recall_context(data, cfg, raw, saved="") -> str:
                      "(vérifie d'abord les doublons avec `q`).")
     elif RECALL_RX.search(raw):
         lines.append(f"🧠 L'utilisateur fait appel à un souvenir : cherche avec `{CMD} q \"…\"` et `{CMD} journal`.")
-    picks = []
+    picks, logged, learn = [], [], False
     recalled = st.get("recalled", 0)
-    if tokenize(query) and recalled < rc["session_cap_items"]:
-        for r in search.search_memories(brain, query, limit=10, project=proj["id"] if proj else None, expand=False):
-            n = r["node"]
-            if n["id"] in injected or n["type"] == "project":
-                continue
-            if not search.accept_recall(r, rc["min_cov"], rc["min_score"], query=query):
-                continue
-            picks.append(n)
-            if len(picks) >= rc["max_items"]:
-                break
+    if tokenize(query):
+        prev = st.get("prev_q") or []
+        if recalled < rc["session_cap_items"] or rc.get("neurone", "auto") != "off":
+            picks = pick_memories(brain, query, rc, proj["id"] if proj else None, injected, prev=prev, raw=raw,
+                                  log_to=logged)
+            if recalled >= rc["session_cap_items"]:
+                picks = []  # plafond de la session atteint : rien de plus à l'écran, mais l'apprentissage continue
+        # Messages tapés seulement (pas les avis automatiques) : contexte de la session et exemples pour le neurone
+        if not journal.AUTO_RE.match(journal.clean_prompt(raw)):
+            if rc.get("neurone", "auto") != "off":
+                st["prev_q"] = (prev + [context_query(raw, query)])[-2:]
+            if logged:
+                st["cands"] = (st.get("cands") or [])[-2:] + [{"t": now_iso(), "c": logged}]
+            learn = True
     files = []
     if rc["files"] and proj and tokenize(query) and len(st.get("files", [])) < rc["session_cap_files"]:
         from . import filesearch
@@ -650,9 +719,7 @@ def recall_context(data, cfg, raw, saved="") -> str:
     out = list(lines)
     used = sum(len(x) + 1 for x in out)
     shown_mem, shown_files = [], []
-    groups = [("🧠 Souvenirs pertinents (cerveau) :",
-               [(n, f"- [{label(n)}] {n['title']} — {gist(n)} `{n['id']}`")
-                for n in picks], shown_mem)]
+    groups = [(MEM_HEADER, picks, shown_mem)]
     if files:
         groups.append((f"📁 Fichiers probablement concernés (carte `{proj['id']}`) :",
                        [(f, f"- `{f['path']}` — {short(f['desc'], 100)}") for f in files], shown_files))
@@ -683,6 +750,9 @@ def recall_context(data, cfg, raw, saved="") -> str:
     if pcline:  # la veille PC passe toujours, avant les souvenirs
         out = [pcline] + out
     if not out:
+        if learn:  # rien à montrer, mais le contexte de la session et les candidats sont gardés
+            st["cwd"] = cwd
+            save_state(sid, st)
         return ""
     ctx = "\n".join(out)
     if sk_names:
@@ -746,7 +816,16 @@ def _key_terms(n, idx, k=4):
     return toks[:k]
 
 
-def track_usage(st, scan):
+def is_used(n, text, toks, idx) -> bool:
+    """Le souvenir a-t-il servi ? Son id, ses termes distinctifs ou une de ses valeurs chiffrées réapparaissent dans
+    `text` (ce que Claude a écrit ou fait, déjà plié ; `toks` : ses mots)."""
+    keys = _key_terms(n, idx)
+    hit = sum(1 for t in keys if t in toks)
+    nums = {x for x in NUM_VAL.findall(fold(n.get("body", ""))) if len(x) >= 4 and x not in YEARS}
+    return n["id"] in text or (bool(keys) and hit >= min(2, len(keys))) or any(x in text for x in nums)
+
+
+def track_usage(st, scan, brain=None):
     """Un souvenir injecté compte comme UTILISÉ si ses termes distinctifs (ou une de ses valeurs chiffrées)
     réapparaissent dans ce que Claude a écrit ou fait ensuite. Sert au classement (index, rappel, archivage)."""
     todo = set(st.get("injected", [])) - set(st.get("used", []))
@@ -754,22 +833,38 @@ def track_usage(st, scan):
         return []
     text = fold(" ".join(scan))
     toks = set(tokenize(text))
-    brain = Brain.load()
+    brain = brain or Brain.load()
     idx = search.memory_index(brain)
     used = []
     for nid in sorted(todo):
         n = brain.nodes.get(nid)
-        if not n or n["type"] == "project":
-            continue
-        keys = _key_terms(n, idx)
-        hit = sum(1 for t in keys if t in toks)
-        nums = {x for x in NUM_VAL.findall(fold(n.get("body", ""))) if len(x) >= 4 and x not in YEARS}
-        if nid in text or (keys and hit >= min(2, len(keys))) or any(x in text for x in nums):
+        if n and n["type"] != "project" and is_used(n, text, toks, idx):
             used.append(nid)
     if used:
         st["used"] = sorted(set(st.get("used", [])) | set(used))
         bump_used(used)
     return used
+
+
+def after_turn(st, scan, sid):
+    """Après une réponse : souvenirs montrés puis utilisés, et exemples étiquetés pour le neurone du rappel."""
+    if not scan:
+        st.pop("cands", None)  # rien d'écrit ni de fait : pas d'étiquette possible
+        return
+    brain = None
+    if set(st.get("injected", [])) - set(st.get("used", [])):
+        try:
+            brain = Brain.load()
+            track_usage(st, scan, brain)
+        except Exception as exc:
+            log(f"usage : {exc!r}")
+    if st.get("cands"):
+        try:
+            from . import neurone
+            neurone.learn_turn(st, scan, sid, brain)
+        except Exception as exc:
+            log(f"neurone : {exc!r}")
+            st.pop("cands", None)
 
 
 # ------------------------------------------------------------------------------------------ Stop
@@ -781,11 +876,7 @@ def on_stop(data, cfg):
     tx = journal.parse_transcript(tp, st.get("tx"))
     scan = tx.pop("_scan", None)
     st["tx"] = tx
-    if scan:
-        try:
-            track_usage(st, scan)
-        except Exception as exc:
-            log(f"usage : {exc!r}")
+    after_turn(st, scan, sid)
     if tx.get("skills"):
         try:
             from . import skills
@@ -839,11 +930,7 @@ def on_session_end(data, cfg, event="session-end"):
     tx = journal.parse_transcript(tp, st.get("tx")) if tp else (st.get("tx") or {})
     scan = tx.pop("_scan", None)
     st["tx"] = tx
-    if scan:
-        try:
-            track_usage(st, scan)
-        except Exception as exc:
-            log(f"usage : {exc!r}")
+    after_turn(st, scan, sid)
     if tx.get("skills"):
         try:
             from . import skills

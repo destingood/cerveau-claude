@@ -447,15 +447,20 @@ def _unstick(path) -> None:
         git(path, "rebase", "--abort", timeout=30)
 
 
-def _commit(path, me, message) -> bool:
-    git(path, "add", "-A", "--", f"{MEMBERS}/{me}")
+def _commit(path, me, message) -> bool | None:
+    """→ True : commit fait ; False : rien de nouveau ; None : git a échoué (verrou, dépôt occupé), rien n'est parti."""
+    code, out = git(path, "add", "-A", "--", f"{MEMBERS}/{me}")
+    if code:
+        log(f"commun : add : {short(out, 300)}")
+        return None
     if git(path, "diff", "--cached", "--quiet")[0] == 0:
         return False
     code, out = git(path, "-c", f"user.name={me}", "-c", f"user.email={me}@cerveau.invalid", "commit", "-q", "-m",
                     message, timeout=60)
     if code:
         log(f"commun : commit : {out}")
-    return code == 0
+        return None
+    return True
 
 
 # ------------------------------------------------------------------------------------------ export (ma part publique)
@@ -561,10 +566,12 @@ def sync(pull=True, push=True, auto=False) -> list:
     save_state(pending=True, **({"push_pending": True} if push else {}))
     try:
         with FileLock(GIT_LOCK, timeout=1 if auto else 30, stale=600):
-            _unstick(path)
+            import time
             from .common import days_since
             from .store import Brain
+            failed = False
             for _ in range(4):
+                _unstick(path)  # à chaque tour : un verrou abandonné pendant qu'une synchro tourne ne bloque pas la suite
                 push = push or bool(state().get("push_pending"))
                 save_state(pending=False, push_pending=False)
                 committed = False
@@ -573,6 +580,11 @@ def sync(pull=True, push=True, auto=False) -> list:
                     rep = export(brain, me)
                     j = export_journal(brain, me)
                     committed = _commit(path, me, f"cerveau commun : {me} — {rep['shared']} page(s) partagée(s)")
+                    failed = committed is None
+                    if failed:  # rien n'est parti : pas compté comme envoyé, repris au tour suivant ou à la prochaine synchro
+                        save_state(push_pending=True)
+                        time.sleep(2)
+                        continue
                     if committed:
                         out.append(f"✓ {rep['written']} page(s) écrite(s), {rep['removed']} retirée(s)"
                                    + (f", journal ({j} mois)" if j else ""))
@@ -605,6 +617,8 @@ def sync(pull=True, push=True, auto=False) -> list:
                 if not st.get("pending") and not st.get("push_pending") and (
                         not push or st.get("exported") == content_sig(Brain.load().nodes)):
                     break  # rien de nouveau pendant ce tour (un changement arrivé entre-temps repart tout de suite)
+            if failed:
+                out.append("✗ enregistrement local : git occupé, nouvel essai à la prochaine synchro")
     except TimeoutError:
         out.append("· synchronisation déjà en cours (elle reprendra ce changement)")
     if auto:

@@ -1156,6 +1156,13 @@ def cmd_bench(a):
     print(bench.run(quick=a.quick))
 
 
+def cmd_neurone(a):
+    from . import neurone
+    out = neurone.run_cli(a.action, a.jours, a.quiet)
+    if out:
+        print(out)
+
+
 def cmd_tokens(a):
     from . import tokens
     print(tokens.report(a.hours))
@@ -1788,6 +1795,11 @@ def build_parser():
     s.add_argument("--auto", action="store_true", help=argparse.SUPPRESS)
     s = cmd("bench", cmd_bench, "banc d'essai : qualité du rappel, faux rappels, tokens, vitesse des hooks")
     s.add_argument("--quick", action="store_true", help="sans la mesure de vitesse")
+    s = cmd("neurone", cmd_neurone, "neurone du rappel (appris sur tes échanges, local) : état, apprendre (récolte les "
+            "30 derniers jours puis apprend), entrainer, off (règle fixe seule), auto", ["neurones", "neuronal"])
+    s.add_argument("action", nargs="?", default="etat", choices=["etat", "apprendre", "entrainer", "off", "auto"])
+    s.add_argument("--jours", type=int, default=30, help="période récoltée par « apprendre » (défaut 30 jours)")
+    s.add_argument("--quiet", action="store_true", help=argparse.SUPPRESS)
     s = cmd("tokens", cmd_tokens, "où partent les tokens : contexte relu, 1res requêtes, coût fixe au démarrage, relances du cerveau, "
             "habitudes coûteuses (transcripts)")
     s.add_argument("--hours", type=float, default=48, help="période mesurée (défaut 48 h)")

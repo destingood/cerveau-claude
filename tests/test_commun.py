@@ -344,6 +344,40 @@ while time.time() - t2 < 60 and "membres/alice/wiki/Apprentissages/Changer l'eau
 check("membres/alice/wiki/Apprentissages/Changer l'eau des vases.md" in bare_files() and not lock.exists(),
       "verrou git abandonné : retiré, la synchro passe", out)
 
+# ------------------------------------------------------------------ 6c. envoi raté (git occupé) : jamais compté comme parti, repris
+glock = TMP / A / "brain" / "state" / "commun-git.lock"
+t2 = time.time()  # les synchros de fond des étapes précédentes finissent d'abord
+while time.time() - t2 < 60 and glock.exists():
+    time.sleep(0.5)
+lock.write_text("", encoding="utf-8")  # un autre git tourne (verrou récent, pas abandonné) : rien ne peut partir
+code, out = brain(A, "add", "-t", "learning", "-T", "Recouper les tiges", "-b", "Un centimètre tous les trois jours.", "-p", "none")
+page = "membres/alice/wiki/Apprentissages/Recouper les tiges.md"
+st = json.loads((TMP / A / "brain" / "state" / "commun.json").read_text(encoding="utf-8"))
+check("✗ enregistrement local" in out and page not in bare_files() and st.get("push_pending"),
+      "git occupé : l'envoi raté n'est pas compté comme parti", out)
+lock.unlink()
+# simple récupération (ouverture de session) qui doit reprendre l'envoi ; un git tiers meurt en route, après le nettoyage
+# du début de tour : son verrou abandonné est retiré au tour suivant
+EN_ROUTE = r"""
+import os, sys, time
+sys.path.insert(0, sys.argv[1])
+from brainkit import commun
+lock, real, n = sys.argv[2], commun.export, []
+def export(brain, me):
+    if not n:
+        n.append(1)
+        open(lock, "w").close()
+        os.utime(lock, (time.time() - 3600, time.time() - 3600))
+    return real(brain, me)
+commun.export = export
+print("\n".join(commun.sync(pull=True, push=False, auto=True)))
+"""
+r = subprocess.run([sys.executable, "-I", "-S", "-c", EN_ROUTE, str(CODE), str(lock)], capture_output=True,
+                   cwd=str(TMP / A / "work"), env=env(A), timeout=180)
+out = r.stdout.decode("utf-8", "replace") + r.stderr.decode("utf-8", "replace")
+check(page in bare_files() and not lock.exists() and "envoyé" in out,
+      "envoi raté repris à la récupération suivante, verrou abandonné en route retiré au tour suivant", out)
+
 # ------------------------------------------------------------------ 7. quitter
 code, out = brain(B, "commun", "quitter")
 check(code == 0 and not any(f.startswith("membres/bob/") for f in bare_files()), "bob quitte : ses pages sont retirées", out)

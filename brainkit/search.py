@@ -17,11 +17,19 @@ from .common import days_since, tokenize
 from .lexicon import INFLEXIONS, SYN, deletes, faux_amis, phon, root, within_one
 
 K1, B = 1.3, 0.7
+SUBWORD_W, SUBWORD_DICE, SUBWORD_TOP = 0.5, 0.6, 3
+
+
+def grams(w) -> set:
+    """Trigrammes de lettres d'un mot, bornes comprises : « chat » → ^ch, cha, hat, at$."""
+    w = f"^{w}$"
+    return {w[i:i + 3] for i in range(len(w) - 2)}
 
 
 class Index:
     fuzzy = True  # rapprochement phonétique / fautes de frappe pour les mots absents de l'index
     code = False  # index de fichiers et de symboles : toutes les troncatures de 4 lettres y sont gardées (voir expand)
+    subword = False  # encodeur de sous-mots (trigrammes) pour un mot inconnu sans autre piste : index des souvenirs
 
     def __init__(self, docs=()):
         self.keys, self.tfs, self.named = [], [], {}
@@ -91,6 +99,37 @@ class Index:
             self._phon, self._del, self._root = ph, dl, rt
         return self._phon, self._del, self._root
 
+    def _tri_maps(self):
+        """Encodeur de sous-mots : trigrammes de chaque mot de l'index sous sa forme écrite et sa forme phonétique, et
+        leur nombre (dénominateur du coefficient de Dice). Construit à la demande, gardé dans le cache des souvenirs."""
+        if getattr(self, "_tri", None) is None:
+            fo, ph, size = {}, {}, {}
+            for tok in self.df:
+                if len(tok) >= 4 and not tok.isdigit():
+                    a, b = grams(tok), grams(phon(tok))
+                    for g in a:
+                        fo.setdefault(g, []).append(tok)
+                    for g in b:
+                        ph.setdefault(g, []).append(tok)
+                    size[tok] = (len(a), len(b))
+            self._tri = (fo, ph, size)
+        return self._tri
+
+    def subwords(self, q, top=SUBWORD_TOP, dice=SUBWORD_DICE) -> list:
+        """Mots de l'index proches de `q` par leurs morceaux : au moins 2 trigrammes en commun et un coefficient de Dice
+        ≥ dice, sous la forme écrite ou phonétique. Rattrape ce que les fautes d'une lettre et la phonétique exacte
+        ratent : « inteligen » → « intelligence », « consomé » → « consommer ». → [(mot, dice)], les plus proches."""
+        fo, ph, size = self._tri_maps()
+        best = {}
+        for k, (m, g) in enumerate(((fo, grams(q)), (ph, grams(phon(q))))):
+            cnt = Counter(v for x in g for v in m.get(x, ()))
+            for v, c in cnt.items():
+                if c >= 2:
+                    d = 2 * c / (len(g) + size[v][k])
+                    if d >= dice and d > best.get(v, 0):
+                        best[v] = d
+        return sorted(best.items(), key=lambda kv: (-kv[1], -self.df.get(kv[0], 0)))[:top]
+
     def expand(self, q):
         """→ [(variante, poids, idf retenu, synonyme ?)] : le mot, ses préfixes, ses troncatures, ses synonymes métier
         et, mot inconnu, ses rapprochements phonétiques ou fautes de frappe."""
@@ -129,6 +168,8 @@ class Index:
                     if v != q and v not in seen:
                         cands.setdefault(v, 0.55)
             out += sorted(cands.items(), key=lambda kv: (-kv[1], -self.df.get(kv[0], 0)))[:6]
+        if not out and self.subword and len(q) >= 5 and not q.isdigit():  # dernier recours : les sous-mots, poids faible
+            out = [(v, SUBWORD_W) for v, _ in self.subwords(q)]
         # Un synonyme ne compte jamais plus que le mot demandé : sans plafond, le plus rare l'emporte (« boutique », dans
         # 7 souvenirs, cédait la tête à son synonyme « store », dans 3). Référence : le mot lui-même s'il est dans l'index ;
         # sinon les synonymes valent un seul terme, le plus courant d'entre eux (comme les synonymes de Lucene). Les formes
@@ -178,7 +219,8 @@ class Index:
         return results[:limit]
 
 
-MEMIDX_TAG = f"m4:{sys.version_info[0]}.{sys.version_info[1]}"
+MEMIDX_TAG = f"m5:{sys.version_info[0]}.{sys.version_info[1]}"
+_LOADED = {}  # index des souvenirs déjà chargé dans ce processus : {fichier: (empreinte, index)}
 
 
 def _mem_sig(brain) -> str:
@@ -201,21 +243,27 @@ def memory_index(brain, include_archived=False, use_cache=True) -> Index:
     from .common import STATE_DIR
     path = STATE_DIR / "memidx.bin"
     sig = _mem_sig(brain)
+    hit = _LOADED.get(str(path))
+    if hit and hit[0] == sig:
+        return hit[1]
     try:
         with open(path, "rb") as fh:
             blob = marshal.loads(fh.read())
         if blob.get("tag") == MEMIDX_TAG and blob.get("sig") == sig:
             idx = Index.from_state(blob)
-            idx._phon, idx._del, idx._root = blob["phon"], blob["del"], blob["root"]
+            idx._phon, idx._del, idx._root, idx._tri = blob["phon"], blob["del"], blob["root"], blob["tri"]
+            idx.subword = True
+            _LOADED[str(path)] = (sig, idx)
             return idx
     except Exception:
         pass
     idx = _build_memory_index(brain, False)
     ph, dl, rt = idx._fuzzy_maps()
+    _LOADED[str(path)] = (sig, idx)
     try:
         blob = {"tag": MEMIDX_TAG, "sig": sig, "keys": idx.keys, "tfs": [dict(t) for t in idx.tfs], "lens": idx.lens,
                 "df": dict(idx.df), "post": dict(idx.post), "pre": dict(idx.by_prefix), "phon": ph, "del": dl, "root": rt,
-                "named": idx.named}
+                "tri": idx._tri_maps(), "named": idx.named}
         path.parent.mkdir(parents=True, exist_ok=True)
         tmp = path.with_name(f"memidx.{os.getpid()}.tmp")
         with open(tmp, "wb") as fh:
@@ -234,7 +282,9 @@ def _build_memory_index(brain, include_archived=False) -> Index:
         keys = (n.get("meta") or {}).get("keys") or ""  # mots-clés, synonymes, questions types donnés à l'écriture
         docs.append((n["id"], [(n["title"], 3.0), (" ".join(n.get("tags") or []), 2.2), (keys, 1.6),
                                (n.get("body", ""), 1.0)]))
-    return Index(docs)
+    idx = Index(docs)
+    idx.subword = True
+    return idx
 
 
 def search_memories(brain, query, limit=8, project=None, types=None, include_archived=False,
