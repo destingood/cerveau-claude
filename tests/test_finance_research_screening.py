@@ -18,6 +18,7 @@ from core.finance.fixtures import load_research, research_costs
 from core.finance.model import Instrument, PriceRow
 from core.finance.research import engine, screening
 from core.finance.research.execution import Costs
+from core.finance.research.strategies.croisement_mm import MovingAverageCrossover
 from core.finance.research.strategy import Params, StrategyError, Weights
 from core.finance.research.view import MarketHistory, PointInTimeView
 from core.finance.store import FinanceStore
@@ -164,6 +165,25 @@ def test_the_screening_matches_the_reference_engine(
         assert check.passed, check
         assert check.screening is not None and check.gap is not None
         assert check.gap <= TOLERANCE and check.value_gap < 1e-12
+
+
+def test_the_screening_matches_the_engine_on_the_registry_strategy(
+    plain: MarketHistory, exact: Costs
+) -> None:
+    """Quant review of phase 3, M4: the strategy the protocol reads, not only the test ones."""
+    grid: list[Params] = [{"short": 5, "long": 50}, {"short": 20, "long": 200}]
+    checks = screening.cross_check(
+        MovingAverageCrossover(),
+        grid,
+        plain,
+        **window(exact),
+        sessions_per_year=252,
+        tolerance=TOLERANCE,
+    )
+    assert [check.params for check in checks] == grid
+    for check in checks:
+        assert check.passed, check
+        assert check.screening is not None and check.value_gap < 1e-12
 
 
 def test_the_screening_places_the_engines_orders(plain: MarketHistory, exact: Costs) -> None:

@@ -20,6 +20,7 @@ from core.finance.fixtures import load_research, research_costs
 from core.finance.model import Instrument, PriceRow
 from core.finance.research import engine, nautilus
 from core.finance.research.execution import Costs, Order, Schedule
+from core.finance.research.strategies.croisement_mm import MovingAverageCrossover
 from core.finance.research.strategy import Params, Strategy, StrategyError, Weights
 from core.finance.research.view import LookAheadError, MarketHistory, PointInTimeView
 from core.finance.store import FinanceStore
@@ -52,11 +53,12 @@ def both(
     end: date,
     costs: Costs,
     cash: float = 100_000.0,
+    params: Params | None = None,
 ) -> tuple[engine.BacktestResult, nautilus.NautilusResult]:
     window = {"start": start, "end": end, "cutoff": CUTOFF, "costs": costs, "initial_cash": cash}
     return (
-        engine.run(strategy, {}, history, **window),
-        nautilus.run(strategy, {}, history, **window),
+        engine.run(strategy, params or {}, history, **window),
+        nautilus.run(strategy, params or {}, history, **window),
     )
 
 
@@ -117,6 +119,29 @@ def test_nautilus_replays_ten_years_of_the_in_house_engine(
     assert [t.fees for t in theirs.trades] == pytest.approx(fees, rel=0, abs=1e-9)
     assert check.fees_gap == pytest.approx(0, abs=1e-6)
     assert ((theirs.cash - ours.cash).abs() <= TOLERANCE * ours.values).all()
+
+
+@pytest.mark.parametrize(
+    "params", [{"short": 5, "long": 50}, {"short": 20, "long": 200}], ids=["5-50", "20-200"]
+)
+def test_nautilus_replays_the_registry_strategy(
+    params: Params, research: MarketHistory, costs: Costs
+) -> None:
+    """Quant review of phase 3, M4: the strategy the protocol reads, not only the test ones."""
+    sessions = research.final_closes(PLAIN[0]).index
+    ours, theirs = both(
+        MovingAverageCrossover(),
+        research,
+        sessions[0].date(),
+        sessions[-1].date(),
+        costs,
+        params=params,
+    )
+    check = nautilus.cross_check(ours, theirs, TOLERANCE)
+    assert check.passed, check.trade_gaps[:3] or check.relative_gap
+    assert check.trades == len(theirs.trades) > 50
+    assert theirs.positions.equals(ours.positions)
+    assert check.fees_gap == pytest.approx(0, abs=1e-6)
 
 
 def test_a_buy_funded_by_the_same_day_sale_passes_the_nautilus_checks(
