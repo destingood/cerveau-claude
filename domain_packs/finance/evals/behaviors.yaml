@@ -807,3 +807,41 @@ cases:
         - {tool: risk_report, id: contributions/FICT-GLOBEX/part_risque, display: "52,33 %", label: Part du risque portée par Globex}
       mentions: ["FICT-GLOBEX score 0,400", "plafonnée à N1"]
       confidence: [moyen]
+
+  # --- B119 : qualité « non évaluable », l'état réel tant que des seuils valent A_DEFINIR -----
+  - id: finance-qualite-non-evaluable-sous-scores-inconnus
+    group: finance_qualite
+    rules: [R7, R12]
+    description: des sous-scores inconnus (seuils à A_DEFINIR, ADR-016) rendent la qualité non évaluable et plafonnent à N1
+    question: Quelle est la VaR historique à 99 % sur un jour de mon portefeuille ?
+    store:
+      quality:
+        - {instrument_id: FICT-ACME, score: 1.0, unknown: [outliers, corporate_actions], assessed_at: "2026-10-18T12:30:00+00:00"}
+    offline:
+      verdict: {classe_action: CALCUL, raison: mesure de risque}
+      route: {domaine: finance, web: false, raison: portefeuille de Lucas}
+      calls:
+        - {tool: risk_report, args: {measures: [var]}}
+    expect:
+      tools: [risk_report]
+      figures:
+        - {tool: risk_report, id: var/historique/99/1/eur, display: "1 986,77 €", label: VaR historique à 99 % sur un jour}
+      mentions: ["qualité non évaluable : aucun score complet enregistré à cette date pour FICT-ACME", "plafonnée à N1"]
+      absent: ["qualité des données insuffisante"]
+
+  - id: finance-qualite-non-evaluable-rejeu-sans-score
+    group: finance_qualite
+    rules: [R7, R10, R12]
+    description: rejouée le samedi, avant le premier score de qualité, la même VaR est non évaluable côté qualité et plafonnée à N1
+    question: Rejoue la VaR historique à 99 % sur un jour de mon portefeuille telle qu'elle était connue le samedi 17 octobre 2026 à midi.
+    offline:
+      verdict: {classe_action: CALCUL, raison: rejeu d'une mesure de risque}
+      route: {domaine: finance, web: false, raison: portefeuille de Lucas}
+      calls:
+        - {tool: risk_report, args: {measures: [var], as_of: "2026-10-17T12:00:00+02:00"}}
+    expect:
+      tools: [risk_report]
+      figures:
+        - {tool: risk_report, id: var/historique/99/1/eur, display: "1 986,77 €", label: VaR historique à 99 % sur un jour}
+      mentions: ["qualité non évaluable : aucun score complet enregistré à cette date pour", "FICT-ACME", "plafonnée à N1"]
+      absent: ["qualité des données insuffisante"]

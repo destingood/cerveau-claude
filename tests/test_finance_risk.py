@@ -1,15 +1,18 @@
 """Market risk measures against independent calculations (ADR-014, D11).
 
 skfolio where its definition is the same as ours, closed forms written here otherwise, and the
-reference portfolio rebuilt from the store with pandas alone. The tolerances are the ones of
-``config/risk.yaml`` (``market_risk.cross_check``): never loosened (R9).
+reference portfolio rebuilt from the generator's CSV files, with decimals and pandas, without the
+store's adjusted closes (B118). The tolerances are the ones of ``config/risk.yaml``
+(``market_risk.cross_check``): never loosened (R9).
 """
 
 from __future__ import annotations
 
+import csv
 import math
 from collections import defaultdict
-from datetime import date
+from datetime import date, datetime, timedelta
+from decimal import Decimal
 from fractions import Fraction
 from pathlib import Path
 from statistics import NormalDist
@@ -32,6 +35,7 @@ from core.finance.store import FinanceStore
 from core.finance.views import ViewError
 
 ROOT = Path(__file__).resolve().parents[1]
+REFERENCE = ROOT / "tests" / "fixtures" / "finance" / "reference"
 CONFIG: MarketRisk = load_config(ROOT / "config").risk.market_risk
 REL = CONFIG.cross_check.rel_tolerance
 MC_REL = CONFIG.cross_check.monte_carlo_rel_tolerance
@@ -434,57 +438,123 @@ def figure(content: RiskReport, figure_id: str) -> float:
     return value
 
 
+def _rows(name: str) -> list[dict[str, str]]:
+    with (REFERENCE / name).open(encoding="utf-8", newline="") as handle:
+        return list(csv.DictReader(handle))
+
+
+def total_return_closes(instrument: str, last: date) -> pd.Series:
+    """Closes of ``instrument`` up to ``last`` adjusted for its splits and dividends, written from
+    the definition on the generator's CSV files, in decimals, without ``closes()`` (B118).
+
+    Walking back from the last session, the actions whose ex-date falls after the previous
+    session and on or before the current one adjust every earlier close: a split of ratio r
+    divides it by r; a dividend D multiplies it by 1 − D·s/P, P the previous raw close and s the
+    product of the splits between that close and the dividend's ex-date (P in ex-date shares)."""
+    (card,) = [r for r in _rows("instruments.csv") if r["identifiant"] == instrument]
+    raw = sorted(
+        (date.fromisoformat(r["date"]), Decimal(r["cloture"]))
+        for r in _rows("cours.csv")
+        if r["identifiant"] == instrument and date.fromisoformat(r["date"]) <= last
+    )
+    actions = sorted(
+        (date.fromisoformat(r["date_ex"]), r["type"], Decimal(r["valeur"]), r["devise"])
+        for r in _rows("operations.csv")
+        if r["identifiant"] == instrument
+    )
+    assert all(cur in ("", card["devise"]) for *_, cur in actions)  # paid in the quote currency
+    days, closes = [d for d, _ in raw], [c for _, c in raw]
+    factor, adjusted = Decimal(1), [closes[-1]]
+    for k in range(len(raw) - 1, 0, -1):
+        between = [a for a in actions if days[k - 1] < a[0] <= days[k]]
+        for ex, kind, value, _ in between:
+            if kind == "split":
+                factor /= value
+            else:
+                splits = [v for e, t, v, _ in between if t == "split" and e <= ex]
+                factor *= 1 - value * math.prod(splits, start=Decimal(1)) / closes[k - 1]
+        adjusted.append(closes[k - 1] * factor)
+    return pd.Series([float(v) for v in reversed(adjusted)], index=pd.to_datetime(days))
+
+
+def per_euro_rates(currency: str, last: date) -> pd.Series:
+    """Units of ``currency`` for one euro, as the ECB fixes them, up to ``last``."""
+    return pd.Series(
+        {
+            pd.Timestamp(r["TIME_PERIOD"]): float(r["OBS_VALUE"])
+            for r in _rows("bce_change.csv")
+            if r["CURRENCY"] == currency and date.fromisoformat(r["TIME_PERIOD"]) <= last
+        }
+    ).sort_index()
+
+
+def euro_prices(currency: dict[str, str], last: date) -> pd.DataFrame:
+    """EUR prices of the lines up to ``last``, securities then cash, on the sessions common to the
+    securities; the rate of a session is the last one fixed on or before it (merge_asof), and a
+    unit of cash is worth one over the rate."""
+    securities = sorted(k for k in currency if not k.startswith("liquidites-"))
+    cash = sorted(k for k in currency if k.startswith("liquidites-"))
+    local = pd.concat(
+        {key: total_return_closes(key, last) for key in securities}, axis=1, join="inner"
+    ).sort_index()
+    sessions = pd.DataFrame({"day": local.index.as_unit("ns")})  # one unit on both sides
+    columns = {}
+    for key in securities + cash:
+        if currency[key] == "EUR":
+            rate = np.ones(len(local))
+        else:
+            known = per_euro_rates(currency[key], last).rename("rate").rename_axis("day")
+            known.index = known.index.as_unit("ns")
+            rate = pd.merge_asof(sessions, known.reset_index(), on="day")["rate"].to_numpy()
+        price = local[key].to_numpy() if key in local else np.ones(len(local))
+        columns[key] = price / rate
+    return pd.DataFrame(columns, index=local.index).dropna()
+
+
+def held(store: Path, as_of: datetime) -> tuple[pd.Series, dict[str, str]]:
+    """EUR value and currency of each line at ``as_of``, from the snapshot, which
+    ``test_finance_reference`` reconciles to the cent with the generator's ``releve.csv``."""
+    with FinanceStore.open(store, read_only=True) as db:
+        snapshot = views.portfolio_snapshot(db, as_of=as_of)
+    values: defaultdict[str, float] = defaultdict(float)
+    currency: dict[str, str] = {}
+    for position in snapshot.positions:
+        assert position.value_eur is not None
+        values[position.instrument_id] += position.value_eur.value
+        currency[position.instrument_id] = position.currency
+    for cash in snapshot.cash:
+        assert cash.value_eur is not None
+        values[f"liquidites-{cash.currency}"] += cash.value_eur.value
+        currency[f"liquidites-{cash.currency}"] = cash.currency
+    return pd.Series(values), currency
+
+
 @pytest.fixture(scope="module")
 def rebuilt(store: Path) -> tuple[pd.DataFrame, pd.Series]:
-    """EUR prices on the common sessions and EUR values by line, from the snapshot and the raw
-    series; the FX rate of a session is the last one published on or before it (merge_asof)."""
-    with FinanceStore.open(store, read_only=True) as db:
-        snapshot = views.portfolio_snapshot(db, as_of=REFERENCE_READ_AT)
-        values: defaultdict[str, float] = defaultdict(float)
-        currency: dict[str, str] = {}
-        for position in snapshot.positions:
-            assert position.value_eur is not None
-            values[position.instrument_id] += position.value_eur.value
-            currency[position.instrument_id] = position.currency
-        for cash in snapshot.cash:
-            assert cash.value_eur is not None
-            values[f"liquidites-{cash.currency}"] += cash.value_eur.value
-            currency[f"liquidites-{cash.currency}"] = cash.currency
-        local = {
-            key: db.closes(key, as_of=REFERENCE_READ_AT, end=DAY, adjust="total_return")
-            for key in values
-            if not key.startswith("liquidites-")
-        }
-        sessions = pd.concat(local, axis=1, join="inner").sort_index().index
-        fx = {
-            cur: db.fx_rates(cur, as_of=REFERENCE_READ_AT, end=DAY)
-            for cur in set(currency.values()) - {"EUR"}
-        }
+    """EUR prices on the common sessions and EUR values by line, in the report's order."""
+    values, currency = held(store, REFERENCE_READ_AT)
+    prices = euro_prices(currency, DAY)
+    return prices, values[list(prices.columns)]
 
-    def per_euro(cur: str) -> np.ndarray:
-        if cur == "EUR":
-            return np.ones(len(sessions))
-        known = fx[cur].rename("rate").rename_axis("day").reset_index()
-        known["day"] = pd.to_datetime(known["day"])
-        target = pd.DataFrame({"day": pd.to_datetime(sessions)})
-        return pd.merge_asof(target, known.sort_values("day"), on="day")["rate"].to_numpy()
 
-    columns = {}
-    for key in sorted(values, key=lambda k: (k.startswith("liquidites-"), k)):
-        price = 1.0 if key.startswith("liquidites-") else local[key].reindex(sessions).to_numpy()
-        columns[key] = price / per_euro(currency[key])
-    prices = pd.DataFrame(columns, index=sessions).dropna()
-    return prices, pd.Series(values)[list(prices.columns)]
+@pytest.fixture(scope="module")
+def measured(store: Path) -> RiskReport:
+    """The reference report with every measure, computed once."""
+    return report(store, measures=list(MEASURES))
+
+
+def _window(prices: pd.DataFrame) -> pd.DataFrame:
+    return prices.pct_change().iloc[1:].tail(CONFIG.var.window_sessions)
 
 
 def test_the_reference_measures_equal_an_independent_assembly(
-    store: Path, rebuilt: tuple[pd.DataFrame, pd.Series]
+    measured: RiskReport, rebuilt: tuple[pd.DataFrame, pd.Series]
 ) -> None:
     prices, values = rebuilt
-    window = prices.pct_change().iloc[1:].tail(CONFIG.var.window_sessions)
+    window = _window(prices)
     weights = (values / values.sum()).to_numpy()
     returns = window.to_numpy() @ weights
-    content = report(store, measures=list(MEASURES))
+    content = measured
     assert close(figure(content, "valeur_eur"), float(values.sum()))
     sd = float(sk.standard_deviation(returns))
     assert close(figure(content, "volatilite/quotidienne"), sd)
@@ -509,6 +579,160 @@ def test_the_reference_measures_equal_an_independent_assembly(
     assert close(
         figure(content, "correlations/FICT-DELTA/FICT-MONDE"), corr.loc["FICT-DELTA", "FICT-MONDE"]
     )
+
+
+def _levels() -> list[tuple[float, str]]:
+    return [(c, f"{c * 100:g}") for c in CONFIG.var.confidence_levels]
+
+
+def test_the_cvar_is_the_mean_loss_beyond_the_var(
+    measured: RiskReport, rebuilt: tuple[pd.DataFrame, pd.Series]
+) -> None:
+    prices, values = rebuilt
+    total = float(values.sum())
+    returns = _window(prices).to_numpy() @ (values / total).to_numpy()
+    losses, law = -returns, NormalDist()
+    mean, sd = float(returns.mean()), float(returns.std(ddof=1))
+    for c, level in _levels():
+        var = linear_quantile(losses, c)
+        tail = [x for x in losses if x >= var]
+        expected = {
+            "historique": math.fsum(tail) / len(tail),
+            "parametrique": sd * law.pdf(law.inv_cdf(c)) / (1 - c) - mean,
+        }
+        for method, cvar in expected.items():
+            for h in CONFIG.var.horizons_sessions:
+                base = f"var/{method}/{level}/{h}"
+                assert close(figure(measured, f"{base}/cvar_pct"), cvar * math.sqrt(h))
+                assert close(figure(measured, f"{base}/cvar_eur"), cvar * math.sqrt(h) * total)
+
+
+def test_the_backtest_counts_the_exceptions_of_the_rebuilt_history(
+    measured: RiskReport, rebuilt: tuple[pd.DataFrame, pd.Series]
+) -> None:
+    """Today's lines over the whole common history; each loss against the historical VaR of the
+    window before it, then Kupiec's likelihood ratio, written out above."""
+    prices, values = rebuilt
+    losses = -(prices.pct_change().iloc[1:].to_numpy() @ (values / values.sum()).to_numpy())
+    window = CONFIG.var.window_sessions
+    observations = min(CONFIG.backtest.window_sessions, len(losses) - window)
+    assert 0 < observations < CONFIG.backtest.window_sessions  # the report says it is incomplete
+    for c, level in _levels():
+        exceptions = sum(
+            bool(losses[i] > linear_quantile(losses[i - window : i], c))
+            for i in range(len(losses) - observations, len(losses))
+        )
+        statistic = kupiec_statistic(exceptions, observations, 1 - c)
+        base = f"backtest/{level}"
+        assert figure(measured, f"{base}/seances") == observations
+        assert figure(measured, f"{base}/exceptions") == exceptions
+        assert close(figure(measured, f"{base}/attendues"), (1 - c) * observations)
+        assert close(figure(measured, f"{base}/statistique"), statistic)
+        assert close(figure(measured, f"{base}/p_value"), math.erfc(math.sqrt(statistic / 2)))
+
+
+def test_the_contributions_are_the_euler_split_of_the_parametric_var(
+    measured: RiskReport, rebuilt: tuple[pd.DataFrame, pd.Series]
+) -> None:
+    prices, values = rebuilt
+    window = _window(prices)
+    total = float(values.sum())
+    weights = (values / total).to_numpy()
+    cov, mean = window.cov().to_numpy(), window.mean().to_numpy()  # sample covariance, n − 1
+    pull = cov @ weights
+    sd = math.sqrt(float(weights @ pull))
+    scale = math.sqrt(CONFIG.annualisation_sessions)
+    for i, key in enumerate(prices.columns):
+        base = f"contributions/{key}"
+        marginal = float(pull[i]) / sd
+        assert close(figure(measured, f"{base}/valeur_eur"), float(values[key]))
+        assert close(figure(measured, f"{base}/poids"), float(weights[i]))
+        assert close(figure(measured, f"{base}/volatilite"), math.sqrt(cov[i, i]) * scale)
+        assert close(figure(measured, f"{base}/marginale"), marginal * scale)
+        assert close(figure(measured, f"{base}/contribution"), weights[i] * marginal * scale)
+        assert close(figure(measured, f"{base}/part_risque"), weights[i] * pull[i] / sd**2)
+        for c, level in _levels():
+            z = NormalDist().inv_cdf(c)
+            expected = total * weights[i] * (z * marginal - mean[i])
+            assert close(figure(measured, f"{base}/var/{level}"), expected)
+    for _c, level in _levels():
+        parts = [figure(measured, f"contributions/{key}/var/{level}") for key in prices.columns]
+        assert close(math.fsum(parts), figure(measured, f"var/parametrique/{level}/1/eur"))
+
+
+def test_the_rate_stress_regresses_the_other_securities_on_the_estr(
+    measured: RiskReport, rebuilt: tuple[pd.DataFrame, pd.Series]
+) -> None:
+    """Bonds by their duration; the other securities by the OLS of their daily P&L on the daily
+    change of the €STR, the last rate published by each session; cash has no rate effect."""
+    prices, values = rebuilt
+    window = _window(prices)
+    estr = pd.Series(
+        {pd.Timestamp(r["TIME_PERIOD"]): float(r["OBS_VALUE"]) for r in _rows("bce_estr.csv")}
+    ).sort_index()
+    level = estr.reindex(prices.index[-(len(window) + 1) :], method="ffill")
+    changes = np.diff(level.to_numpy()) / 100.0
+    cards = {r["identifiant"]: r for r in _rows("instruments.csv")}
+    bonds = [k for k in window.columns if k in cards and cards[k]["classe"] == "obligation"]
+    others = [k for k in window.columns if k in cards and cards[k]["classe"] != "obligation"]
+    pnl = window[others].to_numpy() @ values[others].to_numpy()
+    fit = stats.linregress(changes, pnl)
+    bp = CONFIG.hypothetical_stress.rates_bp
+    shift = bp / 10_000
+    duration = math.fsum(-float(cards[k]["duration"]) * shift * float(values[k]) for k in bonds)
+    t = float(stats.t.ppf(1 - CONFIG.backtest.significance / 2, len(pnl) - 2))
+    low, high = sorted(shift * (fit.slope + side * t * fit.stderr) for side in (-1, 1))
+    expected = {
+        "duration_eur": duration,
+        "estime_eur": fit.slope * shift,
+        "ecart_type_eur": fit.stderr * abs(shift),
+        "p_value": fit.pvalue,
+        "seances": len(pnl),
+        "intervalle_bas_eur": low,
+        "intervalle_haut_eur": high,
+        "impact_eur": duration + fit.slope * shift,
+    }
+    for name, value in expected.items():
+        assert close(figure(measured, f"stress/taux/{name}"), float(value)), name
+
+
+def test_the_var_change_since_monday_is_rebuilt_from_both_books(store: Path) -> None:
+    """Monday 12/10 at 13:00 UTC, Friday's closes and rates were the last known; the lines of
+    both dates, each book on the 500 returns known at its date. The values at Monday come from
+    the snapshot then, the one ``test_finance_portfolio`` checks."""
+    compare_to = REFERENCE_READ_AT - timedelta(days=6)
+    content = report(store, measures=["var"], compare_to=compare_to)
+    now, now_currency = held(store, REFERENCE_READ_AT)
+    then, then_currency = held(store, compare_to)
+    currency = {**then_currency, **now_currency}
+    keys = sorted(currency, key=lambda k: (k.startswith("liquidites-"), k))
+    r0 = _window(euro_prices(currency, date(2026, 10, 9)))[keys].to_numpy()
+    r1 = _window(euro_prices(currency, DAY))[keys].to_numpy()
+    x0 = then.reindex(keys, fill_value=0.0).to_numpy()
+    x1 = now.reindex(keys, fill_value=0.0).to_numpy()
+    for key, before, after in zip(keys, x0, x1, strict=True):
+        base = f"variation_var/expositions/{key}"
+        assert close(figure(content, f"{base}/avant"), before)
+        assert close(figure(content, f"{base}/apres"), after)
+    for c, level in _levels():
+        z = NormalDist().inv_cdf(c)
+
+        def var_eur(x: np.ndarray, r: np.ndarray, z: float = z) -> float:
+            pnl = r @ x
+            return z * float(pnl.std(ddof=1)) - float(pnl.mean())
+
+        avant, apres = var_eur(x0, r0), var_eur(x1, r1)
+        positions, market = var_eur(x1, r0) - avant, var_eur(x0, r1) - avant
+        expected = {
+            "avant": avant,
+            "apres": apres,
+            "variation": apres - avant,
+            "effet_positions": positions,
+            "effet_marche": market,
+            "residu": apres - avant - positions - market,
+        }
+        for name, value in expected.items():
+            assert close(figure(content, f"variation_var/{level}/{name}"), value), name
 
 
 def test_monte_carlo_on_the_reference_meets_the_closed_form(store: Path) -> None:

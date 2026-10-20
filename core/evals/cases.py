@@ -191,10 +191,17 @@ class ExpectOffline(_Data):
 
 
 class QualityFixture(_Data):
-    """A quality score recorded for a series of the store, every sub-score at ``score`` (D12)."""
+    """A quality score recorded for a series of the store, every sub-score at ``score`` (D12).
+
+    ``unknown``: sub-scores left unknown, as while their cut-off in ``data_sources.yaml`` is
+    ``A_DEFINIR`` (ADR-016); the score is then unknown too, and the series not evaluable (B119).
+    """
 
     instrument_id: str = Field(min_length=1, max_length=64)
     score: float = Field(ge=0, le=1)
+    unknown: tuple[Literal["gaps", "corporate_actions", "outliers", "freshness"], ...] = Field(
+        default=(), max_length=4
+    )
     assessed_at: AwareDatetime  # the date the score holds from
     computed_at: AwareDatetime | None = None  # when it was recorded; by default, assessed_at
 

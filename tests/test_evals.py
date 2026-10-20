@@ -449,6 +449,18 @@ def test_a_subtle_file_is_imported_and_its_quality_scores_recorded(tmp_path: Pat
         assert reference.quality_history("FICT-ACME")[-1]["score"] != 0.5
 
 
+def test_an_unknown_sub_score_leaves_the_score_unknown(tmp_path: Path) -> None:
+    quality = {"instrument_id": "FICT-ACME", "score": 1, "assessed_at": "2026-10-18T12:30:00Z"}
+    quality["unknown"] = ["outliers", "corporate_actions"]
+    path, _refused = case_store(_store_case({"quality": [quality]}), tmp_path)
+    with FinanceStore.open(path, read_only=True) as store:
+        last = store.quality_history("FICT-ACME")[-1]
+    assert (last["score"], last["outliers"], last["corporate_actions"]) == (None, None, None)
+    assert (last["gaps"], last["freshness"]) == (1, 1)
+    with pytest.raises(ValidationError):
+        _store_case({"quality": [{**quality, "unknown": ["volume"]}]})
+
+
 def test_a_case_store_is_checked_when_loaded() -> None:
     with pytest.raises(ValidationError, match="fichier"):
         _store_case({"instruments_csv": INSTRUMENTS + TRAPPED}, refused_imports=2)

@@ -179,16 +179,19 @@ def finance_store() -> Path:
 
 
 def _record_quality(store: FinanceStore, fixture: QualityFixture) -> None:
-    """A score of ``fixture.score`` on every sub-score; the details are those of the series'
-    last recorded score, so that the record reads like a real one."""
+    """A score of ``fixture.score`` on every sub-score but the unknown ones, which leave the
+    score unknown; the details are those of the series' last recorded score, so that the record
+    reads like a real one."""
     history = store.quality_history(fixture.instrument_id)
     if not history:
         raise ValueError(f"{fixture.instrument_id} : aucun score de référence à compléter")
     store.record_quality(
         fixture.instrument_id,
         as_of=fixture.assessed_at,
-        sub_scores=dict.fromkeys(QUALITY_COLUMNS, fixture.score),
-        score=fixture.score,
+        sub_scores={
+            name: None if name in fixture.unknown else fixture.score for name in QUALITY_COLUMNS
+        },
+        score=None if fixture.unknown else fixture.score,
         details=str(history[-1]["details"]),
         computed_at=fixture.computed_at or fixture.assessed_at,
     )
