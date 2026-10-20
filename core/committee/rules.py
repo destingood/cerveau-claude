@@ -2,8 +2,9 @@
 
 - every finding cites a tool call or a page of its analyst's own session;
 - every argument cites findings that exist, and answers only arguments of earlier rounds;
-- the manager treats every argument exactly once, and a figure in an invalidation condition
-  comes from a tool output (R1);
+- the manager treats every argument exactly once, a figure in an invalidation condition comes
+  from a tool output, and a figure in a proposal to act from a tool output or Lucas's question,
+  never from a page (R1, R5);
 - every number and date of every role is traced to its evidence (R1), and no text reads as an
   instruction (R5); a stock order is what the roles argue about, so it is looked for in the pages
   and tool outputs they read, not in what they write (B99);
@@ -34,6 +35,8 @@ from core.guardrails.injection import ORDER_SIGNAL, injection_signals
 from core.verification.trace import FIGURE_ORIGIN, Evidence, trace
 
 _SOURCE = re.compile(r"^source \[([1-9][0-9]*)\]$")
+QUESTION = "question"  # origins of the evidence the code writes: Lucas's question, the date
+TODAY = "date du jour"
 
 
 @dataclass(frozen=True)
@@ -149,14 +152,28 @@ def manager_errors(
                     f"invalidation[{n}].condition : seuil n° {k} qui ne vient pas d'une sortie "
                     "d'outil (R1)"
                 )
+    if decision.decision == "agir":  # what would size an order: never a page (R1, R5)
+        for k, row in enumerate(trace(decision.proposition, evidence), start=1):
+            origin = row.origin or ""
+            if (
+                row.kind == "nombre"
+                and row.traced
+                and origin not in (QUESTION, TODAY)
+                and call_of(origin) not in calls
+            ):
+                errors.append(
+                    f"proposition : nombre n° {k} d'une décision « agir » qui ne vient ni d'une "
+                    "sortie d'outil ni de la question (R1, R5)"
+                )
     return errors + _common(decision, evidence)
 
 
 def controller_errors(
     report: ControllerReport, *, calls: Collection[str], evidence: Evidence
 ) -> list[str]:
+    """``calls`` are the controller's own: an analyst's call does not price its scenarios."""
     errors = [
-        f"scenarios[{n}].appel : appel d'outil inconnu de cette séance"
+        f"scenarios[{n}].appel : aucun appel d'outil de ton contrôle"
         for n, scenario in enumerate(report.scenarios, start=1)
         if scenario.appel is not None and scenario.appel.strip() not in calls
     ]

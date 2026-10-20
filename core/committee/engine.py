@@ -40,6 +40,8 @@ from pydantic import BaseModel
 
 from core.budget.gate import RequestBudgetExceeded
 from core.committee.rules import (
+    QUESTION,
+    TODAY,
     LimitCheck,
     analyst_errors,
     controller_errors,
@@ -372,21 +374,26 @@ class _Committee:
     # --- evidence ---------------------------------------------------------------------------
 
     def _texts(self, sessions: Sequence[tuple[str, Session]]) -> list[tuple[str, str]]:
-        texts = [("question", self.question), ("date du jour", self.now)]
+        texts = [(QUESTION, self.question), (TODAY, self.now)]
         for member, session in sessions:
-            texts += [(f"{member}:source [{n}]", page) for n, page in sorted(session.pages.items())]
+            texts += [
+                (f"{member}:source [{source.number}]", extract.quote)
+                for source in session.sources
+                for extract in source.extracts
+            ]
             texts += [(f"{member}:recherche web", text) for text in session.search_texts]
         return texts
 
     def _evidence(self, *extra: tuple[str, Session]) -> Evidence:
-        """What a role may cite: the question, the date, every page and every tool output."""
+        """What a role may cite: the question, the date, the search results, every tool output
+        and, of a page, the quotes of the extracts kept: the rest of the page, an extract set
+        aside as an instruction included, is no evidence (R5)."""
         sessions = [*self.sitting.sessions.items(), *extra]
         outputs = [output for _member, session in sessions for output in session.tool_outputs]
         return Evidence(self._texts(sessions), outputs)
 
-    def _calls(self, *extra: Session) -> set[str]:
-        sessions = [*self.sitting.sessions.values(), *extra]
-        return {output.call for session in sessions for output in session.tool_outputs}
+    def _calls(self) -> set[str]:
+        return {output.call for output in self.sitting.tool_outputs()}
 
     # --- material shown to the roles --------------------------------------------------------
 
@@ -530,6 +537,8 @@ class _Committee:
             f"Arguments du débat :\n{self._arguments_view(points)}\n"
             f"Traite chaque argument une fois, retenu ou écarté avec sa raison : {', '.join(ids)}."
             "\nUn seuil chiffré d'une condition d'invalidation doit venir d'une sortie d'outil."
+            "\nSi tu décides d'agir, chaque nombre de la proposition vient d'une sortie d'outil "
+            "ou de la question de Lucas, jamais d'une page."
         )
         constats = {finding.id for finding in self.sitting.constats}
 
@@ -578,7 +587,7 @@ class _Committee:
         def check(report: ControllerReport) -> list[str]:
             return controller_errors(
                 report,
-                calls=self._calls(session),
+                calls={output.call for output in session.tool_outputs},  # its own calls only
                 evidence=self._evidence((card.member, session)),
             )
 
