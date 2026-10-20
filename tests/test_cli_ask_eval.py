@@ -18,7 +18,7 @@ from core.audit import AuditJournal, verify
 from core.budget.gate import BudgetGate
 from core.config import load_config
 from core.config.loader import Config
-from core.evals import harness
+from core.evals import harness, promotion
 from core.evals import report as report_module
 from core.evals.report import Gate
 from core.models import COST_SCHEMA
@@ -355,6 +355,39 @@ def test_a_suite_of_cerveau_is_judged_by_the_report(
     assert "golden · score moyen du juge : 0.75 (seuil 0.80)" in result.stdout
     if not passed:
         assert "Seuil(s) manqué(s) : golden · score moyen du juge" in result.stderr
+
+
+def test_a_live_report_is_sealed_in_the_journal(
+    measured: Path,
+    runs: Runs,
+    journal: Path,
+    budgeted: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Security review M2: `cerveau promotion check` compares the report to this seal."""
+    fake = FakeReports(True)
+    content = {"run": "r", "results": [{"case": "g-1", "score": 0.9}]}
+    monkeypatch.setattr(
+        report_module,
+        "build_report",
+        lambda *args, **options: SimpleNamespace(gates=[fake.gate], to_json=lambda: content),
+    )
+    monkeypatch.setattr(report_module, "write_report", fake.write)
+    args = ["eval", "--live", "--campaign", "essai-1", "golden", "--config-dir", str(budgeted)]
+    result = runner.invoke(app, args)
+    assert result.exit_code == 0, result.output
+    opening, seal = _entries(journal)
+    assert opening["request_id"] == seal["request_id"] == "eval-essai-1"
+    assert seal["versions"] == {"config": load_config(budgeted).digest}
+    payload = AuditJournal(journal).read_payload(seal["payload_ref"])
+    assert payload == {
+        "status": "rapport_eval",
+        "campaign": "essai-1",
+        "run": runs.calls[0][1]["CERVEAU_EVAL_RUN"],
+        "report": promotion.report_digest(content),
+    }
+    assert f"Rapport scellé dans le journal d'audit : {payload['report']}" in result.stdout
+    assert verify(journal).ok
 
 
 def test_the_variables_match_the_harness() -> None:

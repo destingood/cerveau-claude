@@ -8,14 +8,17 @@ and the audit journal; it writes nothing.
 
 A report is a file anyone could edit: its campaign must have been opened live in the
 hash-chained journal (``cerveau eval --live`` journals it before any paid call) under the same
-configuration, and that configuration must still be the current one. A case of the rule that
-the report lacks, or that ended in error, counts against it, never for it.
+configuration, that configuration must still be the current one, and its content must be the
+one the campaign sealed in the journal when it wrote the report: an edited score proves nothing
+(security review of phase 3, M2). A case of the rule that the report lacks, or that ended in
+error, counts against it, never for it.
 """
 
 from __future__ import annotations
 
+import hashlib
 import json
-from collections.abc import Mapping
+from collections.abc import Iterator, Mapping
 from dataclasses import dataclass
 from datetime import datetime
 from decimal import Decimal, InvalidOperation
@@ -30,6 +33,7 @@ from core.evals.judge import golden_threshold
 R1_TO_R5 = frozenset({"R1", "R2", "R3", "R4", "R5"})
 RULES = {("finance", "N1"): "N0_to_N1"}  # the promotions this check measures
 CAMPAIGN_STATUS = "campagne_eval"  # the journal entry of `cerveau eval --live`
+REPORT_STATUS = "rapport_eval"  # the entry that seals the report of a live campaign
 
 
 class PromotionError(ValueError):
@@ -119,11 +123,13 @@ def _breaches(result: Mapping[str, Any]) -> int:
     return value if isinstance(value, int) and not isinstance(value, bool) and value > 0 else 0
 
 
-def campaign_openings(journal: AuditJournal, campaign: str, digest: str) -> list[datetime]:
-    """When ``campaign`` was opened live under the configuration ``digest``, oldest first."""
+def _campaign_entries(
+    journal: AuditJournal, campaign: str, digest: str
+) -> Iterator[tuple[datetime, Mapping[str, Any]]]:
+    """The dated payloads that ``cerveau eval --live`` journaled for ``campaign`` under the
+    configuration ``digest``."""
     if not journal.path.exists():
-        return []
-    found: list[datetime] = []
+        return
     for line in journal.path.read_text(encoding="utf-8").splitlines():
         entry = json.loads(line)
         if entry.get("event") != "DECISION" or entry.get("request_id") != f"eval-{campaign}":
@@ -131,16 +137,54 @@ def campaign_openings(journal: AuditJournal, campaign: str, digest: str) -> list
         if (entry.get("versions") or {}).get("config") != digest or not entry.get("payload_ref"):
             continue
         payload = journal.read_payload(entry["payload_ref"])
-        opened = _when(entry.get("ts"))
+        moment = _when(entry.get("ts"))
         if (
-            opened is not None
+            moment is not None
             and isinstance(payload, Mapping)
-            and payload.get("status") == CAMPAIGN_STATUS
             and payload.get("campaign") == campaign
-            and payload.get("mode") == "live"
         ):
-            found.append(opened)
-    return sorted(found)
+            yield moment, payload
+
+
+def campaign_openings(journal: AuditJournal, campaign: str, digest: str) -> list[datetime]:
+    """When ``campaign`` was opened live under the configuration ``digest``, oldest first."""
+    return sorted(
+        moment
+        for moment, payload in _campaign_entries(journal, campaign, digest)
+        if payload.get("status") == CAMPAIGN_STATUS and payload.get("mode") == "live"
+    )
+
+
+def report_digest(report: Mapping[str, Any]) -> str:
+    """The SHA-256 of a report's content, whatever the layout or the line endings of its file."""
+    text = json.dumps(report, ensure_ascii=False, sort_keys=True, separators=(",", ":"))
+    return "sha256:" + hashlib.sha256(text.encode("utf-8")).hexdigest()
+
+
+def seal_report(
+    journal: AuditJournal, report: Mapping[str, Any], *, campaign: str, run: str, config: str
+) -> str:
+    """Journals the content digest of the report a live campaign has just written (R11)."""
+    content = report_digest(report)
+    journal.append(
+        actor="orchestrator",
+        event="DECISION",
+        request_id=f"eval-{campaign}",
+        versions={"config": config},
+        payload={"status": REPORT_STATUS, "campaign": campaign, "run": run, "report": content},
+    )
+    return content
+
+
+def report_seals(
+    journal: AuditJournal, campaign: str, run: str, digest: str
+) -> list[tuple[datetime, str]]:
+    """When the reports of ``run`` were sealed, with their content digests, oldest first."""
+    return sorted(
+        (moment, str(payload.get("report")))
+        for moment, payload in _campaign_entries(journal, campaign, digest)
+        if payload.get("status") == REPORT_STATUS and payload.get("run") == run
+    )
 
 
 def _rule_cases(root: Path) -> list[Case]:
@@ -197,6 +241,21 @@ def check_promotion(
         measured = f"{campaign}, ouverte le {opened.isoformat(timespec='seconds')}"
     expected = "ouverte en réel, avant le rapport, sous la configuration actuelle"
     checks.append(Check("campagne (journal d'audit)", expected, measured, opened is not None))
+
+    seals = report_seals(journal, campaign, run, digest) if campaign and run and chain.ok else []
+    sealed = [moment for moment, content in seals if content == report_digest(report)]
+    if campaign is None or run is None:
+        measured = "aucune campagne ou aucun run"
+    elif not chain.ok:
+        measured = f"journal d'audit invalide ({len(chain.errors)} erreur(s))"
+    elif not seals:
+        measured = f"run {run} : aucun rapport scellé par la campagne"
+    elif not sealed:
+        measured = f"run {run} : contenu différent de celui scellé par la campagne"
+    else:
+        measured = f"run {run}, scellé le {sealed[-1].isoformat(timespec='seconds')}"
+    expected = "contenu scellé dans le journal par la campagne qui l'a écrit"
+    checks.append(Check("rapport (journal d'audit)", expected, measured, bool(sealed)))
 
     others = sorted({str(r.get("run")) for r in results.values() if r.get("run") != run})
     measured = run or "absent"

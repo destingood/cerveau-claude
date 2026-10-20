@@ -90,7 +90,7 @@ def test_a_clean_decision_shows_no_error() -> None:
     assert decision_errors(payload) == []
 
 
-@pytest.mark.parametrize("status", ["refus", "clarification", "campagne_eval"])
+@pytest.mark.parametrize("status", ["refus", "clarification", "campagne_eval", "rapport_eval"])
 def test_a_refusal_or_a_question_back_is_not_an_error(status: str) -> None:
     assert decision_errors({"status": status}) == []
 

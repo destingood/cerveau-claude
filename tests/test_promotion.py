@@ -21,6 +21,8 @@ from core.evals.promotion import (
     PromotionError,
     check_promotion,
     load_report,
+    report_digest,
+    seal_report,
 )
 from interfaces.cli.main import app
 from tests.conftest import REPO_ROOT
@@ -79,7 +81,19 @@ def journal(tmp_path: Path, config: Config) -> AuditJournal:
     return audit
 
 
-def _check(report: dict[str, Any], config: Config, journal: AuditJournal, **kwargs: Any) -> Any:
+def _seal(report: dict[str, Any], config: Config, journal: AuditJournal) -> None:
+    """What `cerveau eval --live` journals once it has written ``report``."""
+    campaign, run = report.get("campaign"), report.get("run")
+    if campaign and run:
+        seal_report(journal, report, campaign=campaign, run=run, config=config.digest)
+
+
+def _check(
+    report: dict[str, Any], config: Config, journal: AuditJournal, *, seal: bool = True,
+    **kwargs: Any,
+) -> Any:  # fmt: skip
+    if seal:
+        _seal(report, config, journal)
     return check_promotion(
         report, config, domain="finance", level="N1", journal=journal, now=NOW, **kwargs
     )
@@ -190,11 +204,44 @@ def test_a_campaign_opened_offline_or_under_another_config_does_not_count(
 
 
 def test_a_broken_journal_proves_nothing(config: Config, journal: AuditJournal) -> None:
+    report = _report(config.digest)
+    _seal(report, config, journal)
     with journal.path.open("a", encoding="utf-8") as handle:
         handle.write('{"seq": 99}\n')
-    result = _check(_report(config.digest), config, journal)
-    assert _failed(result) == ["campagne (journal d'audit)"]
+    result = _check(report, config, journal, seal=False)
+    assert _failed(result) == ["campagne (journal d'audit)", "rapport (journal d'audit)"]
     assert "journal d'audit invalide" in result.checks[1].measured
+    assert "journal d'audit invalide" in result.checks[2].measured
+
+
+def test_an_edited_report_proves_nothing(config: Config, journal: AuditJournal) -> None:
+    """Security review M2: the scores are the ones the campaign sealed when it wrote them."""
+    report = _report(config.digest)
+    _seal(report, config, journal)
+    assert _check(report, config, journal, seal=False).passed
+    reordered = dict(reversed(list(report.items())))  # same content, another layout
+    assert report_digest(reordered) == report_digest(report)
+    assert _check(reordered, config, journal, seal=False).passed
+
+    _ruled(report).update(passed=True, r5_breaches=0, note="")  # any edit of the content
+    result = _check(report, config, journal, seal=False)
+    assert _failed(result) == ["rapport (journal d'audit)"]
+    assert (
+        result.checks[2].measured
+        == f"run {RUN} : contenu différent de celui scellé par la campagne"
+    )
+
+
+def test_a_report_never_sealed_proves_nothing(config: Config, journal: AuditJournal) -> None:
+    report = _report(config.digest)
+    result = _check(report, config, journal, seal=False)
+    assert _failed(result) == ["rapport (journal d'audit)"]
+    assert result.checks[2].measured == f"run {RUN} : aucun rapport scellé par la campagne"
+    seal_report(journal, report, campaign=CAMPAIGN, run=RUN, config="sha256:" + "2" * 64)
+    seal_report(
+        journal, report, campaign=CAMPAIGN, run="20261019-090000-ffff", config=config.digest
+    )
+    assert _failed(_check(report, config, journal, seal=False)) == ["rapport (journal d'audit)"]
 
 
 def test_the_approval_must_cite_what_proves_the_rule(config: Config, journal: AuditJournal) -> None:
@@ -247,7 +294,9 @@ def test_the_command_says_the_signature_stays_lucas_s(
     audit = AuditJournal(tmp_path / "audit" / "journal.jsonl")
     _open(audit, config.digest, at=datetime.now().astimezone() - timedelta(hours=1))
     report = _report(config.digest)
-    result = _cli(_written(tmp_path, report), audit, config_dir)
+    path = _written(tmp_path, report)
+    _seal(report, config, audit)
+    result = _cli(path, audit, config_dir)
     assert result.exit_code == 0, result.output
     assert "Règle prouvée" in result.output and "restent à Lucas" in result.output
     assert "✗" not in result.output

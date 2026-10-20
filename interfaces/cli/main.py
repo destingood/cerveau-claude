@@ -292,20 +292,27 @@ def _eval_report(
     """Writes the run's report and returns the gates it misses (R9: thresholds as declared)."""
     if not suites:
         return []
+    from core.evals.promotion import seal_report
     from core.evals.report import build_report, write_report
 
+    config = _load(config_dir)
     report = build_report(
         out_dir,
         suites,  # type: ignore[arg-type]  # names checked by evaluate.is_measured
         mode=mode,
         run=run,
-        config=_load(config_dir),
+        config=config,
         campaign=campaign,
         root=project_root(),
     )
     bases = [out_dir / evaluate.REPORT_NAME, *([copy] if copy is not None else [])]
     written = write_report(report, *bases)
     typer.echo(f"Rapport : {', '.join(str(path) for path in written)}")
+    if campaign is not None:  # an edited live report proves nothing (`cerveau promotion check`)
+        content = json.loads(json.dumps(report.to_json()))  # the report as its file reads back
+        journal = AuditJournal(default_journal_path(project_root()))
+        digest = seal_report(journal, content, campaign=campaign, run=run, config=config.digest)
+        typer.echo(f"Rapport scellé dans le journal d'audit : {digest}")
     missed = [f"{gate.suite} · {gate.name}" for gate in report.gates if not gate.passed]
     for gate in report.gates:
         status = "atteint" if gate.passed else "MANQUÉ"
