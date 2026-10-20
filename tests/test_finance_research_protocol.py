@@ -22,7 +22,13 @@ from scipy.stats import kurtosis, rankdata, skew
 
 from core.config.loader import CrisisWindow, ResearchConfig, load_config
 from core.finance.fixtures import load_research, research_costs, research_crises
-from core.finance.model import CorporateAction, Instrument, PriceRow
+from core.finance.model import (
+    CorporateAction,
+    Instrument,
+    PriceRow,
+    ResearchTrial,
+    params_sha256,
+)
 from core.finance.research import engine
 from core.finance.research.execution import Costs
 from core.finance.research.overfitting import (
@@ -44,6 +50,7 @@ from core.finance.research.protocol import (
     ProtocolError,
     ProtocolResult,
     _crisis_gate,
+    _deflated,
     benchmark_curve,
     crisis_measures,
     invariance_sample,
@@ -53,7 +60,7 @@ from core.finance.research.protocol import (
 )
 from core.finance.research.strategy import Params, Strategy, Weights
 from core.finance.research.view import MarketHistory, PointInTimeView
-from core.finance.store import FinanceStore
+from core.finance.store import FinanceStore, RecordedTrial
 
 REPO_CONFIG = Path(__file__).resolve().parents[1] / "config"
 TREND, WALK = "FICT-RTEND", "FICT-RALEA3"
@@ -135,6 +142,49 @@ def test_moments_are_population_moments() -> None:
     for flat in ([0.01] * 20, [0.0] * 5, []):  # the mean of 20 × 0.01 is not exactly 0.01
         with pytest.raises(OverfittingError, match="sans dispersion"):
             moments(flat)
+
+
+def recorded(key: int, sharpe: float) -> RecordedTrial:
+    """A journal row whose return series is fingerprinted by ``key``."""
+    params = {"cle": key}
+    trial = ResearchTrial(
+        strategy="doublons",
+        code_sha256="c" * 64,
+        params=params,
+        params_sha256=params_sha256(params),
+        origin="protocole",
+        start=START,
+        end=END,
+        sessions=1250,
+        sharpe_daily=sharpe,
+        sharpe_annual=sharpe * math.sqrt(252),
+        series_sha256=f"{key:064x}",
+        costs="test",
+        engine="test",
+    )
+    return RecordedTrial(trial_id=key, recorded_at=RECORDED, trial=trial)
+
+
+def test_repeated_trials_never_raise_the_deflated_sharpe() -> None:
+    """Quant review of phase 3, M1: twenty copies of a middling trial cut the family's raw
+    variance by two thirds, which lifted the DSR from 0,84 to 0,90. N grows, V may not shrink."""
+    grid = [recorded(k, 0.03 + 0.03 * (k - 4.5) / 4.5) for k in range(10)]
+    copies = [recorded(10, 0.03)] * 20
+    returns = np.random.default_rng(3).normal(0.0006, 0.01, 1250)
+    chosen = grid[-1].trial
+    alone, _ = _deflated(returns, chosen, grid, [r.trial for r in grid])
+    padded, _ = _deflated(returns, chosen, [*grid, *copies], [r.trial for r in grid])
+    assert alone is not None and padded is not None
+    assert (alone.trials, padded.trials) == (10, 30)
+    raw = trial_variance([r.trial.sharpe_daily for r in [*grid, *copies]])
+    assert raw < alone.variance / 3 and padded.variance == alone.variance
+    assert alone.value is not None and padded.value is not None
+    assert padded.value < alone.value
+    # A narrow grid of this version: the copies of the past count once.
+    narrow, _ = _deflated(returns, chosen, [*grid, *copies], [grid[4].trial, grid[5].trial])
+    assert narrow is not None
+    distinct = trial_variance([r.trial.sharpe_daily for r in [*grid, copies[0]]])
+    assert narrow.variance == distinct > raw
 
 
 def test_the_trial_variance_counts_a_trial_without_spread_as_zero() -> None:
@@ -512,7 +562,8 @@ def test_the_planted_trend_passes_every_gate(
     assert {r.trial.code_sha256 for r in rows} == {result.code_sha256}
     assert rows[-1].trial.params == evaluation.chosen
     assert evaluation.dsr.trials == 10
-    assert evaluation.dsr.variance == trial_variance([r.trial.sharpe_daily for r in rows])
+    sharpes = [r.trial.sharpe_daily for r in rows]
+    assert evaluation.dsr.variance == max(trial_variance(sharpes), trial_variance(sharpes[:9]))
     journal.close()
 
 

@@ -72,7 +72,10 @@ Option 3, déterministe et sans modèle de langage (`cerveau strategy protocol <
     sélectionner.
 - **DSR** :
   - N est le nombre brut de lignes de la famille (même stratégie, toutes versions et origines) ;
-    V est la variance (ddof = 1) de leurs Sharpe quotidiens ;
+    V est la plus grande de trois variances (ddof = 1) de Sharpe quotidiens : celle de la
+    famille, celle de ses séries distinctes (fenêtre et empreinte de la série) et celle de la grille
+    en cours. Des copies d'un essai moyen baissaient V et relevaient le DSR ; répéter un essai ne
+    peut plus que relever SR₀ (revue quantitative de phase 3, M1) ;
   - SR, γ₃ et γ₄ sont calculés sur les rendements nets de développement de la configuration
     retenue ;
   - si N = 1 ou V = 0, SR₀ = 0 ;

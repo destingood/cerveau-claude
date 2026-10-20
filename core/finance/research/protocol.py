@@ -133,7 +133,7 @@ class CrisisMeasure:
 class DeflatedSharpe:
     value: float | None  # None when the formula does not apply to the moments
     trials: int  # N: the family's rows in the journal, all origins
-    variance: float  # V: of their daily Sharpe ratios
+    variance: float  # V: of their daily Sharpe ratios, never lowered by a repeat (``_variance``)
     sharpe: float  # SR: daily, of the chosen configuration on the development sample
     skewness: float
     kurtosis: float
@@ -389,8 +389,30 @@ def _column_sharpes(runs: Sequence[BacktestResult]) -> list[float]:
     return [_or_zero(sharpe(value_returns(r.values).tolist(), 1)) for r in runs]
 
 
+def _variance(family: Sequence[RecordedTrial], grid: Sequence[ResearchTrial]) -> float:
+    """V: the largest variance of the family's Sharpe ratios, of its distinct return series and
+    of the current grid's development runs.
+
+    Copies of a middling trial shrink the family's variance while N grows, which lowers SR₀ and
+    raises the DSR (quant review of phase 3, M1). A series counts once by its window and
+    fingerprint, and the grid's own spread is a floor: repeating a trial can only raise SR₀.
+    """
+    distinct = {
+        (row.trial.start, row.trial.end, row.trial.series_sha256): row.trial.sharpe_daily
+        for row in family
+    }
+    return max(
+        trial_variance([row.trial.sharpe_daily for row in family]),
+        trial_variance(list(distinct.values())),
+        trial_variance([trial.sharpe_daily for trial in grid]),
+    )
+
+
 def _deflated(
-    chosen_returns: np.ndarray, chosen: ResearchTrial, family: Sequence[RecordedTrial]
+    chosen_returns: np.ndarray,
+    chosen: ResearchTrial,
+    family: Sequence[RecordedTrial],
+    grid: Sequence[ResearchTrial],
 ) -> tuple[DeflatedSharpe | None, str | None]:
     """The DSR of the chosen configuration against every trial of its family (ADR-026)."""
     try:
@@ -398,7 +420,7 @@ def _deflated(
     except OverfittingError as exc:
         return None, str(exc)
     trials = len(family)
-    variance = trial_variance([row.trial.sharpe_daily for row in family])
+    variance = _variance(family, grid)
     threshold = expected_max_sharpe(trials, variance)
     sr = _or_zero(chosen.sharpe_daily)
     value = deflated_sharpe(sr, chosen.sessions, skewness, kurtosis, threshold)
@@ -523,7 +545,9 @@ def run_protocol(
         if row.trial.origin == "protocole-final" and row.trial.code_sha256 == code
     )
     store.add_trials(trials, recorded_at=recorded_at)
-    dsr, dsr_reason = _deflated(returns[:, chosen], trials[chosen], store.trials(strategy_id))
+    dsr, dsr_reason = _deflated(
+        returns[:, chosen], trials[chosen], store.trials(strategy_id), trials[: len(runs)]
+    )
     # Returns run from the second session: return row k ends at session k + 1.
     folds = tuple(
         Fold(
