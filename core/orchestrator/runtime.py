@@ -3,14 +3,15 @@
 The graph state may be traced (commit 13); the ``Run`` is not. It holds the raw question, the
 pseudonym table and the raw URLs Lucas gave, and it hands out the metered models (each call
 checked against the request's budget and the kill switch) and the tools of the routed pack's
-plugins.
+plugins. A plugin's server starts at the call of its first tool (B98): a request that calls two
+of the finance pack's seven plugins starts two processes, not seven.
 """
 
 from __future__ import annotations
 
 import asyncio
 from collections.abc import AsyncIterator, Callable, Mapping, Sequence
-from contextlib import AbstractAsyncContextManager, asynccontextmanager, suppress
+from contextlib import AbstractAsyncContextManager, asynccontextmanager
 from dataclasses import dataclass, field
 from datetime import datetime
 from pathlib import Path
@@ -80,12 +81,13 @@ PluginOpeners = Callable[[str], ToolboxOpener | None]  # plugin → its opener, 
 class McpToolbox:
     def __init__(self, plugin: McpPlugin) -> None:
         self._plugin = plugin
-        kept = {tool.name for tool in plugin.tools}
+        self._tools = tuple(plugin.tools)  # planned or published: those given to the planner
+        kept = {tool.name for tool in self._tools}
         self._specs = {spec.name: spec for spec in plugin.manifest.tools if spec.name in kept}
 
     @property
     def tools(self) -> Sequence[BaseTool]:
-        return tuple(self._plugin.tools)
+        return self._tools
 
     @property
     def skipped(self) -> Mapping[str, str]:
@@ -105,13 +107,40 @@ class McpToolbox:
         return result
 
 
-def mcp_toolbox(plugin_dir: Path) -> ToolboxOpener:
+class LazyPlugin:
+    """A plugin's MCP server, started at the call of its first tool (B98).
+
+    ``plan`` gives its tools at once, from the manifest that the registry has checked and as the
+    policy engine scopes them; the holder starts the server at the first call (McpPlugin). Called
+    as an opener, it starts the server at once.
+    """
+
+    def __init__(self, plugin_dir: Path, *, target: Any = None) -> None:
+        self.plugin_dir = plugin_dir
+        self._target = target
+
     @asynccontextmanager
-    async def open_toolbox(scope: RequestScope) -> AsyncIterator[Toolbox]:
-        async with McpPlugin(plugin_dir, scope) as plugin:
+    async def __call__(self, scope: RequestScope) -> AsyncIterator[Toolbox]:
+        async with McpPlugin(self.plugin_dir, scope, target=self._target) as plugin:
             yield McpToolbox(plugin)
 
-    return open_toolbox
+    def plan(self, scope: RequestScope, holder: _Holder) -> Toolbox:
+        plugin = McpPlugin(self.plugin_dir, scope, target=self._target)
+
+        @asynccontextmanager
+        async def enter(_scope: RequestScope) -> AsyncIterator[Toolbox]:
+            async with plugin:
+                yield McpToolbox(plugin)
+
+        async def connect() -> None:
+            await holder.open(enter, scope)
+
+        plugin.plan(connect)
+        return McpToolbox(plugin)
+
+
+def mcp_toolbox(plugin_dir: Path) -> LazyPlugin:
+    return LazyPlugin(plugin_dir)
 
 
 class PluginSet:
@@ -190,13 +219,18 @@ class _Holder:
                     raise
 
         self._task = asyncio.create_task(hold())
-        return await ready
+        try:
+            return await ready
+        except asyncio.CancelledError:  # a start cut at its timeout (B98): the server task stops
+            self._task.cancel()
+            raise
 
     async def aclose(self) -> None:
         self._release.set()
         if self._task is not None:
-            with suppress(Exception):
-                await self._task
+            await asyncio.wait({self._task})
+            if not self._task.cancelled():
+                self._task.exception()  # retrieved: an error on closing never masks the answer
 
 
 @dataclass(eq=False)
@@ -264,7 +298,8 @@ class Run:
         return reply
 
     async def open_tools(self, domain: str, plugins: Sequence[str]) -> PluginSet:
-        """Opens the plugins once per request, side by side; one that fails is skipped."""
+        """The plugins' tools, once per request; one that fails is skipped. A ``LazyPlugin``
+        starts at its first call (B98), any other opener at once, side by side."""
         if self.toolbox is not None:
             return self.toolbox
         scope = RequestScope(
@@ -284,6 +319,8 @@ class Run:
             holder = _Holder()
             self._holders.append(holder)
             try:
+                if isinstance(opener, LazyPlugin):
+                    return opener.plan(scope, holder)
                 return await holder.open(opener, scope)
             except McpAdapterError as exc:
                 return str(exc)

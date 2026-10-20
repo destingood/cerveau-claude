@@ -178,6 +178,7 @@ def audit_payload(run: Run, state: CerveauState, *, status: str | None = None) -
             "masked_urls": draft.masked_urls,
             "refused_searches": draft.refused_searches,
             "refused_outputs": draft.refused_outputs,
+            "bounded_outputs": draft.bounded_outputs,
             "partial": draft.partial,
             "limit": draft.limit,
             "format_issues": len(draft.format_issues),
@@ -231,7 +232,8 @@ def journal_decision(run: Run, payload: dict[str, Any]) -> None:
 
 
 def halted_state(run: Run) -> CerveauState:
-    """R4: the state the interrupted node was given, with the kill switch's refusal."""
+    """R4: the state the interrupted node was given, with what it had produced when it keeps it
+    (the planner's partial draft, the committee's session: B97), and the kill switch's refusal."""
     state = run.last_state
     if not isinstance(state, CerveauState):
         state = CerveauState(request_id=run.request_id)

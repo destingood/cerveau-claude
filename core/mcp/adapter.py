@@ -6,6 +6,10 @@ publishes identically (description, annotations, schemas), and asks the policy e
 tool's action class. Every call is checked again (kill switch, policy), counted in the request
 budget, time-limited and journaled as ``TOOL_CALL`` without the result content.
 
+``plan`` gives the tools before the server starts (B98): the registry has checked the manifest and
+the policy engine scopes its tools; the server then starts at the first call, in a task of its own,
+and a tool it publishes differently from the manifest is refused at its call, with the reason.
+
 The LangChain tools answer in ``content_and_artifact`` form: the message content is a neutral
 status line and the structured result travels as the artifact. External content therefore never
 reaches a model through this adapter; the graph decides what the reader and the planner see (R5).
@@ -18,7 +22,7 @@ import json
 import os
 import sys
 import time
-from collections.abc import Callable, Mapping, Sequence
+from collections.abc import Awaitable, Callable, Mapping, Sequence
 from contextlib import AsyncExitStack
 from dataclasses import dataclass
 from pathlib import Path
@@ -139,11 +143,19 @@ class McpPlugin:
         self._client: Client | None = None
         self.tools: list[BaseTool] = []
         self.skipped: dict[str, str] = {}
+        self._connect: Callable[[], Awaitable[None]] | None = None
+        self._connecting = asyncio.Lock()
+        self._connected = False
+        self._connect_error: str | None = None
 
     async def __aenter__(self) -> McpPlugin:
         try:
             self._client = await self._stack.enter_async_context(Client(self._target))
             listed = (await self._client.list_tools()).tools
+        except asyncio.CancelledError:  # a start cut at its timeout (B98) leaves no server behind
+            await self._stack.aclose()
+            self._client = None
+            raise
         except Exception as exc:
             await self._stack.aclose()
             raise McpAdapterError(
@@ -161,6 +173,43 @@ class McpPlugin:
     @property
     def version(self) -> str:
         return f"{self.manifest.id}@{self.manifest.version}"
+
+    def plan(self, connect: Callable[[], Awaitable[None]]) -> None:
+        """B98: the manifest's tools that the policy engine allows, before the server starts.
+
+        ``connect`` starts the server (``async with`` this plugin, in a task that keeps it open);
+        the first call awaits it, then checks the published tools as ``__aenter__`` does.
+        """
+        self._connect = connect
+        self.tools = []
+        for spec in self.manifest.tools:
+            decision = self._decide(spec)
+            if decision.allowed:
+                self.tools.append(self._as_langchain(spec))
+            else:
+                self.skipped[spec.name] = "politique : " + " ; ".join(decision.reasons)
+
+    async def _started(self) -> str | None:
+        """Starts a planned server once, whoever calls first; the reason it could not start.
+
+        Every call takes the lock, so none goes through before the published tools are checked.
+        """
+        if self._connect is None:
+            return None
+        async with self._connecting:
+            if not self._connected and self._connect_error is None:
+                timeout = min(self._timeout_s, self._scope.budget.remaining_seconds())
+                try:
+                    await asyncio.wait_for(self._connect(), max(timeout, 0.0))
+                except McpAdapterError as exc:
+                    self._connect_error = str(exc)
+                except TimeoutError:
+                    self._connect_error = (
+                        f"plugin « {self.manifest.id} » : démarrage au-delà de {timeout:.0f} s"
+                    )
+                else:
+                    self._connected = True
+        return self._connect_error
 
     def _decide(self, spec: ToolSpec) -> PolicyDecision:
         scope = self._scope
@@ -258,8 +307,17 @@ class McpPlugin:
         except RequestBudgetExceeded as exc:
             self._journal(spec, shown, status="budget_depasse", limit=exc.limit)
             raise
-        if self._client is None:
-            raise McpAdapterError(f"plugin « {self.manifest.id} » : session fermée")
+        failure = await self._started()
+        if failure is not None or self._client is None:
+            failure = failure or f"plugin « {self.manifest.id} » : session fermée"
+            self._journal(
+                spec, shown, status="demarrage_impossible", error=failure[:MAX_ERROR_CHARS]
+            )
+            raise McpAdapterError(failure)
+        if self._connect is not None and spec.name in self.skipped:  # published ≠ manifest
+            reason = self.skipped[spec.name]
+            self._journal(spec, shown, status="indisponible", error=reason[:MAX_ERROR_CHARS])
+            raise ToolException(f"{spec.name} : outil indisponible ({reason})")
         timeout = min(self._timeout_s, self._scope.budget.remaining_seconds())
         provider = self._priced_tools.get(spec.name)
         search: SearchCall | None = None

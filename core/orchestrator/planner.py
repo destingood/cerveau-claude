@@ -6,8 +6,9 @@ page: the reader turns it into checked extracts first (``reader.py``). A search 
 address reads as an instruction is shown without it and cannot be opened (B68). The other tools
 (finance)
 compute: the planner reads each figure by its display only, and every result is kept for the R1
-trace. Hitting a request limit gives an honest partial answer built from the verified extracts
-only, without a conclusion.
+trace; a result too long for its context shows the first and last items of its lists (B96).
+Hitting a request limit gives an honest partial answer built from the verified extracts only,
+without a conclusion; the kill switch keeps that partial draft for the journal (B97, R4).
 """
 
 from __future__ import annotations
@@ -36,7 +37,7 @@ from core.guardrails.injection import injection_signals
 from core.guardrails.input import mark_untrusted
 from core.mcp.adapter import McpAdapterError, ToolRefusedError
 from core.orchestrator.reader import Page, extracts_view, read_page
-from core.orchestrator.runtime import Run, Toolbox
+from core.orchestrator.runtime import KillSwitchEngaged, Run, Toolbox
 from core.orchestrator.state import (
     CerveauState,
     Complexity,
@@ -58,12 +59,15 @@ MAX_PLANNER_TURNS = 15
 MAX_TITLE_CHARS = 120
 MAX_PARTIAL_QUOTES = 10
 MAX_VIEW_CHARS = 64_000  # about 16 000 tokens of a computed result in the planner's context
+MAX_LIST_ITEMS = 64  # items shown at each end of a list in a bounded result (B96)
+OMITTED = "… {count} élément(s) non transmis ici (résultat borné) …"
 LIMIT_TEXT = {
     "tool_calls": "le nombre maximal d'appels d'outils",
     "tokens": "le nombre maximal de tokens",
     "seconds": "la durée maximale",
     "tours": "le nombre maximal de tours du planificateur",
     "format": "deux réponses mal formées du planificateur",
+    "kill_switch": "l'arrêt d'urgence (kill switch)",
 }
 FORMAT_REPAIR = (
     "Ta réponse ne respecte pas le format demandé : {issues}. "
@@ -118,6 +122,7 @@ class Session:
     masked_urls: int = 0
     refused_searches: int = 0  # queries that carried a figure or an identifier of a tool (R6)
     refused_outputs: int = 0  # tool results that read as an instruction (R5)
+    bounded_outputs: int = 0  # results shown with their lists cut (B96)
     turns: int = 0
     reader_failures: int = 0
     tool_outputs: list[ToolOutput] = field(default_factory=list)  # for the R1 trace
@@ -136,6 +141,7 @@ class Session:
             masked_urls=self.masked_urls,
             refused_searches=self.refused_searches,
             refused_outputs=self.refused_outputs,
+            bounded_outputs=self.bounded_outputs,
             turns=self.turns,
             **extra,
         )
@@ -325,11 +331,40 @@ def figure_view(value: object) -> object:
     return value
 
 
+def bounded_view(value: object, keep: int) -> object:
+    """``value`` with each list longer than ``2 * keep`` items cut to its ``keep`` first and last
+    items around a note of how many are left out (B96): deterministic, nothing is recomputed."""
+    if isinstance(value, dict):
+        return {key: bounded_view(item, keep) for key, item in value.items()}
+    if isinstance(value, list):
+        items = [bounded_view(item, keep) for item in value]
+        if len(items) > 2 * keep:
+            note = OMITTED.format(count=len(items) - 2 * keep)
+            return [*items[:keep], note, *items[-keep:]]
+        return items
+    return value
+
+
+def _compact(value: object) -> str:
+    return json.dumps(value, ensure_ascii=False, separators=(",", ":"))
+
+
+def planner_view(result: object) -> tuple[str, bool]:
+    """The result as the planner reads it, and whether its lists were cut to fit (B96)."""
+    shown = figure_view(result)
+    view, keep = _compact(shown), MAX_LIST_ITEMS
+    bounded = False
+    while len(view) > MAX_VIEW_CHARS and keep >= 1:
+        view, keep, bounded = _compact(bounded_view(shown, keep)), keep // 2, True
+    return view, bounded
+
+
 async def _compute(session: Session, toolbox: Toolbox, name: str, arguments: dict[str, Any]) -> str:
     result = await toolbox.call(name, arguments)
-    view = json.dumps(figure_view(result), ensure_ascii=False, separators=(",", ":"))
-    if len(view) > MAX_VIEW_CHARS:
-        return TOO_LARGE.format(name=name, size=len(view), limit=MAX_VIEW_CHARS)
+    view, bounded = planner_view(result)
+    if len(view) > MAX_VIEW_CHARS:  # its size before any cut
+        size = len(_compact(figure_view(result)))
+        return TOO_LARGE.format(name=name, size=size, limit=MAX_VIEW_CHARS)
     number = session.tool_counts.get(name, 0) + 1
     call = f"{session.call_prefix}{name}#{number}"
     output = tool_output(call, name, result)  # a malformed figure raises here
@@ -339,7 +374,8 @@ async def _compute(session: Session, toolbox: Toolbox, name: str, arguments: dic
         session.refused_outputs += 1
         return OUTPUT_REFUSED.format(name=name)
     session.tool_counts[name] = number
-    session.tool_outputs.append(output)
+    session.tool_outputs.append(output)  # whole: the R1 trace keeps what the view leaves out
+    session.bounded_outputs += int(bounded)
     return mark_untrusted(view, source=output.call)
 
 
@@ -414,4 +450,7 @@ async def plan_node(run: Run, state: CerveauState) -> dict[str, Any]:
             return {"draft": session.draft(answer, format_issues=tuple(issues))}
     except RequestBudgetExceeded as exc:
         return {"draft": partial_draft(session, exc.limit)}
+    except KillSwitchEngaged:  # R4, R11: the journal keeps what the planner had produced (B97)
+        run.last_state = state.model_copy(update={"draft": partial_draft(session, "kill_switch")})
+        raise
     return {"draft": partial_draft(session, "tours")}

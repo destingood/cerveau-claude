@@ -7,13 +7,15 @@ signatures the SDK reads at runtime.
 import asyncio
 import json
 import sys
-from collections.abc import Awaitable, Callable
+from collections.abc import AsyncIterator, Awaitable, Callable
+from contextlib import asynccontextmanager
 from dataclasses import replace
 from pathlib import Path
 from typing import Any
 
 import pytest
 from langchain_core.messages import ToolMessage
+from langchain_core.tools import ToolException
 from mcp import StdioServerParameters
 from mcp.server import MCPServer
 
@@ -30,6 +32,7 @@ from core.mcp.adapter import (
     server_environment,
 )
 from core.models import CostCalculator, Meter
+from core.orchestrator.runtime import LazyPlugin, _Holder
 from core.policy.engine import KILL_SWITCH_FILE
 from plugins.finance_risk.server import build_server as build_risk_server
 from plugins.web_research.guard import FetchError
@@ -391,3 +394,171 @@ def test_a_server_that_cannot_start_is_reported(scope: RequestScope) -> None:
     target = StdioServerParameters(command=sys.executable, args=["-c", "raise SystemExit(3)"])
     with pytest.raises(McpAdapterError, match="serveur injoignable"):
         session(scope, lambda p: asyncio.sleep(0, p), target)
+
+
+# --- a server started at its first call (B98) --------------------------------------------------
+
+
+def planned(
+    scope: RequestScope, target: Any = None, **kwargs: Any
+) -> tuple[McpPlugin, _Holder, list[str]]:
+    """A plugin planned as ``LazyPlugin.plan`` does, with the starts of its server counted."""
+    server = build_server(FakeProvider(), FakeReader()) if target is None else target
+    plugin = McpPlugin(PLUGIN, scope, target=server, **kwargs)
+    holder, starts = _Holder(), []
+
+    @asynccontextmanager
+    async def enter(_scope: RequestScope) -> AsyncIterator[Any]:
+        starts.append(plugin.manifest.id)
+        async with plugin:
+            yield plugin
+
+    async def connect() -> None:
+        await holder.open(enter, scope)
+
+    plugin.plan(connect)
+    return plugin, holder, starts
+
+
+def spec(plugin: McpPlugin, name: str) -> Any:
+    return next(tool for tool in plugin.manifest.tools if tool.name == name)
+
+
+def test_a_planned_plugin_gives_its_tools_before_its_server_starts(scope: RequestScope) -> None:
+    async def go() -> tuple[list[str], list[str], dict[str, Any]]:
+        plugin, holder, starts = planned(scope)
+        names = sorted(tool.name for tool in plugin.tools)
+        before = list(starts)
+        try:
+            _content, result = await plugin.call(spec(plugin, "web_search"), {"query": "q"})
+        finally:
+            await holder.aclose()
+        return names, [*before, "|", *starts], result
+
+    names, starts, result = asyncio.run(go())
+    assert names == ["web_read", "web_search"]
+    assert starts == ["|", "web_research"]
+    assert result["results"][0]["url"] == HITS[0].url
+    assert [e["payload"]["status"] for e in entries(scope)] == ["ok"]
+
+
+def test_concurrent_first_calls_start_the_server_once(scope: RequestScope) -> None:
+    async def go() -> list[str]:
+        plugin, holder, starts = planned(scope)
+        search = spec(plugin, "web_search")
+        try:
+            await asyncio.gather(*(plugin.call(search, {"query": f"q{i}"}) for i in range(4)))
+        finally:
+            await holder.aclose()
+        return starts
+
+    assert asyncio.run(go()) == ["web_research"]
+    assert [e["payload"]["status"] for e in entries(scope)] == ["ok"] * 4
+
+
+def test_a_tool_published_differently_is_refused_at_its_call(scope: RequestScope) -> None:
+    async def go() -> tuple[list[str], str]:
+        plugin, holder, _starts = planned(scope, _renamed_argument_server())
+        names = sorted(tool.name for tool in plugin.tools)  # the manifest's, before the start
+        try:
+            with pytest.raises(ToolException, match="outil indisponible") as error:
+                await plugin.call(spec(plugin, "web_read"), {"url": PAGE.url})
+        finally:
+            await holder.aclose()
+        return names, str(error.value)
+
+    names, error = asyncio.run(go())
+    assert names == ["web_read", "web_search"]
+    assert "schéma d'entrée publié différent du manifeste" in error
+    payload = entries(scope)[0]["payload"]
+    assert payload["status"] == "indisponible"
+    assert "schéma d'entrée" in payload["error"]
+
+
+def test_a_planned_server_that_cannot_start_is_reported_at_each_call(
+    scope: RequestScope,
+) -> None:
+    target = StdioServerParameters(command=sys.executable, args=["-c", "raise SystemExit(3)"])
+
+    async def go() -> list[str]:
+        plugin, holder, starts = planned(scope, target)
+        search = spec(plugin, "web_search")
+        try:
+            for query in ("un", "deux"):
+                with pytest.raises(McpAdapterError, match="serveur injoignable"):
+                    await plugin.call(search, {"query": query})
+        finally:
+            await holder.aclose()
+        return starts
+
+    assert asyncio.run(go()) == ["web_research"]  # one attempt, its reason kept
+    assert [e["payload"]["status"] for e in entries(scope)] == ["demarrage_impossible"] * 2
+
+
+def test_a_start_beyond_the_time_limit_is_cut(scope: RequestScope) -> None:
+    plugin = McpPlugin(PLUGIN, scope, target=object(), timeout_s=0.05)
+
+    async def never() -> None:
+        await asyncio.sleep(30)
+
+    plugin.plan(never)
+    with pytest.raises(McpAdapterError, match="démarrage au-delà"):
+        asyncio.run(plugin.call(spec(plugin, "web_search"), {"query": "q"}))
+    assert entries(scope)[0]["payload"]["status"] == "demarrage_impossible"
+
+
+def test_a_start_cut_short_leaves_no_task_behind() -> None:
+    closed: list[str] = []
+
+    @asynccontextmanager
+    async def hanging(_scope: RequestScope) -> AsyncIterator[Any]:
+        try:
+            await asyncio.sleep(30)
+            yield None
+        finally:
+            closed.append("fermé")
+
+    async def go() -> None:
+        holder = _Holder()
+        with pytest.raises(TimeoutError):
+            await asyncio.wait_for(holder.open(hanging, None), 0.05)  # type: ignore[arg-type]
+        await asyncio.wait_for(holder.aclose(), 1)
+
+    asyncio.run(go())
+    assert closed == ["fermé"]
+
+
+def test_the_kill_switch_stops_a_planned_plugin_before_its_start(
+    scope: RequestScope, tmp_path: Path
+) -> None:
+    plugin, _holder, starts = planned(scope)
+    (tmp_path / KILL_SWITCH_FILE).parent.mkdir(parents=True)
+    (tmp_path / KILL_SWITCH_FILE).write_text("", encoding="utf-8")
+    with pytest.raises(ToolRefusedError, match="kill switch"):
+        asyncio.run(plugin.call(spec(plugin, "web_search"), {"query": "q"}))
+    assert starts == []
+    assert entries(scope)[0]["payload"]["status"] == "refuse"
+
+
+def test_a_planned_plugin_keeps_the_policy_scope(tmp_path: Path) -> None:
+    plugin, _holder, starts = planned(replace(make_scope(tmp_path), domain="inconnu"))
+    assert plugin.tools == []
+    assert set(plugin.skipped) == {"web_read", "web_search"}
+    assert all(reason.startswith("politique : ") for reason in plugin.skipped.values())
+    assert starts == []
+
+
+def test_lazy_plugin_plans_a_toolbox_without_starting_it(scope: RequestScope) -> None:
+    async def go() -> tuple[list[str], dict[str, Any]]:
+        holder = _Holder()
+        opener = LazyPlugin(PLUGIN, target=build_server(FakeProvider(), FakeReader()))
+        toolbox = opener.plan(scope, holder)
+        names = [tool.name for tool in toolbox.tools]
+        try:
+            return names, await toolbox.call("web_search", {"query": "q"})
+        finally:
+            await holder.aclose()
+
+    names, result = asyncio.run(go())
+    assert sorted(names) == ["web_read", "web_search"]
+    assert result["results"][0]["title"] == HITS[0].title

@@ -95,6 +95,15 @@ def test_a_refusal_or_a_question_back_is_not_an_error(status: str) -> None:
     assert decision_errors({"status": status}) == []
 
 
+def test_the_draft_kept_at_a_kill_switch_is_not_an_error() -> None:
+    payload = {
+        "status": "refus",
+        "halted": "kill_switch",
+        "planner": {"partial": True, "limit": "kill_switch", "turns": 2, "searches": 0},
+    }
+    assert decision_errors(payload) == []
+
+
 def test_each_kind_of_error_is_one_record_in_a_fixed_order() -> None:
     payload = {
         "status": "erreur",

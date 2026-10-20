@@ -166,6 +166,11 @@ def signals(guarded: GuardedInput, route: RoutePlan, draft: Draft, links: _Links
             f"{draft.refused_outputs} résultat(s) d'outil écarté(s) : texte à formulation "
             "d'instruction, à vérifier dans tes fichiers importés (R5)."
         )
+    if draft.bounded_outputs:
+        notes.append(
+            f"{draft.bounded_outputs} résultat(s) d'outil trop long(s) : seuls les premiers et "
+            "derniers éléments de leurs listes ont été lus."
+        )
     if links.removed:
         notes.append(
             f"{links.removed} lien(s) ou image(s) vers un domaine hors des sources retiré(s)"

@@ -66,7 +66,7 @@ def decision_errors(payload: Mapping[str, Any]) -> list[ErrorRecord]:
             details["confidence"] = confidence
         records.append(ErrorRecord("verification", details))
     planner = _section(payload, "planner")
-    if planner.get("partial") is True:
+    if planner.get("partial") is True and planner.get("limit") != "kill_switch":  # R4 (B97)
         details = {
             "limit": _code(planner.get("limit")),
             "turns": _count(planner, "turns"),

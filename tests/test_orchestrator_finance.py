@@ -21,7 +21,14 @@ from core.mcp.adapter import McpAdapterError
 from core.orchestrator.graph import Orchestrator
 from core.orchestrator.intake import KILL_MESSAGE
 from core.orchestrator.packs import PACK_IDS, PACKS_DIR, PackError, load_pack, load_packs
-from core.orchestrator.planner import MAX_VIEW_CHARS, figure_view, repeats_tool_data
+from core.orchestrator.planner import (
+    MAX_LIST_ITEMS,
+    MAX_VIEW_CHARS,
+    bounded_view,
+    figure_view,
+    planner_view,
+    repeats_tool_data,
+)
 from core.orchestrator.runtime import WEB_PLUGIN, PluginSet, RequestScope
 from core.policy.engine import KILL_SWITCH_FILE
 from core.verification.figures import amount, percent
@@ -366,12 +373,48 @@ def test_a_number_the_tool_did_not_give_is_not_traced(rig: FinanceRig) -> None:
 
 
 def test_a_result_too_large_for_the_planner_is_refused(rig: FinanceRig) -> None:
-    rig.desk.payload = {"lignes": ["x" * 100] * (MAX_VIEW_CHARS // 100)}
+    rig.desk.payload = {"note": "x" * (MAX_VIEW_CHARS + 1)}  # no list to cut (B96)
     rig.brain.planner = [tool_call("risk_report"), answer_json("Réponse sans le résultat.")]
     result = rig.ask("Quelle est la volatilité de mon portefeuille ?")
     assert "trop" not in result.answer.message
     assert "Restreins la demande" in rig.brain.texts("planner")
     assert result.tool_outputs == ()
+
+
+def test_a_list_too_long_for_the_planner_is_cut_around_its_ends(rig: FinanceRig) -> None:
+    rows = [{"nom": f"Ligne {i:04d}", "poids": i} for i in range(5000)]
+    rig.desk.payload = {"as_of": "2026-10-16", "lignes": rows}
+    rig.brain.planner = [tool_call("risk_report"), answer_json("Réponse sur les lignes lues.")]
+    result = rig.ask("Quelles lignes ai-je dans mon portefeuille ?")
+    [message] = _tool_messages(rig)
+    assert "Ligne 0000" in message
+    assert "Ligne 4999" in message
+    assert "Ligne 2500" not in message
+    assert "élément(s) non transmis ici (résultat borné)" in message
+    [output] = result.tool_outputs
+    assert "Ligne 2500" in output.texts  # the R1 trace keeps the whole result
+    assert rig.payload()["planner"]["bounded_outputs"] == 1
+    assert any("1 résultat(s) d'outil trop long(s)" in note for note in result.answer.signalements)
+
+
+def test_bounded_view_keeps_both_ends_of_each_long_list() -> None:
+    value = {"a": list(range(10)), "b": {"c": list(range(3))}, "d": "texte"}
+    assert bounded_view(value, 2) == {
+        "a": [0, 1, "… 6 élément(s) non transmis ici (résultat borné) …", 8, 9],
+        "b": {"c": [0, 1, 2]},
+        "d": "texte",
+    }
+    assert bounded_view(list(range(4)), 2) == [0, 1, 2, 3]
+
+
+def test_planner_view_cuts_only_what_does_not_fit() -> None:
+    short = {"lignes": list(range(10))}
+    assert planner_view(short) == ('{"lignes":[0,1,2,3,4,5,6,7,8,9]}', False)
+    long = {"lignes": ["y" * 1000] * (MAX_VIEW_CHARS // 1000 + 1)}
+    view, bounded = planner_view(long)
+    assert bounded
+    assert len(view) <= MAX_VIEW_CHARS
+    assert view.count("y" * 1000) <= 2 * MAX_LIST_ITEMS
 
 
 def test_a_result_with_an_instruction_split_across_rows_is_refused(rig: FinanceRig) -> None:
@@ -503,6 +546,17 @@ def test_a_kill_switch_engaged_mid_request_stops_before_the_next_model_call(
     assert payload["route"]["domain"] == "finance"
     assert len(payload["cost"]["llm_calls"]) == 3  # guard, route, the planner's first turn
     assert rig.entries("ERROR") == []
+
+
+def test_a_kill_switch_keeps_what_the_planner_had_computed(rig: FinanceRig, tmp_path: Path) -> None:
+    rig.desk.on_call = _engage(tmp_path)
+    rig.brain.planner = [tool_call("risk_report"), answer_json("Jamais produite.")]
+    result = rig.ask("Quelle est la volatilité de mon portefeuille ?")
+    assert result.answer.message == KILL_MESSAGE
+    [output] = result.tool_outputs  # B97: the computed result stays in the R1 trace
+    assert output.call == "risk_report#1"
+    planner = rig.payload()["planner"]
+    assert (planner["partial"], planner["limit"]) == (True, "kill_switch")
 
 
 def test_a_kill_switch_engaged_before_the_route_stops_the_request(
