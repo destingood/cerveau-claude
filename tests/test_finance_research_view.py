@@ -15,6 +15,7 @@ from core.finance.research.view import (
     LookAheadError,
     MarketHistory,
     PointInTimeView,
+    Publications,
     decision_time,
 )
 from core.finance.store import FinanceStore
@@ -181,3 +182,30 @@ def test_an_event_keeps_its_last_amount_and_its_first_announcement() -> None:
     )] == [1.0]  # fmt: skip
     with pytest.raises(ValueError, match="aucun cours"):
         MarketHistory.load(store, ["FICT-VUE", "FICT-RIEN"])
+
+
+def test_publications_count_what_the_view_guards(
+    store: FinanceStore, history: MarketHistory
+) -> None:
+    start, end = date(2016, 1, 4), date(2025, 12, 31)
+    corrected = actions = 0
+    for instrument_id in UNIVERSE:
+        prints: dict[date, list[datetime]] = {}
+        for stored in store.revisions(PriceRow, {"instrument_id": instrument_id}):
+            if start <= stored.record.session <= end:
+                prints.setdefault(stored.record.session, []).append(stored.record.published_at)
+        found = store.corporate_actions(instrument_id, as_of=RESEARCH_FETCHED_AT)
+        expected = Publications(
+            sessions=len(prints),
+            corrected=sum(1 for times in prints.values() if len(times) > 1),
+            late=sum(1 for d, times in prints.items() if min(times) > decision_time(d, CUTOFF)),
+            actions=sum(1 for a in found if start <= a.ex_date <= end),
+        )
+        assert history.publications(instrument_id, start=start, end=end, cutoff=CUTOFF) == expected
+        corrected, actions = corrected + expected.corrected, actions + expected.actions
+    # The dataset README: 40 corrections and 11 corporate actions over the four instruments.
+    assert (corrected, actions) == (40, 11)
+    empty = history.publications(
+        TREND, start=date(1990, 1, 1), end=date(1990, 12, 31), cutoff=CUTOFF
+    )
+    assert empty == Publications(0, 0, 0, 0)

@@ -179,6 +179,7 @@ class ProtocolResult:
     gates: tuple[Gate, ...]
     breaches: tuple[Breach, ...]
     evaluation: Evaluation | None  # None when R10 or the strategy contract failed
+    invariance_days: tuple[date, ...] = ()  # the decision days of the truncation check
     hypotheses: tuple[str, ...] = HYPOTHESES
 
 
@@ -455,6 +456,7 @@ def run_protocol(
             gates=tuple(gates),
             breaches=tuple(breaches),
             evaluation=evaluation,
+            invariance_days=tuple(sample),
         )
 
     def replay(params: Mapping[str, ParamValue], first: date, last: date, fees: Costs):

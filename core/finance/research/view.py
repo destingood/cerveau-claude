@@ -65,6 +65,16 @@ class _Closes:
 
 
 @dataclass(frozen=True)
+class Publications:
+    """How one instrument's closes reached the store over a window: what the view guards."""
+
+    sessions: int  # sessions with a close
+    corrected: int  # sessions published more than once
+    late: int  # sessions first published after the decision cut-off of their own session
+    actions: int  # corporate actions with an ex-date in the window
+
+
+@dataclass(frozen=True)
 class CorporateEvent:
     """A corporate action as the engine books it: its last revision, first announced when."""
 
@@ -185,6 +195,27 @@ class MarketHistory:
                 latest[key] = stored
         return [latest[key].record for key in sorted(latest)]
 
+    def publications(
+        self, instrument_id: str, *, start: date, end: date, cutoff: time
+    ) -> Publications:
+        """Sessions, corrections, late first prints and corporate actions on [start, end]."""
+        closes = self._series(instrument_id)
+        inside = (closes.sessions >= _session(start)) & (closes.sessions <= _session(end))
+        sessions, published = closes.sessions[inside], closes.published[inside]
+        days, first, counts = np.unique(sessions, return_index=True, return_counts=True)
+        if not len(days):
+            return Publications(0, 0, 0, 0)
+        earliest = np.minimum.reduceat(published, first)
+        offset = np.timedelta64(cutoff.hour * 3600 + cutoff.minute * 60 + cutoff.second, "s")
+        deadline = days.astype("datetime64[us]") + offset
+        actions = self.actions(instrument_id, moment=None)
+        return Publications(
+            sessions=len(days),
+            corrected=int(np.count_nonzero(counts > 1)),
+            late=int(np.count_nonzero(earliest > deadline)),
+            actions=sum(1 for a in actions if start <= a.ex_date <= end),
+        )
+
     def _series(self, instrument_id: str) -> _Closes:
         try:
             return self._closes[instrument_id]
@@ -228,6 +259,22 @@ class PointInTimeView:
         adjusted first, then cut to [start, end].
         """
         self._guard(start, end)
+        sessions, values = self.values(instrument_id, adjust=adjust)
+        kept = np.ones(len(sessions), dtype=bool)
+        if start is not None:
+            kept &= sessions >= _session(start)
+        if end is not None:
+            kept &= sessions <= _session(end)
+        return _series(instrument_id, sessions[kept], values[kept])
+
+    def values(
+        self, instrument_id: str, *, adjust: Adjustment = "none"
+    ) -> tuple[np.ndarray, np.ndarray]:
+        """The whole series of ``closes`` as two fresh arrays: sessions (datetime64[D]), values.
+
+        No Series is built: a strategy replayed at every session (``weights_frame``) spends most
+        of its time there otherwise.
+        """
         moment = _instant(self._known_at)
         sessions, values = self._history.known(
             instrument_id, moment=moment, day=_session(self._day)
@@ -235,12 +282,7 @@ class PointInTimeView:
         if adjust != "none":
             actions = self._history.actions(instrument_id, moment=moment)
             values = values * adjustment_factors(sessions, values, actions, adjust)
-        kept = np.ones(len(sessions), dtype=bool)
-        if start is not None:
-            kept &= sessions >= _session(start)
-        if end is not None:
-            kept &= sessions <= _session(end)
-        return _series(instrument_id, sessions[kept], values[kept])
+        return sessions, values
 
     def corporate_actions(self, instrument_id: str) -> list[CorporateAction]:
         return self._history.actions(instrument_id, moment=_instant(self._known_at))
