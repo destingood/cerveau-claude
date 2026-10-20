@@ -574,7 +574,8 @@ def cli(tmp_path: Path, config_dir: Path, monkeypatch: pytest.MonkeyPatch) -> Ca
         s.ingest(market(), ingested_at=NOW)
 
     def invoke(*args: str) -> Any:
-        options = ["--store", str(db), "--journal", str(journal), "--config-dir", str(config_dir)]
+        options = ["--store", str(db), "--journal", str(journal), "--hors-var"]
+        options += ["--config-dir", str(config_dir)]
         return runner.invoke(app, ["portfolio", *args, *options])
 
     invoke.store, invoke.journal = db, journal  # type: ignore[attr-defined]

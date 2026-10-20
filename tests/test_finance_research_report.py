@@ -38,6 +38,7 @@ from core.finance.research.report import (
     Row,
     StrategyReport,
     build_report,
+    latest_report,
     report_json,
     report_markdown,
     write_report,
@@ -228,3 +229,28 @@ def test_the_json_round_trips_and_its_print_is_the_file_print(run: Run, tmp_path
     assert second.json.name == "croisement_mm-2026-10-20-2.json"
     assert second.sha256 == first.sha256
     assert first.json.read_bytes() == body.encode("utf-8")
+
+
+def test_the_latest_report_is_the_last_generated(run: Run, tmp_path: Path) -> None:
+    assert latest_report("croisement_mm", tmp_path) is None
+    report = run.report()
+    write_report(report, tmp_path)
+    second = write_report(report, tmp_path)  # same generation time: ``-2`` comes later
+    write_report(run.report(generated_at=datetime(2026, 10, 19, 23, 0, tzinfo=UTC)), tmp_path)
+    found = latest_report("croisement_mm", tmp_path)
+    assert found is not None and found[0] == second.json and found[1] == report
+    later = write_report(run.report(generated_at=datetime(2026, 10, 21, tzinfo=UTC)), tmp_path)
+    found = latest_report("croisement_mm", tmp_path)
+    assert found is not None and found[0] == later.json
+
+
+def test_an_unreadable_or_foreign_report_refuses_the_lookup(run: Run, tmp_path: Path) -> None:
+    (tmp_path / "croisement_mm-casse.json").write_text("{", encoding="utf-8")
+    with pytest.raises(ReportError, match=r"croisement_mm-casse\.json illisible"):
+        latest_report("croisement_mm", tmp_path)
+    foreign = tmp_path / "autre"
+    foreign.mkdir()
+    body = report_json(run.report().model_copy(update={"strategie": "autre"}))
+    (foreign / "croisement_mm-2026-10-20.json").write_text(body, encoding="utf-8")
+    with pytest.raises(ReportError, match="il porte sur autre"):
+        latest_report("croisement_mm", foreign)

@@ -690,6 +690,30 @@ def report_markdown(report: StrategyReport) -> str:
     return "\n".join(lines) + "\n"
 
 
+def default_reports_dir(root: Path) -> Path:
+    """Where ``cerveau strategy protocol`` writes: var/finance/research/reports/."""
+    return root / "var" / "finance" / "research" / "reports"
+
+
+def latest_report(strategy_id: str, directory: Path) -> tuple[Path, StrategyReport] | None:
+    """A strategy's last report by generation time; an unreadable one refuses the lookup."""
+    found: list[tuple[datetime, int, str, Path, StrategyReport]] = []
+    for path in directory.glob(f"{strategy_id}-*.json"):
+        try:
+            report = StrategyReport.model_validate_json(path.read_bytes())
+        except (OSError, ValueError) as exc:
+            first = str(exc).splitlines()[0]
+            raise ReportError(f"rapport {path.name} illisible : {first}") from exc
+        if report.strategie != strategy_id:
+            raise ReportError(f"rapport {path.name} : il porte sur {report.strategie}")
+        # A second report of the day is ``<id>-<date>-2``: a longer name comes later.
+        found.append((report.genere_le, len(path.name), path.name, path, report))
+    if not found:
+        return None
+    *_, path, report = max(found, key=lambda item: item[:3])
+    return path, report
+
+
 @dataclass(frozen=True)
 class WrittenReport:
     markdown: Path

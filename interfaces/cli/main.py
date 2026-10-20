@@ -1,4 +1,5 @@
-"""`cerveau` command line: ask, feedback, eval, audit, config, registry, finance, portfolio."""
+"""`cerveau` command line: ask, feedback, eval, audit, config, registry, finance, portfolio,
+strategy."""
 
 from __future__ import annotations
 
@@ -18,6 +19,7 @@ import typer
 from core.audit import AuditError, AuditJournal, default_journal_path, verify
 from core.budget.gate import BudgetExceededError, BudgetGate
 from core.config import FEATURES, BlockedFeatureError, ConfigError, load_config
+from core.finance.research.registry import RegistryError
 from core.learning import FeedbackError, default_feedback_path, give_feedback
 from core.learning.feedback import NotePseudonymiser
 from core.observability import build_tracer
@@ -36,6 +38,7 @@ from interfaces.cli.common import fail as _fail
 from interfaces.cli.common import load as _load
 from interfaces.cli.finance import finance_app
 from interfaces.cli.portfolio import portfolio_app
+from interfaces.cli.strategy import registry_errors, strategy_app
 
 if TYPE_CHECKING:
     from core.config.loader import Config
@@ -51,6 +54,7 @@ app.add_typer(config_app, name="config")
 app.add_typer(registry_app, name="registry")
 app.add_typer(finance_app, name="finance")
 app.add_typer(portfolio_app, name="portfolio")
+app.add_typer(strategy_app, name="strategy")
 
 
 @app.callback()
@@ -389,7 +393,8 @@ def audit_tail(
 def config_check(
     config_dir: Annotated[Path | None, typer.Option("--config-dir")] = None,
 ) -> None:
-    """Valide config/*.yaml et liste les fonctions bloquées par A_DEFINIR / A_VERIFIER."""
+    """Valide config/*.yaml, liste les fonctions bloquées par A_DEFINIR / A_VERIFIER et
+    contrôle le registre des stratégies (promotion manuelle, ADR-027)."""
     directory = config_dir or project_root() / "config"
     try:
         config = load_config(directory)
@@ -415,6 +420,17 @@ def config_check(
         typer.echo("\nMarqueurs en commentaire (décisions à prendre, non bloquants) :")
         for marker in comments:
             typer.echo(f"  · {marker}")
+    try:
+        count, refusals = registry_errors(project_root())
+    except RegistryError as exc:
+        typer.echo(f"\nRegistre des stratégies invalide : {exc}", err=True)
+        raise typer.Exit(1) from exc
+    verdict = "promotions refusées" if refusals else "conforme"
+    typer.echo(f"\nRegistre des stratégies ({count}) : {verdict}")
+    for refusal in refusals:
+        typer.echo(f"  ✗ {refusal}", err=True)
+    if refusals:
+        raise typer.Exit(1)
 
 
 @registry_app.command("validate")

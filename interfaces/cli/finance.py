@@ -55,10 +55,12 @@ from interfaces.cli.common import (
     EXIT_ERROR,
     ConfigDirOpt,
     JournalOpt,
+    OutsideVarOpt,
     blocked,
     fail,
     load,
     project_root,
+    var_path,
 )
 
 if TYPE_CHECKING:
@@ -83,6 +85,15 @@ FileArg = Annotated[
 
 def now() -> datetime:
     return datetime.now(UTC)
+
+
+def finance_paths(store: Path | None, journal: Path | None, *, outside: bool) -> tuple[Path, Path]:
+    """The store and the journal of a command: under var/ unless --hors-var (B103)."""
+    root = project_root()
+    return (
+        var_path(store, default_store_path(root), option="--store", outside=outside),
+        var_path(journal, default_journal_path(root), option="--journal", outside=outside),
+    )
 
 
 def ecb_transport() -> httpx.BaseTransport | None:
@@ -200,12 +211,14 @@ def sync_ecb(
     ] = None,
     store: StoreOpt = None,
     journal: JournalOpt = None,
+    outside: OutsideVarOpt = False,
     config_dir: ConfigDirOpt = None,
 ) -> None:
     """Cours de référence et €STR de la BCE (réseau, sans clé), selon data_sources.yaml.
 
     Codes de sortie : 0 synchronisé, 1 refus (réseau, format, base), 2 source bloquée (R7).
     """
+    store, journal = finance_paths(store, journal, outside=outside)
     config = load(config_dir)
     try:
         config.require("data.ecb")
@@ -252,9 +265,11 @@ def sync_prices(
     file: FileArg,
     store: StoreOpt = None,
     journal: JournalOpt = None,
+    outside: OutsideVarOpt = False,
     config_dir: ConfigDirOpt = None,
 ) -> None:
     """Clôtures exportées par Lucas : date, identifiant, cloture, devise[, volume] (ADR-017)."""
+    store, journal = finance_paths(store, journal, outside=outside)
     config = load(config_dir)
     with _store(store, "prices", journal, config) as db:
         _run("prices", journal, config, _sync(db, config, lambda: CsvCloses(file, reference(db))))
@@ -265,9 +280,11 @@ def sync_corporate_actions(
     file: FileArg,
     store: StoreOpt = None,
     journal: JournalOpt = None,
+    outside: OutsideVarOpt = False,
     config_dir: ConfigDirOpt = None,
 ) -> None:
     """Splits et dividendes : date_ex, identifiant, type, valeur[, devise, date_annonce]."""
+    store, journal = finance_paths(store, journal, outside=outside)
     config = load(config_dir)
     with _store(store, "corporate-actions", journal, config) as db:
         provider = partial(CsvCorporateActions, file, reference(db))
@@ -279,9 +296,11 @@ def sync_instruments(
     file: FileArg,
     store: StoreOpt = None,
     journal: JournalOpt = None,
+    outside: OutsideVarOpt = False,
     config_dir: ConfigDirOpt = None,
 ) -> None:
     """Référentiel : une ligne par version d'instrument (identifiant, nom, classe, devise…)."""
+    store, journal = finance_paths(store, journal, outside=outside)
     config = load(config_dir)
     with _store(store, "instruments", journal, config) as db:
         action = partial(import_instruments, db, file, recorded_at=now())
@@ -296,6 +315,7 @@ def capital_gains_command(
     annee: YearOpt,
     store: StoreOpt = None,
     journal: JournalOpt = None,
+    outside: OutsideVarOpt = False,
     config_dir: ConfigDirOpt = None,
 ) -> None:
     """Exporter les cessions d'une année civile : var/finance/exports/plus-values-AAAA.csv.
@@ -306,6 +326,7 @@ def capital_gains_command(
 
     Codes de sortie : 0 exporté, 1 refus (base absente, taux BCE inconnu, année future).
     """
+    store, journal = finance_paths(store, journal, outside=outside)
     config = load(config_dir)
     root = project_root()
     audit = AuditJournal(journal or default_journal_path(root))

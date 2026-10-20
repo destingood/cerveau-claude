@@ -433,13 +433,17 @@ def test_cli_replaces_the_export_of_the_same_year(home: Path) -> None:
     ("args", "message"),
     [
         (["--annee", "2027"], "l'année 2027 n'a pas commencé au 12/01/2026"),
-        (["--annee", "2025", "--store", "absente.db"], "base finance absente (absente.db)"),
+        (
+            ["--annee", "2025", "--store", "{var}/finance/absente.db"],
+            "base finance absente (absente.db)",
+        ),
     ],
 )
 def test_cli_refusals_write_nothing_and_are_journaled(
     home: Path, args: list[str], message: str
 ) -> None:
-    result = plus_values(home, *args)
+    # Under var/: a store elsewhere is refused before anything else (B103).
+    result = plus_values(home, *(a.format(var=home / "var") for a in args))
     assert result.exit_code == 1
     assert message in result.output and "Aucun export écrit" in result.output
     assert not default_export_dir(home).exists()

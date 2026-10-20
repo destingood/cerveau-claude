@@ -10,13 +10,16 @@ from typing import Any
 import pytest
 import yaml
 
+from core.audit import AuditJournal
 from core.finance.research.registry import (
     MAX_CONFIGURATIONS,
+    PROTOCOL_COMMAND,
     LocalEvidence,
     RegistryError,
     StrategyApproval,
     StrategySpec,
     approval_text,
+    audited_reports,
     code_sha256,
     expanded_grid,
     grid_sha256,
@@ -274,3 +277,24 @@ def test_a_report_must_exist_be_readable_and_be_audited(tmp_path: Path) -> None:
         spec, root=REPO, approvals=approvals, local=LocalEvidence(reports, frozenset())
     )
     assert "absente du journal d'audit" in unaudited
+
+
+def test_only_the_protocol_decisions_of_lucas_audit_a_report(tmp_path: Path) -> None:
+    journal = tmp_path / "audit" / "journal.jsonl"
+    assert audited_reports(journal) == frozenset()
+    audit = AuditJournal(journal)
+    cited = {"command": PROTOCOL_COMMAND, "rapport_sha256": "a" * 64}
+    audit.append(actor="lucas", event="DECISION", payload=cited)
+    audit.append(actor="lucas", event="TOOL_CALL", payload={**cited, "rapport_sha256": "b" * 64})
+    audit.append(
+        actor="orchestrator", event="DECISION", payload={**cited, "rapport_sha256": "c" * 64}
+    )
+    audit.append(
+        actor="lucas", event="DECISION", payload={"command": "autre", "rapport_sha256": "d" * 64}
+    )
+    audit.append(actor="lucas", event="DECISION", payload=None)
+    assert audited_reports(journal) == frozenset({"a" * 64})
+    with journal.open("a", encoding="utf-8") as handle:
+        handle.write("{\n")
+    with pytest.raises(RegistryError, match="journal d'audit illisible"):
+        audited_reports(journal)

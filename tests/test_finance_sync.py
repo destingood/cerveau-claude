@@ -199,7 +199,7 @@ def cli(tmp_path: Path, config_dir: Path, monkeypatch: pytest.MonkeyPatch) -> Ca
     store, journal = tmp_path / "finance.db", tmp_path / "audit" / "journal.jsonl"
 
     def invoke(*args: str) -> Any:
-        options = ["--store", str(store), "--journal", str(journal), "--config-dir"]
+        options = ["--store", str(store), "--journal", str(journal), "--hors-var", "--config-dir"]
         return runner.invoke(app, ["finance", "sync", *args, *options, str(config_dir)])
 
     invoke.store, invoke.journal = store, journal  # type: ignore[attr-defined]

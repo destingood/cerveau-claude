@@ -26,6 +26,7 @@ from typing import Annotated, Literal
 import yaml
 from pydantic import BaseModel, ConfigDict, Field, ValidationError, model_validator
 
+from core.audit import AuditError, AuditJournal
 from core.config.loader import Marker
 from core.finance.model import (
     ParamName,
@@ -41,6 +42,7 @@ from core.finance.research.trials import source_sha256
 REGISTRY_DIR = Path("domain_packs/finance/strategies")
 APPROVALS_DIR = Path("governance/approvals/strategies")
 STRATEGIES_PACKAGE = "core.finance.research.strategies"
+PROTOCOL_COMMAND = "strategy protocol"  # the audit entry that cites a report print
 MAX_CONFIGURATIONS = 500  # a grid beyond it is refused: the protocol runs each one [Hypothèse]
 
 Status = Literal["recherche", "candidate"]
@@ -128,8 +130,8 @@ class StrategyApproval(_Strict):
     date: date
 
 
-class _ReportStamp(BaseModel):
-    """The fields of a standard report the promotion check reads; the rest is ignored."""
+class ReportStamp(BaseModel):
+    """The fields of a standard report a promotion reads; the rest is ignored."""
 
     model_config = ConfigDict(extra="ignore", frozen=True)
 
@@ -260,6 +262,50 @@ def report_sha256(path: Path) -> str:
     return hashlib.sha256(path.read_bytes()).hexdigest()
 
 
+def read_stamp(path: Path) -> ReportStamp:
+    try:
+        return ReportStamp.model_validate(json.loads(path.read_text(encoding="utf-8")))
+    except (OSError, ValueError) as exc:
+        raise RegistryError(f"rapport {path.name} illisible : {exc}") from exc
+
+
+def audited_reports(journal: Path) -> frozenset[str]:
+    """The report prints ``cerveau strategy protocol`` journaled as Lucas's decisions (R11).
+
+    The chain itself is checked by ``cerveau audit verify``; an unreadable line or payload
+    refuses the lookup rather than hide a report.
+    """
+    if not journal.is_file():
+        return frozenset()
+    audit, found = AuditJournal(journal), set[str]()
+    try:
+        for line in journal.read_text(encoding="utf-8").splitlines():
+            entry = json.loads(line)
+            if (entry.get("event"), entry.get("actor")) != ("DECISION", "lucas"):
+                continue
+            payload = audit.read_payload(entry["payload_ref"]) if entry["payload_ref"] else None
+            if isinstance(payload, dict) and payload.get("command") == PROTOCOL_COMMAND:
+                found.add(str(payload["rapport_sha256"]))
+    except (OSError, ValueError, KeyError, AuditError) as exc:
+        raise RegistryError(f"journal d'audit illisible : {exc}") from exc
+    return frozenset(found)
+
+
+def report_blockers(
+    stamp: ReportStamp, spec: StrategySpec, *, code: str, grid: str, against: str
+) -> list[str]:
+    """Why a report cannot back a promotion: its strategy, verdict, data, costs or prints."""
+    checks: Mapping[str, bool] = {
+        f"le rapport porte sur {stamp.strategie}": stamp.strategie != spec.id,
+        f"verdict « {stamp.verdict} », « reussi » exigé": stamp.verdict != "reussi",
+        "rapport sur données synthétiques": stamp.donnees != "reelles",
+        "rapport à frais fictifs": stamp.frais != "reels",
+        f"empreinte de code du rapport différente de {against}": stamp.code_sha256 != code,
+        f"empreinte de grille du rapport différente de {against}": stamp.grille_sha256 != grid,
+    }
+    return [reason for reason, failed in checks.items() if failed]
+
+
 def _find_report(spec: StrategySpec, reports: Path, wanted: str) -> Path | None:
     for path in sorted(reports.glob(f"{spec.id}-*.json")):
         if report_sha256(path) == wanted:
@@ -302,28 +348,13 @@ def promotion_errors(
     if path is None:
         return [*errors, f"{where} : rapport {approval.rapport_sha256[:12]}… introuvable"]
     try:
-        stamp = _ReportStamp.model_validate(json.loads(path.read_text(encoding="utf-8")))
-    except (OSError, ValueError) as exc:
-        return [*errors, f"{where} : rapport {path.name} illisible : {exc}"]
-    errors += _stamp_errors(where, stamp, spec, approval)
+        stamp = read_stamp(path)
+    except RegistryError as exc:
+        return [*errors, f"{where} : {exc}"]
+    reasons = report_blockers(
+        stamp, spec, code=approval.code_sha256, grid=approval.grille_sha256, against="l'approbation"
+    )
+    errors += [f"{where} : {reason}" for reason in reasons]
     if approval.rapport_sha256 not in local.audited:
         errors.append(f"{where} : empreinte du rapport absente du journal d'audit")
     return errors
-
-
-def _stamp_errors(
-    where: str, stamp: _ReportStamp, spec: StrategySpec, approval: StrategyApproval
-) -> list[str]:
-    checks: Mapping[str, bool] = {
-        f"le rapport porte sur {stamp.strategie}": stamp.strategie != spec.id,
-        f"verdict « {stamp.verdict} », « reussi » exigé": stamp.verdict != "reussi",
-        "rapport sur données synthétiques": stamp.donnees != "reelles",
-        "rapport à frais fictifs": stamp.frais != "reels",
-        "empreinte de code du rapport différente de l'approbation": (
-            stamp.code_sha256 != approval.code_sha256
-        ),
-        "empreinte de grille du rapport différente de l'approbation": (
-            stamp.grille_sha256 != approval.grille_sha256
-        ),
-    }
-    return [f"{where} : {reason}" for reason, failed in checks.items() if failed]

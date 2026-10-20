@@ -35,11 +35,12 @@ from interfaces.cli.common import (
     EXIT_GAP,
     ConfigDirOpt,
     JournalOpt,
+    OutsideVarOpt,
     fail,
     load,
     project_root,
 )
-from interfaces.cli.finance import FileArg, StoreOpt
+from interfaces.cli.finance import FileArg, StoreOpt, finance_paths
 
 if TYPE_CHECKING:
     from core.config.loader import Config
@@ -129,6 +130,7 @@ def import_command(
     fmt: FormatOpt = "cerveau",
     store: StoreOpt = None,
     journal: JournalOpt = None,
+    outside: OutsideVarOpt = False,
     config_dir: ConfigDirOpt = None,
 ) -> None:
     """Importer un fichier de transactions.
@@ -140,6 +142,7 @@ def import_command(
     Codes de sortie : 0 importé, 1 refus (format, vente au-delà de la position, base), 4 un
     compte en écart avec son dernier relevé.
     """
+    store, journal = finance_paths(store, journal, outside=outside)
     run = _Run("import", journal, load(config_dir))
     moment = now()
     result = run.attempt(store, lambda db: import_transactions(db, file, fmt, imported_at=moment))
@@ -162,6 +165,7 @@ def reconcile_command(
     file: FileArg,
     store: StoreOpt = None,
     journal: JournalOpt = None,
+    outside: OutsideVarOpt = False,
     config_dir: ConfigDirOpt = None,
 ) -> None:
     """Rapprocher un relevé de positions du courtier.
@@ -171,6 +175,7 @@ def reconcile_command(
 
     Codes de sortie : 0 rapproché, 1 refus, 4 écart (alerte, aussi dans le journal).
     """
+    store, journal = finance_paths(store, journal, outside=outside)
     run = _Run("reconcile", journal, load(config_dir))
     moment = now()
     result = run.attempt(store, lambda db: reconcile(db, file, at=moment))
