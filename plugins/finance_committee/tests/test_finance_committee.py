@@ -33,6 +33,8 @@ READ_ONLY = {"LECTURE", "CALCUL"}  # R5: no role has an action tool
 UNDEFINED: dict[str, Any] = {
     name: "A_DEFINIR" for name in PaperRiskLimits.model_fields if name != "allow"
 } | {"allow": {"leverage": False, "short_selling": False, "derivatives": False}}
+# Every limit defined: the golden cases' values, in percent (D4).
+DEFINED: dict[str, Any] = UNDEFINED | next(c["limits"] for c in GOLDEN if c["id"] == "fcom-005")
 
 
 @pytest.fixture(scope="module")
@@ -189,7 +191,7 @@ def test_every_session_blocks_while_the_paper_limits_are_undefined(
 
 
 def test_a_decision_to_act_stays_unknown_until_the_order_intent(config: Any) -> None:
-    limits = PaperRiskLimits.model_validate(UNDEFINED | dict.fromkeys(CHECKED, 1.0))
+    limits = PaperRiskLimits.model_validate(DEFINED)
     checks = paper_limit_checks(limits)(decision("agir"), [])
     assert {c.reason for c in checks} == {NO_SIZE} and {c.ok for c in checks} == {None}
 

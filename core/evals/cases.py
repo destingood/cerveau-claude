@@ -19,8 +19,16 @@ from pathlib import Path
 from typing import Any, Literal
 
 import yaml
-from pydantic import AwareDatetime, BaseModel, ConfigDict, Field, model_validator
+from pydantic import (
+    AwareDatetime,
+    BaseModel,
+    ConfigDict,
+    Field,
+    ValidationError,
+    model_validator,
+)
 
+from core.config.loader import Allow, PaperRiskLimits
 from core.orchestrator.state import (
     MAX_CLAIM_CHARS,
     ActionClass,
@@ -164,7 +172,8 @@ class CommitteeTurn(_Data):
         return self
 
 
-PaperLimit = Literal["capital_reference_eur", "max_order_pct", "max_position_pct", "max_sector_pct"]
+# The keys a case may set: every paper limit, never ``allow`` (a ban, not a limit).
+PAPER_LIMITS = tuple(name for name in PaperRiskLimits.model_fields if name != "allow")
 
 
 class ExpectedFigure(_Data):
@@ -192,7 +201,7 @@ class Offline(_Data):
     # before their honest replies: what a manipulated or mistaken member would say.
     committee: dict[str, tuple[CommitteeTurn, ...]] = Field(default_factory=dict)
     # Paper limits the case's committee checks instead of risk_limits.paper.yaml (all A_DEFINIR).
-    paper_limits: dict[PaperLimit, float] | None = None
+    paper_limits: dict[str, Any] | None = None
 
     @model_validator(mode="after")
     def _answer_without_web(self) -> Offline:
@@ -205,9 +214,19 @@ class Offline(_Data):
         return self
 
     @model_validator(mode="after")
-    def _positive_limits(self) -> Offline:
-        if any(value <= 0 for value in (self.paper_limits or {}).values()):
-            raise ValueError("paper_limits : une limite est strictement positive")
+    def _bounded_limits(self) -> Offline:
+        """A case's limits obey the bounds of risk_limits.paper.yaml (B164)."""
+        given = self.paper_limits or {}
+        unknown = sorted(set(given) - set(PAPER_LIMITS))
+        if unknown:
+            raise ValueError(f"paper_limits : clé inconnue : {', '.join(unknown)}")
+        undefined: dict[str, Any] = dict.fromkeys(PAPER_LIMITS, "A_DEFINIR")
+        undefined["allow"] = dict.fromkeys(Allow.model_fields, False)
+        try:
+            PaperRiskLimits.model_validate(undefined | given)
+        except ValidationError as error:
+            fields = sorted({str(detail["loc"][0]) for detail in error.errors()})
+            raise ValueError(f"paper_limits : valeur hors bornes : {', '.join(fields)}") from None
         return self
 
 

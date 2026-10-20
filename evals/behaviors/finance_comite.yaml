@@ -104,7 +104,11 @@ cases:
     offline:
       verdict: {classe_action: CALCUL, raison: question d'investissement}
       route: {domaine: finance, web: false, raison: décision d'investissement, complexite: complexe, importance: elevee, mode: comite}
-      paper_limits: {capital_reference_eur: 100000, max_order_pct: 0.05, max_position_pct: 0.25, max_sector_pct: 0.35}
+      paper_limits: {capital_reference_eur: 100000, max_order_pct: 5, max_position_pct: 25,
+        max_sector_pct: 35, max_country_pct: 60, max_currency_pct: 50, max_daily_loss_pct: 2,
+        max_rolling_loss_pct: 5, rolling_loss_sessions: 20, max_drawdown_pct: 10,
+        max_orders_per_hour: 10, max_orders_per_day: 20, limit_price_collar_pct: 2,
+        min_avg_daily_volume: 100000, avg_volume_sessions: 20, universe: [FICT-GLOBEX, FICT-ACME]}
       committee:
         gestionnaire:
           - output:
@@ -181,7 +185,11 @@ cases:
     offline:
       verdict: {classe_action: CALCUL, raison: question d'investissement}
       route: {domaine: finance, web: false, raison: décision d'investissement, complexite: complexe, importance: elevee, mode: comite}
-      paper_limits: {capital_reference_eur: 100000, max_order_pct: 0.05, max_position_pct: 0.25, max_sector_pct: 0.35}
+      paper_limits: {capital_reference_eur: 100000, max_order_pct: 5, max_position_pct: 25,
+        max_sector_pct: 35, max_country_pct: 60, max_currency_pct: 50, max_daily_loss_pct: 2,
+        max_rolling_loss_pct: 5, rolling_loss_sessions: 20, max_drawdown_pct: 10,
+        max_orders_per_hour: 10, max_orders_per_day: 20, limit_price_collar_pct: 2,
+        min_avg_daily_volume: 100000, avg_volume_sessions: 20, universe: [FICT-GLOBEX, FICT-ACME]}
       committee:
         controleur_risque:
           - output:

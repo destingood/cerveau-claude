@@ -679,7 +679,7 @@ def test_the_case_limits_cover_a_copy_of_the_configuration() -> None:
     case = cached_cases("behaviors")["comite-analyse-n0-aucun-ordre"]
     limits = paper_limits(config, case)
     assert unknown_limits(limits) == ()
-    assert limits.max_order_pct == 0.05
+    assert limits.max_order_pct == 5  # percent, D4
     assert unknown_limits(config.risk_limits_paper) == CHECKED  # the configuration is untouched
     plain = cached_cases("behaviors")["comite-deux-tours-de-debat"]
     assert paper_limits(config, plain) == config.risk_limits_paper
@@ -699,13 +699,32 @@ def test_a_committee_turn_is_exactly_one_reply(turn: dict[str, object]) -> None:
         CommitteeTurn.model_validate(turn)
 
 
-def test_the_case_limits_are_strictly_positive_and_known() -> None:
-    route = {"domaine": "finance", "web": False, "mode": "comite"}
-    assert Offline.model_validate({"route": route, "paper_limits": {"max_order_pct": 0.05}})
-    with pytest.raises(ValidationError, match="strictement positive"):
-        Offline.model_validate({"route": route, "paper_limits": {"max_order_pct": 0}})
-    with pytest.raises(ValidationError):
-        Offline.model_validate({"route": route, "paper_limits": {"max_drawdown_pct": 0.1}})
+COMMITTEE_ROUTE = {"domaine": "finance", "web": False, "mode": "comite"}
+
+
+def test_a_case_may_set_any_paper_limit() -> None:
+    limits = {"max_order_pct": 5, "max_drawdown_pct": 10, "universe": ["FICT-ACME"]}
+    assert Offline.model_validate({"route": COMMITTEE_ROUTE, "paper_limits": limits})
+
+
+@pytest.mark.parametrize(
+    ("limits", "message"),
+    [
+        ({"max_order_pct": 0}, "hors bornes : max_order_pct"),
+        ({"max_order_pct": -5}, "hors bornes : max_order_pct"),
+        ({"max_drawdown_pct": 500}, "hors bornes : max_drawdown_pct"),
+        ({"max_orders_per_hour": 2.5}, "hors bornes : max_orders_per_hour"),
+        ({"universe": []}, "hors bornes : universe"),
+        ({"max_leverage": 2}, "clé inconnue : max_leverage"),
+        ({"allow": {"leverage": True}}, "clé inconnue : allow"),
+    ],
+)
+def test_the_case_limits_obey_the_bounds_of_the_configuration(
+    limits: dict[str, object], message: str
+) -> None:
+    """B164: a case cannot set a limit that risk_limits.paper.yaml would refuse."""
+    with pytest.raises(ValidationError, match=message):
+        Offline.model_validate({"route": COMMITTEE_ROUTE, "paper_limits": limits})
 
 
 # --- the judge (live only; its arithmetic and its prompt are checked here) ----------------------
