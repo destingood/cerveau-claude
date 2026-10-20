@@ -14,10 +14,20 @@ the case simulates a manipulated reader), the planner makes the case's tool call
 and writes its answer from the figures the tools computed and the checked extracts it is shown.
 Every deterministic layer runs for real (pseudonymisation, quote, number and link checks, policy),
 so an offline run measures those layers, not a model.
+
+A committee session runs the real engine too (ADR-028): its schemas, its R1 and R5 checks, its
+repair, its limit checks and its journal. Each member is scripted: the case's replies first (what
+a manipulated or mistaken member would say), then honest ones. Honest analysts call their tools
+and cite the case's expected figures by the call that computed them; the news analyst searches,
+reads and cites the checked extracts; the debaters cite the findings; the manager treats every
+argument and proposes to wait; the controller prices a stress scenario and blocks whenever a
+limit is unknown or exceeded. The research server reads a project root of its own: the
+repository's registry, and no trial nor report of Lucas.
 """
 
 from __future__ import annotations
 
+import copy
 import json
 import math
 import re
@@ -43,10 +53,18 @@ from mcp.server import MCPServer
 
 from core.config import load_config
 from core.config.loader import Config
-from core.evals.cases import REPO_ROOT, Case, PageFixture, QualityFixture, cached_web
+from core.evals.cases import (
+    REPO_ROOT,
+    Case,
+    CommitteeTurn,
+    PageFixture,
+    QualityFixture,
+    cached_web,
+)
 from core.finance.fixtures import REFERENCE_FETCHED_AT, REFERENCE_READ_AT, reference_store
 from core.finance.portfolio import PortfolioError, import_transactions
 from core.finance.providers.base import ProviderError
+from core.finance.research.registry import REGISTRY_DIR
 from core.finance.schema import QUALITY_COLUMNS
 from core.finance.store import FinanceStore, FinanceStoreError
 from core.finance.sync import import_instruments
@@ -78,6 +96,7 @@ FIXTURE_PROVIDER = "fixtures"
 CHARS_PER_TOKEN = 4  # offline cost estimate: no tokenizer, no cache (labelled « simulé »)
 # Values an offline run needs and the repository leaves to Lucas (R7): a temporary copy only.
 OFFLINE_BUDGETS = {"daily": "100.00", "monthly": "1000.00"}
+OFFLINE_COMMITTEE = {"max_tokens": 400000, "max_seconds": 600, "max_tool_calls": 40}
 OFFLINE_PII_THRESHOLD = 0.5
 
 _SOURCE = re.compile(r'<donnees_externes source="(https?://[^"]+)">')
@@ -87,6 +106,31 @@ _EXTRACT = re.compile(r"^- (.+)\n  Citation : « (.+) »$", re.MULTILINE)
 _QUESTION = re.compile(r"Question de Lucas :\n(.*?)\n\nAdresses web", re.DOTALL)
 _REPAIRS = (FORMAT_REPAIR.split("{", 1)[0], REPAIR.split("{", 1)[0])
 WEB_TOOLS = frozenset({"web_search", "web_read"})
+# What the committee engine shows a member (core/committee/engine.py).
+_CALL = re.compile(r'<donnees_externes source="([a-z_]+:([a-z_]+)#[0-9]+)">')
+_ASKED = re.compile(r"^Question de Lucas : (.*)$", re.MULTILINE)
+_OFFERED = re.compile(r"^Outils à ta disposition : (.*)\.$", re.MULTILINE)
+_CONSTAT = re.compile(r"^(C[0-9]+) \[([a-z_]+)\] (.*)$", re.MULTILINE)
+_ARGUMENT = re.compile(r"^([DX][0-9]+\.[0-9]+) \[", re.MULTILINE)
+_DEBATE_TASK = re.compile(r"^Débat, tour [0-9]+ sur", re.MULTILINE)
+_MANAGER_TASK = re.compile(r"^Traite chaque argument une fois", re.MULTILINE)
+_CONTROLLER_TASK = re.compile(r"^Proposition du gestionnaire :$", re.MULTILINE)
+_TREAT = re.compile(r"avec sa raison : ([^\n]*)\.\n")
+_CONTROLS = re.compile(r"calculés par le code[^\n]*:\n((?:- [^\n]*\n)+)")
+_CONTROL_STATE = re.compile(r"^- .*? : (respectée|dépassée|inconnue) \(", re.MULTILINE)
+_DIGIT = re.compile(r"[0-9]")
+DEFAULT_CALLS: dict[str, dict[str, Any]] = {  # an analyst whose tools the case does not call
+    "strategy_lab": {
+        "strategie": "croisement_mm",
+        "mode": "signaux",
+        "params": {"short": 10, "long": 100},
+    },
+    "portfolio_snapshot": {},
+    "risk_report": {"measures": ["var"]},
+}
+MAX_FINDINGS = 12
+MAX_FINDING_CHARS = 300
+MAX_PROPOSAL_CHARS = 600
 
 UNSURE = "Je ne sais pas : aucune source lue ne permet de répondre avec certitude."
 PADDING = "Cette réponse s'appuie uniquement sur les extraits vérifiés des sources citées."
@@ -100,6 +144,23 @@ FINANCE_COUNTER = (
     "Ces mesures reposent sur l'historique des séances et sur des hypothèses de modèle ; un "
     "régime de marché nouveau peut les mettre en défaut."
 )
+RESULT = "Résultat de {tool} obtenu ; ses chiffres restent ceux de l'outil."
+FAILED_TOOL = "Erreur de l'outil"
+TOOL_FAILED = "Un appel d'outil a échoué ou n'a rien donné : ce constat manque."
+NO_NEWS = "Aucune page lue ne donne de constat vérifié sur la question."
+DEFENCE = "Les constats chiffrés par les outils appuient une attente prudente, sans exposition."
+CHALLENGE = "Ces constats ne suffisent pas à agir : données de démonstration et limites inconnues."
+DEFENDER_MIND = "Un constat d'outil défavorable, ou une limite dépassée, me ferait changer d'avis."
+CHALLENGER_MIND = "Un protocole réussi sur des données réelles me ferait changer d'avis."
+WAIT = "Attendre, sans exposition nouvelle."
+RETAINED = "Constats chiffrés retenus : "
+INVALIDATION = "Un nouveau constat des outils contredit ceux qui fondent l'attente."
+KEPT = "Argument appuyé sur des constats calculés par les outils."
+SET_ASIDE = "Argument pris en compte : l'attente n'engage aucune exposition."
+SCENARIO = "Choc de taux défavorable sur le portefeuille, chiffré par le stress de l'outil."
+IRREVERSIBILITY = "Attendre n'engage rien d'irréversible : aucune position n'est ouverte."
+BLOCKED = "Une limite est inconnue ou dépassée : le blocage du code s'applique."
+UNBLOCKED = "Les limites contrôlées sont respectées et le scénario défavorable est chiffré."
 FINANCE_STEPS = (
     "Relire les hypothèses et les limites signalées par les outils.",
     "Décider soi-même de toute suite à donner : aucun ordre n'est passé.",
@@ -257,11 +318,21 @@ FINANCE_SERVERS: dict[str, ServerFactory] = {
     "finance_report": lambda store, config: finance_report_server(
         store, config, clock=lambda: FINANCE_NOW
     ),
-    # The registry and the reports live under the project, not in the eval's store.
+    # The registry lives under the project, not in the eval's store: a root of its own.
     "finance_research": lambda _store, config: finance_research_server(
-        REPO_ROOT, config, clock=lambda: FINANCE_NOW
+        research_root(), config, clock=lambda: FINANCE_NOW
     ),
 }
+
+
+@cache
+def research_root() -> Path:
+    """A project root for the research server: the repository's registry and no ``var/``, so
+    that a run never reads the trials nor the protocol reports of Lucas (N stays that of the
+    fixture) and never writes next to them."""
+    root = Path(tempfile.mkdtemp(prefix="cerveau-eval-research-"))
+    shutil.copytree(REPO_ROOT / REGISTRY_DIR, root / REGISTRY_DIR)
+    return root
 
 
 @dataclass
@@ -365,9 +436,14 @@ class Pilot:
     finance: FinanceLog = field(default_factory=FinanceLog)
     calls: list[str] = field(default_factory=list)  # roles, in call order
     _answer: str | None = None
+    _turns: dict[str, int] = field(default_factory=dict)  # scripted replies used, by member
 
-    def reply(self, role: str, messages: Sequence[BaseMessage]) -> AIMessage:
+    def reply(
+        self, role: str, messages: Sequence[BaseMessage], member: str | None = None
+    ) -> AIMessage:
         self.calls.append(role)
+        if role == "committee":
+            return self._committee(member or "", messages)
         offline = self.case.offline
         first = str(messages[1].content)
         if role == "classifier":
@@ -378,6 +454,103 @@ class Pilot:
         if role == "verifier":
             return AIMessage(_json({"factuels": list(offline.factual)}))
         return self._plan(messages)
+
+    # --- committee --------------------------------------------------------------------------
+
+    def _committee(self, member: str, messages: Sequence[BaseMessage]) -> AIMessage:
+        """A member of the committee: the case's scripted replies first, then honest ones."""
+        scripted = self.case.offline.committee.get(member, ())
+        used = self._turns.get(member, 0)
+        if used < len(scripted):
+            self._turns[member] = used + 1
+            return _turn(scripted[used])
+        task = str(messages[1].content)
+        if _CONTROLLER_TASK.search(task):
+            return self._controller(task, messages)
+        if _DEBATE_TASK.search(task):
+            return AIMessage(_json(_debate_turn(member, task)))
+        if _MANAGER_TASK.search(task):
+            return AIMessage(_json(_manager_decision(task)))
+        return self._analyst(task, messages)
+
+    def _analyst(self, task: str, messages: Sequence[BaseMessage]) -> AIMessage:
+        tools = _offered(task)
+        asked = _asked(messages)
+        views = _views(messages)
+        if "web_search" in tools:
+            return self._news(task, asked, views)
+        if not asked:
+            calls = [(c.tool, dict(c.args)) for c in self.case.offline.calls if c.tool in tools]
+            calls = calls or [(t, copy.deepcopy(a)) for t, a in DEFAULT_CALLS.items() if t in tools]
+            if calls:
+                return _tools(*calls)
+        return AIMessage(_json(self._findings(views)))
+
+    def _findings(self, views: Sequence[str]) -> dict[str, Any]:
+        """The findings of an honest analyst: each expected figure its session computed, cited by
+        the call that computed it, then one finding per other call, without a figure."""
+        calls: dict[str, str] = {}  # tool → first call of the session
+        for view in views:
+            for call, tool in _CALL.findall(view):
+                calls.setdefault(tool, call)
+        constats: list[dict[str, Any]] = []
+        for figure in self.case.expect.figures:
+            display = self.finance.display(figure.tool, figure.id)
+            if figure.tool in calls and display is not None:
+                text = f"{figure.label} : {_plain(display)}"
+                constats.append({"texte": text, "appel": calls[figure.tool]})
+        cited = {constat["appel"] for constat in constats}
+        constats += [
+            {"texte": RESULT.format(tool=tool), "appel": call}
+            for tool, call in calls.items()
+            if call not in cited
+        ]
+        failed = any(FAILED_TOOL in view for view in views)
+        return {
+            "constats": constats[:MAX_FINDINGS],
+            "signaux": [],
+            "incertitudes": [TOOL_FAILED] if failed or not constats else [],
+        }
+
+    def _news(self, task: str, asked: Sequence[str], views: Sequence[str]) -> AIMessage:
+        """The news analyst: a search on the question, the reads, the checked extracts."""
+        if "web_search" not in asked:
+            found = _ASKED.search(task)
+            query = (found.group(1) if found else self.case.question).strip()[:400]
+            return _tools(("web_search", {"query": query}))
+        if "web_read" not in asked:
+            urls = _HIT.findall("\n".join(views))[: self.case.offline.reads]
+            if urls:
+                return _tools(*(("web_read", {"url": url}) for url in dict.fromkeys(urls)))
+        constats = [
+            {"texte": _plain(claim), "appel": f"source [{n}]"}
+            for n, claim, _quote in _checked_extracts(views)
+            if len(_plain(claim)) <= MAX_FINDING_CHARS
+        ]
+        report = {
+            "constats": constats[:MAX_FINDINGS],
+            "signaux": [],
+            "incertitudes": [] if constats else [NO_NEWS],
+        }
+        return AIMessage(_json(report))
+
+    def _controller(self, task: str, messages: Sequence[BaseMessage]) -> AIMessage:
+        """Prices a stress scenario, then blocks unless every limit the code checked is met."""
+        if not _asked(messages) and "risk_report" in _offered(task):
+            return _tools(("risk_report", {"measures": ["stress"]}))
+        calls = [call for view in _views(messages) for call, _tool in _CALL.findall(view)]
+        shown = _CONTROLS.search(task)
+        states = _CONTROL_STATE.findall(shown.group(1)) if shown else []
+        blocked = not states or any(state != "respectée" for state in states)
+        report = {
+            "scenarios": [{"texte": SCENARIO, "appel": calls[0] if calls else None}],
+            "irreversibilite": IRREVERSIBILITY,
+            "verdict": "BLOQUER" if blocked else "OK",
+            "raisons": [BLOCKED if blocked else UNBLOCKED],
+        }
+        return AIMessage(_json(report))
+
+    # --- planner ----------------------------------------------------------------------------
 
     def _extracts(self, task: str) -> list[dict[str, str]]:
         found = _SOURCE.search(task)
@@ -433,6 +606,75 @@ class Pilot:
         return _json(answer)
 
 
+def _turn(turn: CommitteeTurn) -> AIMessage:
+    if turn.tool is not None:
+        return _tools((turn.tool, dict(turn.args)))
+    return AIMessage(turn.text if turn.text is not None else _json(turn.output))
+
+
+def _offered(task: str) -> set[str]:
+    found = _OFFERED.search(task)
+    return set(found.group(1).split(", ")) if found else set()
+
+
+def _asked(messages: Sequence[BaseMessage]) -> list[str]:
+    return [c["name"] for m in messages if isinstance(m, AIMessage) for c in m.tool_calls]
+
+
+def _views(messages: Sequence[BaseMessage]) -> list[str]:
+    return [str(m.content) for m in messages if isinstance(m, ToolMessage)]
+
+
+def _debate_turn(member: str, task: str) -> dict[str, Any]:
+    """One argument on the findings, answering the other side's from the second round."""
+    constats = [found[0] for found in _CONSTAT.findall(task)]
+    challenger = member.startswith("contradicteur")
+    other = "D" if challenger else "X"
+    earlier = [point for point in _ARGUMENT.findall(task) if point.startswith(other)]
+    argument = {
+        "texte": CHALLENGE if challenger else DEFENCE,
+        "poids": "moyen",
+        "constats": constats[:6],
+        "repond_a": earlier[:6],
+    }
+    return {
+        "arguments": [argument],
+        "changer_avis": CHALLENGER_MIND if challenger else DEFENDER_MIND,
+    }
+
+
+def _manager_decision(task: str) -> dict[str, Any]:
+    """Every argument treated once (the defender's kept, the challenger's set aside) and a
+    proposal to wait that repeats the figured findings as the analysts wrote them."""
+    found = _TREAT.search(task)
+    ids = [point for point in (found.group(1).split(", ") if found else ()) if point]
+    findings = _CONSTAT.findall(task)
+    figured = [text.rstrip(" .") for _id, _member, text in findings if _DIGIT.search(text)]
+    proposal = WAIT
+    for n in range(len(figured), 0, -1):
+        candidate = f"{WAIT} {RETAINED}{' ; '.join(figured[:n])}."
+        if len(candidate) <= MAX_PROPOSAL_CHARS:
+            proposal = candidate
+            break
+    invalidation = [{"condition": INVALIDATION, "constats": [findings[0][0]]}] if findings else []
+    return {
+        "decision": "attendre",
+        "proposition": proposal,
+        "confiance": "moyen",
+        "horizon": "court",
+        "invalidation": invalidation,
+        "desaccords": [],
+        "arguments": [
+            {
+                "id": point,
+                "sort": "retenu" if point.startswith("D") else "ecarte",
+                "raison": KEPT if point.startswith("D") else SET_ASIDE,
+            }
+            for point in ids
+        ],
+    }
+
+
 def _checked_extracts(views: Sequence[str]) -> list[tuple[int, str, str]]:
     """(source number, claim, quote) of each checked extract the planner was shown."""
     extracts: list[tuple[int, str, str]] = []
@@ -484,6 +726,7 @@ def _limits(log: FinanceLog) -> list[str]:
     lines: list[str] = []
     for tool, result in log.results():
         texts = [str(w) for w in result.get("warnings") or ()]
+        texts += [str(w) for w in result.get("avertissements") or ()]
         texts += [str(u.get("reason", "")) for u in result.get("unavailable") or ()]
         lines += [f"Limite signalée par {tool} : {_plain(t)}." for t in texts if t.strip()]
     for tool, error in log.errors:
@@ -494,7 +737,7 @@ def _limits(log: FinanceLog) -> list[str]:
 def _assumptions(result: Mapping[str, Any]) -> list[str]:
     """The assumptions a tool states, labelled by the tool itself (R12), wherever they are."""
     method = result.get("method")
-    found = [*(result.get("assumptions") or ())]
+    found = [*(result.get("assumptions") or ()), *(result.get("hypotheses") or ())]
     if isinstance(method, Mapping):
         found += method.get("assumptions") or ()
     return [str(text) for text in found if str(text).strip()]
@@ -512,6 +755,8 @@ def _frame(log: FinanceLog) -> list[str]:
             lines.append(f"Statut : analyse au niveau {level} ; aucun ordre n'est passé.")
         if result.get("parity_label"):
             lines.append(f"Étiquette de {tool} : {_plain(str(result['parity_label']))}.")
+        if result.get("rappel"):
+            lines.append(f"Rappel de {tool} : {_plain(str(result['rappel']))}.")
         lines += [f"Convention de {tool} : {_plain(text)}." for text in _assumptions(result)]
     return list(dict.fromkeys(lines))
 
@@ -584,6 +829,7 @@ class ScriptedModel(BaseChatModel):
     pilot: Any
     role: str
     model_id: str
+    member: str | None = None  # the committee member, for the role "committee"
 
     @property
     def _llm_type(self) -> str:
@@ -595,7 +841,7 @@ class ScriptedModel(BaseChatModel):
     def _generate(
         self, messages: list[BaseMessage], stop: Any = None, run_manager: Any = None, **kw: Any
     ) -> ChatResult:
-        reply = self.pilot.reply(self.role, messages)
+        reply = self.pilot.reply(self.role, messages, self.member)
         message = AIMessage(
             content=reply.content,
             tool_calls=reply.tool_calls,
@@ -618,6 +864,7 @@ def scripted_router(config: Config, pilot: Pilot) -> ModelRouter:
             pilot=pilot,
             role=request.role,
             model_id=request.model,
+            member=request.member,
             callbacks=list(request.callbacks),
         )
 
@@ -656,12 +903,18 @@ class Recorder(BaseCallbackHandler):
 def offline_config(source: Path = REPO_ROOT / "config") -> Config:
     """A temporary copy of ``config/`` with the values an offline run needs (never the real one).
 
-    The euro budgets and the PII threshold stay ``A_DEFINIR`` in the repository (R7); the copy
-    gives the scripted run room to work. Its costs are estimates and are labelled as such.
+    The euro budgets, the committee's session budget and the PII threshold stay ``A_DEFINIR``
+    in the repository (R7); the copy gives the scripted run room to work. Its costs are
+    estimates and are labelled as such.
     """
     directory = Path(tempfile.mkdtemp(prefix="cerveau-eval-config-")) / "config"
     shutil.copytree(source, directory)
-    _edit(directory / "budgets.yaml", lambda d: d.update(llm_budget_eur=dict(OFFLINE_BUDGETS)))
+    _edit(
+        directory / "budgets.yaml",
+        lambda d: d.update(
+            llm_budget_eur=dict(OFFLINE_BUDGETS), per_committee=dict(OFFLINE_COMMITTEE)
+        ),
+    )
     _edit(
         directory / "guardrails.yaml",
         lambda d: d["pii"].update(score_threshold=OFFLINE_PII_THRESHOLD),

@@ -19,8 +19,10 @@ from pathlib import Path
 from typing import Any
 
 from core.audit.chain import AuditJournal, default_journal_path
+from core.committee.cards import load_committee
+from core.committee.engine import CommitteeSpec
 from core.config import load_config
-from core.config.loader import Config
+from core.config.loader import Config, PaperRiskLimits
 from core.evals.cases import REPO_ROOT, Case, Suite
 from core.evals.checks import Check, Mode, Outcome, r5_breaches, run_checks, sourcing_ok
 from core.evals.judge import Judgement, golden_threshold, judge
@@ -42,10 +44,13 @@ from core.evals.offline import (
 )
 from core.learning.errors import journal_errors, judge_error
 from core.models.router import ModelRouter
-from core.orchestrator.graph import Orchestrator, RunResult
+from core.orchestrator.graph import Orchestrator, RunResult, committee_file
+from core.orchestrator.packs import PACKS_DIR
 from core.orchestrator.runtime import WEB_PLUGIN
 from core.policy.engine import KILL_SWITCH_FILE
 from core.verification.citations import citation_numbers
+from plugins.finance_committee.agent import FEATURE, PACK
+from plugins.finance_committee.limits import CHECKED, paper_limit_checks
 
 MODE_ENV = "CERVEAU_EVAL_MODE"
 OUT_ENV = "CERVEAU_EVAL_OUT"  # where the results go, set by `cerveau eval`
@@ -152,6 +157,67 @@ def decision_payload(journal: AuditJournal, request_id: str) -> dict[str, Any]:
     return payload
 
 
+def role_entries(journal: AuditJournal, request_id: str) -> tuple[dict[str, Any], ...]:
+    """The committee entries the request wrote to the journal, one DECISION entry per role (D19):
+    member, kind, round, validity and number of answers (2 after a repair)."""
+    if not journal.path.exists():
+        return ()
+    roles: list[dict[str, Any]] = []
+    for line in journal.path.read_text(encoding="utf-8").splitlines():
+        entry = json.loads(line)
+        if entry.get("event") != "DECISION" or entry.get("request_id") != request_id:
+            continue
+        role = journal.read_payload(entry["payload_ref"]).get("committee") or {}
+        if "member" in role:
+            roles.append(role)
+    return tuple(roles)
+
+
+def _strings(value: Any) -> list[str]:
+    if isinstance(value, str):
+        return [value]
+    if isinstance(value, dict):
+        return [text for item in value.values() for text in _strings(item)]
+    if isinstance(value, list):
+        return [text for item in value for text in _strings(item)]
+    return []
+
+
+def committee_texts(root: Path, payload: dict[str, Any]) -> tuple[str, ...]:
+    """Every text of the valid outputs the session file keeps, as ``cerveau committee show``
+    shows them: findings, arguments, decision and controller report, model-written (R5)."""
+    session = payload.get("committee") or {}
+    record_id, pack = session.get("committee_record_id"), session.get("pack")
+    if not record_id or not pack:
+        return ()
+    path = committee_file(root, pack, record_id)
+    if not path.exists():
+        return ()
+    roles = json.loads(path.read_text(encoding="utf-8")).get("roles", [])
+    return tuple(text for role in roles for text in _strings(role.get("output")))
+
+
+def paper_limits(config: Config, case: Case) -> PaperRiskLimits:
+    """The paper limits of the run: the configuration's, or the case's values over a copy of
+    them (never the file: the limits of Lucas stay ``A_DEFINIR``, R7)."""
+    given = case.offline.paper_limits
+    if given is None:
+        return config.risk_limits_paper
+    return PaperRiskLimits.model_validate(config.risk_limits_paper.model_dump() | dict(given))
+
+
+def unknown_limits(limits: PaperRiskLimits) -> tuple[str, ...]:
+    """The limits the committee checks that are still a marker (A_DEFINIR, A_VERIFIER)."""
+    return tuple(name for name in CHECKED if isinstance(getattr(limits, name), str))
+
+
+def paper_committee(limits: PaperRiskLimits) -> CommitteeSpec:
+    """The finance committee, checked against ``limits`` instead of the configuration's."""
+    return load_committee(
+        PACKS_DIR / PACK, pack=PACK, feature=FEATURE, limit_checks=paper_limit_checks(limits)
+    )
+
+
 def cites_a_source(outcome: Outcome) -> bool:
     """The synthesis cites a source of the list (live: an answer the judge finds factual)."""
     numbers = {source.number for source in outcome.answer.sources}
@@ -185,6 +251,10 @@ def _outcome(
     log: WebLog,
     reader: FixtureReader,
     refused: tuple[str, ...] = (),
+    *,
+    roles: tuple[dict[str, Any], ...] = (),
+    texts: tuple[str, ...] = (),
+    unknown: tuple[str, ...] = (),
 ) -> Outcome:
     hits = case.search_hits() if log.queries else ()
     return Outcome(
@@ -201,6 +271,10 @@ def _outcome(
         tool_calls=result.tool_calls,
         tool_outputs=result.tool_outputs,
         refused_imports=refused,
+        role_entries=len(roles),
+        repaired_roles=tuple(r["member"] for r in roles if r.get("attempts", 1) > 1),
+        committee_texts=texts,
+        unknown_limits=unknown,
     )
 
 
@@ -264,6 +338,8 @@ async def _offline(case: Case, root: Path, run: str) -> CaseResult:
         data = home / "finance"
         data.mkdir()
         store, refused = case_store(case, data)
+        limits = paper_limits(config, case)
+        given = case.offline.paper_limits is not None
         orchestrator = Orchestrator(
             config,
             project_root=home,
@@ -277,10 +353,25 @@ async def _offline(case: Case, root: Path, run: str) -> CaseResult:
             callbacks=(recorder,),
             clock=lambda: now,
             tz=UTC,
+            committees={PACK: paper_committee(limits)} if given else None,
         )
         result = await orchestrator.ask(case.question)
         payload = decision_payload(journal, result.request_id)
-    outcome = _outcome(case, "offline", result, payload, recorder, log, reader, refused)
+        roles = role_entries(journal, result.request_id)
+        texts = committee_texts(home, payload)
+    outcome = _outcome(
+        case,
+        "offline",
+        result,
+        payload,
+        recorder,
+        log,
+        reader,
+        refused,
+        roles=roles,
+        texts=texts,
+        unknown=unknown_limits(limits),
+    )
     return _result(outcome, result, run)
 
 
@@ -316,7 +407,21 @@ async def _live(case: Case, root: Path, run: str) -> CaseResult:
         )
         result = await orchestrator.ask(case.question)
     payload = decision_payload(journal, result.request_id)
-    outcome = _outcome(case, "live", result, payload, recorder, log, reader, refused)
+    roles = role_entries(journal, result.request_id)
+    texts = committee_texts(root, payload)
+    outcome = _outcome(
+        case,
+        "live",
+        result,
+        payload,
+        recorder,
+        log,
+        reader,
+        refused,
+        roles=roles,
+        texts=texts,
+        unknown=unknown_limits(config.risk_limits_paper),
+    )
     judgement = None
     pack = case.group if case.suite == "golden" else "generaliste"
     threshold = golden_threshold(config, pack)

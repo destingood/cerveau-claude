@@ -126,6 +126,7 @@ class Route(_Data):  # the router's answer (RouteVerdict)
     importance: Importance = "normale"
     web: bool = True
     raison: str = "faits publics"
+    mode: Literal["direct", "comite"] = "direct"  # « comite »: the pack's Committee answers
 
 
 class Attack(_Data):
@@ -142,6 +143,28 @@ class ToolCallFixture(_Data):
 
     tool: str = Field(pattern=TOOL_NAME)
     args: dict[str, Any] = Field(default_factory=dict)
+
+
+class CommitteeTurn(_Data):
+    """One reply a scripted member gives instead of its honest one: a tool call, a JSON output
+    or a raw text (an injection the engine must refuse)."""
+
+    tool: str | None = Field(default=None, pattern=TOOL_NAME)
+    args: dict[str, Any] = Field(default_factory=dict)
+    output: dict[str, Any] | None = None
+    text: str | None = Field(default=None, min_length=1)
+
+    @model_validator(mode="after")
+    def _one_reply(self) -> CommitteeTurn:
+        given = (self.tool is not None) + (self.output is not None) + (self.text is not None)
+        if given != 1:
+            raise ValueError("un tour du Comité : un appel d'outil, une sortie ou un texte")
+        if self.args and self.tool is None:
+            raise ValueError("args sans outil")
+        return self
+
+
+PaperLimit = Literal["capital_reference_eur", "max_order_pct", "max_position_pct", "max_sector_pct"]
 
 
 class ExpectedFigure(_Data):
@@ -165,15 +188,26 @@ class Offline(_Data):
     attack: Attack | None = None
     factual: tuple[int, ...] = ()  # the verifier's answer: uncited passages that are factual
     kill_switch: bool = False  # the run starts with the kill switch file in place (R4)
+    # Replies of committee members, by member, taken in order (repairs and rounds included)
+    # before their honest replies: what a manipulated or mistaken member would say.
+    committee: dict[str, tuple[CommitteeTurn, ...]] = Field(default_factory=dict)
+    # Paper limits the case's committee checks instead of risk_limits.paper.yaml (all A_DEFINIR).
+    paper_limits: dict[PaperLimit, float] | None = None
 
     @model_validator(mode="after")
     def _answer_without_web(self) -> Offline:
-        scripted = self.answer is not None or bool(self.calls)
+        scripted = self.answer is not None or bool(self.calls) or self.route.mode == "comite"
         if self.verdict.decision == "ok" and not self.route.web and not scripted:
             raise ValueError(
                 "une question sans web exige une réponse scriptée (offline.answer) "
                 "ou des appels d'outils (offline.calls)"
             )
+        return self
+
+    @model_validator(mode="after")
+    def _positive_limits(self) -> Offline:
+        if any(value <= 0 for value in (self.paper_limits or {}).values()):
+            raise ValueError("paper_limits : une limite est strictement positive")
         return self
 
 
@@ -231,6 +265,17 @@ class StoreFixture(_Data):
         return (self.instruments_csv is not None) + (self.transactions_csv is not None)
 
 
+class ExpectCommittee(_Data):
+    """What the committee's session must show: its status, its verdict and its journal."""
+
+    status: tuple[Literal["complete", "echec", "incomplete"], ...] = ("complete",)
+    verdict: tuple[Literal["OK", "BLOQUER"], ...] = ()  # empty: no verdict expected
+    decision: tuple[Literal["agir", "ne_pas_agir", "attendre"], ...] = ()
+    min_role_entries: int = Field(default=0, ge=0)  # DECISION entries of the roles
+    repaired: tuple[str, ...] = ()  # members whose faulty output was refused, then repaired
+    libelle: str = "analyse"  # N0: an analysis, never a proposal to execute
+
+
 class Expect(_Data):
     status: tuple[Status, ...] = ("complete",)
     sourced: bool = False  # sources cited in the synthesis and the development, none invalid
@@ -251,6 +296,7 @@ class Expect(_Data):
     mentions: tuple[str, ...] = ()  # substrings of the answer, case and spaces ignored
     absent: tuple[str, ...] = ()  # never in the answer, case and spaces ignored
     refused_imports: int = Field(default=0, ge=0, le=2)  # files of `store` the import refuses (R5)
+    committee: ExpectCommittee | None = None  # the session of the pack's Committee
     offline: ExpectOffline = ExpectOffline()
 
     @model_validator(mode="after")
