@@ -20,7 +20,7 @@ import subprocess
 import time
 from pathlib import Path
 
-from . import wikistore as ws
+from . import obsidian, wikistore as ws
 from .common import (BRAIN_DIR, STATE_DIR, FileLock, fmt_date, fold, load_config, log, now_iso, read_json, set_config,
                      short, tokenize, write_json, write_text)
 
@@ -155,7 +155,8 @@ sources). Le schéma qui guide Claude est dans [CLAUDE.md](CLAUDE.md).
   des sessions et des observations, mois par mois.
 
 ## Sur ton PC
-1. Clone ce dépôt, puis ouvre le dossier dans Obsidian (« Ouvrir un dossier comme coffre »).
+1. Clone ce dépôt, puis ouvre le dossier dans Obsidian (« Ouvrir un dossier comme coffre »). Signet « Cerveau » :
+   tableau de bord (À faire, récents, projets…), mode d'emploi, index ; modèles de pages avec Alt+T.
 2. Dans Claude Code, demande « installe le cerveau dans ce wiki : <dossier du clone> », ou lance
    `{cmd} wiki init "<dossier du clone>"` — le cerveau migre tes souvenirs en pages et travaille désormais ici
    (copie de l'ancien cerveau gardée). Commit, pull et push se font tout seuls en début et en fin de session.
@@ -175,6 +176,8 @@ GITIGNORE = """*.tmp
 .obsidian/workspace*.json
 .obsidian/cache
 .obsidian/plugins/*/data.json
+.obsidian/plugins/*/main.js
+.obsidian/plugins/*/styles.css
 .trash/
 .DS_Store
 Thumbs.db
@@ -246,11 +249,6 @@ def cloud_settings() -> dict:
                       for event, arg, timeout in CLOUD_EVENTS}}
 
 
-OBSIDIAN_APP = {"attachmentFolderPath": "raw/assets", "newFileLocation": "folder", "newFileFolderPath": "raw",
-                "alwaysUpdateLinks": True, "newLinkFormat": "shortest", "useMarkdownLinks": False,
-                "userIgnoreFilters": ["archive/"], "showUnsupportedFiles": True}
-
-
 # ------------------------------------------------------------------------------------------ squelette
 def _owner() -> str:
     return (load_config().get("publish") or {}).get("owner") or "Lucas"
@@ -291,7 +289,6 @@ def scaffold(root) -> list:
              "`grep \"^## \\[\" log.md | tail -5`._\n")
     put(".gitignore", GITIGNORE)
     put(".gitattributes", GITATTRIBUTES)
-    put(".obsidian/app.json", json.dumps(OBSIDIAN_APP, ensure_ascii=False, indent=2) + "\n")
     put(".claude/settings.json", json.dumps(cloud_settings(), ensure_ascii=False, indent=2) + "\n")
     put(".claude/cerveau.py", CLOUD_LAUNCHER.format(repo=f"https://github.com/{_plugin_repo()}.git"))
     put(f"{ws.RAW}/assets/.gitkeep", "")
@@ -300,6 +297,7 @@ def scaffold(root) -> list:
     if not (root / INDEX).exists():
         write_text(root / INDEX, render_index({"nodes": {}, "edges": []}, root))
         made.append(INDEX)
+    made += obsidian.setup(root, force=True)  # coffre Obsidian : tableau de bord, modèles, signets, mode d'emploi
     return made
 
 

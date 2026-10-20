@@ -1480,8 +1480,13 @@ def cmd_wiki(a):
             print(line)
         if a.auto and not a.no_pull:
             wiki.mark_pulled()
+    elif act == "obsidian":
+        from . import obsidian
+        made = obsidian.setup(root, force=True)
+        print("\n".join(f"✓ {m}" for m in made) + "\n→ redémarre Obsidian s'il est ouvert" if made
+              else "✓ coffre Obsidian déjà réglé (rien ne manquait)")
     else:
-        die(f"action inconnue : {a.action} — init, add, pending, lint, index, log, status, sync, schema")
+        die(f"action inconnue : {a.action} — init, add, pending, lint, index, log, status, sync, schema, obsidian")
 
 
 def cmd_boutique(a):
@@ -1878,7 +1883,8 @@ def build_parser():
     s.add_argument("--fix", action="store_true", help="réinstaller, reconstruire, nettoyer et sauvegarder")
     s = cmd("wiki", cmd_wiki, "le cerveau en wiki (LLM Wiki, coffre Obsidian, dépôt git) : init <dossier> · add <fichier|url|-> · "
             "pending · lint · index · log [op titre lignes…] · status · sync · schema")
-    s.add_argument("action", nargs="?", help="init, add, pending, lint, index, log, status (défaut), sync, schema")
+    s.add_argument("action", nargs="?", help="init, add, pending, lint, index, log, status (défaut), sync, schema, "
+                                                "obsidian (règle le coffre : tableau de bord, modèles, signets)")
     s.add_argument("args", nargs="*", help="init : dossier · add : fichier, url ou « - » (stdin) · log : opération titre lignes…")
     s.add_argument("-T", "--title", help="add : titre de la source")
     s.add_argument("--url", help="add : adresse d'origine (texte reçu par stdin)")

@@ -151,11 +151,21 @@ def _auto_sync(brain, cfg) -> bool:
 
 def wiki_start(brain, cfg) -> str:
     """Démarrage en mode wiki : la ligne du wiki pour Claude, et un pull en arrière-plan (au plus toutes les 30 min)."""
-    from . import wiki
+    from . import obsidian, wiki, wikistore as ws
     if _auto_sync(brain, cfg) and wiki.due_sync((cfg.get("wiki") or {}).get("sync_minutes", 30)):
         wiki.mark_pulled()
         spawn_background(["wiki", "sync", "--auto", "--no-push"])
-    return wiki.notice(brain)
+    text = wiki.notice(brain)
+    try:  # une fois par version : coffre Obsidian réglé (rien d'écrasé)
+        made = obsidian.setup(ws.root())
+    except Exception as exc:
+        made = []
+        log(f"obsidian (démarrage) : {exc!r}")
+    if made:
+        text += (f"\n🟣 Coffre Obsidian réglé pour le cerveau ({len(made)} fichier(s) : tableau de bord, modèles Alt+T, "
+                 f"signets, mode d'emploi) — à dire à l'utilisateur : redémarrer Obsidian s'il est ouvert, puis signet "
+                 f"« Cerveau » → « {obsidian.GUIDE[:-3]} ».")
+    return text
 
 
 def journal_catchup(cfg, sid) -> bool:

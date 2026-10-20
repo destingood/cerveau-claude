@@ -214,6 +214,59 @@ code, out = brain("edit", "dropshipping", "-i", "4")
 check((WIKI / "wiki/Concepts/Sous-dossier/Dropshipping.md").is_file() and not mv.exists(),
       "rangement fait dans Obsidian respecté", out)
 
+# ------------------------------------------------------------------ 5 bis. coffre Obsidian réglé par le cerveau
+from brainkit import obsidian  # noqa: E402
+
+OB = WIKI / ".obsidian"
+
+
+def obs(name):
+    return json.loads((OB / name).read_text(encoding="utf-8"))
+
+
+cfg = {f: obs(f) for f in ("app.json", "types.json", "core-plugins.json", "backlink.json", "templates.json",
+                           "hotkeys.json", "bookmarks.json", "graph.json")}
+check(len(cfg["types.json"]["types"]) == 29 and cfg["types.json"]["types"]["echeance"] == "date"
+      and cfg["types.json"]["types"]["lie_a"] == "multitext", "Obsidian : propriétés typées", str(cfg["types.json"]))
+check(all(cfg["core-plugins.json"].get(m) for m in ("templates", "bases", "backlink")) and cfg["backlink.json"]["backlinkInDocument"],
+      "Obsidian : modules Modèles, Bases et rétroliens actifs")
+check(cfg["templates.json"]["folder"] == "wiki/_modeles" and "templates:insert-template" in cfg["hotkeys.json"],
+      "Obsidian : modèles avec Alt+T")
+check({"archive/", "wiki/_modeles/"} <= set(cfg["app.json"]["userIgnoreFilters"]) and cfg["app.json"]["newFileFolderPath"] == "raw",
+      "Obsidian : archive et modèles hors recherche, nouvelles notes dans raw/")
+check({"Tableau de bord.base", "Mode d'emploi Obsidian.md", "index.md"} <= obsidian._marks(cfg["bookmarks.json"]["items"]),
+      "Obsidian : signets du groupe Cerveau", str(cfg["bookmarks.json"]))
+check(len(cfg["graph.json"]["colorGroups"]) == len(ws.FOLDERS), "Obsidian : une couleur par dossier dans le graphe")
+check('file.inFolder("wiki/_modeles")' in page("Tableau de bord.base") and "Alt+T" in page("Mode d'emploi Obsidian.md"),
+      "Obsidian : tableau de bord (modèles exclus) et mode d'emploi")
+tpl = sorted(p.stem for p in (WIKI / "wiki/_modeles").glob("*.md"))
+paths = [v.get("path", "") for v in Brain.load().data["wiki"]["files"].values()]
+check(len(tpl) == 5 and "echeance: {{date:YYYY-MM-DD}}" in page("wiki/_modeles/À faire.md")
+      and not any("_modeles" in p for p in paths), "Obsidian : 5 modèles, que le cerveau ne prend pas pour des pages", str(tpl))
+check(".obsidian/plugins/*/main.js" in page(".gitignore"), "Obsidian : code des modules tiers hors git")
+check(obsidian.setup(WIKI) == [], "Obsidian : réglé une seule fois par version")
+# réglages changés par l'utilisateur : rien d'écrasé, seul le manquant revient
+(OB / "hotkeys.json").write_text(json.dumps({"editor:toggle-bold": [{"modifiers": ["Alt"], "key": "t"}]}), encoding="utf-8")
+(OB / "app.json").write_text(json.dumps(dict(cfg["app.json"], newFileFolderPath="Boîte", userIgnoreFilters=["perso/"])),
+                             encoding="utf-8")
+(OB / "types.json").write_text(json.dumps({"types": {"importance": "text"}}), encoding="utf-8")
+(OB / "bookmarks.json").write_text(json.dumps({"items": [{"type": "file", "path": "index.md", "title": "Mon index"}]}),
+                                   encoding="utf-8")
+(WIKI / "Mode d'emploi Obsidian.md").write_text("à moi\n", encoding="utf-8")
+made = obsidian.setup(WIKI, force=True)
+hk, app, ty, bm = obs("hotkeys.json"), obs("app.json"), obs("types.json"), obs("bookmarks.json")
+check("templates:insert-template" not in hk and "editor:toggle-bold" in hk and "omnisearch:show-modal" in hk,
+      "Obsidian : raccourci déjà pris par l'utilisateur gardé", str(hk))
+check(app["newFileFolderPath"] == "Boîte" and app["userIgnoreFilters"] == ["perso/", "archive/", "wiki/_modeles/"],
+      "Obsidian : réglages gardés, exclusions ajoutées", str(app))
+check(ty["types"]["importance"] == "text" and ty["types"]["echeance"] == "date", "Obsidian : type choisi par l'utilisateur gardé")
+check(page("Mode d'emploi Obsidian.md") == "à moi\n", "Obsidian : fichier existant jamais écrasé")
+check(sum(1 for b in json.dumps(bm).split('"index.md"')) == 2 and bm["items"][0]["title"] == "Mon index"
+      and len(bm["items"][1]["items"]) == 3, "Obsidian : signets complétés sans doublon", str(bm))
+check(obsidian.setup(WIKI, force=True) == [], "Obsidian : deuxième passage, rien à faire", str(made))
+(WIKI / obsidian.STAMP).unlink()  # installation d'avant la 8.7 : réglée au prochain démarrage (section 10)
+(WIKI / "wiki/_modeles/Référence.md").unlink()
+
 # ------------------------------------------------------------------ 6. wiki introuvable : lecture seule
 cfg = json.loads((TMP / "brain" / "config.json").read_text(encoding="utf-8"))
 real = cfg["wiki"]["path"]
@@ -340,6 +393,9 @@ def hook(event, payload, cwd=None):
 
 o = hook("session-start", {"session_id": "s1", "cwd": str(WORK)})
 check("📚 Le cerveau vit dans le wiki" in o and "à ingérer" in o, "démarrage : ligne du wiki", o[-600:])
+check("Coffre Obsidian réglé" in o and (WIKI / "wiki/_modeles/Référence.md").is_file() and (WIKI / obsidian.STAMP).is_file()
+      and "Coffre Obsidian" not in hook("session-start", {"session_id": "s0", "cwd": str(WORK)}),
+      "démarrage : coffre Obsidian réglé une fois (installation existante)", o[-600:])
 o = hook("prompt", {"session_id": "s9", "cwd": str(WORK), "prompt": "parle-moi de la synthèse japonaise sur Kyoto et Uji"})
 check("Thé japonais" in o, "rappel : page du wiki remontée", o)
 check("Thé japonais" in hook("session-start", {"session_id": "s3", "cwd": str(WORK)}), "index de démarrage : section wiki")
