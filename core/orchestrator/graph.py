@@ -1,17 +1,20 @@
-"""The 8-node graph of section 7.1 and the orchestrator that runs one request.
+"""The graph of section 7.1 and the orchestrator that runs one request.
 
-context → guard → route → plan → verify → output → policy → audit. The kill switch, a refused
+context → guard → route → plan → verify → output → policy → audit; a decision question routed to
+a pack's committee (D15) goes route → committee → output instead. The kill switch, a refused
 question (by the guard, or once routed to a domain that cannot carry out its action class) and a
 question that needs a clarification go straight to the output; a kill switch
 engaged while the request runs stops it before the next model call, with a refusal. Every request,
 answered or not, ends with one DECISION entry in the audit journal (R11) that carries its cost
 (the ledger reads it) and counts, never the question, the answer or a URL; one ERROR entry per
-error the request shows follows it (ADR-011).
+error the request shows follows it (ADR-011). A committee session writes before it one DECISION
+entry per role, with the digest of the session file ``var/<pack>/committee/<id>.json`` (D19).
 """
 
 from __future__ import annotations
 
 import hashlib
+import json
 import uuid
 from collections import Counter
 from collections.abc import Awaitable, Callable, Mapping, Sequence
@@ -28,6 +31,7 @@ from core.audit import AuditJournal
 from core.audit.chain import default_journal_path
 from core.budget.gate import BudgetGate, RequestBudget
 from core.budget.ledger import COST_KEY
+from core.committee.engine import CommitteeSpec, Sitting, run_committee
 from core.config.loader import Config
 from core.guardrails.pii import PiiAnalyzer, Pseudonymiser
 from core.learning.errors import decision_errors, journal_errors
@@ -45,13 +49,21 @@ from core.orchestrator.runtime import (
     ToolboxOpener,
     mcp_toolbox,
 )
-from core.orchestrator.state import Answer, CerveauState, TraceRow, required
+from core.orchestrator.state import (
+    Answer,
+    CerveauState,
+    CommitteeOutcome,
+    TraceRow,
+    required,
+)
 from core.orchestrator.verify import verify_node
 from core.policy.engine import decide, kill_switch_engaged
+from core.registry.agents import load_agent
 from core.verification.trace import ToolOutput
 
 Node = Callable[[Run, CerveauState], Awaitable[dict[str, Any]]]
-RECURSION_LIMIT = 20  # 8 nodes, no cycle in the graph
+RECURSION_LIMIT = 20  # 9 nodes, no cycle in the graph
+PLUGINS_DIR = Path(__file__).resolve().parents[2] / "plugins"  # in-process agents (committees)
 MAX_TRACE_ROWS = 200  # the counts stay whole beyond it
 POLICY_REFUSAL = "Réponse retenue par le moteur de politique"
 
@@ -145,6 +157,18 @@ def audit_payload(run: Run, state: CerveauState, *, status: str | None = None) -
             "tier": route.tier,
             "tools": list(route.tools),
             "skipped": sorted(route.skipped),
+            "mode": route.mode,
+        }
+    if (committee := state.committee) is not None:
+        payload["committee"] = {
+            "committee_record_id": committee.record_id,
+            "pack": committee.pack,
+            "version": committee.version,
+            "status": committee.status,
+            "reason": committee.reason,
+            "roles": committee.roles,
+            "verdict": committee.verdict,
+            "file_sha256": committee.file_sha256,
         }
     if (draft := state.draft) is not None:
         payload["planner"] = {
@@ -223,6 +247,68 @@ def halted_state(run: Run) -> CerveauState:
     return state.model_copy(update={"answer": answer, "policy": decision.to_payload()})
 
 
+def committee_file(root: Path, pack: str, record_id: str) -> Path:
+    return root / "var" / pack / "committee" / f"{record_id}.json"
+
+
+def _outcome(run: Run, sitting: Sitting) -> CommitteeOutcome:
+    """Writes the session file, then one DECISION entry per role that cites its digest (D19)."""
+    path = committee_file(run.project_root, sitting.pack, sitting.record_id)
+    path.parent.mkdir(parents=True, exist_ok=True)
+    data = json.dumps(sitting.to_payload(), ensure_ascii=False, indent=2).encode("utf-8")
+    path.write_bytes(data)
+    file_sha256 = hashlib.sha256(data).hexdigest()
+    run_versions = versions(run)  # the committee's version goes in the payload (VERSION_KEYS)
+    for record in sitting.roles:  # no cost here: the request's entry carries it (ledger)
+        entry = {
+            "committee_record_id": sitting.record_id,
+            "pack": sitting.pack,
+            "version": sitting.version,
+            **record.to_payload(),
+        }
+        run.journal.append(
+            actor="orchestrator",
+            event="DECISION",
+            request_id=run.request_id,
+            versions=run_versions,
+            payload={"committee": entry | {"file_sha256": file_sha256}},
+        )
+    decision = sitting.decision.model_dump(mode="json") if sitting.decision else None
+    return CommitteeOutcome(
+        record_id=sitting.record_id,
+        pack=sitting.pack,
+        version=sitting.version,
+        status=sitting.status,
+        reason=sitting.reason,
+        halted=sitting.halted,
+        decision=decision,
+        verdict=sitting.verdict,
+        verdict_reasons=sitting.verdict_reasons,
+        roles=len(sitting.roles),
+        file=path.relative_to(run.project_root).as_posix(),
+        file_sha256=file_sha256,
+        tool_outputs=tuple(sitting.tool_outputs()),
+        sources=tuple(source for _member, source in sitting.sources()),
+    )
+
+
+async def committee_node(run: Run, state: CerveauState) -> dict[str, Any]:
+    """One session of the routed pack's committee; the kill switch then stops the request (R4)."""
+    guarded, route = required(state.guarded, "garde"), required(state.route, "routage")
+    context = required(state.context, "contexte")
+    spec = run.committee_for(route.domain) if run.committee_for is not None else None
+    if spec is None:  # the route only chooses the committee when the pack has one
+        raise RuntimeError(f"aucun Comité pour le pack « {route.domain} »")
+    sitting = await run_committee(
+        run, spec, question=guarded.question, now=context.now, record_id=str(uuid.uuid4())
+    )
+    outcome = _outcome(run, sitting)
+    if outcome.halted:
+        run.last_state = state.model_copy(update={"committee": outcome})
+        raise KillSwitchEngaged
+    return {"committee": outcome}
+
+
 async def audit_node(run: Run, state: CerveauState) -> dict[str, Any]:
     journal_decision(run, audit_payload(run, state))
     return {"audited": True}
@@ -233,6 +319,7 @@ NODES: Sequence[tuple[str, Node]] = (
     ("garde", guard_node),
     ("routage", route_node),
     ("planification", plan_node),
+    ("comite", committee_node),
     ("controle", verify_node),
     ("sortie", output_node),
     ("politique", policy_node),
@@ -249,7 +336,9 @@ def _after_guard(state: CerveauState) -> str:
 
 
 def _after_route(state: CerveauState) -> str:
-    return "planification" if required(state.guarded, "garde").decision == "ok" else "sortie"
+    if required(state.guarded, "garde").decision != "ok":
+        return "sortie"
+    return "comite" if required(state.route, "routage").mode == "comite" else "planification"
 
 
 def build_graph(run: Run) -> Any:
@@ -269,10 +358,13 @@ def build_graph(run: Run) -> Any:
     graph.add_conditional_edges("contexte", _after_context, {"sortie": "sortie", "garde": "garde"})
     graph.add_conditional_edges("garde", _after_guard, {"sortie": "sortie", "routage": "routage"})
     graph.add_conditional_edges(
-        "routage", _after_route, {"sortie": "sortie", "planification": "planification"}
+        "routage",
+        _after_route,
+        {"sortie": "sortie", "planification": "planification", "comite": "comite"},
     )
     for source, target in (
         ("planification", "controle"),
+        ("comite", "sortie"),
         ("controle", "sortie"),
         ("sortie", "politique"),
         ("politique", "journal"),
@@ -318,6 +410,7 @@ class Orchestrator:
         clock: Callable[[], datetime] | None = None,
         budget_clock: Callable[[], float] | None = None,
         tz: tzinfo | None = None,
+        committees: Mapping[str, CommitteeSpec] | None = None,  # pack → spec; None: its agent
     ) -> None:
         self.config = config
         self.project_root = project_root
@@ -333,6 +426,19 @@ class Orchestrator:
         self._budget_clock = budget_clock
         self._tz = tz
         self._analyzer: PiiAnalyzer | None = None
+        self._committees: dict[str, CommitteeSpec | None] = dict(committees or {})
+        self._given_committees = committees is not None
+
+    def committee_spec(self, pack_id: str) -> CommitteeSpec | None:
+        """The pack's committee (D15): the specs given (tests, evals) or its registered agent."""
+        if pack_id in self._committees or self._given_committees:
+            return self._committees.get(pack_id)
+        pack = self.packs.get(pack_id)
+        spec = None
+        if pack is not None and pack.comite is not None:
+            spec = load_agent(PLUGINS_DIR / pack.comite)(self.config)
+        self._committees[pack_id] = spec
+        return spec
 
     def open_plugin(self, name: str) -> ToolboxOpener | None:
         """The plugin's MCP server, or only the openers given (tests, evals)."""
@@ -345,7 +451,9 @@ class Orchestrator:
             self._analyzer = PiiAnalyzer.from_config(self.config)
         return Pseudonymiser(self._analyzer)
 
-    async def ask(self, question: str, *, request_id: str | None = None) -> RunResult:
+    async def ask(
+        self, question: str, *, request_id: str | None = None, committee: bool = False
+    ) -> RunResult:
         request_id = request_id or str(uuid.uuid4())
         now = self._clock()
         gate = BudgetGate(self.config, self.journal, tz=self._tz)
@@ -369,6 +477,9 @@ class Orchestrator:
             packs=self.packs,
             open_plugin=self.open_plugin,
             callbacks=self.callbacks + self.tracer.callbacks(),
+            committee_forced=committee,
+            committee_for=self.committee_spec,
+            budget_clock=self._budget_clock,
         )
         start = {"config": self.config.digest}
         with self.tracer.request(
@@ -397,14 +508,19 @@ class Orchestrator:
             final_answer = required(final.answer, "sortie")
             finish(trace_metadata(run, final_answer.statut))
         answer = map_texts(final_answer, pseudonymiser.reidentify)
+        outputs: tuple[ToolOutput, ...] = ()
+        if final.draft is not None:
+            outputs = final.draft.tool_outputs
+        elif final.committee is not None:
+            outputs = final.committee.tool_outputs
         return RunResult(
             request_id=request_id,
             answer=answer,
             cost_eur=meter.total_eur,
             tokens=meter.total_tokens,
-            tool_calls=budget.tool_calls,
-            elapsed_s=round(budget.elapsed_s, 3),
+            tool_calls=run.budget.tool_calls,  # the committee's session budget, if one sat
+            elapsed_s=round(budget.elapsed_s, 3),  # the whole request
             budget_alerts=alerts,
             now=final.context.now if final.context is not None else None,
-            tool_outputs=final.draft.tool_outputs if final.draft is not None else (),
+            tool_outputs=outputs,
         )

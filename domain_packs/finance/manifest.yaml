@@ -15,6 +15,8 @@ perimetre:
   - Signaux, backtest d'un point de la grille et dernier verdict du protocole d'une stratégie
     du registre (finance_research) ; chaque backtest compte comme un essai (ADR-027).
   - Actualités d'une société ou d'un marché, lues par web_research et le lecteur (R5).
+  - Mode Comité (ADR-028) pour une question de décision (« dois-je vendre… ») ou avec
+    cerveau ask --comite ; analyse en N0, proposition non exécutée en N1, jamais un ordre.
 hors_perimetre:
   - Conseil en investissement, conseil à des tiers (R16) : aide à la décision personnelle.
   - Tout ordre, virement ou action réelle : aucune classe FINANCIERE n'existe en phase 2.
@@ -30,6 +32,9 @@ plugins:
   - finance_report
   - finance_research
   - web_research
+# Comité d'investissement : agent enregistré (plugins/finance_committee, kind: agent). Il ouvre
+# tous les plugins ci-dessus ; son budget est budgets.yaml#per_committee (A_DEFINIR bloque, R7).
+comite: finance_committee
 autonomie:
   # Niveau courant N0, niveau maximal N4 : config/autonomy.yaml, domains.finance. Seul Lucas
   # promeut le pack, à la main, au vu du rapport (D16).

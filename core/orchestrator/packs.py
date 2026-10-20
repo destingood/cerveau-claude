@@ -1,8 +1,9 @@
 """The domain packs the router may choose, and the plugins each one opens (section 9.1).
 
-A pack's manifest is declarative (``domain_packs/<pack>/manifest.yaml``); only its id and its
-plugin list matter to the graph. The order of the list is the order of the planner's tools, so
-that the ``max_tools_to_planner`` cut keeps the pack's first tools.
+A pack's manifest is declarative (``domain_packs/<pack>/manifest.yaml``); only its id, its
+plugin list and its committee matter to the graph. The order of the list is the order of the
+planner's tools, so that the ``max_tools_to_planner`` cut keeps the pack's first tools. The
+committee, if any, is a registered agent of ``plugins/`` (``kind: agent``, plan of phase 3, §10).
 """
 
 from __future__ import annotations
@@ -30,6 +31,14 @@ class Pack(BaseModel):
 
     id: str
     plugins: tuple[str, ...] = Field(min_length=1)
+    comite: str | None = None  # the plugin of its committee (D15)
+
+    @field_validator("comite")
+    @classmethod
+    def _committee(cls, comite: str | None) -> str | None:
+        if comite is not None and not _PLUGIN_NAME.fullmatch(comite):
+            raise ValueError(f"nom de Comité invalide : {comite}")
+        return comite
 
     @field_validator("plugins")
     @classmethod

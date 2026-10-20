@@ -5,6 +5,11 @@ pseudonymised one by one and remembered in the ``Run``, so that web_read can ope
 he wrote while the models only see its masked form. A failing classifier refuses (prudence); a
 failing router falls back to the most careful route. An action class this phase grants to some
 packs only (``CALCUL``, ADR-022) is decided once the domain is routed, before any tool opens.
+
+A decision question of a pack that has a committee, or any question asked with ``--comite``, is
+routed to the committee (D15). Its session budget replaces the request's before the pack's tools
+open; while that budget or the committee's configuration holds a marker, the question is refused
+rather than answered by the planner alone (R7).
 """
 
 from __future__ import annotations
@@ -17,6 +22,8 @@ from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
 from langchain_core.messages import HumanMessage, SystemMessage
 
+from core.budget.gate import RequestBudget
+from core.config.loader import BlockedFeatureError
 from core.guardrails.input import InputRefusedError, check_question
 from core.orchestrator.packs import DEFAULT_DOMAIN
 from core.orchestrator.runtime import WEB_PLUGIN, Run
@@ -24,6 +31,7 @@ from core.orchestrator.state import (
     CerveauState,
     GuardedInput,
     InputVerdict,
+    Mode,
     RequestContext,
     RoutePlan,
     RouteVerdict,
@@ -159,6 +167,34 @@ def _routed_refusal(run: Run, guarded: GuardedInput, domain: str) -> GuardedInpu
     return guarded.model_copy(update={"decision": "refus", "reason": reason})
 
 
+def _convene(run: Run, domain: str, *, asked: bool) -> tuple[Mode, str | None, str | None]:
+    """The mode, a note for the answer and the reason a committee asked for is refused.
+
+    ``asked``: by the router or by ``--comite``. The session budget replaces the request's here,
+    before any tool opens, so that the session's tool calls count against it (D18).
+    """
+    if not (asked or run.committee_forced):
+        return "direct", None, None
+    spec = run.committee_for(domain) if run.committee_for is not None else None
+    if spec is None:
+        if run.committee_forced:
+            reason = f"Comité demandé, mais le pack « {domain} » n'a pas de Comité"
+            return "direct", None, reason
+        note = (
+            f"Le routage demande le Comité, mais le pack « {domain} » n'en a pas : réponse directe"
+        )
+        return "direct", note, None
+    clock = {"clock": run.budget_clock} if run.budget_clock is not None else {}
+    try:
+        budget = RequestBudget.for_committee(run.config, run.meter, feature=spec.feature, **clock)
+    except BlockedFeatureError as exc:
+        return "direct", None, "Comité bloqué (R7) : " + " ; ".join(exc.reasons)
+    except ValueError as exc:
+        return "direct", None, f"Comité bloqué (R7) : {exc}"
+    run.budget = budget
+    return "comite", None, None
+
+
 def _prudent_route(reason: str) -> RouteVerdict:
     return RouteVerdict(complexite="complexe", importance="elevee", web=True, raison=reason)
 
@@ -180,6 +216,13 @@ async def route_node(run: Run, state: CerveauState) -> dict[str, Any]:
     role = "planner_complex" if verdict.complexite == "complexe" else "planner"
     needs_web = verdict.web or bool(guarded.urls)
     refused = _routed_refusal(run, guarded, domain)
+    mode: Mode = "direct"
+    note: str | None = None
+    if refused is None:
+        mode, note, blocked = _convene(run, domain, asked=verdict.mode == "comite")
+        if blocked is not None:
+            refused = guarded.model_copy(update={"decision": "refus", "reason": blocked})
+    needs_web = needs_web or mode == "comite"  # the news analyst reads the web (D16)
     # The web opens only when the question needs it; the pack's other plugins always do, unless
     # the policy refused the request.
     plugins = [name for name in run.packs[domain].plugins if needs_web or name != WEB_PLUGIN]
@@ -202,6 +245,8 @@ async def route_node(run: Run, state: CerveauState) -> dict[str, Any]:
         tier=run.router.tier_for(role),
         tools=tools,
         skipped=skipped,
+        mode=mode,
+        mode_note=note,
     )
     context = required(state.context, "contexte")
     level = "N0" if context.kill_switch else run.config.autonomy.domains[domain].level

@@ -1,5 +1,5 @@
 """`cerveau` command line: ask, feedback, eval, audit, config, registry, finance, portfolio,
-strategy."""
+strategy, committee."""
 
 from __future__ import annotations
 
@@ -25,6 +25,7 @@ from core.learning.feedback import NotePseudonymiser
 from core.observability import build_tracer
 from core.registry import validate_all, validate_plugin
 from interfaces.cli import evaluate
+from interfaces.cli.committee import committee_app
 from interfaces.cli.common import (
     EXIT_BLOCKED,
     EXIT_BUDGET,
@@ -55,6 +56,7 @@ app.add_typer(registry_app, name="registry")
 app.add_typer(finance_app, name="finance")
 app.add_typer(portfolio_app, name="portfolio")
 app.add_typer(strategy_app, name="strategy")
+app.add_typer(committee_app, name="committee")
 
 
 @app.callback()
@@ -95,9 +97,16 @@ def ask(
     as_json: Annotated[
         bool, typer.Option("--json", help="Réponse en JSON (format 7.3) au lieu du Markdown.")
     ] = False,
+    comite: Annotated[
+        bool,
+        typer.Option("--comite", help="Réunir le Comité d'investissement du pack (finance, D15)."),
+    ] = False,
     config_dir: ConfigDirOpt = None,
 ) -> None:
     """Pose une question en lecture seule (N0) ; réponse sourcée au format 7.3.
+
+    Une question de décision en finance (« dois-je vendre… ») ou --comite réunit le Comité :
+    analyse en N0, proposition non exécutée en N1, jamais un ordre (R16).
 
     Codes de sortie : 0 réponse rendue, 1 erreur, 2 fonction bloquée (R7) ou clé absente,
     3 budget du jour ou du mois atteint (D9).
@@ -122,7 +131,8 @@ def ask(
     if not tracing.enabled:
         typer.echo(f"avertissement : {tracing.reason}.", err=True)
     try:
-        result = asyncio.run(build_orchestrator(config, root, tracer=tracer).ask(question))
+        orchestrator = build_orchestrator(config, root, tracer=tracer)
+        result = asyncio.run(orchestrator.ask(question, committee=comite))
     except BlockedFeatureError as exc:
         _blocked(exc)
     except BudgetExceededError as exc:

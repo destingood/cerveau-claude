@@ -69,9 +69,11 @@ class FakeOrchestrator:
     def __init__(self, config: Config, journal: Path, tracer: Tracer | None) -> None:
         self.config, self.journal, self.tracer = config, journal, tracer
         self.questions: list[str] = []
+        self.committee: list[bool] = []
 
-    async def ask(self, question: str) -> RunResult:
+    async def ask(self, question: str, *, committee: bool = False) -> RunResult:
         self.questions.append(question)
+        self.committee.append(committee)
         check = BudgetGate(self.config, AuditJournal(self.journal)).check()  # D9 refusal
         return RunResult(
             request_id="req-1",
@@ -104,7 +106,15 @@ def test_ask_prints_the_answer_and_a_footer(fake: list[FakeOrchestrator], budget
     assert result.stdout == "**Refus.** Non.\n"
     assert "— requête req-1 · 0,0123 € · 456 jetons · 2 appel(s) d'outil · 3,2 s" in result.stderr
     assert fake[0].questions == ["Une question ?"]
+    assert fake[0].committee == [False]
     assert FAKE_KEY not in result.output
+
+
+def test_ask_comite_asks_for_the_committee(fake: list[FakeOrchestrator], budgeted: Path) -> None:
+    args = ["ask", "Dois-je alléger ?", "--comite", "--config-dir", str(budgeted)]
+    result = runner.invoke(app, args)
+    assert result.exit_code == 0, result.output
+    assert fake[0].committee == [True]
 
 
 def test_ask_without_langfuse_keys_warns_and_answers(
@@ -184,7 +194,9 @@ def test_ask_warns_without_the_search_key(
 def test_ask_reports_an_error_in_one_line(
     fake: list[FakeOrchestrator], budgeted: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    async def broken(self: FakeOrchestrator, question: str) -> RunResult:
+    async def broken(
+        self: FakeOrchestrator, question: str, *, committee: bool = False
+    ) -> RunResult:
         raise RuntimeError("première ligne\nseconde ligne")
 
     monkeypatch.setattr(FakeOrchestrator, "ask", broken)

@@ -15,7 +15,7 @@ from dataclasses import dataclass, field
 from datetime import datetime
 from pathlib import Path
 from types import MappingProxyType
-from typing import Any, Protocol
+from typing import TYPE_CHECKING, Any, Protocol
 
 from langchain_core.callbacks import BaseCallbackHandler
 from langchain_core.messages import AIMessage, BaseMessage
@@ -30,6 +30,9 @@ from core.models.router import ModelRouter, Role, Seat
 from core.orchestrator.packs import Pack, load_packs
 from core.orchestrator.prompts import PromptSet
 from core.policy.engine import kill_switch_engaged
+
+if TYPE_CHECKING:
+    from core.committee.engine import CommitteeSpec
 
 # Output ceilings per role, below what is left of the request's token budget (R9: a change here
 # changes the behaviour under evaluation).
@@ -217,6 +220,9 @@ class Run:
     models_used: dict[str, str] = field(default_factory=dict)  # role (or seat label) → model id
     audited: bool = False  # the DECISION entry of node 8 is written
     last_state: Any = field(default=None, repr=False)  # the state the running node was given
+    committee_forced: bool = False  # cerveau ask --comite (D15)
+    committee_for: Callable[[str], CommitteeSpec | None] | None = field(default=None, repr=False)
+    budget_clock: Callable[[], float] | None = field(default=None, repr=False)
     _holders: list[_Holder] = field(default_factory=list, repr=False)
 
     def _time_exceeded(self) -> RequestBudgetExceeded:

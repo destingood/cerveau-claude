@@ -1,4 +1,4 @@
-"""State of the 8-node graph (section 7.1) and the typed output of each node.
+"""State of the graph (section 7.1, and the committee of phase 3) and the output of each node.
 
 The state may be traced (Langfuse, commit 13): it holds the pseudonymised question only. The raw
 question, the pseudonym table and the raw URLs Lucas gave stay in the request's ``Run``.
@@ -28,6 +28,7 @@ Complexity = Literal["simple", "complexe"]
 Importance = Literal["normale", "elevee"]
 Confidence = Literal["faible", "moyen", "eleve"]
 Status = Literal["complete", "partielle", "clarification", "refus"]
+Mode = Literal["direct", "comite"]  # D15: the committee answers decision questions
 
 
 def required[T](value: T | None, node: str) -> T:
@@ -81,6 +82,7 @@ class RouteVerdict(_Llm):  # the router's output, node 3
     complexite: Complexity
     importance: Importance
     web: bool
+    mode: Mode = "direct"
     raison: str = Field(max_length=400)
 
 
@@ -95,6 +97,8 @@ class RoutePlan(_Node):  # node 3
     tier: str
     tools: tuple[str, ...] = ()
     skipped: dict[str, str] = Field(default_factory=dict)
+    mode: Mode = "direct"
+    mode_note: str | None = None  # why a committee asked for was not convened
 
 
 class Extract(_Node):
@@ -180,12 +184,50 @@ class VerificationReport(_Node):  # node 5
     confidence: Confidence
 
 
+class CommitteeOutcome(_Node):
+    """What a committee session left: its record, its file and what the answer shows (D19)."""
+
+    record_id: str
+    pack: str
+    version: str
+    status: Literal["complete", "incomplete", "echec"]
+    reason: str | None = None
+    halted: bool = False
+    decision: dict[str, Any] | None = None  # ManagerDecision, as JSON
+    verdict: Literal["OK", "BLOQUER"] | None = None
+    verdict_reasons: tuple[str, ...] = ()
+    roles: int = 0
+    file: str  # relative to the project root
+    file_sha256: str
+    tool_outputs: tuple[ToolOutput, ...] = ()
+    sources: tuple[Source, ...] = ()
+
+    @property
+    def concluded(self) -> bool:
+        return self.status == "complete" and self.decision is not None
+
+
 class SourceRef(_Node):
     number: int
     title: str | None
     url: str
     published: str | None
     retrieved_at: str
+
+
+class CommitteeView(_Node):
+    """The committee's conclusion as the answer shows it: a proposal, never an order (R16)."""
+
+    record_id: str
+    libelle: str  # « analyse » at N0, « proposition non exécutée » from N1
+    decision: str | None = None  # agir, ne_pas_agir or attendre; None: pas de décision
+    proposition: str = ""
+    horizon: str | None = None
+    horizon_bornes: str = ""
+    invalidation: tuple[str, ...] = ()
+    desaccords: tuple[str, ...] = ()
+    verdict: str | None = None
+    raisons: tuple[str, ...] = ()
 
 
 class Answer(_Node):  # node 6: format 7.3
@@ -200,6 +242,7 @@ class Answer(_Node):  # node 6: format 7.3
     signalements: tuple[str, ...] = ()
     questions: tuple[str, ...] = ()
     message: str = ""  # refusal, clarification or partial answer notice
+    comite: CommitteeView | None = None
     links_removed: int = 0
 
 
@@ -212,6 +255,7 @@ class CerveauState(BaseModel):
     route: RoutePlan | None = None
     draft: Draft | None = None
     verification: VerificationReport | None = None
+    committee: CommitteeOutcome | None = None
     answer: Answer | None = None
     policy: dict[str, Any] | None = None  # PolicyDecision.to_payload()
     audited: bool = False
