@@ -16,7 +16,7 @@ from pathlib import Path
 from . import wikistore as ws
 from .common import VIZ_FILE, now_iso, write_text
 
-VERSION = 1
+VERSION = 2
 STAMP = ".obsidian/cerveau.json"
 TEMPLATES_DIR = f"{ws.PAGES}/_modeles"  # « _ » : le cerveau ne le lit pas (wikistore.scan)
 DASHBOARD, GUIDE = "Tableau de bord.base", "Mode d'emploi Obsidian.md"
@@ -47,6 +47,10 @@ GRAPH_COLORS = {"Profil": 6333946, "Règles": 12616956, "Projets": 16486972, "D�
                 "Sources": 9741240, "Concepts": 10741301, "Sujets": 16436245, "Analyses": 3003583}
 # code tiers des modules : se réinstalle depuis Obsidian ; hors git, la recherche (rg) ne lit pas leurs gros fichiers
 GITIGNORE_ADD = (".obsidian/plugins/*/main.js", ".obsidian/plugins/*/styles.css")
+# .ignore (lu par rg, donc par Grep/Glob de Claude, git ou pas) : ni les réglages ni la corbeille d'Obsidian
+IGNORE_ADD = (".obsidian/", ".trash/")
+# Omnisearch : mots-clés et résumé d'une page comptent dans le classement (défauts : nom 10, titre 6, étiquettes 2)
+OMNI_WEIGHTS = ({"name": "cles", "weight": 5}, {"name": "resume", "weight": 4})
 # nom du modèle → (type, importance, échéance, corps)
 TEMPLATES = {"À faire": ("todo", 3, True, ""), "Règle": ("feedback", 4, False, "**Pourquoi :** \n"),
              "Décision": ("decision", 3, False, "**Choix :** \n\n**Pourquoi :** \n"),
@@ -298,6 +302,14 @@ def _add_types(cur):
     return cur
 
 
+def _add_omni(cur):
+    w = cur.get("weightCustomProperties") if isinstance(cur, dict) else None
+    if isinstance(w, list):
+        names = {x.get("name") for x in w if isinstance(x, dict)}
+        w += [dict(x) for x in OMNI_WEIGHTS if x["name"] not in names]
+    return cur
+
+
 def _setdefaults(values):
     def fn(cur):
         for k, v in values.items():
@@ -348,6 +360,8 @@ def setup(root, force=False) -> list:
     merge("templates.json", {"folder": TEMPLATES_DIR}, _setdefaults({"folder": TEMPLATES_DIR}))
     merge("hotkeys.json", HOTKEYS, _add_hotkeys)
     merge("bookmarks.json", {"items": []}, _add_bookmarks)
+    if (root / ".obsidian" / "plugins" / "omnisearch" / "data.json").is_file():  # module installé et déjà lancé
+        merge("plugins/omnisearch/data.json", {}, _add_omni)
     put(".obsidian/graph.json", json.dumps({
         "search": f"path:{ws.PAGES}", "showTags": False, "showAttachments": False, "hideUnresolved": True,
         "showOrphans": True, "showArrow": False,
@@ -357,13 +371,15 @@ def setup(root, force=False) -> list:
     put(GUIDE, GUIDE_TEXT)
     for name, spec in TEMPLATES.items():
         put(f"{TEMPLATES_DIR}/{name}.md", template_text(*spec))
-    gi = root / ".gitignore"
-    if gi.is_file():
-        text = gi.read_text(encoding="utf-8")
-        miss = [ln for ln in GITIGNORE_ADD if ln not in text.splitlines()]
+    for rel, add, create in ((".gitignore", GITIGNORE_ADD, False), (".ignore", IGNORE_ADD, True)):
+        p = root / rel
+        if not p.is_file() and not create:
+            continue
+        text = p.read_text(encoding="utf-8") if p.is_file() else ""
+        miss = [ln for ln in add if ln not in text.splitlines()]
         if miss:
-            write_text(gi, text.rstrip("\n") + "\n" + "\n".join(miss) + "\n")
-            made.append(".gitignore")
+            write_text(p, (text.rstrip("\n") + "\n" if text.strip() else "") + "\n".join(miss) + "\n")
+            made.append(rel)
     write_text(root / STAMP, json.dumps({"version": VERSION, "le": now_iso()[:10],
                                          "note": "réglages Obsidian du cerveau appliqués (brain wiki obsidian)"},
                                         ensure_ascii=False) + "\n")

@@ -244,6 +244,8 @@ paths = [v.get("path", "") for v in Brain.load().data["wiki"]["files"].values()]
 check(len(tpl) == 5 and "echeance: {{date:YYYY-MM-DD}}" in page("wiki/_modeles/À faire.md")
       and not any("_modeles" in p for p in paths), "Obsidian : 5 modèles, que le cerveau ne prend pas pour des pages", str(tpl))
 check(".obsidian/plugins/*/main.js" in page(".gitignore"), "Obsidian : code des modules tiers hors git")
+check(page(".ignore").splitlines() == [".obsidian/", ".trash/"], "Obsidian : réglages et corbeille hors des recherches de Claude")
+check(not (OB / "plugins").exists(), "Obsidian : réglages d'Omnisearch jamais créés s'il n'est pas installé")
 check(obsidian.setup(WIKI) == [], "Obsidian : réglé une seule fois par version")
 # réglages changés par l'utilisateur : rien d'écrasé, seul le manquant revient
 (OB / "hotkeys.json").write_text(json.dumps({"editor:toggle-bold": [{"modifiers": ["Alt"], "key": "t"}]}), encoding="utf-8")
@@ -253,8 +255,16 @@ check(obsidian.setup(WIKI) == [], "Obsidian : réglé une seule fois par version
 (OB / "bookmarks.json").write_text(json.dumps({"items": [{"type": "file", "path": "index.md", "title": "Mon index"}]}),
                                    encoding="utf-8")
 (WIKI / "Mode d'emploi Obsidian.md").write_text("à moi\n", encoding="utf-8")
+(WIKI / ".ignore").write_text("perso/\n.trash/\n", encoding="utf-8")
+(OB / "plugins" / "omnisearch").mkdir(parents=True)
+(OB / "plugins/omnisearch/data.json").write_text(json.dumps({"weightBasename": 9, "weightCustomProperties": [
+    {"name": "cles", "weight": 8}]}), encoding="utf-8")
 made = obsidian.setup(WIKI, force=True)
 hk, app, ty, bm = obs("hotkeys.json"), obs("app.json"), obs("types.json"), obs("bookmarks.json")
+om = obs("plugins/omnisearch/data.json")
+check(page(".ignore").splitlines() == ["perso/", ".trash/", ".obsidian/"], "Obsidian : .ignore complété, lignes gardées")
+check(om == {"weightBasename": 9, "weightCustomProperties": [{"name": "cles", "weight": 8}, {"name": "resume", "weight": 4}]},
+      "Obsidian : Omnisearch, poids du résumé ajouté, choix de l'utilisateur gardés", str(om))
 check("templates:insert-template" not in hk and "editor:toggle-bold" in hk and "omnisearch:show-modal" in hk,
       "Obsidian : raccourci déjà pris par l'utilisateur gardé", str(hk))
 check(app["newFileFolderPath"] == "Boîte" and app["userIgnoreFilters"] == ["perso/", "archive/", "wiki/_modeles/"],

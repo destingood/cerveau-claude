@@ -104,8 +104,8 @@ def _links_out(body, names, brain):
         target = brain.get(m.group(1))
         if not target or target["id"] not in names:
             return m.group(0)
-        name, alias = names[target["id"]], m.group(3) or m.group(1)
-        head = m.group(2) or ""
+        name, head = names[target["id"]], m.group(2) or ""
+        alias = m.group(3) or (name if m.group(1).strip() == target["id"] else m.group(1))  # [[id]] seul : le nom
         return f"[[{name}{head}]]" if alias == name else f"[[{name}{head}|{alias}]]"
     return LINK.sub(sub, body)
 
@@ -122,6 +122,26 @@ def _links_in(body, stems, brain):
         alias, head = m.group(3) or m.group(1), m.group(2) or ""
         return f"[[{target_id}{head}]]" if alias == target_id else f"[[{target_id}{head}|{alias}]]"
     return LINK.sub(sub, body)
+
+
+def _relink(brain, renamed):
+    """Titre changé dans Obsidian : les [[Ancien titre]] des autres souvenirs suivent (comme Obsidian au renommage)."""
+    renamed = {k: v for k, v in renamed.items() if k not in {n["title"].lower() for n in brain.nodes.values()}}
+    if not renamed:
+        return
+
+    def sub(m):
+        nid = renamed.get(m.group(1).strip().lower())
+        if not nid:
+            return m.group(0)
+        head, alias = m.group(2) or "", m.group(3)
+        return f"[[{nid}{head}|{alias}]]" if alias else f"[[{nid}{head}]]"
+    for n in list(brain.nodes.values()):
+        body = str(n.get("body") or "")
+        if "[[" in body and n.get("status", "active") == "active":
+            new = LINK.sub(sub, body)
+            if new != body:
+                brain.update(n["id"], body=new)
 
 
 def _project_ref(value, stems, brain):
@@ -249,7 +269,7 @@ def _scan(root):
 
 
 # ------------------------------------------------------------------------------------ synchronisation
-def _apply(brain, node, entry, note, path, stems, report):
+def _apply(brain, node, entry, note, path, stems, report, renamed):
     """Fusion à trois : valeur exportée / valeur actuelle du cerveau / valeur du fichier."""
     f0 = entry.get("f") or {}
     cur = _fields(node)
@@ -296,6 +316,10 @@ def _apply(brain, node, entry, note, path, stems, report):
             changes["meta"] = m
         if "project" in changes and changes["project"] is None:
             node["project"] = None  # update() ignore None
+        if "title" in changes:  # ancien titre et ancien nom de fichier : les liens des autres notes suivront
+            for old in (node["title"], Path(entry.get("path", "")).stem):
+                if old:
+                    renamed[old.lower()] = node["id"]
         brain.update(node["id"], **changes)
         report["imported"].append((node["title"], sorted(FR.get(k, k) for k in changes)))
     if conflicts:
@@ -369,6 +393,7 @@ def sync(root, do_import=True) -> dict:
         if changed or any((root / INBOX).glob("*.md")):
             from . import history
             history.snapshot("avant import du coffre", force=True)
+        renamed = {}
         with Brain.edit() as brain:
             for nid, entry in previous.items():
                 node = brain.nodes.get(nid)
@@ -386,13 +411,14 @@ def sync(root, do_import=True) -> dict:
                     handled.add(nid)
                     continue
                 before = len(report["conflicts"])
-                _apply(brain, node, entry, parse_note(raw.decode("utf-8", "replace")), path, stems, report)
+                _apply(brain, node, entry, parse_note(raw.decode("utf-8", "replace")), path, stems, report, renamed)
                 if len(report["conflicts"]) > before:  # la version d'Obsidian est gardée à part : rien ne se perd
                     copy = root / CONFLICTS / f"{path.stem} ({now_iso()[:16].replace(':', 'h')}).md"
                     copy.parent.mkdir(exist_ok=True)
                     copy.write_bytes(raw)
                     report["kept"].append(f"version Obsidian en conflit gardée : {copy.relative_to(root)}")
                 handled.add(nid)
+            _relink(brain, renamed)
             _inbox(brain, root, stems, report)
     else:
         handled = set(previous)
