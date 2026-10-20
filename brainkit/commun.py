@@ -640,12 +640,12 @@ def spawn(args):
         return True
     try:
         exe = Path(sys.executable)
-        if os.name == "nt" and (exe.parent / "pythonw.exe").exists():
-            exe = exe.parent / "pythonw.exe"
+        if os.name == "nt" and exe.name.lower() == "pythonw.exe" and (exe.parent / "python.exe").exists():
+            exe = exe.parent / "python.exe"  # sans console (pythonw), git se bloque : voir creationflags
         kw = dict(stdin=subprocess.DEVNULL, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, close_fds=True,
                   cwd=str(BRAIN_DIR), env={**os.environ, "BRAIN_BG": "1"})
         if os.name == "nt":
-            kw["creationflags"] = 0x00000008 | 0x00000200 | 0x00004000
+            kw["creationflags"] = 0x08000000 | 0x00000200 | 0x00004000  # comme hooks.spawn_background
         else:
             kw["start_new_session"] = True
         return subprocess.Popen([str(exe), "-I", "-S", str(BRAIN_PY), *args], **kw)

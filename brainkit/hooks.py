@@ -113,13 +113,14 @@ def spawn_background(args) -> bool:
     import subprocess  # importé seulement ici : ~5 ms épargnées à chaque hook
     try:
         exe = Path(sys.executable)
-        if os.name == "nt" and (exe.parent / "pythonw.exe").exists():
-            exe = exe.parent / "pythonw.exe"
+        if os.name == "nt" and exe.name.lower() == "pythonw.exe" and (exe.parent / "python.exe").exists():
+            exe = exe.parent / "python.exe"  # sans console (pythonw), git se bloque : voir creationflags
         kw = dict(stdin=subprocess.DEVNULL, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL,
                   close_fds=True, cwd=str(BRAIN_DIR), env={**os.environ, "BRAIN_BG": "1"})
         if os.name == "nt":
-            # DETACHED_PROCESS | CREATE_NEW_PROCESS_GROUP | BELOW_NORMAL_PRIORITY_CLASS : invisible, priorité basse
-            kw["creationflags"] = 0x00000008 | 0x00000200 | 0x00004000
+            # CREATE_NO_WINDOW | CREATE_NEW_PROCESS_GROUP | BELOW_NORMAL_PRIORITY_CLASS : console cachée, priorité basse.
+            # Pas pythonw + DETACHED_PROCESS : sans console, git ne répond plus (Git 2.56, Windows 11, 21/10/2026)
+            kw["creationflags"] = 0x08000000 | 0x00000200 | 0x00004000
         else:
             kw["start_new_session"] = True
         subprocess.Popen([str(exe), str(BRAIN_PY), *args], **kw)

@@ -39,6 +39,8 @@ class World:
         for d in (self.home, self.brain_dir, self.work):
             d.mkdir(parents=True, exist_ok=True)
         self.code = Path(code)
+        cfg = self.brain_dir / "config.json"  # veille PC coupée : la RAM du vrai PC ne doit pas changer les messages
+        cfg.exists() or cfg.write_text(json.dumps({"pc": {"enabled": False}}), encoding="utf-8")
         self.env = {**os.environ, "CLAUDE_CONFIG_DIR": str(self.home), "BRAIN_HOME": str(self.brain_dir), **extra}
         self.settings_file = self.home / "settings.json"
 

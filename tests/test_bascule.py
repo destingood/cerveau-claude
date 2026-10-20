@@ -39,13 +39,21 @@ def py(script, *args, home, inp=None):
     return r.returncode, r.stdout.decode("utf-8", "replace") + r.stderr.decode("utf-8", "replace")
 
 
+def classic_tar():
+    """Code du cerveau classique 8.0.0 : commit publié (clone de cerveau-claude) ou tag v8.0.0 (copie de dev)."""
+    for ref in ("53ba68c", "v8.0.0"):
+        paths = [p for p in ("brain.py", "brainkit", "tests", "skills") if subprocess.run(
+            ["git", "-C", str(CODE), "cat-file", "-e", f"{ref}:{p}"], capture_output=True).returncode == 0]
+        if "brainkit" in paths:
+            return subprocess.run(["git", "-C", str(CODE), "archive", ref, *paths], capture_output=True, check=True).stdout
+    sys.exit("✗ cerveau classique 8.0.0 introuvable dans ce dépôt (commit 53ba68c ou tag v8.0.0)")
+
+
 def classic_brain(home):
     """Cerveau classique 8.0.0 (le code publié sur main avant le cerveau commun) installé dans home/brain."""
     brain = home / "brain"
     brain.mkdir(parents=True)
-    tar = subprocess.run(["git", "-C", str(CODE), "archive", "53ba68c", "brain.py", "brainkit", "tests", "skills"],
-                         capture_output=True, check=True).stdout
-    subprocess.run(["tar", "-x", "-C", str(brain)], input=tar, check=True)
+    subprocess.run(["tar", "-x", "-C", str(brain)], input=classic_tar(), check=True)
     c, out = py(brain / "brain.py", "install", home=home)
     assert c == 0, out
     c, out = py(brain / "brain.py", "add", "-t", "learning", "-T", "Épingles verticales sur Pinterest",

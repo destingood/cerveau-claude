@@ -121,6 +121,9 @@ def fake_python(folder, body):
 
 # ------------------------------------------------------------------ 1. doctor : la commande `python` des hooks
 W = World("python")
+(W.home / "plugins").mkdir()  # plugin installé : contrôle fait même depuis la copie de dev (sans .claude-plugin)
+(W.home / "plugins" / "installed_plugins.json").write_text(json.dumps({"version": 2, "plugins": {"cerveau@cerveau": [
+    {"scope": "user", "installPath": str(CODE)}]}}), encoding="utf-8")
 VIDE = TMP / "path-vide"
 VIDE.mkdir()
 c, out = W.run("doctor", path=VIDE)
