@@ -1,12 +1,23 @@
-# Limites du paper trading. Ce ne sont pas des recommandations d'investissement :
-# Lucas fixe chaque valeur avant le démarrage de la Phase 4.
+# Limites de la Porte de risque en paper trading (§8.4, ADR-031). Ce ne sont pas des
+# recommandations d'investissement : Lucas fixe chaque valeur ; une valeur inconnue refuse tout (R7).
+# Unités (D4) : pourcentages (5 = 5 %). Ordre, position, secteur, pays, devise, perte du jour et
+# perte glissante : en % du capital de référence ; drawdown : en % du plus haut de la valeur du
+# compte ; bande de prix : en % du dernier cours connu. La limite de devise porte sur chaque devise
+# autre que l'euro, celle de pays sur chaque pays. Volume moyen : en titres.
 capital_reference_eur: A_DEFINIR
 max_order_pct: A_DEFINIR
 max_position_pct: A_DEFINIR
 max_sector_pct: A_DEFINIR
+max_country_pct: A_DEFINIR
+max_currency_pct: A_DEFINIR
 max_daily_loss_pct: A_DEFINIR
+max_rolling_loss_pct: A_DEFINIR
+rolling_loss_sessions: A_DEFINIR
 max_drawdown_pct: A_DEFINIR
 max_orders_per_hour: A_DEFINIR
+max_orders_per_day: A_DEFINIR
 limit_price_collar_pct: A_DEFINIR
 min_avg_daily_volume: A_DEFINIR
+avg_volume_sessions: A_DEFINIR
+universe: A_DEFINIR              # liste des instruments autorisés (identifiants de la base Finance)
 allow: { leverage: false, short_selling: false, derivatives: false }

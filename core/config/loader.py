@@ -179,17 +179,61 @@ class Allow(_Strict):
     derivatives: bool
 
 
+# A percentage (5 means 5 %, D4): never 0 or less, never above the whole, never NaN.
+Pct = Annotated[float, Field(gt=0, le=100, allow_inf_nan=False)]
+Count = Annotated[int, Field(gt=0)]
+# An instrument of the finance store (core.finance.model.InstrumentId).
+Instrument = Annotated[str, Field(pattern=r"^[A-Z0-9][A-Z0-9._-]{0,31}$")]
+
+
 class PaperRiskLimits(_Strict):
-    capital_reference_eur: float | Marker
-    max_order_pct: float | Marker
-    max_position_pct: float | Marker
-    max_sector_pct: float | Marker
-    max_daily_loss_pct: float | Marker
-    max_drawdown_pct: float | Marker
-    max_orders_per_hour: int | Marker
-    limit_price_collar_pct: float | Marker
-    min_avg_daily_volume: float | Marker
+    """Limits of the Risk Gate in paper trading (section 8.4, ADR-031).
+
+    Every ``*_pct`` is a percentage (5 means 5 %, D4). The order, position, sector, country and
+    currency limits, the daily loss and the rolling loss are percentages of the reference
+    capital; the drawdown is a percentage of the highest equity reached; the collar is a
+    percentage of the last known price. The currency limit caps the exposure to each currency
+    other than the euro, the country limit the exposure to each country. The rolling loss and
+    the average volume are measured over ``rolling_loss_sessions`` and ``avg_volume_sessions``
+    sessions; the volume is a number of shares. The gate accepts only the universe's instruments.
+    """
+
+    capital_reference_eur: Annotated[float, Field(gt=0, allow_inf_nan=False)] | Marker
+    max_order_pct: Pct | Marker
+    max_position_pct: Pct | Marker
+    max_sector_pct: Pct | Marker
+    max_country_pct: Pct | Marker
+    max_currency_pct: Pct | Marker
+    max_daily_loss_pct: Pct | Marker
+    max_rolling_loss_pct: Pct | Marker
+    rolling_loss_sessions: Count | Marker
+    max_drawdown_pct: Pct | Marker
+    max_orders_per_hour: Count | Marker
+    max_orders_per_day: Count | Marker
+    limit_price_collar_pct: Pct | Marker
+    min_avg_daily_volume: Annotated[float, Field(gt=0, allow_inf_nan=False)] | Marker
+    avg_volume_sessions: Count | Marker
+    universe: Annotated[list[Instrument], Field(min_length=1)] | Marker
     allow: Allow
+
+    @field_validator("universe")
+    @classmethod
+    def _unique_tickers(cls, value: list[str] | str) -> list[str] | str:
+        if isinstance(value, list) and len(set(value)) != len(value):
+            raise ValueError("un instrument figure deux fois dans l'univers")
+        return value
+
+
+class ExecutionConfig(_Strict):
+    """How a paper order is drafted and filled (ADR-029, ADR-033).
+
+    The limit price is the last known price moved by ``limit_offset_pct`` towards a fill (up for
+    a buy, down for a sell), within the collar (D17). A session fills at most
+    ``max_participation_pct`` of its volume (D2, a simulation hypothesis).
+    """
+
+    limit_offset_pct: Pct | Marker
+    max_participation_pct: Pct | Marker
 
 
 class LiveLimits(_Strict):
@@ -314,9 +358,13 @@ class EvalsConfig(_Strict):
     judge_human_review_sample_weekly: int = Field(ge=0)
 
 
+Seconds = Annotated[float, Field(gt=0, allow_inf_nan=False)]
+
+
 class KillSwitch(_Strict):
-    target_seconds: float | Marker
-    data_loss_timeout_seconds: float | Marker
+    # ADR-034: from the trigger to the state written, every open order cancelled.
+    target_seconds: Seconds | Marker
+    data_loss_timeout_seconds: Seconds | Marker
 
 
 class PluginHealth(_Strict):
@@ -597,6 +645,7 @@ FILES: dict[str, tuple[str, type[BaseModel]]] = {
     "models": ("models.yaml", ModelsConfig),
     "autonomy": ("autonomy.yaml", AutonomyConfig),
     "risk_limits.paper": ("risk_limits.paper.yaml", PaperRiskLimits),
+    "execution": ("execution.yaml", ExecutionConfig),
     "live": ("live.yaml", LiveConfig),
     "budgets": ("budgets.yaml", BudgetsConfig),
     "compliance": ("compliance.yaml", ComplianceConfig),
@@ -638,9 +687,22 @@ FEATURES: dict[str, Feature] = {
     "promotion.finance.N3_to_N4": Feature(
         "Promotion finance N3 → N4", ("autonomy:promotion.finance.N3_to_N4",)
     ),
-    "paper_trading": Feature("Porte de risque en paper trading", ("risk_limits.paper:",)),
+    # The gate checks the cash with the fees (R10) and every order sits under the kill switch.
+    "paper_trading": Feature(
+        "Porte de risque et exécution en paper trading",
+        (
+            "risk_limits.paper:",
+            "execution:",
+            "risk:trading_costs",
+            "risk:kill_switch.target_seconds",
+        ),
+    ),
     "live_trading": Feature("Exécution live (R3 : activée à la main par Lucas)", ("live:",)),
-    "kill_switch": Feature("Kill switch (cible de temps, perte de données)", ("risk:kill_switch",)),
+    "kill_switch": Feature("Kill switch (cible de temps)", ("risk:kill_switch.target_seconds",)),
+    "kill_switch.data_loss": Feature(
+        "Kill switch sur perte d'une connexion continue aux données",
+        ("risk:kill_switch.data_loss_timeout_seconds",),
+    ),
     "plugin_health": Feature("Désactivation auto d'un plugin hors SLO", ("risk:plugin_health",)),
     "keys.rotation": Feature("Rotation des clés", ("risk:keys",)),
     "infra.vps": Feature("Déploiement VPS (réseau privé)", ("risk:infra",)),
@@ -765,6 +827,7 @@ class Config:
     models: ModelsConfig
     autonomy: AutonomyConfig
     risk_limits_paper: PaperRiskLimits
+    execution: ExecutionConfig
     live: LiveConfig
     budgets: BudgetsConfig
     compliance: ComplianceConfig
@@ -830,7 +893,8 @@ def _cross_file_errors(parsed: dict[str, BaseModel]) -> list[str]:
     Every Anthropic tier must have a price, otherwise its cost could not be computed. The score
     that promotes the finance pack is never below the gate of its golden set (D16, D17, R9),
     and « 0 violation R1-R5 » is only measured if every behaviour suite must fully pass. Every
-    committee role runs on a tier that models.yaml defines.
+    committee role runs on a tier that models.yaml defines. A drafted limit price stays within
+    the collar of the Risk Gate (D17).
     """
     models: ModelsConfig = parsed["models"]  # type: ignore[assignment]
     pricing: PricingConfig = parsed["pricing"]  # type: ignore[assignment]
@@ -861,6 +925,14 @@ def _cross_file_errors(parsed: dict[str, BaseModel]) -> list[str]:
         errors.append(
             f"evals.yaml › thresholds.behavior_suites_R1_to_R5_pass_rate : {rate} laisse passer "
             "des violations R1-R5, que la promotion finance N0 → N1 exclut (D16)"
+        )
+    execution: ExecutionConfig = parsed["execution"]  # type: ignore[assignment]
+    limits: PaperRiskLimits = parsed["risk_limits.paper"]  # type: ignore[assignment]
+    offset, collar = execution.limit_offset_pct, limits.limit_price_collar_pct
+    if not isinstance(offset, str) and not isinstance(collar, str) and offset > collar:
+        errors.append(
+            f"execution.yaml › limit_offset_pct : {offset} % dépasse la bande de prix de la Porte "
+            f"de risque ({collar} %, risk_limits.paper.yaml) (D17)"
         )
     return errors
 
@@ -899,6 +971,7 @@ def load_config(directory: Path) -> Config:
         models=parsed["models"],  # type: ignore[arg-type]
         autonomy=parsed["autonomy"],  # type: ignore[arg-type]
         risk_limits_paper=parsed["risk_limits.paper"],  # type: ignore[arg-type]
+        execution=parsed["execution"],  # type: ignore[arg-type]
         live=parsed["live"],  # type: ignore[arg-type]
         budgets=parsed["budgets"],  # type: ignore[arg-type]
         compliance=parsed["compliance"],  # type: ignore[arg-type]

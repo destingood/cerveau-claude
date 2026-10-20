@@ -51,7 +51,7 @@ def test_every_marker_dependent_feature_is_blocked_by_default() -> None:
         "budgets",
         "approvals",
         "llm.local",
-        "kill_switch",
+        "kill_switch.data_loss",
         "evals.gate.generaliste",
         "compliance.fiscal",
         "guardrails.pii",
@@ -90,12 +90,123 @@ def test_filling_markers_unblocks_the_feature(config_dir: Path) -> None:
     def fill(data: dict) -> None:
         for key, value in data.items():
             if value == "A_DEFINIR":
-                data[key] = 1
+                data[key] = ["FICT-A"] if key == "universe" else 1
 
     edit_yaml(config_dir / "risk_limits.paper.yaml", fill)
+    edit_yaml(config_dir / "risk.yaml", lambda d: fill(d["trading_costs"]))
     config = load_config(config_dir)
     config.require("paper_trading")  # no longer raises
     assert config.risk_limits_paper.max_order_pct == 1
+    assert config.risk_limits_paper.universe == ["FICT-A"]
+
+
+def test_paper_trading_waits_for_the_fees_and_the_execution_parameters(config_dir: Path) -> None:
+    """R10: the gate checks the cash with the fees; the drafter needs its offset (D17)."""
+    reasons = load_config(config_dir).blockers("paper_trading")
+    assert "risk.yaml › trading_costs.commission_pct = A_DEFINIR" in reasons
+    edit_yaml(config_dir / "execution.yaml", lambda d: d.update(limit_offset_pct="A_DEFINIR"))
+    assert "execution.yaml › limit_offset_pct = A_DEFINIR" in load_config(config_dir).blockers(
+        "paper_trading"
+    )
+
+
+def test_the_kill_switch_target_is_set_and_the_data_loss_timeout_is_not() -> None:
+    """ADR-034: 5 s set by Lucas; a continuous data connection does not exist yet (D11)."""
+    config = load_config(REPO_ROOT / "config")
+    config.require("kill_switch")
+    assert config.risk.kill_switch.target_seconds == 5
+    assert config.blockers("kill_switch.data_loss") == [
+        "risk.yaml › kill_switch.data_loss_timeout_seconds = A_DEFINIR"
+    ]
+
+
+PAPER_PCT = (
+    "max_order_pct",
+    "max_position_pct",
+    "max_sector_pct",
+    "max_country_pct",
+    "max_currency_pct",
+    "max_daily_loss_pct",
+    "max_rolling_loss_pct",
+    "max_drawdown_pct",
+    "limit_price_collar_pct",
+)
+PAPER_COUNTS = (
+    "rolling_loss_sessions",
+    "max_orders_per_hour",
+    "max_orders_per_day",
+    "avg_volume_sessions",
+)
+
+
+@pytest.mark.parametrize("name", PAPER_PCT)
+@pytest.mark.parametrize("value", [0, -5, 100.5, 500, float("nan"), float("inf")])
+def test_a_paper_percentage_outside_0_to_100_is_refused(
+    config_dir: Path, name: str, value: float
+) -> None:
+    """B156, B164: a limit is a percentage (5 = 5 %), strictly positive and at most 100."""
+    edit_yaml(config_dir / "risk_limits.paper.yaml", lambda d: d.update({name: value}))
+    with pytest.raises(ConfigError, match=name):
+        load_config(config_dir)
+
+
+@pytest.mark.parametrize("name", PAPER_COUNTS)
+@pytest.mark.parametrize("value", [0, -1, 2.5])
+def test_a_paper_count_is_a_positive_integer(config_dir: Path, name: str, value: float) -> None:
+    edit_yaml(config_dir / "risk_limits.paper.yaml", lambda d: d.update({name: value}))
+    with pytest.raises(ConfigError, match=name):
+        load_config(config_dir)
+
+
+@pytest.mark.parametrize(
+    ("name", "value"),
+    [
+        ("capital_reference_eur", 0),
+        ("capital_reference_eur", -10000),
+        ("min_avg_daily_volume", 0),
+        ("min_avg_daily_volume", -1),
+        ("universe", []),
+        ("universe", ["FICT-A", "FICT-A"]),
+        ("universe", ["fict-a"]),
+        ("universe", "FICT-A"),
+    ],
+)
+def test_capital_volume_and_universe_are_bounded(
+    config_dir: Path, name: str, value: object
+) -> None:
+    edit_yaml(config_dir / "risk_limits.paper.yaml", lambda d: d.update({name: value}))
+    with pytest.raises(ConfigError, match=name):
+        load_config(config_dir)
+
+
+def test_a_percentage_of_100_is_the_upper_bound(config_dir: Path) -> None:
+    edit_yaml(config_dir / "risk_limits.paper.yaml", lambda d: d.update(max_sector_pct=100))
+    assert load_config(config_dir).risk_limits_paper.max_sector_pct == 100
+
+
+@pytest.mark.parametrize("name", ["limit_offset_pct", "max_participation_pct"])
+@pytest.mark.parametrize("value", [0, -0.5, 101])
+def test_execution_percentages_are_bounded(config_dir: Path, name: str, value: float) -> None:
+    edit_yaml(config_dir / "execution.yaml", lambda d: d.update({name: value}))
+    with pytest.raises(ConfigError, match=name):
+        load_config(config_dir)
+
+
+def test_the_limit_offset_stays_within_the_price_collar(config_dir: Path) -> None:
+    """D17: a drafted limit price the Risk Gate's collar would refuse is a configuration error."""
+    edit_yaml(config_dir / "risk_limits.paper.yaml", lambda d: d.update(limit_price_collar_pct=2))
+    edit_yaml(config_dir / "execution.yaml", lambda d: d.update(limit_offset_pct=2))
+    load_config(config_dir)  # equal to the collar: allowed
+    edit_yaml(config_dir / "execution.yaml", lambda d: d.update(limit_offset_pct=2.5))
+    with pytest.raises(ConfigError, match=r"limit_offset_pct : 2\.5 % dépasse la bande de prix"):
+        load_config(config_dir)
+
+
+@pytest.mark.parametrize("value", [0, -5, float("nan")])
+def test_the_kill_switch_target_is_strictly_positive(config_dir: Path, value: float) -> None:
+    edit_yaml(config_dir / "risk.yaml", lambda d: d["kill_switch"].update(target_seconds=value))
+    with pytest.raises(ConfigError, match="target_seconds"):
+        load_config(config_dir)
 
 
 def test_unknown_marker_spelling_is_a_structural_error(config_dir: Path) -> None:
