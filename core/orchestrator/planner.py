@@ -122,6 +122,7 @@ class Session:
     reader_failures: int = 0
     tool_outputs: list[ToolOutput] = field(default_factory=list)  # for the R1 trace
     tool_counts: dict[str, int] = field(default_factory=dict)  # tool → calls kept
+    call_prefix: str = ""  # "<member>:" in a committee, so that call ids stay unique (ADR-028)
 
     def draft(self, answer: DraftAnswer, **extra: Any) -> Draft:
         return Draft(
@@ -330,7 +331,8 @@ async def _compute(session: Session, toolbox: Toolbox, name: str, arguments: dic
     if len(view) > MAX_VIEW_CHARS:
         return TOO_LARGE.format(name=name, size=len(view), limit=MAX_VIEW_CHARS)
     number = session.tool_counts.get(name, 0) + 1
-    output = tool_output(f"{name}#{number}", name, result)  # a malformed figure raises here
+    call = f"{session.call_prefix}{name}#{number}"
+    output = tool_output(call, name, result)  # a malformed figure raises here
     # An instruction may be split between two fields or two rows: the result is read as the
     # planner would read it, and as its texts joined (R5).
     if injection_signals(view) or injection_signals(" ".join(output.texts)):

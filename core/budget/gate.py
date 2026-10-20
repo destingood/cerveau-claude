@@ -195,6 +195,27 @@ class RequestBudget:
         config.require("budgets")
         return cls(config.budgets.per_request, meter, **kwargs)
 
+    @classmethod
+    def for_committee(
+        cls, config: Config, meter: Meter, *, feature: str, **kwargs: Any
+    ) -> RequestBudget:
+        """The limits of one committee session (``per_committee``, D18), checked like a request's.
+
+        Blocked while ``feature`` (``finance.committee``) still holds a marker (R7).
+        """
+        config.require(feature)
+        limits = config.budgets.per_committee
+        values = (limits.max_tool_calls, limits.max_tokens, limits.max_seconds)
+        if not all(isinstance(value, int) for value in values):  # a marker remains
+            raise ValueError("per_committee non défini : séance bloquée (R7)")
+        tool_calls, tokens, seconds = (int(value) for value in values)
+        per_session = PerRequest(max_tool_calls=tool_calls, max_tokens=tokens, max_seconds=seconds)
+        return cls(per_session, meter, **kwargs)
+
+    @property
+    def max_seconds(self) -> int:
+        return self._limits.max_seconds
+
     @property
     def elapsed_s(self) -> float:
         return self._clock() - self._start

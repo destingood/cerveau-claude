@@ -26,7 +26,7 @@ from core.budget.gate import RequestBudget, RequestBudgetExceeded
 from core.config.loader import Config
 from core.mcp.adapter import McpAdapterError, McpPlugin, RequestScope
 from core.models.meter import Meter
-from core.models.router import ModelRouter, Role
+from core.models.router import ModelRouter, Role, Seat
 from core.orchestrator.packs import Pack, load_packs
 from core.orchestrator.prompts import PromptSet
 from core.policy.engine import kill_switch_engaged
@@ -40,6 +40,7 @@ OUTPUT_CAPS: Mapping[Role, int] = MappingProxyType(
         "reader": 4000,
         "planner": 8000,
         "planner_complex": 16000,
+        "committee": 8000,
     }
 )
 WEB_PLUGIN = "web_research"
@@ -213,20 +214,25 @@ class Run:
     callbacks: tuple[BaseCallbackHandler, ...] = ()
     url_map: dict[str, str] = field(default_factory=dict, repr=False)  # as shown → as given
     toolbox: PluginSet | None = None
-    models_used: dict[str, str] = field(default_factory=dict)  # role → model id
+    models_used: dict[str, str] = field(default_factory=dict)  # role (or seat label) → model id
     audited: bool = False  # the DECISION entry of node 8 is written
     last_state: Any = field(default=None, repr=False)  # the state the running node was given
     _holders: list[_Holder] = field(default_factory=list, repr=False)
 
     def _time_exceeded(self) -> RequestBudgetExceeded:
-        maximum = self.config.budgets.per_request.max_seconds
+        maximum = self.budget.max_seconds  # the request's, or the committee session's
         return RequestBudgetExceeded("seconds", round(self.budget.elapsed_s, 3), maximum)
 
     async def invoke(
-        self, role: Role, messages: Sequence[BaseMessage], *, tools: Sequence[BaseTool] = ()
+        self,
+        role: Role,
+        messages: Sequence[BaseMessage],
+        *,
+        tools: Sequence[BaseTool] = (),
+        seat: Seat | None = None,
     ) -> AIMessage:
         """One model call within what is left of the request's tokens and seconds (R4: never with
-        the kill switch engaged)."""
+        the kill switch engaged). ``seat``: the committee member speaking (role ``committee``)."""
         if kill_switch_engaged(self.project_root):
             raise KillSwitchEngaged
         self.budget.check()
@@ -234,8 +240,10 @@ class Run:
         if remaining <= 0:
             raise self._time_exceeded()
         cap = min(OUTPUT_CAPS[role], self.budget.remaining_tokens())
-        model = self.router.chat(role, self.meter, timeout_s=remaining, max_output_tokens=cap)
-        self.models_used[role] = self.router.model_id(role)
+        model = self.router.chat(
+            role, self.meter, timeout_s=remaining, max_output_tokens=cap, seat=seat
+        )
+        self.models_used[seat.label if seat else role] = self.router.model_id(role, seat)
         runnable = model.bind_tools(list(tools)) if tools else model
         call = runnable.ainvoke(list(messages), config={"callbacks": list(self.callbacks)})
         try:
