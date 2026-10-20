@@ -11,8 +11,9 @@ from datetime import UTC, date, datetime, time, timedelta
 from pathlib import Path
 
 import pytest
-from hypothesis import event, given, settings
+from hypothesis import assume, event, given, settings
 from hypothesis import strategies as st
+from nautilus_trader.model.objects import MONEY_MAX
 
 from core.config.loader import load_config
 from core.finance.fixtures import load_research, research_costs
@@ -208,7 +209,13 @@ def test_nautilus_agrees_on_any_small_market(
 ) -> None:
     history, count, plan = market
     costs = Costs("frais tirés (test)", commission, minimum, slippage)
-    ours, theirs = both(Script(plan), history, DAYS[0], DAYS[count - 1], costs, cash)
+    window = {"start": DAYS[0], "end": DAYS[count - 1], "cutoff": CUTOFF, "costs": costs}
+    ours = engine.run(Script(plan), {}, history, **window, initial_cash=cash)
+    # Independent closes between 1 and 500 can multiply the book a hundredfold a day; Nautilus
+    # stores money as fixed-point and refuses an amount above MONEY_MAX (B122). Such a book is out
+    # of the cross-check's domain, not a disagreement.
+    assume(float(ours.values.max()) < MONEY_MAX / 10)
+    theirs = nautilus.run(Script(plan), {}, history, **window, initial_cash=cash)
     event("avec exécutions" if ours.trades else "sans exécution")
     event("avec coupes" if ours.cuts else "sans coupe")
     check = nautilus.cross_check(ours, theirs, TOLERANCE)
