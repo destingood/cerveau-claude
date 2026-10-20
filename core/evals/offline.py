@@ -62,6 +62,7 @@ from plugins.finance_data.server import build_server as finance_data_server
 from plugins.finance_optimize.server import build_server as finance_optimize_server
 from plugins.finance_portfolio.server import build_server as finance_portfolio_server
 from plugins.finance_report.server import build_server as finance_report_server
+from plugins.finance_research.server import build_server as finance_research_server
 from plugins.finance_risk.server import build_server as finance_risk_server
 from plugins.web_research.guard import FetchError
 from plugins.web_research.models import PageText
@@ -252,6 +253,10 @@ FINANCE_SERVERS: dict[str, ServerFactory] = {
     ),
     "finance_report": lambda store, config: finance_report_server(
         store, config, clock=lambda: FINANCE_NOW
+    ),
+    # The registry and the reports live under the project, not in the eval's store.
+    "finance_research": lambda _store, config: finance_research_server(
+        REPO_ROOT, config, clock=lambda: FINANCE_NOW
     ),
 }
 

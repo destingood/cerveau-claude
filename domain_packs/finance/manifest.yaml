@@ -12,6 +12,8 @@ perimetre:
   - Rééquilibrage étudié, présenté comme une analyse tant que l'autonomie est N0 (finance_optimize).
   - Performance et attribution d'une période (finance_report).
   - Données de marché point-in-time et leur qualité (finance_data).
+  - Signaux, backtest d'un point de la grille et dernier verdict du protocole d'une stratégie
+    du registre (finance_research) ; chaque backtest compte comme un essai (ADR-027).
   - Actualités d'une société ou d'un marché, lues par web_research et le lecteur (R5).
 hors_perimetre:
   - Conseil en investissement, conseil à des tiers (R16) : aide à la décision personnelle.
@@ -26,6 +28,7 @@ plugins:
   - finance_risk
   - finance_optimize
   - finance_report
+  - finance_research
   - web_research
 autonomie:
   # Niveau courant N0, niveau maximal N4 : config/autonomy.yaml, domains.finance. Seul Lucas

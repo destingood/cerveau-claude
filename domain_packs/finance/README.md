@@ -14,7 +14,7 @@ nomme ; une mesure que l'outil dit impossible est rapportée, jamais estimée.
 
 | Fichier | Rôle |
 |---|---|
-| `manifest.yaml` | Périmètre, plugins (`finance_data`, `finance_portfolio`, `finance_risk`, `finance_optimize`, `finance_report`, `web_research`), renvoi à l'autonomie et aux seuils, sources autorisées |
+| `manifest.yaml` | Périmètre, plugins (`finance_data`, `finance_portfolio`, `finance_risk`, `finance_optimize`, `finance_report`, `finance_research`, `web_research`), renvoi à l'autonomie et aux seuils, sources autorisées |
 | `prompts/role.md` | Rôle et méthode du domaine, insérés dans le prompt système (Annexe D) |
 | `prompts/rubric.md` | Grille du juge des évals : 5 critères notés 0, 1 ou 2, chiffres comparés aux résultats des outils ; le score est calculé par le code (R1) |
 | `knowledge/sources.yaml` | Corpus RAG autorisé : vide en phase 2 |

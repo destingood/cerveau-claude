@@ -138,7 +138,11 @@ class MarketHistory:
 
     def cut(self, day: date, cutoff: time) -> MarketHistory:
         """The history as it stood at the decision of ``day``: every later row is gone."""
-        moment, last = _instant(decision_time(day, cutoff)), _session(day)
+        return self.known_by(decision_time(day, cutoff), day)
+
+    def known_by(self, at: datetime, day: date) -> MarketHistory:
+        """Sessions up to ``day`` as published by ``at``, and the actions announced by then."""
+        moment, last = _instant(at), _session(day)
         closes = {
             i: c.kept((c.published <= moment) & (c.sessions <= last))
             for i, c in self._closes.items()

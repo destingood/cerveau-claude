@@ -1,0 +1,527 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$defs": {
+    "Figure": {
+      "additionalProperties": false,
+      "description": "A number for the planner. ``unit``: a currency code, ``%`` (``value`` is a fraction),\n``XXX/EUR`` (units of XXX for one euro), ``titres``, ``jours``, ``séances``, ``ans`` or\n``score`` (in [0, 1]).",
+      "properties": {
+        "id": {
+          "maxLength": 200,
+          "minLength": 1,
+          "title": "Id",
+          "type": "string"
+        },
+        "value": {
+          "title": "Value",
+          "type": "number"
+        },
+        "display": {
+          "title": "Display",
+          "type": "string"
+        },
+        "unit": {
+          "title": "Unit",
+          "type": "string"
+        }
+      },
+      "required": [
+        "id",
+        "value",
+        "display",
+        "unit"
+      ],
+      "title": "Figure",
+      "type": "object"
+    },
+    "GateRecord": {
+      "additionalProperties": false,
+      "description": "A gate as the protocol returned it, its detail included (English decimals).",
+      "properties": {
+        "cle": {
+          "title": "Cle",
+          "type": "string"
+        },
+        "libelle": {
+          "title": "Libelle",
+          "type": "string"
+        },
+        "statut": {
+          "title": "Statut",
+          "type": "string"
+        },
+        "detail": {
+          "title": "Detail",
+          "type": "string"
+        }
+      },
+      "required": [
+        "cle",
+        "libelle",
+        "statut",
+        "detail"
+      ],
+      "title": "GateRecord",
+      "type": "object"
+    },
+    "Indicator": {
+      "additionalProperties": false,
+      "properties": {
+        "nom": {
+          "title": "Nom",
+          "type": "string"
+        },
+        "valeur": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/Figure"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "description": "None : pas encore assez de clôtures connues"
+        }
+      },
+      "required": [
+        "nom",
+        "valeur"
+      ],
+      "title": "Indicator",
+      "type": "object"
+    },
+    "LabBacktest": {
+      "additionalProperties": false,
+      "properties": {
+        "parametres": {
+          "description": "Point de la grille, JSON canonique",
+          "title": "Parametres",
+          "type": "string"
+        },
+        "debut": {
+          "format": "date",
+          "title": "Debut",
+          "type": "string"
+        },
+        "fin": {
+          "format": "date",
+          "title": "Fin",
+          "type": "string"
+        },
+        "seances": {
+          "$ref": "#/$defs/Figure"
+        },
+        "capital_initial": {
+          "$ref": "#/$defs/Figure"
+        },
+        "valeur_finale": {
+          "$ref": "#/$defs/Figure"
+        },
+        "rendement_total": {
+          "$ref": "#/$defs/Figure"
+        },
+        "rendement_annuel": {
+          "$ref": "#/$defs/Figure"
+        },
+        "volatilite": {
+          "$ref": "#/$defs/Figure"
+        },
+        "sharpe": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/Figure"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "description": "None : non défini (aucune dispersion)"
+        },
+        "sortino": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/Figure"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "description": "None : non défini (aucune baisse)"
+        },
+        "perte_max": {
+          "$ref": "#/$defs/Figure"
+        },
+        "pic_creux": {
+          "title": "Pic Creux",
+          "type": "string"
+        },
+        "calmar": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/Figure"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "description": "None : non défini (aucune perte)"
+        },
+        "rotation": {
+          "$ref": "#/$defs/Figure"
+        },
+        "transactions": {
+          "$ref": "#/$defs/Figure"
+        },
+        "frais_payes": {
+          "$ref": "#/$defs/Figure"
+        },
+        "exposition_moyenne": {
+          "$ref": "#/$defs/Figure"
+        }
+      },
+      "required": [
+        "parametres",
+        "debut",
+        "fin",
+        "seances",
+        "capital_initial",
+        "valeur_finale",
+        "rendement_total",
+        "rendement_annuel",
+        "volatilite",
+        "sharpe",
+        "sortino",
+        "perte_max",
+        "pic_creux",
+        "calmar",
+        "rotation",
+        "transactions",
+        "frais_payes",
+        "exposition_moyenne"
+      ],
+      "title": "LabBacktest",
+      "type": "object"
+    },
+    "LabInstrument": {
+      "additionalProperties": false,
+      "properties": {
+        "instrument": {
+          "title": "Instrument",
+          "type": "string"
+        },
+        "poids": {
+          "$ref": "#/$defs/Figure"
+        },
+        "derniere_seance": {
+          "anyOf": [
+            {
+              "format": "date",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "description": "Dernière clôture connue à la décision",
+          "title": "Derniere Seance"
+        },
+        "derniere_cloture": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/Figure"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "indicateurs": {
+          "items": {
+            "$ref": "#/$defs/Indicator"
+          },
+          "title": "Indicateurs",
+          "type": "array"
+        }
+      },
+      "required": [
+        "instrument",
+        "poids",
+        "derniere_seance",
+        "derniere_cloture",
+        "indicateurs"
+      ],
+      "title": "LabInstrument",
+      "type": "object"
+    },
+    "LabProtocol": {
+      "additionalProperties": false,
+      "properties": {
+        "rapport": {
+          "title": "Rapport",
+          "type": "string"
+        },
+        "genere_le": {
+          "format": "date-time",
+          "title": "Genere Le",
+          "type": "string"
+        },
+        "verdict": {
+          "title": "Verdict",
+          "type": "string"
+        },
+        "a_jour": {
+          "description": "Le rapport porte sur le code et la grille actuels",
+          "title": "A Jour",
+          "type": "boolean"
+        },
+        "ecarts": {
+          "items": {
+            "type": "string"
+          },
+          "title": "Ecarts",
+          "type": "array"
+        },
+        "portes": {
+          "items": {
+            "$ref": "#/$defs/GateRecord"
+          },
+          "title": "Portes",
+          "type": "array"
+        },
+        "lignes": {
+          "description": "Section 8 du rapport : verdict et portes",
+          "items": {
+            "$ref": "#/$defs/Row"
+          },
+          "title": "Lignes",
+          "type": "array"
+        }
+      },
+      "required": [
+        "rapport",
+        "genere_le",
+        "verdict",
+        "a_jour",
+        "ecarts",
+        "portes",
+        "lignes"
+      ],
+      "title": "LabProtocol",
+      "type": "object"
+    },
+    "Row": {
+      "additionalProperties": false,
+      "description": "A measure and its value; ``outil`` is a key of TOOLS and the prefix of a Figure's id.",
+      "properties": {
+        "mesure": {
+          "title": "Mesure",
+          "type": "string"
+        },
+        "valeur": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/Figure"
+            },
+            {
+              "type": "string"
+            }
+          ],
+          "title": "Valeur"
+        },
+        "outil": {
+          "title": "Outil",
+          "type": "string"
+        }
+      },
+      "required": [
+        "mesure",
+        "valeur",
+        "outil"
+      ],
+      "title": "Row",
+      "type": "object"
+    },
+    "Signals": {
+      "additionalProperties": false,
+      "properties": {
+        "jour": {
+          "format": "date",
+          "title": "Jour",
+          "type": "string"
+        },
+        "connu_a": {
+          "format": "date-time",
+          "title": "Connu A",
+          "type": "string"
+        },
+        "parametres": {
+          "description": "Point de la grille, JSON canonique",
+          "title": "Parametres",
+          "type": "string"
+        },
+        "instruments": {
+          "items": {
+            "$ref": "#/$defs/LabInstrument"
+          },
+          "title": "Instruments",
+          "type": "array"
+        },
+        "omis": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/Figure"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "description": "Instruments non listés, de poids les plus faibles"
+        },
+        "liquidites": {
+          "$ref": "#/$defs/Figure"
+        }
+      },
+      "required": [
+        "jour",
+        "connu_a",
+        "parametres",
+        "instruments",
+        "omis",
+        "liquidites"
+      ],
+      "title": "Signals",
+      "type": "object"
+    }
+  },
+  "additionalProperties": false,
+  "properties": {
+    "parity_label": {
+      "const": "[Approximation]",
+      "default": "[Approximation]",
+      "title": "Parity Label",
+      "type": "string"
+    },
+    "strategie": {
+      "title": "Strategie",
+      "type": "string"
+    },
+    "nom": {
+      "title": "Nom",
+      "type": "string"
+    },
+    "statut": {
+      "title": "Statut",
+      "type": "string"
+    },
+    "mode": {
+      "enum": [
+        "signaux",
+        "backtest",
+        "protocole"
+      ],
+      "title": "Mode",
+      "type": "string"
+    },
+    "donnees": {
+      "enum": [
+        "synthetiques",
+        "reelles"
+      ],
+      "title": "Donnees",
+      "type": "string"
+    },
+    "frais": {
+      "enum": [
+        "fictifs",
+        "reels"
+      ],
+      "title": "Frais",
+      "type": "string"
+    },
+    "moteur": {
+      "title": "Moteur",
+      "type": "string"
+    },
+    "dernier_verdict": {
+      "anyOf": [
+        {
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "description": "None : aucun protocole enregistré",
+      "title": "Dernier Verdict"
+    },
+    "rappel": {
+      "title": "Rappel",
+      "type": "string"
+    },
+    "essais_famille": {
+      "$ref": "#/$defs/Figure"
+    },
+    "avertissements": {
+      "items": {
+        "type": "string"
+      },
+      "title": "Avertissements",
+      "type": "array"
+    },
+    "hypotheses": {
+      "items": {
+        "type": "string"
+      },
+      "title": "Hypotheses",
+      "type": "array"
+    },
+    "signaux": {
+      "anyOf": [
+        {
+          "$ref": "#/$defs/Signals"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null
+    },
+    "backtest": {
+      "anyOf": [
+        {
+          "$ref": "#/$defs/LabBacktest"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null
+    },
+    "protocole": {
+      "anyOf": [
+        {
+          "$ref": "#/$defs/LabProtocol"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null
+    }
+  },
+  "required": [
+    "strategie",
+    "nom",
+    "statut",
+    "mode",
+    "donnees",
+    "frais",
+    "moteur",
+    "dernier_verdict",
+    "rappel",
+    "essais_famille",
+    "avertissements",
+    "hypotheses"
+  ],
+  "title": "StrategyLab",
+  "type": "object"
+}

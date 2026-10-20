@@ -47,6 +47,7 @@ FINANCE_TOOLS = {
     "finance_risk": "risk_report",
     "finance_optimize": "rebalance_proposal",
     "finance_report": "performance_report",
+    "finance_research": "strategy_lab",
 }
 VOLATILITY = percent("mesures/volatilite", 0.1234)
 VALUE = amount("valeurs/totale", 12450, "EUR")

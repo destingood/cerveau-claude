@@ -119,6 +119,7 @@ son origine et la phase visée ; « ? » signifie « à décider par Lucas ».
 | B116 | Ratio de split stocké en float : un regroupement 1 pour 3 donne 0,3333… et le rapprochement exact signale un écart ; le stocker en fraction ou en Decimal texte (migration de la base) | `core/finance/portfolio.py`, revue quantitative phase 2 (11) | 3 |
 | B117 | Une ligne sans historique à `compare_to` fait échouer tout le rapport de risque ; mettre seulement `var_change` dans `unavailable` | `core/finance/risk_report.py`, revue quantitative phase 2 (12) | 3 |
 | B120 | Base synthétique de la recherche (`var/finance/research/synthetique.db`) chargée une fois puis réutilisée : un jeu de données synthétique modifié n'y entre pas tant que Lucas ne supprime pas le fichier à la main ; y inscrire l'empreinte du jeu et refuser, ou recharger dans une base neuve, quand elle change | `interfaces/cli/strategy.py` (`synthetic_store`), `core/finance/fixtures.py`, ADR-026 | 4 |
+| B121 | Un backtest du Copilote qui ne se rejoue plus (grille ou période de l'entrée modifiée, `params` journalisé tronqué au-delà de 2 048 caractères par l'adaptateur MCP) bloque `cerveau strategy protocol` pour de bon : prévoir un essai « non rejouable » compté dans N sans série, ou une reconnaissance manuelle de Lucas journalisée | `core/finance/research/copilot.py`, `core/mcp/adapter.py` (`_clip`), ADR-027 | 4 |
 
 ## Évaluations
 | # | Élément | Origine | Phase |

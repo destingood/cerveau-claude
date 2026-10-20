@@ -43,6 +43,8 @@ REGISTRY_DIR = Path("domain_packs/finance/strategies")
 APPROVALS_DIR = Path("governance/approvals/strategies")
 STRATEGIES_PACKAGE = "core.finance.research.strategies"
 PROTOCOL_COMMAND = "strategy protocol"  # the audit entry that cites a report print
+# The store of the synthetic dataset, apart from the point-in-time base of `cerveau finance sync`.
+SYNTHETIC_STORE = Path("var/finance/research/synthetique.db")
 MAX_CONFIGURATIONS = 500  # a grid beyond it is refused: the protocol runs each one [Hypothèse]
 
 Status = Literal["recherche", "candidate"]
@@ -181,6 +183,10 @@ def load_spec(path: Path) -> StrategySpec:
     if spec.id != path.stem:
         raise RegistryError(f"{path.name} : l'identifiant {spec.id} doit nommer le fichier")
     return spec
+
+
+def synthetic_store_path(root: Path) -> Path:
+    return root / SYNTHETIC_STORE
 
 
 def load_registry(directory: Path = REGISTRY_DIR) -> dict[str, StrategySpec]:

@@ -27,6 +27,7 @@ from core.config.loader import MARKERS
 from core.finance.fixtures import load_research, research_costs, research_crises
 from core.finance.model import local_date
 from core.finance.research import engine
+from core.finance.research.copilot import copilot_requests, copilot_trials
 from core.finance.research.execution import Costs
 from core.finance.research.protocol import Benchmark, partition, run_protocol
 from core.finance.research.registry import (
@@ -47,6 +48,7 @@ from core.finance.research.registry import (
     read_stamp,
     report_blockers,
     report_sha256,
+    synthetic_store_path,
 )
 from core.finance.research.report import (
     VERDICT,
@@ -111,10 +113,6 @@ def entry(strategy_id: str) -> StrategySpec:
     if found is None:
         fail(f"Stratégie inconnue : {strategy_id} (`cerveau strategy list`).", EXIT_ERROR)
     return found
-
-
-def synthetic_store_path(root: Path) -> Path:
-    return root / "var" / "finance" / "research" / "synthetique.db"
 
 
 def synthetic_store(root: Path) -> Path:
@@ -410,7 +408,11 @@ def strategy_protocol(
     outside: OutsideVarOpt = False,
     config_dir: ConfigDirOpt = None,
 ) -> None:
-    """Protocole complet (ADR-026) : verdict, rapport en neuf sections, entrée DECISION (R11)."""
+    """Protocole complet (ADR-026) : verdict, rapport en neuf sections, entrée DECISION (R11).
+
+    Les backtests du Copilote (strategy_lab) inscrits au journal d'audit sont d'abord rejoués et
+    comptés comme essais de la famille, une fois chacun (ADR-027).
+    """
     root, spec = project_root(), entry(strategy_id)
     journal_file = journal_path(journal, outside=outside)
     config = load(config_dir)
@@ -422,6 +424,23 @@ def strategy_protocol(
         strategy = load_strategy(spec)
         with FinanceStore.open(run_inputs.store) as db:
             history = MarketHistory.load(db, spec.univers)
+            # Before the protocol reads N: every Copilot backtest is a trial of the family.
+            imported = copilot_trials(
+                copilot_requests(journal_file, spec.id),
+                recorded={
+                    t.trial.source
+                    for t in db.trials(spec.id)
+                    if t.trial.origin == "copilote" and t.trial.source
+                },
+                spec=spec,
+                strategy=strategy,
+                history=history,
+                research=config.research,
+                costs=run_inputs.costs,
+                initial_cash=cash,
+                sessions_per_year=run_inputs.sessions_per_year,
+            )
+            db.add_trials(imported, recorded_at=started)
             reference = benchmark(run_inputs, db, history, started)
             result = run_protocol(
                 strategy,
@@ -464,8 +483,14 @@ def strategy_protocol(
             "frais": run_inputs.costs.name,
             "rapport": written.json.name,
             "rapport_sha256": written.sha256,
+            "essais_copilote": len(imported),
         },
     )
+    if imported:
+        typer.echo(
+            f"Essais du Copilote rejoués depuis le journal d'audit et comptés dans N : "
+            f"{len(imported)}."
+        )
     if reference is None:
         typer.echo(
             "Référence absente : l'ISIN de risk.yaml › market_risk.benchmark n'est pas défini ou "

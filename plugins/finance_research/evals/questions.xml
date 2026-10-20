@@ -1,0 +1,60 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  Questions d'évaluation du plugin finance_research (R8). Chacune se vérifie avec strategy_lab sur
+  la stratégie de démonstration croisement_mm du registre (données synthétiques, frais fictifs),
+  lue au 20/10/2026 12 h UTC, avec config/ tel que versionné : heure de coupure 21 h UTC, fenêtre
+  du Copilote de 2 520 séances au plus, aucune base synthétique ni aucun rapport de protocole
+  encore produits (N = 0). Les chiffres attendus sont les affichages de l'outil : la réponse les
+  cite avec leur identifiant, elle ne les recalcule pas (R1). Aucun mode ne rend de verdict : une
+  réponse qui présente un backtest favorable comme une validation est fausse.
+-->
+<evaluation>
+  <qa_pair>
+    <question>Pour croisement_mm avec short 20 et long 50, quel est aujourd'hui le poids de FICT-RTEND, et à quelle décision ?</question>
+    <answer>25,00 %, à la décision du 19/10/2026 (connue à 21 h UTC), sur la dernière clôture du 31/12/2025</answer>
+  </qa_pair>
+  <qa_pair>
+    <question>Avec short 20 et long 50, quelle part du portefeuille reste en liquidités, et pourquoi FICT-RALEA3 n'est-il pas détenu ?</question>
+    <answer>25,00 % ; la moyenne courte de FICT-RALEA3 (20,4860) est sous sa moyenne longue (21,2214)</answer>
+  </qa_pair>
+  <qa_pair>
+    <question>Quelles sont les moyennes courte et longue de FICT-RTEND avec short 20 et long 50 ?</question>
+    <answer>49,6665 et 46,3316</answer>
+  </qa_pair>
+  <qa_pair>
+    <question>Backtest de croisement_mm avec short 10 et long 100 sur la fenêtre par défaut : quelle fenêtre, et quelle valeur finale ?</question>
+    <answer>Du 29/02/2016 au 31/12/2025, 2 520 séances ; 177 118,76 € pour 100 000,00 € investis, frais fictifs inclus</answer>
+  </qa_pair>
+  <qa_pair>
+    <question>Sur ce même backtest (short 10, long 100), quels sont le ratio de Sharpe et la perte maximale ?</question>
+    <answer>Sharpe 0,83 (taux sans risque nul), perte maximale 25,37 % du 19/12/2018 au 02/10/2019</answer>
+  </qa_pair>
+  <qa_pair>
+    <question>Backtest avec short 20 et long 50 du 02/01/2020 au 31/12/2021 : valeur finale et frais payés ?</question>
+    <answer>126 996,34 € et 4 078,32 € de frais, sur 515 séances</answer>
+  </qa_pair>
+  <qa_pair>
+    <question>Ce backtest à 27,00 % de rendement valide-t-il la stratégie ?</question>
+    <answer>Non : aucun protocole n'est enregistré pour croisement_mm ; seul `cerveau strategy protocol croisement_mm` rend un verdict, et ce backtest compte comme un essai de la famille</answer>
+  </qa_pair>
+  <qa_pair>
+    <question>Quel est le dernier verdict du protocole pour croisement_mm ?</question>
+    <answer>Aucun : aucun protocole enregistré, 0 essai dans la famille</answer>
+  </qa_pair>
+  <qa_pair>
+    <question>Backtest avec short 15 et long 50 ?</question>
+    <answer>Refusé : ces paramètres sont hors de la grille de croisement_mm (9 points, `cerveau strategy show croisement_mm`)</answer>
+  </qa_pair>
+  <qa_pair>
+    <question>Backtest avec short 20 et long 50 depuis le 04/01/2016 ?</question>
+    <answer>Refusé : la fenêtre compte 2 560 séances, au plus 2 520 (config/research.yaml › copilot.max_window_sessions)</answer>
+  </qa_pair>
+  <qa_pair>
+    <question>Connu au 01/06/2021, backtest avec short 20 et long 50 jusqu'au 31/12/2021 ?</question>
+    <answer>Refusé (R10) : la fin dépasse le 31/05/2021, dernière décision connue à cette date</answer>
+  </qa_pair>
+  <qa_pair>
+    <question>Connu au 01/06/2021, backtest avec short 5 et long 200 sur la fenêtre par défaut : quel rendement total ?</question>
+    <answer>-3,13 %, du 04/01/2016 au 31/05/2021, 1 383 séances</answer>
+  </qa_pair>
+</evaluation>

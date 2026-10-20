@@ -107,6 +107,26 @@ def test_a_history_cut_at_the_decision_gives_the_same_view(
             assert cut.corporate_actions(instrument_id) == whole.corporate_actions(instrument_id)
 
 
+def test_a_history_known_by_a_moment_is_the_store_read_at_that_moment(
+    store: FinanceStore, history: MarketHistory
+) -> None:
+    """The Copilot's replay (ADR-027): a request at any moment, before or after a cut-off."""
+    every = sessions(store)
+    for day in sorted({*every[1::401], *trap_days(store)[::4]}):
+        for shift in (timedelta(hours=-3), timedelta(hours=15)):
+            at = decision_time(day, CUTOFF) + shift
+            known = history.known_by(at, day)
+            for instrument_id in UNIVERSE:
+                pd.testing.assert_series_equal(
+                    known.final_closes(instrument_id),
+                    store.closes(instrument_id, as_of=at, end=day),
+                    check_exact=True,
+                )
+                assert known.actions(instrument_id, moment=None) == store.corporate_actions(
+                    instrument_id, as_of=at
+                )
+
+
 def test_reading_past_the_decision_raises(history: MarketHistory) -> None:
     view = history.view(date(2020, 6, 15), CUTOFF)
     assert view.closes(TREND, end=date(2020, 6, 15)).index[-1].date() == date(2020, 6, 15)

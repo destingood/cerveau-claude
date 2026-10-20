@@ -2,8 +2,10 @@
 
 from __future__ import annotations
 
+import asyncio
 import dataclasses
 import json
+import math
 import shutil
 from collections import Counter
 from collections.abc import Iterator
@@ -17,6 +19,9 @@ from click.testing import Result
 from typer.testing import CliRunner
 
 from core.audit import AuditJournal, default_journal_path
+from core.budget.gate import RequestBudget
+from core.config import load_config
+from core.config.loader import PerRequest
 from core.finance.research.registry import (
     PROTOCOL_COMMAND,
     REGISTRY_DIR,
@@ -25,8 +30,11 @@ from core.finance.research.registry import (
 )
 from core.finance.research.report import VERDICT, default_reports_dir, latest_report, write_report
 from core.finance.store import FinanceStore
+from core.mcp.adapter import McpPlugin, RequestScope
+from core.models import CostCalculator, Meter
 from interfaces.cli import strategy as strategy_cli
 from interfaces.cli.main import app
+from plugins.finance_research.server import build_server as research_server
 
 REPO = Path(__file__).resolve().parents[1]
 DEMO = REPO / REGISTRY_DIR / "croisement_mm.yaml"
@@ -57,6 +65,32 @@ def entries(journal: Path) -> list[tuple[str, dict[str, Any]]]:
 
 def strategy(*args: str) -> Result:
     return runner.invoke(app, ["strategy", *args])
+
+
+def copilot_backtest(home: Path, **arguments: Any) -> dict[str, Any]:
+    """One strategy_lab backtest asked through the MCP adapter, journaled as the Copilot's are."""
+    settings = load_config(REPO / "config")
+    meter = Meter(CostCalculator(settings.pricing))
+    limits = PerRequest(max_tool_calls=5, max_tokens=1000, max_seconds=120)
+    scope = RequestScope(
+        request_id="req-copilote",
+        domain="finance",
+        autonomy=settings.autonomy,
+        journal=AuditJournal(default_journal_path(home)),
+        budget=RequestBudget(limits, meter, clock=lambda: 0.0),
+        meter=meter,
+        project_root=home,
+    )
+    server = research_server(home, REPO / "config", lambda: NOW)
+
+    async def go() -> dict[str, Any]:
+        async with McpPlugin(REPO / "plugins" / "finance_research", scope, target=server) as lab:
+            [spec] = lab.manifest.tools
+            asked = {"strategie": "croisement_mm", "mode": "backtest", **arguments}
+            _, result = await lab.call(spec, asked)
+            return result
+
+    return asyncio.run(go())
 
 
 @dataclasses.dataclass(frozen=True)
@@ -281,3 +315,46 @@ def test_the_synthetic_store_is_loaded_once(home: Path) -> None:
     assert strategy_cli.synthetic_store(home) == path and path.stat().st_mtime_ns == stamp
     assert "FICT-RTEND" in before
     assert [p.name for p in path.parent.iterdir()] == ["synthetique.db"]
+
+
+def test_the_protocol_counts_each_copilot_backtest_once(home: Path) -> None:
+    """ADR-027: a backtest asked of the Copilot is a trial of the family, replayed and counted."""
+    window = {"as_of": "2026-10-20T12:00:00Z", "debut": "2020-01-02", "fin": "2021-12-31"}
+    asked = copilot_backtest(home, params={"short": 20, "long": 50}, **window)
+    [(event, call)] = entries(default_journal_path(home))
+    assert event == "TOOL_CALL" and call["status"] == "ok"
+    assert call["arguments"]["params"] == '{"short": 20, "long": 50}'
+    first = strategy("protocol", "croisement_mm", *CONFIG)
+    assert first.exit_code == 0, first.output
+    assert "Essais du Copilote rejoués depuis le journal d'audit et comptés dans N : 1." in (
+        first.output
+    )
+    second = strategy("protocol", "croisement_mm", *CONFIG)
+    assert second.exit_code == 0, second.output
+    assert "Essais du Copilote" not in second.output
+    decisions = [p for e, p in entries(default_journal_path(home)) if e == "DECISION"]
+    assert [d["essais_copilote"] for d in decisions] == [1, 0]
+    with FinanceStore.open(strategy_cli.synthetic_store_path(home), read_only=True) as db:
+        [replayed] = [t.trial for t in db.trials("croisement_mm") if t.trial.origin == "copilote"]
+    assert replayed.source is not None and replayed.source.startswith("audit#1 ")
+    assert replayed.params == {"short": 20, "long": 50}
+    assert (replayed.start.isoformat(), replayed.end.isoformat()) == (
+        asked["backtest"]["debut"],
+        asked["backtest"]["fin"],
+    )
+    assert replayed.sharpe_annual is not None
+    assert math.isclose(replayed.sharpe_annual, asked["backtest"]["sharpe"]["value"])
+
+
+def test_a_copilot_backtest_that_no_longer_replays_refuses_the_protocol(home: Path) -> None:
+    """B121: a trial that cannot be replayed would leave N short, so the protocol stops."""
+    copilot_backtest(home, params={"short": 20, "long": 50}, as_of="2026-10-20T12:00:00Z")
+    entry = home / REGISTRY_DIR / "croisement_mm.yaml"
+    raw = yaml.safe_load(entry.read_text(encoding="utf-8"))
+    raw["grille"] = {"short": [10], "long": [50, 100]}
+    entry.write_text(yaml.safe_dump(raw, allow_unicode=True, sort_keys=False), encoding="utf-8")
+    result = strategy("protocol", "croisement_mm", *CONFIG)
+    assert result.exit_code == 1, result.output
+    assert "non rejouable" in result.output
+    assert not default_reports_dir(home).exists()
+    assert [e for e, _ in entries(default_journal_path(home))] == ["TOOL_CALL", "ERROR"]
