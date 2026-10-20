@@ -111,6 +111,11 @@ class McpPlugin:
                 f"plugin « {directory.name} » refusé par le registre : " + " ; ".join(report.errors)
             )
         self.manifest: PluginManifest = report.manifest
+        if self.manifest.transport == "in-process":
+            raise McpAdapterError(
+                f"plugin « {self.manifest.id} » : agent in-process, il ne s'ouvre pas comme un "
+                "serveur MCP (ADR-028)"
+            )
         self.directory = directory
         runtime = self.manifest.runtime
         self._priced_tools: Mapping[str, str] = runtime.priced_tools if runtime else {}

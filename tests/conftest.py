@@ -61,6 +61,18 @@ def base_manifest(plugin_id: str = "demo_plugin") -> dict:
     }
 
 
+def agent_manifest(plugin_id: str = "demo_agent") -> dict:
+    """An in-process agent (ADR-028): no tool, its entry point in its own package."""
+    manifest = base_manifest(plugin_id)
+    manifest.update(
+        kind="agent",
+        transport="in-process",
+        tools=[],
+        agent={"entrypoint": f"plugins.{plugin_id}.graph:build_graph"},
+    )
+    return manifest
+
+
 @pytest.fixture
 def make_plugin(tmp_path: Path) -> Callable[..., Path]:
     """Build a conforming plugin directory; callers then break one thing at a time."""

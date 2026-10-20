@@ -72,13 +72,39 @@ class Slo(_Strict):
     p95_latency_ms: int | Marker
 
 
+_MODULE = r"[a-z_][a-z0-9_]*(\.[a-z_][a-z0-9_]*)*"
+
+
+def _in_package(module: str, plugin_id: str) -> bool:
+    package = f"plugins.{plugin_id}"
+    return module == package or module.startswith(package + ".")
+
+
 class Runtime(_Strict):
     """How the adapter starts the server (ADR-015, B26): ``python -m <module>`` over stdio."""
 
-    module: str = Field(pattern=r"^[a-z_][a-z0-9_]*(\.[a-z_][a-z0-9_]*)*$")
+    module: str = Field(pattern=rf"^{_MODULE}$")
     # Variables copied by name into the server's environment; their values are never logged.
     env: list[Annotated[str, Field(pattern=r"^[A-Z][A-Z0-9_]*$")]] = Field(default_factory=list)
     priced_tools: dict[str, str] = Field(default_factory=dict)  # tool → pricing.search key
+
+
+class Agent(_Strict):
+    """How the orchestrator loads an in-process agent (6.1, ADR-028): ``<module>:<function>``.
+
+    The function returns the agent's LangGraph subgraph. An agent publishes no tool: its roles call
+    the other plugins' tools through the orchestrator, under the same policy (R2, R5).
+    """
+
+    entrypoint: str = Field(pattern=rf"^{_MODULE}:[a-z_][a-z0-9_]*$")
+
+    @property
+    def module(self) -> str:
+        return self.entrypoint.partition(":")[0]
+
+    @property
+    def function(self) -> str:
+        return self.entrypoint.partition(":")[2]
 
 
 class PluginManifest(_Strict):
@@ -86,7 +112,7 @@ class PluginManifest(_Strict):
     version: str = Field(pattern=SEMVER_RE)
     domain: Literal[DOMAINS]  # type: ignore[valid-type]
     kind: Literal["tool", "agent"]
-    transport: Literal["mcp-stdio", "mcp-http"]
+    transport: Literal["mcp-stdio", "mcp-http", "in-process"]
     parity_label: Literal[PARITY_LABELS]  # type: ignore[valid-type]
     environments: list[Literal["dev", "paper", "live"]] = Field(min_length=1)
     max_autonomy_level: Level
@@ -96,6 +122,7 @@ class PluginManifest(_Strict):
     slo: Slo
     dependencies_licences: list[str]
     runtime: Runtime | None = None
+    agent: Agent | None = None
 
     @model_validator(mode="after")
     def _tools_present(self) -> PluginManifest:
@@ -113,10 +140,8 @@ class PluginManifest(_Strict):
     def _runtime_stays_in_the_plugin(self) -> PluginManifest:
         if self.runtime is None:
             return self
-        package = f"plugins.{self.id}"
-        module = self.runtime.module
-        if module != package and not module.startswith(package + "."):
-            raise ValueError(f"runtime.module doit être {package} ou l'un de ses modules")
+        if not _in_package(self.runtime.module, self.id):
+            raise ValueError(f"runtime.module doit être plugins.{self.id} ou l'un de ses modules")
         if self.transport != "mcp-stdio":
             raise ValueError("runtime ne décrit qu'un démarrage mcp-stdio")
         unknown = sorted(set(self.runtime.priced_tools) - {t.name for t in self.tools})
@@ -124,6 +149,28 @@ class PluginManifest(_Strict):
             raise ValueError(f"runtime.priced_tools : outils non déclarés {unknown}")
         if len(set(self.runtime.env)) != len(self.runtime.env):
             raise ValueError("runtime.env : variables en double")
+        return self
+
+    @model_validator(mode="after")
+    def _in_process_is_an_agent(self) -> PluginManifest:
+        """ADR-028: the in-process transport is reserved to agents, which publish no tool."""
+        if self.transport != "in-process":
+            if self.agent is not None:
+                raise ValueError("agent ne décrit qu'un chargement in-process")
+            return self
+        if self.kind != "agent":
+            raise ValueError("le transport in-process est réservé aux plugins de type agent (6.1)")
+        if self.agent is None:
+            raise ValueError("un agent in-process doit déclarer agent.entrypoint")
+        if self.tools:
+            raise ValueError(
+                "un agent in-process ne publie aucun outil : ses rôles appellent ceux des autres "
+                "plugins par l'orchestrateur"
+            )
+        if not _in_package(self.agent.module, self.id):
+            raise ValueError(
+                f"agent.entrypoint doit être dans plugins.{self.id} ou l'un de ses modules"
+            )
         return self
 
 
@@ -206,6 +253,19 @@ def _check_schema_file(path: Path, what: str, errors: list[str]) -> None:
         errors.append(f"{what} : schéma JSON invalide ({exc.message})")
 
 
+def agent_source(directory: Path, agent: Agent) -> Path | None:
+    """The file of the agent's module inside the plugin directory, found without importing it."""
+    parts = agent.module.split(".")[2:]
+    base = directory.joinpath(*parts)
+    candidates = (
+        [base / "__init__.py"] if not parts else [base.with_suffix(".py"), base / "__init__.py"]
+    )
+    for candidate in candidates:
+        if candidate.is_file() and candidate.resolve().is_relative_to(directory.resolve()):
+            return candidate
+    return None
+
+
 def validate_plugin(directory: Path) -> PluginReport:
     report = PluginReport(directory=directory)
     manifest_path = directory / "plugin.yaml"
@@ -231,6 +291,10 @@ def validate_plugin(directory: Path) -> PluginReport:
 
     if manifest.id != directory.name:
         errors.append(f"l'id {manifest.id!r} ne correspond pas au dossier {directory.name!r}")
+    if manifest.agent is not None and agent_source(directory, manifest.agent) is None:
+        errors.append(
+            f"agent.entrypoint : module {manifest.agent.module} introuvable dans le plugin"
+        )
     for tool in manifest.tools:
         errors.extend(annotation_errors(tool))
         for attr in ("input_schema", "output_schema"):

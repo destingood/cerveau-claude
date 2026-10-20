@@ -36,6 +36,7 @@ from plugins.web_research.guard import FetchError
 from plugins.web_research.models import PageText, SearchResults
 from plugins.web_research.search import Hit
 from plugins.web_research.server import ANNOTATIONS, DESCRIPTIONS, build_server
+from tests.conftest import agent_manifest
 
 REPO = Path(__file__).resolve().parents[1]
 PLUGIN = REPO / "plugins" / "web_research"
@@ -346,6 +347,15 @@ def test_a_plugin_without_a_runtime_is_refused(
 ) -> None:
     with pytest.raises(McpAdapterError, match="démarrage inconnu"):
         McpPlugin(make_plugin(), scope)
+
+
+def test_an_in_process_agent_is_never_opened_as_a_server(
+    scope: RequestScope, make_plugin: Callable[..., Path]
+) -> None:
+    root = make_plugin("demo_agent", manifest=agent_manifest())
+    (root / "graph.py").write_text("def build_graph():\n    return None\n", encoding="utf-8")
+    with pytest.raises(McpAdapterError, match="agent in-process, il ne s'ouvre pas"):
+        McpPlugin(root, scope, target=object())
 
 
 def test_only_declared_variables_reach_the_server(scope: RequestScope) -> None:
