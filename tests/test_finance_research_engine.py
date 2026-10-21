@@ -613,6 +613,10 @@ def test_the_cash_is_rounded_down_to_the_cent() -> None:
     """B246: a price with more than two decimals never overstates the cash."""
     assert [FREE.balance(cash) for cash in (100.009, 100.0049, -0.001)] == [100.0, 100.0, -0.01]
     assert FREE.balance(0.7 + 0.1) == 0.8  # the float's drift is no lost cent
+    # One unit in the last place weighs more than 1e-6 of a cent at large amounts (CI, phase 6).
+    for amount in (268172403.16, 9e9 + 0.07):
+        assert FREE.balance(math.nextafter(amount, 0)) == amount
+        assert FREE.balance(amount + 0.004) == amount
     assert str(FREE.balance(-0.0)) == "0.0"
     assert replace(FREE, rounding="none").balance(100.009) == 100.009
     sold = schedule([Order("A", -1, -10.007)], 0.0, {"A": 10.007}, FREE)

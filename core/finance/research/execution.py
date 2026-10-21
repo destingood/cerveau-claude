@@ -89,11 +89,16 @@ class Costs:
         between two fills cuts a buy that fits to the cent; as computed otherwise.
 
         The cent is the one below, never the nearest: a price with more than two decimals then
-        never overstates the cash (B246). The 1e-6 of a cent only absorbs the float's drift, so
-        that 12.34 held as 12.339999999999 stays 12.34."""
+        never overstates the cash (B246). Only the float's drift is absorbed, a few units in its
+        last place and at least 1e-6 of a cent: 12.34 held as 12.339999999999 stays 12.34, and so
+        does 268172403.16 held one unit below, where 1e-6 of a cent is less than that unit."""
         if self.rounding != "cent":
             return cash
-        return math.floor(cash * 100 + 1e-6) / 100  # an int over 100: never -0.0
+        cents = cash * 100
+        nearest = round(cents)
+        if abs(cents - nearest) <= max(1e-6, 16 * math.ulp(cents)):  # the float's drift
+            return nearest / 100  # an int over 100: never -0.0
+        return math.floor(cents) / 100
 
     def stressed(self, multiplier: float) -> Costs:
         """Every cost multiplied: the cost-stress gate of the protocol."""
