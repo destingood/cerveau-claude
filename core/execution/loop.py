@@ -620,6 +620,11 @@ def _treat(
         env.book.transition(
             key, OrderState.VALIDEE, reason=f"Porte : {gate.result}, politique : paper", now=now
         )
+        if kill_switch_engaged(env.root):
+            # R4: engaged since the policy read it; the order is cancelled, never sent.
+            why = "arrêt d'urgence engagé avant l'envoi : jamais envoyé"
+            env.book.transition(key, OrderState.ANNULEE, reason=why, now=now)
+            return outcome(OrderState.ANNULEE, (*reasons, why))
         env.book.transition(key, OrderState.ENVOYEE, reason="envoyé au simulateur paper", now=now)
         try:
             ack = env.simulator.submit(booked, now=now)

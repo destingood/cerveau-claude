@@ -34,7 +34,7 @@ from core.execution.states import OrderState
 from core.finance.calendars import exchange_calendar
 from core.finance.model import Instrument, PriceRow
 from core.finance.store import FinanceStore
-from core.policy.engine import KILL_SWITCH_FILE
+from core.policy.engine import KILL_SWITCH_FILE, kill_switch_engaged
 from core.risk_gate.snapshot import GateSnapshot
 from tests.execution_cases import MemoryJournal, make_intent
 from tests.test_execution_paper import costs_config
@@ -294,6 +294,27 @@ def test_a_kill_file_stops_the_day_and_then_every_day(world: World, tmp_path: Pa
     again = world.run(MONDAY_RUN + timedelta(minutes=1))
     assert (again.outcome, again.stop) == ("arret", None)
     assert not world.log.done(MONDAY)
+
+
+def test_a_kill_switch_engaged_after_the_decision_sends_nothing(
+    world: World, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    def engaged_then_killed(root: Path) -> bool:
+        """The policy reads a free switch; a KILL file appears right after."""
+        engaged = kill_switch_engaged(root)
+        kill = root / KILL_SWITCH_FILE
+        kill.parent.mkdir(parents=True, exist_ok=True)
+        kill.write_text("arrêt manuel", encoding="utf-8")
+        return engaged
+
+    monkeypatch.setattr("core.execution.loop.kill_switch_engaged", engaged_then_killed)
+    report = world.run(MONDAY_RUN)
+    [outcome] = report.intents
+    assert (outcome.effect, outcome.state) == ("paper", OrderState.ANNULEE)
+    assert "arrêt d'urgence engagé avant l'envoi : jamais envoyé" in outcome.reasons
+    assert world.states() == [OrderState.ANNULEE]
+    assert world.simulator.open_orders() == ()
+    assert (tmp_path / KILL_SWITCH_FILE).exists()
 
 
 def test_a_holding_without_a_fresh_close_trips_the_kill_switch(world: World) -> None:
