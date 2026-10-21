@@ -8,12 +8,17 @@ A finance case also names the tool calls the scripted planner makes and the figu
 cites: their displays are frozen from the reference store (ADR-023) and the real finance servers
 must compute them again, in both modes. It may add to its own copy of that store what Lucas would
 import (a CSV file of instruments or transactions, possibly trapped) and quality scores (D12).
+
+A paper case (``paper``) runs the daily paper loop on a synthetic market of one fictitious
+instrument, with no model: its source proposes target orders and the drafter, the policy and the
+Risk Gate decide, over a copy of the configuration (``core/evals/paper.py``).
 """
 
 from __future__ import annotations
 
 import json
 from collections.abc import Iterable, Mapping
+from datetime import date
 from functools import cache
 from pathlib import Path
 from typing import Any, Literal
@@ -28,7 +33,10 @@ from pydantic import (
     model_validator,
 )
 
-from core.config.loader import Allow, PaperRiskLimits
+from core.config.loader import Allow, PaperRiskLimits, TradingCosts
+from core.execution.intent import IntentOrigin
+from core.execution.kill_switch import Trigger
+from core.execution.states import OrderState
 from core.orchestrator.state import (
     MAX_CLAIM_CHARS,
     ActionClass,
@@ -39,6 +47,7 @@ from core.orchestrator.state import (
     Importance,
     Status,
 )
+from core.risk_gate.gate import Result
 from core.verification.quotes import check_quote
 from plugins.web_research.fetcher import _extract  # the plugin's own extraction of HTML pages
 
@@ -55,10 +64,12 @@ PACK_BEHAVIOR_FILES = (PACK_BEHAVIORS, FINANCE_BEHAVIORS)
 BEHAVIOR_DIR = Path("evals") / "behaviors"
 INJECTION_DIR = Path("evals") / "redteam" / "injection_base"
 FINANCE_INJECTION_DIR = Path("evals") / "redteam" / "injection_finance"
+EXECUTION_INJECTION_DIR = Path("evals") / "redteam" / "injection_execution"
 WEB_FIXTURES = Path("evals") / "fixtures" / "web.yaml"
 CASE_ID = r"^[a-z0-9][a-z0-9-]{2,63}$"
 TOOL_NAME = r"^[a-z][a-z0-9_]{1,63}$"
 MAX_LABEL_CHARS = 120
+PAPER_SYMBOL = "FICT-ACME"  # the paper cases' only instrument, fictitious
 
 Suite = Literal["golden", "behaviors", "injection"]
 SUITES: tuple[Suite, ...] = ("golden", "behaviors", "injection")
@@ -176,6 +187,88 @@ class CommitteeTurn(_Data):
 PAPER_LIMITS = tuple(name for name in PaperRiskLimits.model_fields if name != "allow")
 
 
+def check_paper_limits(given: Mapping[str, Any], where: str) -> None:
+    """Paper limits a case sets obey the bounds of risk_limits.paper.yaml (B164)."""
+    unknown = sorted(set(given) - set(PAPER_LIMITS))
+    if unknown:
+        raise ValueError(f"{where} : clé inconnue : {', '.join(unknown)}")
+    undefined: dict[str, Any] = dict.fromkeys(PAPER_LIMITS, "A_DEFINIR")
+    undefined["allow"] = dict.fromkeys(Allow.model_fields, False)
+    try:
+        PaperRiskLimits.model_validate(undefined | dict(given))
+    except ValidationError as error:
+        fields = sorted({str(detail["loc"][0]) for detail in error.errors()})
+        raise ValueError(f"{where} : valeur hors bornes : {', '.join(fields)}") from None
+
+
+class PaperRationaleFixture(_Data):
+    """The why of the source's orders, kept raw: the loop checks it when the source proposes, so
+    a text that reads as an instruction is refused there (R5), not when the case loads."""
+
+    thesis: str = "Le titre fictif reste sous sa moyenne."
+    catalyst: str = "Signal de la règle à la clôture."
+    invalidation: str = "Clôture sous 90 €."
+    horizon_days: int = 20
+    confidence: float = 0.5
+
+
+class PaperDayFixture(_Data):
+    """One decision day: the session's close, then the target orders the source proposes."""
+
+    day: date
+    close: float | None = Field(default=100.0, gt=0)  # None: the close is never published
+    orders: tuple[int, ...] = Field(default=(), max_length=5)  # signed: above zero buys
+
+    @model_validator(mode="after")
+    def _whole_orders(self) -> PaperDayFixture:
+        if 0 in self.orders:
+            raise ValueError(f"{self.day} : ordre de quantité nulle")
+        return self
+
+
+class PaperFixture(_Data):
+    """A run of the paper loop on a synthetic market of one instrument, with no model.
+
+    The level, the limits and the costs apply to a copy of the configuration, never to the
+    files. Limits left out keep the file's values (the universe is the case's instrument);
+    costs left out keep the file's ``A_DEFINIR``, so the paper account is refused (R7).
+    """
+
+    level: Literal["N0", "N1", "N2"] = "N2"
+    limits: dict[str, Any] = Field(default_factory=dict)
+    costs: TradingCosts | None = None
+    price: float = Field(default=100.0, gt=0)  # every close before the first day
+    volume: int = Field(default=200_000, ge=0)  # every session's volume
+    origin: IntentOrigin = IntentOrigin(kind="strategy", id="croisement_mm")
+    rationale: PaperRationaleFixture = PaperRationaleFixture()
+    kill_switch: bool = False  # the KILL file is in place before the first day (R4)
+    days: tuple[PaperDayFixture, ...] = Field(min_length=1, max_length=5)
+
+    @model_validator(mode="after")
+    def _checked(self) -> PaperFixture:
+        check_paper_limits(self.limits, "paper.limits")
+        days = [item.day for item in self.days]
+        if days != sorted(set(days)):
+            raise ValueError("paper.days : jours en double ou dans le désordre")
+        return self
+
+
+PaperOutcome = Literal[
+    "terminee", "deja_traitee", "pas_de_seance", "attente_donnees", "injoignable", "arret", "bloque"
+]
+
+
+class ExpectPaper(_Data):
+    """What the paper loop must show, compared exactly (order of the days, then of the intents)."""
+
+    outcomes: tuple[PaperOutcome, ...] = Field(min_length=1)  # one per day; « bloque »: refused
+    gate: tuple[Result, ...] = ()  # the Risk Gate's result of each intent
+    retained: tuple[int, ...] = ()  # the quantity the Gate kept of each intent
+    states: tuple[OrderState, ...] = ()  # where each order of the book ended
+    stop: Trigger | None = None  # the kill switch's trigger, when the loop engages it
+    notes: tuple[str, ...] = ()  # substrings of the day's remarks
+
+
 class ExpectedFigure(_Data):
     """A figure a good answer cites: the display the tool must compute again, frozen."""
 
@@ -216,18 +309,7 @@ class Offline(_Data):
 
     @model_validator(mode="after")
     def _bounded_limits(self) -> Offline:
-        """A case's limits obey the bounds of risk_limits.paper.yaml (B164)."""
-        given = self.paper_limits or {}
-        unknown = sorted(set(given) - set(PAPER_LIMITS))
-        if unknown:
-            raise ValueError(f"paper_limits : clé inconnue : {', '.join(unknown)}")
-        undefined: dict[str, Any] = dict.fromkeys(PAPER_LIMITS, "A_DEFINIR")
-        undefined["allow"] = dict.fromkeys(Allow.model_fields, False)
-        try:
-            PaperRiskLimits.model_validate(undefined | given)
-        except ValidationError as error:
-            fields = sorted({str(detail["loc"][0]) for detail in error.errors()})
-            raise ValueError(f"paper_limits : valeur hors bornes : {', '.join(fields)}") from None
+        check_paper_limits(self.paper_limits or {}, "paper_limits")
         return self
 
 
@@ -317,6 +399,7 @@ class Expect(_Data):
     absent: tuple[str, ...] = ()  # never in the answer, case and spaces ignored
     refused_imports: int = Field(default=0, ge=0, le=2)  # files of `store` the import refuses (R5)
     committee: ExpectCommittee | None = None  # the session of the pack's Committee
+    paper: ExpectPaper | None = None  # what the paper loop shows (the case's ``paper``)
     offline: ExpectOffline = ExpectOffline()
 
     @model_validator(mode="after")
@@ -338,6 +421,7 @@ class Case(_Data):
     pages: tuple[PageFixture, ...] = ()
     offline: Offline = Offline()
     store: StoreFixture | None = None  # added to the case's copy of the reference store
+    paper: PaperFixture | None = None  # a run of the paper loop instead of a question's run
     expect: Expect = Expect()
 
     @model_validator(mode="after")
@@ -345,6 +429,12 @@ class Case(_Data):
         files = 0 if self.store is None else self.store.files()
         if self.expect.refused_imports > files:
             raise ValueError(f"refused_imports : {files} fichier(s) seulement dans store")
+        return self
+
+    @model_validator(mode="after")
+    def _paper_and_its_expectation(self) -> Case:
+        if (self.paper is None) != (self.expect.paper is None):
+            raise ValueError("paper et expect.paper vont ensemble")
         return self
 
     def search_hits(self) -> tuple[Hit, ...]:
@@ -436,7 +526,7 @@ def suite_files(suite: Suite, root: Path = REPO_ROOT) -> list[SuiteFile]:
     if suite == "behaviors":
         return load_suite_files(root, BEHAVIOR_DIR, *PACK_BEHAVIOR_FILES)
     if suite == "injection":
-        return load_suite_files(root, INJECTION_DIR, FINANCE_INJECTION_DIR)
+        return load_suite_files(root, INJECTION_DIR, FINANCE_INJECTION_DIR, EXECUTION_INJECTION_DIR)
     return []
 
 

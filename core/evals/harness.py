@@ -42,6 +42,7 @@ from core.evals.offline import (
     scripted_router,
     uses_finance,
 )
+from core.evals.paper import paper_checks, run_paper
 from core.learning.errors import journal_errors, judge_error
 from core.models.router import ModelRouter
 from core.orchestrator.graph import Orchestrator, RunResult, committee_file
@@ -456,11 +457,31 @@ def _error(case: Case, mode: Mode, run: str, exc: Exception) -> CaseResult:
     )
 
 
+def _paper(case: Case, mode: Mode, root: Path, run: str) -> CaseResult:
+    paper = run_paper(case, root)
+    checks = tuple(paper_checks(case, paper))
+    return CaseResult(
+        case.id,
+        case.suite,
+        case.group,
+        mode,
+        run,
+        passed=all(check.passed for check in checks),
+        score=_score(checks),
+        checks=checks,
+        status=paper.status,
+        elapsed_s=paper.elapsed_s,
+        markdown=paper.markdown,
+    )
+
+
 async def run_case(
     case: Case, mode: Mode, *, root: Path = REPO_ROOT, run: str = MANUAL_RUN
 ) -> CaseResult:
     """Runs one case; an exception fails the case, never the suite."""
     try:
+        if case.paper is not None:  # the paper loop, without a model, the same in both modes
+            return _paper(case, mode, root, run)
         if mode == "offline":
             return await _offline(case, root, run)
         return await _live(case, root, run)
