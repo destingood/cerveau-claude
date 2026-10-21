@@ -14,6 +14,7 @@ from enum import StrEnum
 from typing import Literal, Protocol, runtime_checkable
 from uuid import UUID
 
+from core.execution.actions import AccountAction
 from core.execution.book import Fill
 from core.execution.intent import OrderIntent
 
@@ -87,12 +88,15 @@ class AccountStatement:
     """The broker's account in euros after the events up to ``cursor``: cash and long positions.
 
     ``cursor`` counts in the same sequence as :attr:`FillBatch.cursor`: a statement and a batch
-    of fills read with equal cursors describe the same instant (B169).
+    of fills read with equal cursors describe the same instant (B169). The splits and dividends
+    the broker booked are not in that sequence: the paper loop books them before it reads the
+    account, never between the two reads (ADR-042).
     """
 
     cash_eur: Decimal
     positions: dict[str, int] = field(default_factory=dict)  # held instruments only
     cursor: int = 0
+    actions: tuple[AccountAction, ...] = ()  # the splits and dividends booked (B187)
 
 
 @dataclass(frozen=True)

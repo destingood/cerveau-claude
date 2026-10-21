@@ -40,11 +40,11 @@ from core.execution.loop import (
     send_approved,
     session_close,
 )
-from core.execution.paper import PaperSettings, PaperSimulator
+from core.execution.paper import PaperSettings, PaperSimulator, SimulatorError
 from core.execution.reconcile import ReconciliationLog
 from core.execution.states import OrderState
 from core.finance.calendars import exchange_calendar
-from core.finance.model import Instrument, PriceRow
+from core.finance.model import CorporateAction, Instrument, PriceRow
 from core.finance.store import FinanceStore
 from core.policy.engine import KILL_SWITCH_FILE, kill_switch_engaged
 from core.risk_gate.snapshot import GateSnapshot
@@ -492,6 +492,63 @@ def test_a_validated_order_never_sent_is_cancelled_not_sent_late(world: World) -
     assert world.book.order(stuck.intent_id).state == OrderState.ANNULEE
     assert stuck.intent_id in report.expired_in_book
     assert all(o.intent_id != stuck.intent_id for o in world.simulator.open_orders())
+
+
+def announce_split(store: FinanceStore, ex_date: date, published_at: datetime) -> None:
+    action = CorporateAction(
+        instrument_id=SYMBOL,
+        ex_date=ex_date,
+        kind="split",
+        value=2.0,
+        source="fixtures",
+        published_at=published_at,
+    )
+    store.ingest([action], ingested_at=published_at)
+
+
+def test_a_split_known_at_its_session_doubles_the_position_and_reconciles(
+    world: World, tmp_path: Path
+) -> None:
+    world.run(MONDAY_RUN)
+    ingest(world.store, TUESDAY, 100.2)
+    world.run(run_at(TUESDAY))
+    announce_split(world.store, WEDNESDAY, run_at(TUESDAY) + timedelta(minutes=30))
+    ingest(world.store, WEDNESDAY, 50.1)
+    report = world.run(run_at(WEDNESDAY))
+    assert (report.outcome, report.stop) == ("terminee", None)
+    [action] = report.actions
+    assert (action.session, action.kind, action.value) == (WEDNESDAY, "split", Decimal(2))
+    assert report.valuation.positions == {SYMBOL: 8}
+    assert report.reconciliation is not None and report.reconciliation.clean
+    assert not kill_switch_engaged(tmp_path)
+    text = (default_reports_dir(tmp_path) / "2026-10-21.md").read_text(encoding="utf-8")
+    assert "## Opérations sur titres" in text
+    assert "| FICT-ACME | split | 21/10/2026 | 21/10/2026 | 2 titre(s) pour 1 |" in text
+
+
+def test_a_split_at_the_session_of_an_order_cancels_it_in_the_book(world: World) -> None:
+    world.run(MONDAY_RUN)
+    announce_split(world.store, TUESDAY, MONDAY_RUN + timedelta(minutes=15))
+    ingest(world.store, TUESDAY, 50.1)
+    report = world.run(run_at(TUESDAY))
+    [order] = world.book.orders()
+    assert order.state == OrderState.ANNULEE
+    assert report.expired_in_book == [order.intent.intent_id]
+    assert world.simulator.open_orders() == ()
+    assert report.reconciliation is not None and report.reconciliation.clean
+    assert report.valuation.positions == {}
+
+
+def test_actions_the_simulator_cannot_book_are_a_note(
+    world: World, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    def refuse(*args: Any, **kwargs: Any) -> Any:
+        raise SimulatorError("base en lecture seule")
+
+    monkeypatch.setattr(world.simulator, "book_actions", refuse)
+    report = world.run(MONDAY_RUN)
+    assert report.outcome == "terminee"
+    assert "opérations sur titres non comptabilisées : base en lecture seule" in report.notes
 
 
 def test_past_midnight_in_paris_no_intent_is_drafted(world: World) -> None:

@@ -52,6 +52,7 @@ import pandas as pd
 
 from core.approvals.store import ApprovalError, ApprovalRequest, ApprovalState, ApprovalStore
 from core.config.loader import Config
+from core.execution.actions import AccountAction
 from core.execution.book import Journal, OrderBook, OrderBookError, slippage_bps
 from core.execution.broker import NETWORK_ERRORS, AccountStatement, BrokerOrder
 from core.execution.drafter import DraftError, IntentDrafter, TargetOrder, clip
@@ -387,6 +388,7 @@ class DayReport:
     request_id: str
     outcome: Outcome = "terminee"
     sessions: list[SessionReport] = field(default_factory=list)
+    actions: list[AccountAction] = field(default_factory=list)  # booked today (ADR-042)
     reconciliation: Reconciliation | None = None
     expired_in_book: list[UUID] = field(default_factory=list)
     valuation: Valuation | None = None
@@ -476,6 +478,33 @@ def _due(env: PaperDay, day: date, now: datetime) -> dict[date, list[BrokerOrder
 
 class _DataLoss(Exception):
     """A close the simulator needs is missing for longer than ``max_staleness_sessions``."""
+
+
+def _book_actions(env: PaperDay, report: DayReport) -> None:
+    """Have the simulator book the splits and dividends the store knows at ``now`` for the
+    instruments of the book, before the sessions close: a split cancels the orders it makes
+    stale, in the simulator and in the book (ADR-042, B187)."""
+    now = report.as_of
+    symbols = sorted({order.intent.instrument.symbol for order in env.book.orders()})
+    known = [a for s in symbols for a in env.store.corporate_actions(s, as_of=now, strict=True)]
+    try:
+        result = env.simulator.book_actions(known, StoreMarket(env.store, as_of=now), now=now)
+    except SimulatorError as exc:
+        report.notes.append(f"opérations sur titres non comptabilisées : {exc}")
+        return
+    report.actions += result.booked
+    report.notes += result.notes
+    cancelled = set(result.cancelled)
+    for order in env.book.orders(FILLABLE):
+        intent_id = order.intent.intent_id
+        if intent_id in cancelled:
+            env.book.transition(
+                intent_id,
+                OrderState.ANNULEE,
+                reason="annulé par un split à sa séance : quantité et limite d'avant le split",
+                now=now,
+            )
+            report.expired_in_book.append(intent_id)
 
 
 def _close_sessions(env: PaperDay, report: DayReport) -> bool:
@@ -859,6 +888,7 @@ def _run(env: PaperDay, report: DayReport) -> DayReport:
         return _engage(env, report, "fichier", "fichier KILL trouvé au démarrage de la boucle")
 
     try:
+        _book_actions(env, report)
         if not _close_sessions(env, report):
             report.outcome = "attente_donnees"
             return report
@@ -1186,6 +1216,30 @@ def _sessions_section(env: PaperDay, report: DayReport) -> list[str]:
     return [*lines, ""]
 
 
+def _actions_section(report: DayReport) -> list[str]:
+    if not report.actions:
+        return []
+    lines = [
+        "## Opérations sur titres",
+        "",
+        "Source : référentiel du store, comptabilisées par le simulateur paper (ADR-042).",
+        "",
+        "| Instrument | Type | Ex-date | Séance | Valeur |",
+        "|---|---|---|---|---|",
+    ]
+    for action in report.actions:
+        value = str(action.value).replace(".", ",")
+        if action.kind == "split":
+            what = f"{value} titre(s) pour 1"
+        else:
+            what = f"{value} {action.currency} par titre"
+        lines.append(
+            f"| {action.symbol} | {action.kind} | {action.ex_date:%d/%m/%Y} | "
+            f"{action.session:%d/%m/%Y} | {what} |"
+        )
+    return [*lines, ""]
+
+
 def _account_section(env: PaperDay, report: DayReport) -> list[str]:
     lines = [
         "## Valorisation et limites",
@@ -1275,6 +1329,7 @@ def render_report(report: DayReport, env: PaperDay) -> str:
         lines.append("Armé.")
     lines.append("")
     lines += _sessions_section(env, report)
+    lines += _actions_section(report)
     lines += ["## Réconciliation", "", "Source : `settle` (carnet contre relevé).", ""]
     if report.reconciliation is None:
         lines.append("Non faite aujourd'hui.")

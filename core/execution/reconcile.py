@@ -2,7 +2,12 @@
 
 CERVEAU's book is replayed from the order book by :func:`core.finance.portfolio.replay`, with the
 exact decimals of the real portfolio: the reference capital deposited, then each fill booked as a
-purchase or a sale, fees included. :func:`core.finance.portfolio.compare` sets it against the
+purchase or a sale, fees included. The splits and dividends the adapter booked apply to CERVEAU's
+own fills as :mod:`core.execution.actions` says: a split as the portfolio's split, its fraction as
+a sale at the session's close, a dividend as a dividend (ADR-042, B187). A broker that booked an
+action wrongly therefore shows as a gap only through its effect on its own fills; checking its
+actions against the reference data is a live concern (backlog).
+:func:`core.finance.portfolio.compare` sets it against the
 adapter's statement: positions exactly, cash to the cent. Every paper amount is in whole cents
 (prices and fees to the cent, whole shares), so to the cent is exact equality, never a tolerance.
 
@@ -25,23 +30,33 @@ from collections.abc import Callable, Iterable, Iterator
 from contextlib import contextmanager
 from dataclasses import dataclass
 from datetime import UTC, datetime
-from decimal import Decimal
+from decimal import ROUND_CEILING, Decimal, localcontext
 from pathlib import Path
 from types import TracebackType
 from typing import Any
 
 from pydantic import ValidationError
 
+from core.execution.actions import AccountAction, Effect, Movement, replay_account
 from core.execution.book import BookedOrder, OrderBook, Recorder
 from core.execution.broker import AccountStatement, BrokerAdapter
 from core.execution.states import ExecutionIncident
 from core.finance.model import StatementLine, Transaction, canonical_json, local_date, utc_text
-from core.finance.portfolio import Booked, Gap, PortfolioError, compare, replay
+from core.finance.portfolio import (
+    DECIMAL_DIGITS,
+    Booked,
+    Gap,
+    PortfolioError,
+    Split,
+    compare,
+    replay,
+)
 from core.finance.schema import SchemaError, migrate, schema_version
 from core.finance.store import PortfolioFile
 
 PAPER_ACCOUNT = "paper"
 LEDGER_NAME = "orders.db"  # where a replay error points: the order book
+_SIGN = {"BUY": 1, "SELL": -1}
 
 
 @dataclass(frozen=True)
@@ -68,34 +83,65 @@ def _sha256(value: object) -> str:
     return hashlib.sha256(canonical_json(value).encode()).hexdigest()
 
 
+@dataclass(frozen=True)
+class PaperBook:
+    """CERVEAU's book of the paper account as the portfolio replays it."""
+
+    ledger: list[Booked]  # the deposit, then the transactions in the order they happened
+    splits: list[Split]  # one per instrument and session, the session's splits together
+    fills: int
+    sha256: str  # what was replayed: the capital, the fills and the actions
+
+
+def _book_split(effects: list[Effect]) -> tuple[Split, Decimal, Decimal]:
+    """The portfolio's split of an instrument's splits at one session, and the fraction it then
+    sells with what that sale brings: the portfolio holds exactly the account's shares."""
+    first, last = effects[0], effects[-1]
+    held = Decimal(first.held)
+    with localcontext(prec=DECIMAL_DIGITS):
+        ratio = Decimal(1)
+        for effect in effects:
+            ratio *= effect.action.value
+        if held * ratio < last.shares:
+            # Within the tolerance, below the whole number: the smallest ratio that reaches it.
+            with localcontext(rounding=ROUND_CEILING):
+                ratio = last.shares / held
+        excess = held * ratio - last.shares
+    cash = sum((effect.cash for effect in effects), Decimal(0))
+    return Split(first.action.session, first.action.symbol, ratio), excess, cash
+
+
 def paper_ledger(
-    orders: Iterable[BookedOrder], capital_eur: Decimal, *, as_of: datetime
-) -> tuple[list[Booked], str]:
-    """The reference capital, then every fill in the order it happened, as the portfolio's
-    transactions; with the fingerprint of what was replayed."""
+    orders: Iterable[BookedOrder],
+    capital_eur: Decimal,
+    *,
+    as_of: datetime,
+    actions: Iterable[AccountAction] = (),
+) -> PaperBook:
+    """The reference capital, then every fill in the order it happened and the effects of
+    ``actions`` on them, as the portfolio's transactions; with the fingerprint of what was
+    replayed. At a session, a split's fraction is sold first, then the fills, then the
+    dividends, as :func:`core.execution.actions.replay_account` applies them."""
     fills = sorted(
         ((fill, order.intent) for order in orders for fill in order.fills),
         key=lambda pair: pair[0].executed_at,  # stable: the book's order within an instant
     )
-    sha256 = _sha256({"capital_eur": str(capital_eur), "fills": [f.sha256() for f, _ in fills]})
-    file = PortfolioFile(
-        sha256=sha256,
-        kind="transactions",
-        file_name=LEDGER_NAME,
-        format="cerveau-paper",
-        rows=len(fills) + 1,
-        imported_at=as_of,
-    )
-    opened = min((fill.session for fill, _ in fills), default=local_date(as_of))
-    deposit = Transaction(
-        trade_date=opened,
-        account=PAPER_ACCOUNT,
-        kind="deposit",
-        quantity=capital_eur,
-        currency="EUR",
-    )
-    ledger = [Booked(deposit, file, 1)]
-    for line, (fill, intent) in enumerate(fills, start=2):
+    booked = sorted(actions, key=lambda a: a.key)
+    fingerprint: dict[str, object] = {
+        "capital_eur": str(capital_eur),
+        "fills": [f.sha256() for f, _ in fills],
+    }
+    if booked:
+        fingerprint["actions"] = [a.text() for a in booked]
+    sha256 = _sha256(fingerprint)
+    movements = [
+        Movement(fill.session, intent.instrument.symbol, fill.quantity * _SIGN[intent.side])
+        for fill, intent in fills
+    ]
+    # Without actions the portfolio's replay alone checks the book (a sale beyond the position).
+    effects = replay_account(booked, movements).effects if booked else ()
+    entries: list[tuple[tuple[object, ...], Transaction]] = []
+    for index, (fill, intent) in enumerate(fills):
         trade = Transaction(
             trade_date=fill.session,
             account=PAPER_ACCOUNT,
@@ -106,8 +152,63 @@ def paper_ledger(
             currency=fill.currency,
             fees=fill.fees,
         )
-        ledger.append(Booked(trade, file, line))
-    return ledger, sha256
+        entries.append(((fill.session, 1, index), trade))
+    groups: dict[tuple[object, ...], list[Effect]] = {}
+    for effect in effects:
+        action = effect.action
+        if action.kind == "split":
+            groups.setdefault((action.session, action.symbol), []).append(effect)
+        elif effect.cash:
+            dividend = Transaction(
+                trade_date=action.session,
+                account=PAPER_ACCOUNT,
+                kind="dividend",
+                asset=action.symbol,
+                quantity=effect.cash,
+                currency="EUR",
+            )
+            entries.append(((action.session, 2, action.symbol, action.ex_date), dividend))
+    splits = []
+    for (session, symbol), effects in groups.items():
+        split, excess, cash = _book_split(effects)
+        splits.append(split)
+        if excess > 0:
+            assert effects[-1].action.close is not None  # noqa: S101 - a split carries its close
+            close = effects[-1].action.close
+            with localcontext(prec=DECIMAL_DIGITS):
+                lost = excess * close
+            sale = Transaction(
+                trade_date=split.ex_date,
+                account=PAPER_ACCOUNT,
+                kind="sell",
+                asset=split.instrument_id,
+                quantity=excess,
+                price=close,
+                currency="EUR",
+                amount=cash if cash > 0 else None,
+                fees=Decimal(0) if cash > 0 else lost,
+            )
+            entries.append(((session, 0, symbol), sale))
+    entries.sort(key=lambda entry: entry[0])
+    file = PortfolioFile(
+        sha256=sha256,
+        kind="transactions",
+        file_name=LEDGER_NAME,
+        format="cerveau-paper",
+        rows=len(entries) + 1,
+        imported_at=as_of,
+    )
+    opened = min((t.trade_date for _, t in entries), default=local_date(as_of))
+    deposit = Transaction(
+        trade_date=opened,
+        account=PAPER_ACCOUNT,
+        kind="deposit",
+        quantity=capital_eur,
+        currency="EUR",
+    )
+    ledger = [Booked(deposit, file, 1)]
+    ledger += [Booked(t, file, line) for line, (_, t) in enumerate(entries, start=2)]
+    return PaperBook(ledger, splits, len(fills), sha256)
 
 
 def statement_lines(statement: AccountStatement, *, as_of: datetime) -> list[StatementLine]:
@@ -156,26 +257,27 @@ def reconcile(
     as_of: datetime,
 ) -> Reconciliation:
     """Replay CERVEAU's book of the paper account and compare it with the adapter's statement."""
-    ledger, book_sha256 = paper_ledger(orders, capital_eur, as_of=as_of)
+    paper = paper_ledger(orders, capital_eur, as_of=as_of, actions=statement.actions)
     lines = statement_lines(statement, as_of=as_of)
     try:
-        book = replay(ledger, (), day=local_date(as_of), as_of=as_of)
+        book = replay(paper.ledger, paper.splits, day=local_date(as_of), as_of=as_of)
     except PortfolioError as exc:
         raise ExecutionIncident(
             "execution_incoherente", None, f"livre paper non rejouable : {exc}"
         ) from exc
+    read: dict[str, object] = {
+        "cash_eur": str(statement.cash_eur),
+        "positions": statement.positions,
+        "cursor": statement.cursor,
+    }
+    if statement.actions:
+        read["actions"] = [a.text() for a in sorted(statement.actions, key=lambda a: a.key)]
     return Reconciliation(
         as_of=as_of,
-        fills=len(ledger) - 1,
+        fills=paper.fills,
         cursor=statement.cursor,
-        book_sha256=book_sha256,
-        statement_sha256=_sha256(
-            {
-                "cash_eur": str(statement.cash_eur),
-                "positions": statement.positions,
-                "cursor": statement.cursor,
-            }
-        ),
+        book_sha256=paper.sha256,
+        statement_sha256=_sha256(read),
         gaps=tuple(compare(lines, book)[PAPER_ACCOUNT]),
     )
 

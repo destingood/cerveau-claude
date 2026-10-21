@@ -11,9 +11,11 @@ times the amount, the exact decimal rounded to the cent half up; NautilusTrader'
 rounds a float instead, so an exact half cent may be one cent lower there (cross-check, B154).
 
 Its accounting is its own, in ``var/paper/simulator.db``: the capital, the orders, the
-rejections, the closed sessions and the events (fills, expiries, cancellations), insertion only.
-Cash and positions are replayed from them and never read from CERVEAU's order book, so that the
-reconciliation compares two books (ADR-033, §8.6).
+rejections, the closed sessions, the events (fills, expiries, cancellations) and the splits and
+dividends it booked, insertion only. Cash and positions are replayed from them and never read
+from CERVEAU's order book, so that the reconciliation compares two books (ADR-033, §8.6). An
+action is booked once the close of its session is published, and applies as
+:mod:`core.execution.actions` says (ADR-042, B187).
 
 Phase 4 limits: euros only, an order in another currency being rejected like in the backtest
 engines (ADR-024), and amounts within NautilusTrader's ``MONEY_MAX``, so that every fill can be
@@ -24,10 +26,10 @@ phase 3 in tests, the point-in-time finance store otherwise; never the network.
 from __future__ import annotations
 
 import sqlite3
-from collections.abc import Callable, Iterator
+from collections.abc import Callable, Iterable, Iterator
 from contextlib import contextmanager
 from dataclasses import dataclass
-from datetime import date, datetime
+from datetime import date, datetime, timedelta
 from decimal import ROUND_CEILING, ROUND_FLOOR, ROUND_HALF_UP, Decimal, localcontext
 from pathlib import Path
 from types import TracebackType
@@ -38,12 +40,14 @@ import pandas as pd
 from pydantic import AwareDatetime, BaseModel, ConfigDict, Field
 
 from core.config.loader import ExecutionConfig, PaperRiskLimits, TradingCosts
+from core.execution.actions import AccountAction, Movement, exact_value, replay_account
 from core.execution.book import REASON_CHARS, Fill, Positive, _connect, _immutable
 from core.execution.broker import AccountStatement, AckCode, BrokerAck, BrokerOrder, FillBatch
 from core.execution.intent import OrderIntent
 from core.execution.states import ExecutionIncident
 from core.finance.calendars import exchange_calendar
 from core.finance.model import (
+    CorporateAction,
     Currency,
     InstrumentId,
     canonical_json,
@@ -134,6 +138,26 @@ MIGRATIONS: tuple[tuple[int, tuple[str, ...]], ...] = (
                 SELECT RAISE(ABORT, 'events : exécution hors de l''ordre');
             END""",
             *_immutable("events", "un événement"),
+        ),
+    ),
+    (
+        2,
+        (
+            # The splits and dividends booked (ADR-042): the first version of each stays.
+            """CREATE TABLE actions (
+                symbol TEXT NOT NULL,
+                ex_date TEXT NOT NULL,
+                kind TEXT NOT NULL CHECK (kind IN ('split', 'dividend')),
+                session TEXT NOT NULL CHECK (session >= ex_date),
+                value TEXT NOT NULL,
+                currency TEXT,
+                close TEXT,
+                recorded_at TEXT NOT NULL,
+                PRIMARY KEY (symbol, ex_date, kind),
+                CHECK ((kind = 'split') = (close IS NOT NULL AND currency IS NULL)),
+                CHECK ((kind = 'dividend') = (currency IS NOT NULL AND close IS NULL))
+            ) STRICT""",
+            *_immutable("actions", "une opération sur titres"),
         ),
     ),
 )
@@ -276,6 +300,13 @@ class SessionReport:
     session: date
     fills: tuple[Fill, ...]
     expired: tuple[tuple[UUID, str], ...]  # the orders closed with the session, and why
+
+
+@dataclass(frozen=True)
+class ActionsReport:
+    booked: tuple[AccountAction, ...]
+    cancelled: tuple[UUID, ...]  # working orders of a split's instrument, from its session on
+    notes: tuple[str, ...]  # what was not booked, or booked late, and why
 
 
 @dataclass(frozen=True)
@@ -423,22 +454,48 @@ class PaperSimulator:
             )
         return orders
 
-    def _ledger(self) -> _Ledger:
-        """Cash and positions replayed from the capital and the fills: the simulator's own."""
-        cash = Decimal(self._conn.execute("SELECT capital_eur FROM account").fetchone()[0])
-        positions: dict[str, int] = {}
+    def _actions(self) -> list[AccountAction]:
+        return [
+            AccountAction(
+                session=date.fromisoformat(row["session"]),
+                symbol=row["symbol"],
+                ex_date=date.fromisoformat(row["ex_date"]),
+                kind=row["kind"],
+                value=Decimal(row["value"]),
+                currency=row["currency"],
+                close=None if row["close"] is None else Decimal(row["close"]),
+            )
+            for row in self._conn.execute(
+                "SELECT symbol, ex_date, kind, session, value, currency, close FROM actions "
+                "ORDER BY session, symbol, ex_date, kind"
+            )
+        ]
+
+    def _ledger(self, through: date | None = None) -> _Ledger:
+        """Cash and positions replayed from the capital, the fills and the actions booked (those
+        of the sessions up to ``through``): the simulator's own. A fill happens at the session
+        of its order; the cursor counts the events only (ADR-042)."""
+        capital = Decimal(self._conn.execute("SELECT capital_eur FROM account").fetchone()[0])
+        movements = []
         cursor = 0
         for row in self._conn.execute(
-            "SELECT e.seq, e.kind, e.quantity, e.cash_eur, o.symbol, o.side "
+            "SELECT e.seq, e.kind, e.quantity, e.cash_eur, o.symbol, o.side, o.session "
             "FROM events e JOIN orders o USING (intent_id) ORDER BY e.seq"
         ):
             cursor = row["seq"]
             if row["kind"] == "fill":
-                cash += Decimal(row["cash_eur"])
                 sign = 1 if row["side"] == "BUY" else -1
-                positions[row["symbol"]] = positions.get(row["symbol"], 0) + sign * row["quantity"]
-        held = {symbol: quantity for symbol, quantity in sorted(positions.items()) if quantity}
-        return _Ledger(cash, held, cursor)
+                movements.append(
+                    Movement(
+                        date.fromisoformat(row["session"]),
+                        row["symbol"],
+                        sign * row["quantity"],
+                        Decimal(row["cash_eur"]),
+                    )
+                )
+        actions = [a for a in self._actions() if through is None or a.session <= through]
+        replayed = replay_account(actions, movements)
+        return _Ledger(capital + replayed.cash, replayed.positions, cursor)
 
     def _last_session(self) -> date | None:
         row = self._conn.execute("SELECT MAX(session) FROM sessions").fetchone()
@@ -467,7 +524,9 @@ class PaperSimulator:
 
     def account_snapshot(self) -> AccountStatement:
         ledger = self._ledger()
-        return AccountStatement(ledger.cash, ledger.positions, ledger.cursor)
+        return AccountStatement(
+            ledger.cash, ledger.positions, ledger.cursor, actions=tuple(self._actions())
+        )
 
     def fills_since(self, cursor: int) -> FillBatch:
         """The fills recorded after ``cursor`` (0 for all), in the order they happened."""
@@ -742,7 +801,7 @@ class PaperSimulator:
             last = self._last_session()
             if last is not None and session <= last:
                 raise SimulatorError(f"séance du {session} déjà close (dernière : {last})")
-            ledger = self._ledger()
+            ledger = self._ledger(through=session)
             due = [o for o in self._orders() if o.open and o.session <= session]
             for order in sorted(due, key=lambda o: (o.intent.side == "BUY", o.intent.intent_id)):
                 intent = order.intent
@@ -771,3 +830,106 @@ class PaperSimulator:
                 (str(session), utc_text(now)),
             )
         return SessionReport(session, tuple(fills), tuple(expired))
+
+    def book_actions(
+        self, actions: Iterable[CorporateAction], market: Market, *, now: datetime
+    ) -> ActionsReport:
+        """Book the splits and dividends of the instruments the account has orders on.
+
+        An action is booked once the close of its session is published at ``now`` (R10), and
+        never before the session of the account's first order on the instrument: the decisions
+        before it already saw the new number of shares. A split cancels the working orders of
+        its instrument from its session on: their quantity and limit predate it. An action
+        already booked keeps its first version; one known after its session closed is booked
+        late, the fills in between staying as they are. A booking the fills cannot be replayed
+        with (a reverse split known after a sale) is an incident: nothing is booked.
+        """
+        booked: list[AccountAction] = []
+        cancelled: list[UUID] = []
+        notes: list[str] = []
+        with self._write():
+            orders = self._orders()
+            venues = {o.intent.instrument.symbol: o.intent.instrument.venue for o in orders}
+            first: dict[str, date] = {}
+            for order in orders:
+                symbol = order.intent.instrument.symbol
+                first[symbol] = min(first.get(symbol, order.session), order.session)
+            known = {
+                (row["symbol"], row["ex_date"], row["kind"]): (row["value"], row["currency"])
+                for row in self._conn.execute(
+                    "SELECT symbol, ex_date, kind, value, currency FROM actions"
+                )
+            }
+            last = self._last_session()
+            for action in sorted(actions, key=lambda a: (a.instrument_id, a.ex_date, a.kind)):
+                symbol, split = action.instrument_id, action.kind == "split"
+                if symbol not in venues:
+                    continue
+                label = (
+                    f"{'split' if split else 'dividende'} de {symbol} (ex-date {action.ex_date})"
+                )
+                value = exact_value(action.value)
+                key = (symbol, str(action.ex_date), action.kind)
+                if key in known:
+                    if known[key] != (str(value), action.currency):
+                        notes.append(f"{label} : révision ignorée, la première version reste")
+                    continue
+                session = self._sessions(venues[symbol], action.ex_date - timedelta(days=1))
+                if session < first[symbol]:
+                    continue
+                bar = market.bar(symbol, session)
+                if bar is None or bar.symbol != symbol or bar.session != session:
+                    continue  # no close for its session yet: booked on a later day
+                if bar.published_at > now:
+                    continue
+                if split and bar.currency != EURO:
+                    notes.append(f"{label} : clôture en {bar.currency}, split non comptabilisé")
+                    continue
+                if not split and action.currency != EURO:
+                    notes.append(f"{label} : versé en {action.currency}, non crédité (ADR-042)")
+                if last is not None and session <= last:
+                    notes.append(
+                        f"{label} connu après la clôture de sa séance du {session} : "
+                        "comptabilisé en retard, exécutions passées inchangées"
+                    )
+                entry = AccountAction(
+                    session=session,
+                    symbol=symbol,
+                    ex_date=action.ex_date,
+                    kind=action.kind,
+                    value=value,
+                    currency=action.currency,
+                    close=bar.close if split else None,
+                )
+                self._conn.execute(
+                    "INSERT INTO actions (symbol, ex_date, kind, session, value, currency, close, "
+                    "recorded_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
+                    (
+                        symbol,
+                        str(entry.ex_date),
+                        entry.kind,
+                        str(session),
+                        str(value),
+                        entry.currency,
+                        None if entry.close is None else str(entry.close),
+                        utc_text(now),
+                    ),
+                )
+                known[key] = (str(value), action.currency)
+                booked.append(entry)
+                if split:
+                    why = _why(
+                        f"split de {symbol} à la séance du {session} : ordre d'avant le split"
+                    )
+                    for order in orders:
+                        intent_id = order.intent.intent_id
+                        if (
+                            order.open
+                            and order.intent.instrument.symbol == symbol
+                            and order.session >= session
+                            and intent_id not in cancelled
+                        ):
+                            self._event(intent_id, "cancel", order.remaining, why, now)
+                            cancelled.append(intent_id)
+            self._ledger()  # an impossible replay raises here, and nothing is booked
+        return ActionsReport(tuple(booked), tuple(cancelled), tuple(notes))
