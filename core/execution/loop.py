@@ -8,7 +8,8 @@ gate and send the day's intents.
 2. the sessions due: each order the simulator works on a session whose close is past is worked
    at that close, from the store as known now; a close the store does not have yet stops the day
    until it is ingested (``attente_donnees``), unless it is older than ``max_staleness_sessions``:
-   the kill switch is then tripped (``perte_donnees``);
+   the kill switch is then tripped (``perte_donnees``). A limit still ``A_DEFINIR`` counts as 0
+   sessions, the strictest (B194), and the day drafts no intent (R7);
 3. the reconciliation (:func:`core.execution.reconcile.settle`), then the book follows the
    simulator: an order it no longer works expired with its session; an incident trips the kill
    switch (``incident_execution``); a gap is alerted (ADR-038);
@@ -53,7 +54,7 @@ import pandas as pd
 from core.approvals.store import ApprovalError, ApprovalRequest, ApprovalState, ApprovalStore
 from core.config.loader import Config
 from core.execution.actions import AccountAction
-from core.execution.book import Journal, OrderBook, OrderBookError, slippage_bps
+from core.execution.book import Journal, OrderBook, OrderBookError, execution_gap_bps
 from core.execution.broker import NETWORK_ERRORS, AccountStatement, BrokerOrder
 from core.execution.drafter import DraftError, IntentDrafter, TargetOrder, clip
 from core.execution.intent import IntentOrigin, IntentRationale, OrderIntent, SizingSource
@@ -507,12 +508,18 @@ def _book_actions(env: PaperDay, report: DayReport) -> None:
             report.expired_in_book.append(intent_id)
 
 
+def _staleness_limit(env: PaperDay) -> int:
+    """``max_staleness_sessions``; 0, the strictest, while it is ``A_DEFINIR`` (B194, R7)."""
+    limit = env.config.data_sources.quality.max_staleness_sessions
+    return 0 if isinstance(limit, str) else limit
+
+
 def _close_sessions(env: PaperDay, report: DayReport) -> bool:
     """Work the sessions due; False when a close is not in the store yet, :class:`_DataLoss`
     when it is missing for longer than ``max_staleness_sessions``."""
     now = report.as_of
     market = StoreMarket(env.store, as_of=now)
-    limit = env.config.data_sources.quality.max_staleness_sessions
+    limit = _staleness_limit(env)
     for session, orders in _due(env, report.day, now).items():
         late = [o for o in orders if market.bar(o.symbol, session) is None]
         if late:
@@ -521,7 +528,7 @@ def _close_sessions(env: PaperDay, report: DayReport) -> bool:
                 sessions_since(env.book.order(o.intent_id).intent.instrument.venue, session, now)
                 for o in late
             )
-            if not isinstance(limit, str) and age > limit:
+            if age > limit:
                 raise _DataLoss(f"clôture du {session} absente pour {missing} depuis {age} séances")
             report.notes.append(f"clôture du {session} absente pour {missing}")
             return False
@@ -571,14 +578,14 @@ def _symbols(env: PaperDay, statement: AccountStatement) -> tuple[set[str], set[
 
 def _stale(env: PaperDay, facts: MarketFacts, exposed: set[str]) -> list[str]:
     """The exposed instruments whose value is unknown or too old at ``facts.as_of``."""
-    limit = env.config.data_sources.quality.max_staleness_sessions
+    limit = _staleness_limit(env)
     stale = []
     for symbol in sorted(exposed):
         quote = facts.quotes.get(symbol)
         instrument = facts.instruments.get(symbol)
         if quote is None or instrument is None:
             stale.append(f"{symbol} ({facts.gaps.get(symbol, 'aucun cours')})")
-        elif not isinstance(limit, str) and quote.sessions_old > limit:
+        elif quote.sessions_old > limit:
             stale.append(f"{symbol} (clôture vieille de {quote.sessions_old} séances)")
         elif instrument.currency != EURO and instrument.currency not in facts.fx:
             stale.append(f"{symbol} (taux {instrument.currency} absent)")
@@ -600,25 +607,64 @@ def _valuation(statement: AccountStatement, facts: MarketFacts, day: date) -> Va
     return Valuation(day, equity, statement.cash_eur, positions, facts.as_of)
 
 
-def _account(env: PaperDay, valuation: Valuation, report: DayReport) -> Account | None:
-    """The account the limits read: losses against the previous valuations, or the capital."""
+def _sessions_before(mics: set[str], day: date, recorded: Sequence[date]) -> list[date]:
+    """The sessions of ``mics`` before ``day``, oldest first, from the first recorded valuation's
+    year on; the recorded valuation days themselves when no calendar is known."""
+    first = min(recorded, default=day).year
+    sessions: set[date] = set()
+    for mic in mics:
+        calendar = exchange_calendar(mic, first, day.year)
+        if calendar is not None:
+            sessions |= {stamp.date() for stamp in calendar.closes.index if stamp.date() < day}
+    return sorted(sessions) if sessions else [d for d in recorded if d < day]
+
+
+def _equity_at(
+    recorded: Sequence[Valuation], session: date | None, measure: str, report: DayReport
+) -> Decimal | None:
+    """The equity at the close of ``session``: its valuation, else the last one before it (the
+    note says so); None without any, the reference capital then."""
+    if session is None:
+        return None
+    found = [v for v in recorded if v.day <= session]
+    if not found:
+        return None
+    last = found[-1]
+    if last.day != session:
+        report.notes.append(
+            f"{measure} mesuré depuis le {last.day:%d/%m/%Y} : valorisation de la séance du "
+            f"{session:%d/%m/%Y} absente"
+        )
+    return last.equity_eur
+
+
+def _account(
+    env: PaperDay, valuation: Valuation, mics: set[str], report: DayReport
+) -> Account | None:
+    """The account the limits read: losses since the close of the previous session and of the
+    session ``rolling_loss_sessions`` back on the calendar of ``mics`` (B189), from the
+    valuations recorded then, or the reference capital before the first one."""
     limits = env.config.risk_limits_paper
     sessions, capital = limits.rolling_loss_sessions, limits.capital_reference_eur
     if isinstance(sessions, str) or isinstance(capital, str):
         report.notes.append("capital de référence ou séances de perte glissante à définir (R7)")
         return None
     reference = Decimal(str(capital))
-    before = [v.equity_eur for v in env.log.valuations() if v.day < valuation.day]
+    recorded = [v for v in env.log.valuations() if v.day < valuation.day]
     equity = valuation.equity_eur
     if equity <= 0:
         report.notes.append("valeur liquidative nulle ou négative : compte incohérent")
         return None
+    calendar = _sessions_before(mics, valuation.day, [v.day for v in recorded])
+    previous = _equity_at(recorded, calendar[-1] if calendar else None, "résultat du jour", report)
+    start = calendar[-sessions] if len(calendar) >= sessions else None
+    rolling = _equity_at(recorded, start, f"résultat sur {sessions} séances", report)
     return Account(
         cash_eur=valuation.cash_eur,
         equity_eur=equity,
-        peak_equity_eur=max([reference, equity, *before]),
-        day_pnl_eur=equity - (before[-1] if before else reference),
-        rolling_pnl_eur=equity - (before[-sessions] if len(before) >= sessions else reference),
+        peak_equity_eur=max([reference, equity, *(v.equity_eur for v in recorded)]),
+        day_pnl_eur=equity - (reference if previous is None else previous),
+        rolling_pnl_eur=equity - (reference if rolling is None else rolling),
         rolling_sessions=sessions,
     )
 
@@ -915,14 +961,18 @@ def _run(env: PaperDay, report: DayReport) -> DayReport:
         report.outcome = "pas_de_seance"
         return report
     if isinstance(config.data_sources.quality.max_staleness_sessions, str):
-        report.notes.append("max_staleness_sessions à définir : aucune intention (R7)")
+        report.notes.append(
+            "max_staleness_sessions à définir : limite la plus stricte (0 séance), aucune "
+            "intention (R7)"
+        )
     stale = _stale(env, facts, exposed)
     if stale:
         return _engage(env, report, "perte_donnees", "données absentes : " + ", ".join(stale))
 
     report.valuation = _valuation(statement, facts, day)
     env.log.record_valuation(report.valuation)
-    report.account = _account(env, report.valuation, report)
+    mics = {f.mic for f in facts.instruments.values()}
+    report.account = _account(env, report.valuation, mics, report)
     if report.account is not None:
         try:
             report.breaches = loss_breaches(report.account, config.risk_limits_paper)
@@ -1037,7 +1087,8 @@ def _send_approved(env: PaperDay, approvals: ApprovalStore, report: DayReport) -
     if stale:
         return _engage(env, report, "perte_donnees", "données absentes : " + ", ".join(stale))
     report.valuation = _valuation(statement, facts, day)
-    account = report.account = _account(env, report.valuation, report)
+    mics = {f.mic for f in facts.instruments.values()}
+    account = report.account = _account(env, report.valuation, mics, report)
     if account is None:
         return report  # the note says why; the approvals expire unspent
     for intent, request in granted:  # each against the book as the previous one left it
@@ -1196,18 +1247,18 @@ def _sessions_section(env: PaperDay, report: DayReport) -> list[str]:
     if not report.sessions:
         return [*lines, "Aucune séance close aujourd'hui.", ""]
     lines += [
-        "| Séance | Ordre | Instrument | Sens | Quantité | Prix | Frais | Glissement (pb) |",
+        "| Séance | Ordre | Instrument | Sens | Quantité | Prix | Frais | Écart d'exécution (pb) |",
         "|---|---|---|---|---|---|---|---|",
     ]
     for session in report.sessions:
         for fill in session.fills:
             order = env.book.order(fill.intent_id)
-            slip = slippage_bps([order])
+            gap = execution_gap_bps([order])
             lines.append(
                 f"| {session.session} | `{str(fill.intent_id)[:8]}` | "
                 f"{order.intent.instrument.symbol} | {order.intent.side} | {fill.quantity} | "
                 f"{_fr(fill.price)} {fill.currency} | {_fr(fill.fees)} {fill.currency} | "
-                f"{'n.d.' if slip is None else _fr(slip)} |"
+                f"{'n.d.' if gap is None else _fr(gap)} |"
             )
     expired = [(s.session, i, why) for s in report.sessions for i, why in s.expired]
     if expired:

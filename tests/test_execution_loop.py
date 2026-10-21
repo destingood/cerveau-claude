@@ -261,6 +261,25 @@ def test_the_next_day_closes_the_session_settles_and_values(world: World) -> Non
     assert "test_source : aucun ordre proposé" in report.notes
 
 
+def test_the_losses_count_sessions_of_the_calendar_not_recorded_days(tmp_path: Path) -> None:
+    built = World(tmp_path, config(rolling_loss_sessions=2))
+    built.run(MONDAY_RUN)
+    ingest(built.store, TUESDAY, 100.2)
+    built.run(run_at(TUESDAY))
+    ingest(built.store, WEDNESDAY, 101.0)  # no run on Wednesday
+    ingest(built.store, THURSDAY, 102.0)
+    report = built.run(run_at(THURSDAY))
+    assert report.account is not None
+    # Two sessions back is Tuesday's close, not Monday's (the second valuation back).
+    assert report.account.rolling_pnl_eur == 4 * (Decimal("102.00") - Decimal("100.20"))
+    assert report.account.day_pnl_eur == report.account.rolling_pnl_eur
+    assert (
+        "résultat du jour mesuré depuis le 20/10/2026 : valorisation de la séance du 21/10/2026 "
+        "absente"
+    ) in report.notes
+    assert not [note for note in report.notes if note.startswith("résultat sur 2 séances")]
+
+
 def test_an_order_whose_limit_is_not_reached_expires_in_the_book(world: World) -> None:
     world.run(MONDAY_RUN)
     ingest(world.store, TUESDAY, 101.0)  # above the 100.50 € limit of the buy
@@ -292,14 +311,33 @@ def test_a_close_missing_beyond_the_staleness_limit_trips_the_kill_switch(world:
     assert "clôture du 2026-10-20 absente pour FICT-ACME depuis 2 séances" in report.stop.reason
 
 
-def test_a_close_missing_waits_while_the_staleness_limit_is_to_define(world: World) -> None:
-    world.run(MONDAY_RUN)
+def staleness_to_define(world: World) -> None:
     sources = world.cfg.data_sources
     quality = sources.quality.model_copy(update={"max_staleness_sessions": "A_DEFINIR"})
     world.env.config = replace(
         world.cfg, data_sources=sources.model_copy(update={"quality": quality})
     )
-    assert world.run(run_at(THURSDAY)).outcome == "attente_donnees"
+
+
+def test_a_staleness_limit_to_define_is_the_strictest_for_a_missing_close(world: World) -> None:
+    world.run(MONDAY_RUN)
+    staleness_to_define(world)
+    assert world.run(run_at(TUESDAY)).outcome == "attente_donnees"  # the close of the day
+    report = world.run(run_at(WEDNESDAY))  # Tuesday's close, one session later
+    assert report.outcome == "arret"
+    assert report.stop is not None and report.stop.trigger == "perte_donnees"
+    assert "clôture du 2026-10-20 absente pour FICT-ACME depuis 1 séances" in report.stop.reason
+
+
+def test_a_staleness_limit_to_define_is_the_strictest_for_a_held_close(world: World) -> None:
+    world.run(MONDAY_RUN)
+    ingest(world.store, TUESDAY, 100.2)
+    assert world.run(run_at(TUESDAY)).valuation.positions == {SYMBOL: 4}
+    staleness_to_define(world)
+    report = world.run(run_at(WEDNESDAY))  # Wednesday's close not ingested: one session old
+    assert report.outcome == "arret"
+    assert report.stop is not None and report.stop.trigger == "perte_donnees"
+    assert f"{SYMBOL} (clôture vieille de 1 séances)" in report.stop.reason
 
 
 def test_a_kill_file_stops_the_day_and_then_every_day(world: World, tmp_path: Path) -> None:

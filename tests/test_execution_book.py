@@ -19,7 +19,7 @@ from core.execution.book import (
     OrderBook,
     OrderBookError,
     default_book_path,
-    slippage_bps,
+    execution_gap_bps,
 )
 from core.execution.intent import OrderIntent
 from core.execution.states import TRANSITIONS, ExecutionIncident, OrderState
@@ -409,7 +409,7 @@ def test_an_altered_book_is_detected_on_read(
         book.orders()
 
 
-# Slippage --------------------------------------------------------------------------------------
+# Execution gap ---------------------------------------------------------------------------------
 
 
 def booked(intent: OrderIntent, decision: Decimal, fills: list[tuple[int, Decimal]]) -> BookedOrder:
@@ -421,19 +421,19 @@ def booked(intent: OrderIntent, decision: Decimal, fills: list[tuple[int, Decima
     )
 
 
-def test_slippage_is_a_cost_in_basis_points_of_the_decision_notional() -> None:
+def test_execution_gap_is_a_cost_in_basis_points_of_the_decision_notional() -> None:
     buy = booked(make_intent(1), Decimal(100), [(4, Decimal("100.50")), (6, Decimal(101))])
     sell = booked(make_intent(2, side="SELL"), Decimal(50), [(5, Decimal("49.90"))])
-    assert buy.slippage_bps == Decimal("80.00")  # 8 € paid above 1 000 €
-    assert sell.slippage_bps == Decimal("20.00")  # 0.50 € received below 250 €
-    assert slippage_bps([buy, sell]) == Decimal("68.00")  # 8.50 € over 1 250 €
+    assert buy.execution_gap_bps == Decimal("80.00")  # 8 € paid above 1 000 €
+    assert sell.execution_gap_bps == Decimal("20.00")  # 0.50 € received below 250 €
+    assert execution_gap_bps([buy, sell]) == Decimal("68.00")  # 8.50 € over 1 250 €
     better = booked(make_intent(3), Decimal(100), [(10, Decimal("99.75"))])
-    assert better.slippage_bps == Decimal("-25.00")  # a better price is a negative cost
+    assert better.execution_gap_bps == Decimal("-25.00")  # a better price is a negative cost
 
 
-def test_no_fill_no_slippage() -> None:
-    assert slippage_bps([]) is None
-    assert booked(make_intent(), DECISION_PRICE, []).slippage_bps is None
+def test_no_fill_no_execution_gap() -> None:
+    assert execution_gap_bps([]) is None
+    assert booked(make_intent(), DECISION_PRICE, []).execution_gap_bps is None
 
 
 PRICES = st.decimals(min_value=Decimal("0.01"), max_value=Decimal(100_000), places=6)
@@ -449,7 +449,7 @@ ORDERS = st.lists(
 
 @settings(max_examples=300, deadline=None, derandomize=True, database=None)
 @given(ORDERS)
-def test_slippage_matches_an_exact_fraction_oracle(
+def test_execution_gap_matches_an_exact_fraction_oracle(
     orders: list[tuple[str, Decimal, list[tuple[int, Decimal]]]],
 ) -> None:
     built = [
@@ -462,7 +462,7 @@ def test_slippage_matches_an_exact_fraction_oracle(
         for quantity, price in fills:
             cost += sign * quantity * (Fraction(price) - Fraction(decision))
             notional += quantity * Fraction(decision)
-    result = slippage_bps(built)
+    result = execution_gap_bps(built)
     if not notional:
         assert result is None
         return

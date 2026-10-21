@@ -34,7 +34,7 @@ from core.execution.book import (
     OrderBook,
     OrderBookError,
     default_book_path,
-    slippage_bps,
+    execution_gap_bps,
 )
 from core.execution.loop import LoopLog, Valuation, default_loop_path
 from core.execution.sources import strategy_sources
@@ -305,7 +305,7 @@ class Gap:
     backtest_return: float
     paper_fills: int
     paper_fees_eur: Decimal
-    paper_slippage_bps: Decimal | None
+    paper_execution_gap_bps: Decimal | None
     unfilled: int  # orders ended without any fill: refused, rejected or cancelled
     backtest_trades: int
     backtest_fees_eur: float
@@ -355,7 +355,7 @@ def paper_backtest_gap(
         backtest_return=curve[last] / curve[first] - 1,
         paper_fills=len(fills),
         paper_fees_eur=sum((fill.fees for fill in fills), Decimal(0)),
-        paper_slippage_bps=slippage_bps(orders),
+        paper_execution_gap_bps=execution_gap_bps(orders),
         unfilled=sum(1 for o in orders if o.state in TERMINAL and o.filled == 0),
         backtest_trades=len(backtest.result.trades),
         backtest_fees_eur=backtest.result.fees,
@@ -371,7 +371,8 @@ def gap_criterion(gap: Gap | Unavailable) -> Criterion:
     shown = "mesuré et expliqué (§8.3) ; aucun seuil d'écart dans autonomy.yaml"
     if isinstance(gap, Unavailable):
         return Criterion(name, gap.reason, shown, "non_evaluable", source)
-    slippage = "aucune exécution" if gap.paper_slippage_bps is None else f"{gap.paper_slippage_bps}"
+    paper_gap = gap.paper_execution_gap_bps
+    execution = "aucune exécution" if paper_gap is None else f"{paper_gap} pb"
     details = (
         f"Stratégie {gap.strategy}, configuration approuvée aujourd'hui "
         f"{canonical_json(dict(gap.params))}, du {gap.first:%d/%m/%Y} au {gap.last:%d/%m/%Y} "
@@ -380,7 +381,8 @@ def gap_criterion(gap: Gap | Unavailable) -> Criterion:
         f"mêmes frais (risk.yaml › trading_costs) : {gap.backtest_return * 100:+.2f} %.",
         f"Exécutions : {gap.paper_fills} en paper, {gap.backtest_trades} en backtest ; frais : "
         f"{gap.paper_fees_eur} € contre {gap.backtest_fees_eur:.2f} €.",
-        f"Glissement moyen paper : {slippage} pb ; supposé par le backtest : "
+        f"Écart d'exécution moyen paper : {execution} (mouvement depuis la clôture de "
+        f"décision compris) ; glissement supposé par le backtest : "
         f"{gap.backtest_slippage_bps:.2f} pb.",
         f"Ordres paper terminés sans exécution (refusés, rejetés ou annulés) : {gap.unfilled}.",
         "Les deux exécutent à la clôture de la séance qui suit la décision ; le simulateur paper "

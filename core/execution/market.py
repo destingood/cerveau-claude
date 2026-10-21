@@ -2,16 +2,17 @@
 
 :class:`StoreMarket` gives the simulator a session's close as the store knows it at an instant,
 and :func:`market_facts` reads what the Risk Gate needs of the market: reference data, the last
-close and its age in sessions, ECB rates, average volumes. :func:`gate_snapshot` adds the
-account and what the order book already commits. Every figure comes from the store, the
-simulator, the book or the reconciliation log; none is guessed. A close the store keeps with
-more than six decimals is not rounded into a price: it counts as missing (R7). Only records
-already ingested at the instant are read (strict mode, R10).
+close and its age in sessions, ECB rates, average volumes over consecutive sessions, adjusted
+for the splits known (B190). :func:`gate_snapshot` adds the account and what the order book
+already commits. Every figure comes from the store, the simulator, the book or the
+reconciliation log; none is guessed. A close the store keeps with more than six decimals is not
+rounded into a price: it counts as missing (R7). Only records already ingested at the instant
+are read (strict mode, R10).
 """
 
 from __future__ import annotations
 
-from collections.abc import Iterable
+from collections.abc import Iterable, Sequence
 from dataclasses import dataclass, field
 from datetime import date, datetime, timedelta
 from decimal import ROUND_CEILING, ROUND_FLOOR, Decimal, localcontext
@@ -23,7 +24,7 @@ from core.execution.book import OrderBook
 from core.execution.broker import AccountStatement
 from core.execution.paper import EURO, SessionBar, SimulatorError, next_exchange_session
 from core.finance.calendars import exchange_calendar, is_target_day
-from core.finance.model import PriceRow, local_date
+from core.finance.model import CorporateAction, PriceRow, local_date
 from core.finance.store import FinanceStore
 from core.risk_gate.snapshot import (
     Account,
@@ -115,16 +116,35 @@ class MarketFacts:
     gaps: dict[str, str] = field(default_factory=dict)  # symbol or currency -> what is missing
 
 
-def _average(rows: list[PriceRow], sessions: int) -> AverageVolume | None:
+def _average(
+    rows: list[PriceRow], sessions: int, mic: str, splits: Sequence[CorporateAction]
+) -> AverageVolume | str:
+    """The mean volume of the last ``sessions`` rows, or why there is none. The rows must be
+    consecutive sessions of ``mic``'s calendar; a volume before a split inside them is counted
+    in shares of after the split (B190)."""
     last = rows[-sessions:]
     volumes = [row.volume for row in last]
     if len(last) < sessions or any(volume is None for volume in volumes):
-        return None
+        return f"volume inconnu sur l'une des {sessions} dernières séances"
+    first, latest = last[0].session, last[-1].session
+    calendar = exchange_calendar(mic, first.year, latest.year)
+    if calendar is None:
+        return f"calendrier inconnu pour la place {mic}"
+    expected = {s.date() for s in calendar.closes.index if first <= s.date() <= latest}
+    if expected != {row.session for row in last} or len(expected) != sessions:
+        return f"volumes des {sessions} dernières séances non consécutifs"
     with localcontext() as ctx:
         ctx.prec = 60
-        mean = Decimal(sum(v for v in volumes if v is not None)) / sessions
+        total = Decimal(0)
+        for row in last:
+            volume = Decimal(row.volume or 0)
+            for split in splits:
+                if row.session < split.ex_date <= latest:
+                    volume *= Decimal(str(split.value))
+            total += volume
         # The cautious side: a lower volume caps the order sooner.
-        return AverageVolume(shares=mean.quantize(PLACES, ROUND_FLOOR), sessions=sessions)
+        mean = (total / sessions).quantize(PLACES, ROUND_FLOOR)
+        return AverageVolume(shares=mean, sessions=sessions)
 
 
 def _rate(store: FinanceStore, currency: str, as_of: datetime) -> FxRate | None:
@@ -189,9 +209,11 @@ def market_facts(
         if isinstance(volume_sessions, str):
             gaps[symbol] = f"avg_volume_sessions vaut {volume_sessions} (R7)"
             continue
-        average = _average(rows, volume_sessions)
-        if average is None:
-            gaps[symbol] = f"volume inconnu sur l'une des {volume_sessions} dernières séances"
+        actions = store.corporate_actions(symbol, as_of=as_of, strict=True)
+        splits = [action for action in actions if action.kind == "split"]
+        average = _average(rows, volume_sessions, facts.mic, splits)
+        if isinstance(average, str):
+            gaps[symbol] = average
             continue
         volumes[symbol] = average
     fx: dict[str, FxRate] = {}

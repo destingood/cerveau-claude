@@ -43,7 +43,7 @@ from core.finance.schema import SchemaError, migrate, schema_version
 
 REASON_CHARS = 200
 BPS = Decimal(10_000)
-BPS_STEP = Decimal("0.01")  # slippage is reported to the hundredth of a basis point
+BPS_STEP = Decimal("0.01")  # the execution gap is reported to the hundredth of a basis point
 
 Amount = Annotated[Decimal, Field(ge=0, allow_inf_nan=False, max_digits=24, decimal_places=6)]
 Positive = Annotated[Decimal, Field(gt=0, allow_inf_nan=False, max_digits=24, decimal_places=6)]
@@ -211,7 +211,7 @@ class Fill(BaseModel):
 @dataclass(frozen=True)
 class BookedOrder:
     intent: OrderIntent
-    decision_price: Decimal  # the last close the Risk Gate saw: the reference of slippage
+    decision_price: Decimal  # the last close the Risk Gate saw: the execution gap's reference
     state: OrderState
     fills: tuple[Fill, ...]
 
@@ -225,14 +225,16 @@ class BookedOrder:
         return 0 if self.state in TERMINAL else self.intent.quantity - self.filled
 
     @property
-    def slippage_bps(self) -> Decimal | None:
-        return slippage_bps([self])
+    def execution_gap_bps(self) -> Decimal | None:
+        return execution_gap_bps([self])
 
 
-def slippage_bps(orders: Iterable[BookedOrder]) -> Decimal | None:
+def execution_gap_bps(orders: Iterable[BookedOrder]) -> Decimal | None:
     """Fill prices against the decision price, in basis points of the notional at the decision
     price, over every fill of ``orders``. Positive is a cost: paid more on a buy, received less
-    on a sell. None without a fill. Fees are not slippage; they are booked apart."""
+    on a sell. None without a fill. The decision price is the close the Risk Gate saw, so the gap
+    holds the market's move since that close as well as the modelled slippage (B192). Fees are
+    booked apart."""
     with localcontext() as ctx:
         ctx.prec = 60  # beyond any product of two book amounts: the division is the only rounding
         cost = notional = Decimal(0)

@@ -13,6 +13,7 @@ from core.execution.broker import AccountStatement
 from core.execution.market import (
     MarketError,
     StoreMarket,
+    _average,
     exact,
     gate_snapshot,
     market_facts,
@@ -30,6 +31,8 @@ from tests.test_execution_loop import (
     MONDAY_RUN,
     SYMBOL,
     TUESDAY,
+    WEDNESDAY,
+    announce_split,
     ingest,
     market,
     run_at,
@@ -136,6 +139,32 @@ def test_each_missing_fact_is_named_never_guessed(store: FinanceStore) -> None:
     assert marked.gaps[SYMBOL] == "avg_volume_sessions vaut A_DEFINIR (R7)"
     before = market_facts(store, [SYMBOL], as_of=LOADED - timedelta(minutes=1), volume_sessions=20)
     assert before.gaps[SYMBOL] == "aucun dernier cours exploitable"  # nothing ingested yet
+
+
+def test_the_average_volume_needs_consecutive_sessions(store: FinanceStore) -> None:
+    ingest(store, WEDNESDAY, 100.0)  # Tuesday's close never came
+    facts = market_facts(store, [SYMBOL], as_of=run_at(WEDNESDAY), volume_sessions=3)
+    assert facts.gaps[SYMBOL] == "volumes des 3 dernières séances non consécutifs"
+    assert SYMBOL in facts.quotes and SYMBOL not in facts.volumes
+    last = market_facts(store, [SYMBOL], as_of=run_at(WEDNESDAY), volume_sessions=1)
+    assert last.volumes[SYMBOL].shares == Decimal(200_000)
+
+
+def test_the_average_volume_counts_shares_of_after_a_split(store: FinanceStore) -> None:
+    announce_split(store, TUESDAY, MONDAY_RUN)
+    announce_split(store, MONDAY, MONDAY_RUN - timedelta(days=7))  # before the window
+    ingest(store, TUESDAY, 50.0)
+    facts = market_facts(store, [SYMBOL], as_of=run_at(TUESDAY), volume_sessions=2)
+    # Monday's 200 000 shares are 400 000 after Tuesday's 2:1 split; Tuesday's are 200 000.
+    assert facts.volumes[SYMBOL].shares == Decimal(300_000)
+    announce_split(store, WEDNESDAY, run_at(TUESDAY))  # not yet: nothing to adjust
+    later = market_facts(store, [SYMBOL], as_of=run_at(TUESDAY), volume_sessions=2)
+    assert later.volumes[SYMBOL].shares == Decimal(300_000)
+
+
+def test_the_average_volume_needs_the_calendar_of_its_place(store: FinanceStore) -> None:
+    rows = [stored.record for stored in store.price_bars(SYMBOL, as_of=MONDAY_RUN, strict=True)]
+    assert _average(rows, 2, "XXXX", []) == "calendrier inconnu pour la place XXXX"
 
 
 def test_a_foreign_rate_is_inverted_on_the_cautious_side(store: FinanceStore) -> None:
