@@ -41,7 +41,7 @@ from core.notify.alerts import Alerts
 from core.observability.tracing import NoTracer, Tracer
 from core.orchestrator.answer import map_texts, output_node, render_json, render_markdown
 from core.orchestrator.intake import KILL_MESSAGE, context_node, guard_node, route_node
-from core.orchestrator.packs import DEFAULT_DOMAIN, Pack, load_packs
+from core.orchestrator.packs import DEFAULT_DOMAIN, Pack, check_packs, load_packs
 from core.orchestrator.planner import plan_node
 from core.orchestrator.prompts import PromptSet
 from core.orchestrator.runtime import (
@@ -426,6 +426,7 @@ class Orchestrator:
         self.router = router or ModelRouter(config)
         self.toolboxes = toolboxes
         self.packs = packs if packs is not None else load_packs()
+        check_packs(self.packs, config)  # a domain or a golden threshold missing blocks (ADR-043)
         self.prompts = prompts or PromptSet.load(tuple(self.packs))
         self.callbacks = tuple(callbacks)
         self.tracer: Tracer = tracer or NoTracer()
@@ -445,7 +446,7 @@ class Orchestrator:
         pack = self.packs.get(pack_id)
         spec = None
         if pack is not None and pack.comite is not None:
-            spec = load_agent(PLUGINS_DIR / pack.comite)(self.config)
+            spec = load_agent(PLUGINS_DIR / pack.comite, domain=pack_id)(self.config)
         self._committees[pack_id] = spec
         return spec
 

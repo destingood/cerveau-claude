@@ -254,6 +254,7 @@ async def route_node(run: Run, state: CerveauState) -> dict[str, Any]:
         skipped=skipped,
         mode=mode,
         mode_note=note,
+        experimental=run.packs[domain].experimental,
     )
     context = required(state.context, "contexte")
     level = "N0" if context.kill_switch else run.config.autonomy.domains[domain].level

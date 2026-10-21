@@ -34,7 +34,9 @@ plugins:
   - web_research
 # Comité d'investissement : agent enregistré (plugins/finance_committee, kind: agent). Il ouvre
 # tous les plugins ci-dessus ; son budget est budgets.yaml#per_committee (A_DEFINIR bloque, R7).
-comite: finance_committee
+agent:
+  plugin: finance_committee
+  mode: comite  # le routeur ou cerveau ask --comite le convoque (ADR-028, ADR-043)
 autonomie:
   # Niveau courant N0, niveau maximal N4 : config/autonomy.yaml, domains.finance. Seul Lucas
   # promeut le pack, à la main, au vu du rapport (D16).

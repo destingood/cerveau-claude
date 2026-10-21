@@ -100,6 +100,7 @@ class RoutePlan(_Node):  # node 3
     skipped: dict[str, str] = Field(default_factory=dict)
     mode: Mode = "direct"
     mode_note: str | None = None  # why a committee asked for was not convened
+    experimental: bool = True  # the pack is not measured yet: the answer says so (ADR-043)
 
 
 class Extract(_Node):

@@ -14,6 +14,8 @@ import pytest
 from typer.testing import CliRunner
 
 from core.audit import AuditJournal
+from core.orchestrator.packs import Pack, PackError, load_packs
+from interfaces.cli import main as cli_main
 from interfaces.cli.main import app, run
 from tests.conftest import REPO_ROOT
 
@@ -93,6 +95,35 @@ def test_config_check_lists_blocked_features() -> None:
     assert "live.yaml : enabled = false" in result.output
     assert "✗ live_trading" in result.output
     assert "✗ paper_trading" in result.output
+
+
+def test_config_check_lists_the_packs() -> None:
+    result = runner.invoke(app, ["config", "check", "--config-dir", str(REPO_ROOT / "config")])
+    assert result.exit_code == 0, result.output
+    assert "· generaliste : expérimental, écrit N1, effectif N1" in result.output
+    assert "· finance : expérimental, écrit N0, effectif N0" in result.output
+
+
+def test_config_check_fails_on_a_pack_the_configuration_lacks(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    packs = dict(load_packs())
+    packs["cyber"] = Pack(id="cyber", statut="experimental", plugins=("web_research",))
+    monkeypatch.setattr(cli_main, "load_packs", lambda _packs_dir: packs)
+    result = runner.invoke(app, ["config", "check", "--config-dir", str(REPO_ROOT / "config")])
+    assert result.exit_code == 1
+    assert "· cyber : expérimental, domaine absent" in result.output
+    assert "✗ pack « cyber » : seuil cyber_golden_min_score absent" in result.output
+
+
+def test_config_check_fails_on_an_invalid_pack(monkeypatch: pytest.MonkeyPatch) -> None:
+    def broken(_packs_dir: Path) -> None:
+        raise PackError("pack « finance » : manifeste invalide (YAML)")
+
+    monkeypatch.setattr(cli_main, "load_packs", broken)
+    result = runner.invoke(app, ["config", "check", "--config-dir", str(REPO_ROOT / "config")])
+    assert result.exit_code == 1
+    assert "Packs de domaine invalides : pack « finance »" in result.output
 
 
 def test_config_check_fails_on_invalid_config(config_dir: Path) -> None:

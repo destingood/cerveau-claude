@@ -17,7 +17,7 @@ from dataclasses import dataclass
 from pathlib import Path
 from types import MappingProxyType
 
-from core.orchestrator.packs import PACK_IDS, PACKS_DIR
+from core.orchestrator.packs import PACKS_DIR, pack_ids
 from core.orchestrator.state import RequestContext
 
 PROMPTS_DIR = Path(__file__).resolve().parent / "prompts"
@@ -80,7 +80,7 @@ class PromptSet:
     @classmethod
     def load(
         cls,
-        packs: Sequence[str] = PACK_IDS,
+        packs: Sequence[str] | None = None,  # None: the packs of domain_packs/ (ADR-043)
         *,
         prompts_dir: Path = PROMPTS_DIR,
         packs_dir: Path = PACKS_DIR,
@@ -95,7 +95,7 @@ class PromptSet:
             if name == "system":
                 raw_system = raw
         roles: dict[str, str] = {}
-        for pack in packs:
+        for pack in pack_ids(packs_dir) if packs is None else packs:
             raw_role = _read(packs_dir / pack / "prompts" / "role.md")
             digest.update(f"role:{pack}\0{raw_role}\0".encode())
             role = strip_header(raw_role).strip()

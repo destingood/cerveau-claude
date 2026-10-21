@@ -357,3 +357,11 @@ def test_an_entry_point_that_is_not_a_function_is_refused(agents_root: Path) -> 
 def test_a_tool_plugin_is_not_an_agent(make_plugin: Callable[..., Path]) -> None:
     with pytest.raises(AgentLoadError, match="pas un agent in-process"):
         load_agent(make_plugin())
+
+
+def test_an_agent_of_another_domain_is_refused_before_import(agents_root: Path) -> None:
+    """A pack never runs an agent registered, and measured, for another domain (ADR-043)."""
+    root = write_agent(agents_root / "demo_agent", "raise SystemExit('importé')\n")
+    with pytest.raises(AgentLoadError, match="domaine finance, pas celui du pack « recherche »"):
+        load_agent(root, domain="recherche")
+    assert "plugins.demo_agent" not in sys.modules

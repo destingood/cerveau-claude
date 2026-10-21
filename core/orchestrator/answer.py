@@ -23,6 +23,7 @@ from core.committee.schemas import HORIZONS
 from core.guardrails.injection import injection_signals
 from core.guardrails.pii import PSEUDONYM
 from core.orchestrator.intake import KILL_MESSAGE, LIVE_MESSAGE
+from core.orchestrator.packs import experimental_note
 from core.orchestrator.planner import LIMIT_TEXT, MAX_PLANNER_TURNS
 from core.orchestrator.runtime import Run
 from core.orchestrator.state import (
@@ -103,7 +104,7 @@ def _limit_message(run: Run, limit: str) -> str:
 
 
 def _input_notes(guarded: GuardedInput, route: RoutePlan) -> list[str]:
-    notes: list[str] = []
+    notes = [experimental_note(route.domain)] if route.experimental else []
     if guarded.pii_counts:
         detail = ", ".join(f"{label} {n}" for label, n in sorted(guarded.pii_counts.items()))
         notes.append(f"Données personnelles masquées avant tout envoi aux modèles : {detail}.")

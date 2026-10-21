@@ -12,7 +12,7 @@ from langchain_core.messages import AIMessage, BaseMessage, HumanMessage
 
 from core.guardrails.injection import ORDER_SIGNAL, SIGNAL_NAMES, injection_signals, skeleton
 from core.orchestrator.answer import clean_title, render_markdown
-from core.orchestrator.packs import PACK_IDS
+from core.orchestrator.packs import pack_ids
 from core.orchestrator.planner import format_issues, sentence_count
 from core.orchestrator.prompts import PACKS_DIR, PROMPTS_DIR, TEMPLATES, PromptError, PromptSet
 from core.orchestrator.state import (
@@ -266,8 +266,9 @@ def _context() -> RequestContext:
 def _copy_prompts(tmp_path: Path) -> tuple[Path, Path]:
     prompts, packs = tmp_path / "prompts", tmp_path / "packs"
     shutil.copytree(PROMPTS_DIR, prompts)
-    for pack in PACK_IDS:
+    for pack in pack_ids():
         shutil.copytree(PACKS_DIR / pack / "prompts", packs / pack / "prompts")
+        shutil.copy(PACKS_DIR / pack / "manifest.yaml", packs / pack / "manifest.yaml")
     return prompts, packs
 
 
@@ -290,6 +291,11 @@ def test_any_prompt_change_changes_the_version(tmp_path: Path) -> None:
     prompts, packs = _copy_prompts(tmp_path)
     before = PromptSet.load(prompts_dir=prompts, packs_dir=packs).version
     assert before == PromptSet.load().version
+    shutil.rmtree(packs / "finance")  # the packs are those of packs_dir, not of the repository
+    assert set(PromptSet.load(prompts_dir=prompts, packs_dir=packs).roles) == {
+        pack for pack in pack_ids() if pack != "finance"
+    }
+    prompts, packs = _copy_prompts(tmp_path / "copie")  # every pack again
     role = packs / "generaliste" / "prompts" / "role.md"
     role.write_text(role.read_text(encoding="utf-8") + "\nUne phrase de plus.\n", "utf-8")
     assert PromptSet.load(prompts_dir=prompts, packs_dir=packs).version != before

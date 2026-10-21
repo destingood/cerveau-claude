@@ -25,6 +25,7 @@ from core.learning import FeedbackError, default_feedback_path, give_feedback
 from core.learning.feedback import NotePseudonymiser
 from core.notify import alerts_from
 from core.observability import build_tracer
+from core.orchestrator.packs import PACKS_DIR, PackError, load_packs, pack_problems
 from core.registry import validate_all, validate_plugin
 from interfaces.cli import evaluate
 from interfaces.cli.api import api_app
@@ -49,7 +50,7 @@ from interfaces.cli.promotion import promotion_app
 from interfaces.cli.strategy import registry_errors, strategy_app
 
 if TYPE_CHECKING:
-    from core.config.loader import Config
+    from core.config.loader import AutonomyConfig, Config
     from core.observability import Tracer
     from core.orchestrator.graph import Orchestrator, RunResult
 
@@ -422,6 +423,30 @@ def audit_tail(
         typer.echo(json.dumps(entry, ensure_ascii=False, indent=2))
 
 
+def _echo_packs(config: Config, effective: AutonomyConfig) -> None:
+    """Each pack's status and levels (ADR-043); a pack the configuration lacks fails the check."""
+    try:
+        packs = load_packs(PACKS_DIR)  # the folder the orchestrator reads (ADR-043)
+    except PackError as exc:
+        typer.echo(f"\nPacks de domaine invalides : {exc}", err=True)
+        raise typer.Exit(1) from exc
+    typer.echo("\nPacks de domaine (ADR-043 ; seul Lucas passe un pack à « actif ») :")
+    for pack in packs.values():
+        written = config.autonomy.domains.get(pack.id)
+        levels = (
+            "domaine absent"
+            if written is None
+            else f"écrit {written.level}, effectif {effective.domains[pack.id].level}"
+        )
+        status = "expérimental" if pack.experimental else "actif"
+        typer.echo(f"  · {pack.id} : {status}, {levels}")
+    problems = pack_problems(packs, config)
+    for problem in problems:
+        typer.echo(f"  ✗ {problem}", err=True)
+    if problems:
+        raise typer.Exit(1)
+
+
 @config_app.command("check")
 def config_check(
     config_dir: Annotated[Path | None, typer.Option("--config-dir")] = None,
@@ -461,6 +486,7 @@ def config_check(
         typer.echo(f"  · {domain} : écrit {spec.level}, effectif {level}{signed}")
     for problem in effective.problems:
         typer.echo(f"  ⚠ signature ignorée : {problem}")
+    _echo_packs(config, effective.autonomy)
     alerts, notes = alerts_from(config, project_root(), os.environ)
     channels = ", ".join(c.channel for c in alerts.channels) or "aucun (journal et console)"
     typer.echo(f"\nCanaux d'alerte (ADR-038) : {channels}")

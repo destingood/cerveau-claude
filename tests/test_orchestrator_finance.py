@@ -9,18 +9,30 @@ from collections.abc import AsyncIterator, Callable, Mapping
 from contextlib import asynccontextmanager
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import Any
+from types import SimpleNamespace
+from typing import Any, cast
 
 import pytest
 import yaml
 from langchain_core.tools import BaseTool, StructuredTool, ToolException
+from pydantic import BaseModel
 
 from core.audit import AuditJournal
 from core.config.loader import Config, load_config
 from core.mcp.adapter import McpAdapterError
 from core.orchestrator.graph import Orchestrator
-from core.orchestrator.intake import KILL_MESSAGE
-from core.orchestrator.packs import PACK_IDS, PACKS_DIR, PackError, load_pack, load_packs
+from core.orchestrator.intake import KILL_MESSAGE, context_node
+from core.orchestrator.packs import (
+    Pack,
+    PackError,
+    check_packs,
+    experimental_note,
+    golden_threshold_name,
+    load_pack,
+    load_packs,
+    pack_ids,
+    pack_problems,
+)
 from core.orchestrator.planner import (
     MAX_LIST_ITEMS,
     MAX_VIEW_CHARS,
@@ -30,7 +42,9 @@ from core.orchestrator.planner import (
     repeats_tool_data,
 )
 from core.orchestrator.runtime import WEB_PLUGIN, PluginSet, RequestScope
+from core.orchestrator.state import CerveauState
 from core.policy.engine import KILL_SWITCH_FILE
+from core.registry import validate_plugin
 from core.verification.figures import amount, percent
 from core.verification.trace import tool_output
 from tests.conftest import REPO_ROOT
@@ -173,35 +187,124 @@ def planner_system(rig: Rig) -> str:
 # --- packs -------------------------------------------------------------------------------------
 
 
-def test_the_packs_of_phase_2() -> None:
+def _pack(pack_id: str, **fields: Any) -> Pack:
+    return Pack.model_validate(
+        {"id": pack_id, "statut": "experimental", "plugins": [WEB_PLUGIN], **fields}
+    )
+
+
+def _write_pack(root: Path, pack_id: str, **fields: Any) -> None:
+    manifest = {"id": pack_id, "statut": "experimental", "plugins": [WEB_PLUGIN], **fields}
+    (root / pack_id).mkdir(parents=True, exist_ok=True)
+    (root / pack_id / "manifest.yaml").write_text(yaml.safe_dump(manifest), "utf-8")
+
+
+class _Thresholds(BaseModel):
+    generaliste_golden_min_score: float = 0.8
+
+
+def _stub_config(*domains: str) -> Config:
+    """A configuration reduced to what ``pack_problems`` reads."""
+    stub = SimpleNamespace(
+        autonomy=SimpleNamespace(domains=dict.fromkeys(domains)),
+        evals=SimpleNamespace(thresholds=_Thresholds()),
+    )
+    return cast(Config, stub)
+
+
+def test_the_packs_of_domain_packs() -> None:
     packs = load_packs()
-    assert list(packs) == ["generaliste", "finance"]
+    assert tuple(packs) == pack_ids()
+    assert tuple(packs)[:2] == ("generaliste", "finance")
     assert packs["generaliste"].plugins == (WEB_PLUGIN,)
+    assert packs["generaliste"].comite is None
     assert packs["finance"].plugins == (*FINANCE_TOOLS, WEB_PLUGIN)
+    assert packs["finance"].comite == "finance_committee"
 
 
-def test_every_pack_has_its_autonomy_role_and_plugins() -> None:
-    config = load_config(REPO_ROOT / "config")
-    for pack in load_packs().values():
-        assert pack.id in config.autonomy.domains
+def test_every_pack_has_its_autonomy_threshold_role_and_plugins() -> None:
+    packs = load_packs()
+    assert pack_problems(packs, load_config(REPO_ROOT / "config")) == []
+    for pack in packs.values():
         assert PROMPTS.roles[pack.id]
-        for plugin in pack.plugins:
+        agent = (pack.agent.plugin,) if pack.agent else ()
+        for plugin in (*pack.plugins, *agent):
             assert (REPO_ROOT / "plugins" / plugin / "plugin.yaml").is_file()
+        if pack.agent is not None:  # load_agent refuses an agent of another domain (ADR-043)
+            manifest = validate_plugin(REPO_ROOT / "plugins" / pack.agent.plugin).manifest
+            assert manifest is not None
+            assert manifest.domain == pack.id
+
+
+def test_every_pack_stays_experimental_until_lucas_writes_actif() -> None:
+    """Only Lucas writes « actif » in a manifest, after a measured campaign (D2, ADR-043).
+
+    His commit changes this test too; Claude Code edits neither.
+    """
+    assert [pack.id for pack in load_packs().values() if not pack.experimental] == []
+
+
+def test_the_kill_switch_brings_the_general_pack_to_n0(tmp_path: Path, config_dir: Path) -> None:
+    """generaliste keeps N1 without a signed rule (D3); the kill switch still wins (R4)."""
+    config = _config(config_dir)
+    assert config.autonomy.domains["generaliste"].level == "N1"
+    run = cast(
+        Any, SimpleNamespace(project_root=tmp_path, config=config, request_id="req-1", now=NOW)
+    )
+
+    def level() -> str:
+        update = asyncio.run(context_node(run, CerveauState(request_id="req-1")))
+        return str(update["context"].autonomy_level)
+
+    assert level() == "N1"
+    kill = tmp_path / KILL_SWITCH_FILE
+    kill.parent.mkdir(parents=True, exist_ok=True)
+    kill.write_text("arrêt", encoding="utf-8")
+    assert level() == "N0"
+
+
+def test_packs_are_found_by_directory_in_the_order_of_section_9_2(tmp_path: Path) -> None:
+    for pack_id in ("recherche", "generaliste", "finance", "astrologie"):
+        _write_pack(tmp_path, pack_id)
+    (tmp_path / "code").mkdir()  # no manifest: no pack
+    # « astrologie » is not a domain of section 9.2: never read.
+    assert pack_ids(tmp_path) == ("generaliste", "finance", "recherche")
+    assert tuple(load_packs(tmp_path)) == ("generaliste", "finance", "recherche")
+
+
+def test_the_status_and_the_agent_of_a_pack() -> None:
+    assert _pack("essai").experimental
+    assert not _pack("essai", statut="actif").experimental
+    assert _pack("essai", agent={"plugin": "un_comite", "mode": "comite"}).comite == "un_comite"
+    assert experimental_note("recherche") == (
+        "Pack « recherche » expérimental : sa qualité n'est pas encore mesurée."
+    )
+    assert golden_threshold_name("recherche") == "recherche_golden_min_score"
 
 
 @pytest.mark.parametrize(
     ("manifest", "reason"),
     [
-        ({"id": "autre", "plugins": ["web_research"]}, "différent du dossier"),
-        ({"id": "essai", "plugins": ["../web_research"]}, "noms de plugin invalides"),
-        ({"id": "essai", "plugins": ["web_research", "web_research"]}, "listé deux fois"),
-        ({"id": "essai", "plugins": []}, "invalide"),
-        ({"id": "essai"}, "invalide"),
+        ({"id": "autre"}, "différent du dossier"),
+        ({"plugins": ["../web_research"]}, "noms de plugin invalides"),
+        ({"plugins": ["web_research", "web_research"]}, "listé deux fois"),
+        ({"plugins": []}, "invalide"),
+        ({"plugins": None}, "invalide"),
+        ({"statut": None}, "invalide"),
+        ({"statut": "stable"}, "invalide"),
+        ({"comite": "finance_committee"}, "remplacé par « agent »"),
+        ({"agent": {"plugin": "../comite", "mode": "comite"}}, "nom de plugin d'agent invalide"),
+        ({"agent": {"plugin": "comite", "mode": "auto"}}, "invalide"),
+        ({"agent": {"plugin": "comite", "mode": "comite", "budget": 1}}, "invalide"),
     ],
 )
 def test_a_malformed_pack_is_refused(tmp_path: Path, manifest: dict[str, Any], reason: str) -> None:
+    fields = {"id": "essai", "statut": "experimental", "plugins": [WEB_PLUGIN], **manifest}
     (tmp_path / "essai").mkdir()
-    (tmp_path / "essai" / "manifest.yaml").write_text(yaml.safe_dump(manifest), "utf-8")
+    (tmp_path / "essai" / "manifest.yaml").write_text(
+        yaml.safe_dump({k: v for k, v in fields.items() if v is not None}, allow_unicode=True),
+        "utf-8",
+    )
     with pytest.raises(PackError, match=reason):
         load_pack("essai", tmp_path)
 
@@ -213,12 +316,69 @@ def test_a_missing_or_unreadable_pack_is_refused(tmp_path: Path) -> None:
     (tmp_path / "essai" / "manifest.yaml").write_text("id: [", "utf-8")
     with pytest.raises(PackError, match="YAML"):
         load_pack("essai", tmp_path)
+    _write_pack(tmp_path, "finance")
     with pytest.raises(PackError, match="repli"):
-        load_packs(("finance",), PACKS_DIR)
+        load_packs(tmp_path)
+    _write_pack(tmp_path, "generaliste", plugins=[])
+    with pytest.raises(PackError, match="generaliste"):
+        load_packs(tmp_path)
 
 
-def test_pack_ids_have_a_manifest() -> None:
-    assert all((PACKS_DIR / pack / "manifest.yaml").is_file() for pack in PACK_IDS)
+def test_a_pack_the_configuration_lacks_blocks_the_start(tmp_path: Path) -> None:
+    packs = {"generaliste": _pack("generaliste"), "cyber": _pack("cyber")}
+    config = _stub_config("generaliste")
+    assert pack_problems(packs, config) == [
+        "pack « cyber » : domaine absent de config/autonomy.yaml",
+        "pack « cyber » : seuil cyber_golden_min_score absent de config/evals.yaml",
+    ]
+    with pytest.raises(PackError, match="cyber_golden_min_score"):
+        check_packs(packs, config)
+    check_packs({"generaliste": packs["generaliste"]}, config)
+
+
+@pytest.mark.parametrize("marker", ["A_DEFINIR", "A_VERIFIER"])
+def test_a_golden_threshold_not_yet_decided_blocks_the_start(marker: str) -> None:
+    class Undecided(BaseModel):
+        generaliste_golden_min_score: float | str
+
+    config = _stub_config("generaliste")
+    cast(Any, config).evals.thresholds = Undecided(generaliste_golden_min_score=marker)
+    expected = f"pack « generaliste » : seuil generaliste_golden_min_score non défini ({marker})"
+    assert pack_problems({"generaliste": _pack("generaliste")}, config) == [expected]
+
+
+def test_the_orchestrator_refuses_a_pack_without_a_domain(tmp_path: Path, config_dir: Path) -> None:
+    config = _config(config_dir)
+    packs = {**load_packs(), "cyber": _pack("cyber")}
+    with pytest.raises(PackError, match="« cyber » : domaine absent"):
+        Orchestrator(
+            config,
+            project_root=tmp_path,
+            journal=AuditJournal(tmp_path / "audit" / "journal.jsonl"),
+            router=_router(config, Brain()),
+            toolboxes={WEB_PLUGIN: opener(World())},
+            pseudonymiser=FakePseudonymiser,
+            prompts=PROMPTS,
+            packs=packs,
+            clock=lambda: NOW,
+        )
+
+
+def test_the_answer_of_an_experimental_pack_says_so(rig: FinanceRig) -> None:
+    rig.brain.planner = [answer_json("Réponse sans outil.")]
+    notes = rig.ask("Quel est le risque de mon portefeuille ?").answer.signalements
+    assert notes[0] == experimental_note("finance")
+
+
+def test_the_answer_of_an_active_pack_has_no_experimental_note(rig: FinanceRig) -> None:
+    finance = rig.orchestrator.packs["finance"]
+    rig.orchestrator.packs = {
+        **rig.orchestrator.packs,
+        "finance": finance.model_copy(update={"statut": "actif"}),
+    }
+    rig.brain.planner = [answer_json("Réponse sans outil.")]
+    notes = rig.ask("Quel est le risque de mon portefeuille ?").answer.signalements
+    assert not any("expérimental" in note for note in notes)
 
 
 # --- the plugin set ----------------------------------------------------------------------------
