@@ -3,7 +3,7 @@ incoherent broker. Each test name starts with its family, which the execution ev
 
 from __future__ import annotations
 
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from datetime import date, datetime, timedelta
 from decimal import Decimal
 from pathlib import Path
@@ -269,6 +269,9 @@ def test_incoherent_broker_a_fill_of_an_unknown_order_trips_the_kill_switch(
     world: World, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     stray = make_fill(make_intent(9), 0, 1)
+    snapshot = world.simulator.account_snapshot
+    # The statement counts the stray fill too: the cut is coherent (B169), only the order is not.
+    monkeypatch.setattr(world.simulator, "account_snapshot", lambda: replace(snapshot(), cursor=1))
     monkeypatch.setattr(world.simulator, "fills_since", lambda _: FillBatch((stray,), 1))
     report = world.run(MONDAY_RUN)
     assert report.outcome == "arret"

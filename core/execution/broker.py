@@ -45,7 +45,11 @@ class BrokerOrder:
 
 @dataclass(frozen=True)
 class AccountStatement:
-    """The broker's account in euros after the events up to ``cursor``: cash and long positions."""
+    """The broker's account in euros after the events up to ``cursor``: cash and long positions.
+
+    ``cursor`` counts in the same sequence as :attr:`FillBatch.cursor`: a statement and a batch
+    of fills read with equal cursors describe the same instant (B169).
+    """
 
     cash_eur: Decimal
     positions: dict[str, int] = field(default_factory=dict)  # held instruments only
@@ -55,7 +59,7 @@ class AccountStatement:
 @dataclass(frozen=True)
 class FillBatch:
     fills: tuple[Fill, ...]
-    cursor: int  # the cursor of the next call: the fills after these
+    cursor: int  # the cursor of the next call, in the sequence of AccountStatement.cursor
 
 
 # What a call the broker does not answer raises: whether it arrived is unknown (§12, chaos).

@@ -381,6 +381,9 @@ class ReconciliationLog:
         return gaps
 
 
+CUT_ATTEMPTS = 3  # pairs of reads before a moving account is an incident (B169)
+
+
 def settle(
     book: OrderBook,
     adapter: BrokerAdapter,
@@ -393,12 +396,23 @@ def settle(
     does after each batch of fills and at the end of each day. A fill the book already holds
     changes nothing; an incoherent one, or an incoherent account, is an incident (§9).
 
-    The fills and the statement are two reads: the paper simulator is synchronous, so nothing
-    happens between them. A live adapter needs both from one consistent cut (B169)."""
-    for fill in adapter.fills_since(0).fills:
+    The statement and the fills are two reads, taken from one consistent cut (B169): the
+    statement first, then the fills, kept only when none is past the statement's cursor. A fill
+    that arrives between the two reads starts the pair again; a broker that never holds still
+    for :data:`CUT_ATTEMPTS` pairs is an incident, never a false gap."""
+    for _ in range(CUT_ATTEMPTS):
+        statement = adapter.account_snapshot()
+        batch = adapter.fills_since(0)
+        if batch.cursor <= statement.cursor:
+            break
+    else:
+        raise ExecutionIncident(
+            "execution_incoherente",
+            None,
+            f"relevé et exécutions : aucune coupe cohérente en {CUT_ATTEMPTS} lectures (B169)",
+        )
+    for fill in batch.fills:
         book.record_fill(fill, now=now)
-    result = reconcile(
-        book.orders(), adapter.account_snapshot(), capital_eur=capital_eur, as_of=now
-    )
+    result = reconcile(book.orders(), statement, capital_eur=capital_eur, as_of=now)
     log.record(result, now=now)
     return result

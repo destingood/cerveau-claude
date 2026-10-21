@@ -18,6 +18,7 @@ from core.execution.book import OrderBook
 from core.execution.broker import AccountStatement, BrokerAdapter, FillBatch
 from core.execution.paper import PaperSimulator
 from core.execution.reconcile import (
+    CUT_ATTEMPTS,
     ReconciliationError,
     ReconciliationLog,
     default_log_path,
@@ -263,7 +264,7 @@ def test_a_statement_no_account_can_hold_is_an_incident_and_records_nothing(
     book, sim, log = bought(journal)
     settle(book, sim, log, capital_eur=CAPITAL, now=CLOSED)
     before = list(journal.entries)
-    adapter = Lying(sim, AccountStatement(cash, positions, 1))
+    adapter = Lying(sim, AccountStatement(cash, positions, sim.account_snapshot().cursor))
     with pytest.raises(ExecutionIncident, match=message) as caught:
         settle(book, cast(BrokerAdapter, adapter), log, capital_eur=CAPITAL, now=CLOSED)
     assert caught.value.kind == "execution_incoherente"
@@ -283,6 +284,47 @@ class Lying:
 
     def account_snapshot(self) -> AccountStatement:
         return self.statement
+
+
+class Moving:
+    """The simulator, whose statement lags behind its fills for the first ``stale`` reads: a
+    fill that arrives between the statement and the fills (B169)."""
+
+    def __init__(self, sim: PaperSimulator, stale: int) -> None:
+        self.sim = sim
+        self.stale = stale
+        self.reads = 0
+
+    def fills_since(self, cursor: int) -> FillBatch:
+        return self.sim.fills_since(cursor)
+
+    def account_snapshot(self) -> AccountStatement:
+        self.reads += 1
+        statement = self.sim.account_snapshot()
+        if self.reads <= self.stale:
+            return AccountStatement(CAPITAL, {}, 0)  # before the buy
+        return statement
+
+
+def test_a_fill_between_the_two_reads_takes_a_new_cut() -> None:
+    journal = MemoryJournal()
+    book, sim, log = bought(journal)
+    adapter = Moving(sim, stale=CUT_ATTEMPTS - 1)
+    result = settle(book, cast(BrokerAdapter, adapter), log, capital_eur=CAPITAL, now=CLOSED)
+    assert result.clean
+    assert adapter.reads == CUT_ATTEMPTS
+
+
+def test_an_account_that_never_holds_still_is_an_incident() -> None:
+    journal = MemoryJournal()
+    book, sim, log = bought(journal)
+    before = list(journal.entries)
+    adapter = Moving(sim, stale=CUT_ATTEMPTS)
+    with pytest.raises(ExecutionIncident, match="aucune coupe cohérente en 3 lectures") as caught:
+        settle(book, cast(BrokerAdapter, adapter), log, capital_eur=CAPITAL, now=CLOSED)
+    assert caught.value.kind == "execution_incoherente"
+    assert adapter.reads == CUT_ATTEMPTS
+    assert journal.entries == before  # no fill booked, nothing recorded
 
 
 def test_a_sale_the_book_cannot_replay_is_an_incident() -> None:
