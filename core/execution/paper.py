@@ -199,15 +199,14 @@ class PaperCosts:
             rated = (amount * self.commission_pct / PCT).quantize(CENT, ROUND_HALF_UP)
         return max(self.min_commission_eur, rated)
 
-    def fill_price(self, side: str, close: Decimal, limit: Decimal) -> Decimal:
-        """The close moved by the slippage against the order, to the cent, never past the limit."""
+    def fill_price(self, side: str, close: Decimal) -> Decimal:
+        """The close moved by the slippage against the order, to the cent. The limit is not
+        applied here: a price past it means no fill, never a fill at the limit (R10)."""
         with localcontext() as ctx:
             ctx.prec = 60
             if side == "BUY":
-                moved = (close * (BPS + self.slippage_bps) / BPS).quantize(CENT, ROUND_CEILING)
-                return min(moved, limit)
-            moved = (close * (BPS - self.slippage_bps) / BPS).quantize(CENT, ROUND_FLOOR)
-            return max(moved, limit)
+                return (close * (BPS + self.slippage_bps) / BPS).quantize(CENT, ROUND_CEILING)
+            return (close * (BPS - self.slippage_bps) / BPS).quantize(CENT, ROUND_FLOOR)
 
 
 @dataclass(frozen=True)
@@ -655,8 +654,9 @@ class PaperSimulator:
             return expire("cours dans une autre devise que l'ordre")
         if bar.volume is None:
             return expire("volume de la séance inconnu : participation incalculable")
-        if (bar.close > limit) if side == "BUY" else (bar.close < limit):
-            return expire("limite non atteinte à la clôture")
+        price = settings.costs.fill_price(side, bar.close)
+        if (price > limit) if side == "BUY" else (price < limit):
+            return expire("limite non atteinte à la clôture, glissement compris")
         participation = settings.participation_pct
         with localcontext() as ctx:
             ctx.prec = 60
@@ -664,7 +664,6 @@ class PaperSimulator:
         quantity = min(order.remaining, cap)
         if not quantity:
             return expire(f"participation de {participation} % du volume : aucun titre")
-        price = settings.costs.fill_price(side, bar.close, limit)
         amount = quantity * price
         if amount > MONEY_MAX:
             return expire(f"montant au-delà de MONEY_MAX ({MONEY_MAX} €, B122)")

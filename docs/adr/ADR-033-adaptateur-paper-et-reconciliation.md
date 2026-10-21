@@ -31,8 +31,9 @@ Option 3 ; IBKR paper au backlog.
 - **`PaperSimulator` (D2, D16)** : compte en euros, capital initial = capital de référence, positions
   longues, sans levier, comptabilité propre dans `var/paper/`.
   - Un ordre DAY envoyé après la clôture de t est traité sur la séance t+1, comme le backtest.
-  - Exécution à la clôture de t+1 si la limite l'autorise ; glissement défavorable `slippage_bps`
-    plafonné au prix limite.
+  - Exécution à la clôture de t+1 si la limite l'autorise ; glissement défavorable `slippage_bps` ;
+    un prix glissé au-delà de la limite n'exécute pas (amendé le 21/10/2026 après la revue
+    quantitative : le glissement n'est plus absorbé par la limite).
   - Participation au plus 5 % du volume de la séance (`max_participation_pct` dans
     `config/execution.yaml`) ; au-delà, `PARTIELLE`, puis le reste est annulé en fin de séance.
   - Frais de `trading_costs` ; montant hors de `MONEY_MAX` refusé explicitement (B122).

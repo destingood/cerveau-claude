@@ -106,12 +106,11 @@ def test_the_commission_is_the_rate_to_the_cent_half_up_or_the_minimum() -> None
     assert COSTS.commission(Decimal("12345.00")) == Decimal("12.35")
 
 
-def test_the_fill_price_moves_against_the_order_to_the_cent_within_the_limit() -> None:
-    limit = Decimal("123.45")
-    assert COSTS.fill_price("BUY", Decimal("123.00"), limit) == Decimal("123.07")  # 123.0615
-    assert COSTS.fill_price("BUY", Decimal("123.40"), limit) == limit  # 123.4617 capped
-    assert COSTS.fill_price("SELL", Decimal("124.00"), limit) == Decimal("123.93")  # 123.938
-    assert COSTS.fill_price("SELL", Decimal("123.50"), limit) == limit  # 123.43825 floored
+def test_the_fill_price_moves_against_the_order_to_the_cent() -> None:
+    assert COSTS.fill_price("BUY", Decimal("123.00")) == Decimal("123.07")  # 123.0615
+    assert COSTS.fill_price("BUY", Decimal("123.40")) == Decimal("123.47")  # 123.4617
+    assert COSTS.fill_price("SELL", Decimal("124.00")) == Decimal("123.93")  # 123.938
+    assert COSTS.fill_price("SELL", Decimal("123.50")) == Decimal("123.43")  # 123.43825
 
 
 @pytest.mark.parametrize(
@@ -241,6 +240,8 @@ def test_a_session_fills_at_most_its_participation_and_cancels_the_rest() -> Non
         (Market(), "pas de cours de clôture de l'instrument pour la séance"),
         (Market(bar(symbol="FICT-OTHER")), "pas de cours de clôture"),
         (Market(bar(close=Decimal("123.46"))), "limite non atteinte à la clôture"),
+        # 123.40 moved by 5 bps is 123.47: past the 123.45 limit, no fill at the limit
+        (Market(bar(close=Decimal("123.40"))), "limite non atteinte à la clôture, glissement"),
         (Market(bar(volume=None)), "volume de la séance inconnu"),
         (Market(bar(volume=19)), "participation de 5 % du volume : aucun titre"),
         (Market(bar(currency="USD")), "cours dans une autre devise que l'ordre"),
