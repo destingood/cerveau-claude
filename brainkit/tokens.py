@@ -7,6 +7,7 @@ from __future__ import annotations
 
 import json
 import math
+import re
 import statistics
 import time
 from datetime import datetime
@@ -64,6 +65,90 @@ def _habit(name, inp, tok, imgs):
     if name in ("Grep", "Glob") and tok > BIG_SEARCH:
         return "search"
     return None
+
+
+# Lectures une par une : chaque requête relit tout le contexte, donc deux lectures indépendantes faites en deux requêtes
+# coûtent un contexte entier de plus qu'en une seule (plusieurs plages ou fichiers par commande, appels parallèles).
+SOLO_TAIL = 8_000_000  # octets lus en fin de transcript : plusieurs cycles de compaction, même pour une session de 300 Mo
+SOLO_MIN, SOLO_SHARE = 12, 0.3  # signalé à partir de 12 lectures enchaînées et 30 % des requêtes depuis la compaction
+READ_TOOLS = {"Read", "Grep", "Glob"}
+_READ_CMD = re.compile(r"^(?:\s*cd\s+[^;&|]+(?:&&|;))?\s*(?:sed\s+-n|cat|head|tail|grep|rg|ls|wc|find|nl|awk|"
+                       r"git\s+(?:show|log|diff|status|grep|blame)|Get-Content|gc|Select-String|Get-ChildItem)\b", re.I)
+
+
+def _is_read(name, inp) -> bool:
+    if name in READ_TOOLS:
+        return True
+    cmd = inp.get("command") if name in ("Bash", "PowerShell") and isinstance(inp, dict) else None
+    return isinstance(cmd, str) and bool(_READ_CMD.match(cmd))
+
+
+def solo(path, tail=SOLO_TAIL) -> dict:
+    """Depuis la dernière compaction (cherchée dans les `tail` derniers octets du transcript) → {"reqs": requêtes,
+    "single": requêtes à un seul appel d'outil, "chained": lectures seules faites juste après une autre lecture seule
+    (regroupables), "ctx": contexte moyen relu par requête}. Juste après la compaction (rien encore depuis), c'est le
+    cycle qui vient de se terminer qui compte."""
+    order, info, last = [], {}, ([], {})
+    try:
+        with open(path, "rb") as fh:
+            fh.seek(0, 2)
+            size = fh.tell()
+            fh.seek(max(0, size - tail))
+            if size > tail:
+                fh.readline()  # ligne coupée
+            for raw in fh:
+                if b"compact_boundary" in raw and b'"system"' in raw:
+                    try:
+                        o = json.loads(raw)
+                    except ValueError:
+                        continue
+                    if o.get("type") == "system" and o.get("subtype") == "compact_boundary":
+                        last = (order, info) if order else last
+                        order, info = [], {}
+                    continue
+                if b'"assistant"' not in raw or b'"usage"' not in raw:
+                    continue
+                try:
+                    o = json.loads(raw)
+                except ValueError:
+                    continue
+                m = o.get("message") if o.get("type") == "assistant" and not o.get("isSidechain") else None
+                mid = m.get("id") if isinstance(m, dict) else None
+                if not mid or not isinstance(m.get("usage"), dict):
+                    continue
+                if mid not in info:
+                    order.append(mid)
+                    info[mid] = {"ctx": _ctx(m["usage"]), "tools": []}
+                for b in m.get("content") or []:
+                    if isinstance(b, dict) and b.get("type") == "tool_use":
+                        info[mid]["tools"].append((b.get("name"), b.get("input") or {}))
+    except OSError:
+        return {"reqs": 0, "single": 0, "chained": 0, "ctx": 0}
+    if not order:
+        order, info = last
+    single = chained = 0
+    prev_read = False
+    for mid in order:
+        tools = info[mid]["tools"]
+        alone = len(tools) == 1
+        single += alone
+        is_read = alone and _is_read(*tools[0])
+        chained += is_read and prev_read
+        prev_read = is_read
+    ctx = sum(info[mid]["ctx"] for mid in order) // len(order) if order else 0
+    return {"reqs": len(order), "single": single, "chained": chained, "ctx": ctx}
+
+
+def solo_notice(path) -> str:
+    """Après une compaction : une ligne si, depuis la précédente, beaucoup de lectures ont été faites une par une."""
+    s = solo(path)
+    if s["chained"] < SOLO_MIN or s["chained"] < SOLO_SHARE * s["reqs"]:
+        return ""
+    return (f"⚡ Tokens — depuis la compaction précédente : {s['reqs']} requêtes, {round(100 * s['single'] / s['reqs'])} % "
+            f"à un seul appel, dont {s['chained']} lectures enchaînées une par une ; chaque appel relit tout le contexte "
+            f"(≈ {round(s['ctx'] / 1000)} k tokens). Groupe les lectures (plusieurs plages ou fichiers dans une commande, "
+            "Read plus large), lance les appels indépendants dans un même message, enchaîne les commandes dépendantes "
+            "avec &&.")
 
 
 def _strings(o) -> list:
@@ -132,7 +217,7 @@ def _is_prompt(o) -> bool:
 
 def _scan_file(path, cpt, out):
     """Un transcript → requêtes, premières requêtes, habitudes, paires de calibrage, coût fixe, relances du cerveau."""
-    ev, seen, calls, first = [], set(), {}, True
+    ev, seen, calls, first, per = [], set(), {}, True, {}
     last_req, between = None, []
     sub = "subagents" in path.parts
     pre = {"skills": 0, "skills_n": 0, "mcp": 0, "deferred": 0, "brain": 0, "hooks": 0}
@@ -163,10 +248,14 @@ def _scan_file(path, cpt, out):
                 last_req, between = None, []
             elif t == "assistant":
                 m = o.get("message") or {}
+                u, mid = m.get("usage"), m.get("id")
+                p = per.setdefault(mid, [0, None, _ctx(u)]) if mid and isinstance(u, dict) else None
                 for b in m.get("content") or []:
                     if isinstance(b, dict) and b.get("type") == "tool_use":
                         calls[b.get("id")] = (b.get("name"), b.get("input") or {})
-                u, mid = m.get("usage"), m.get("id")
+                        if p is not None:  # appels de cette requête (un bloc par ligne, même id)
+                            p[0] += 1
+                            p[1] = p[1] or calls[b.get("id")]
                 if not u or mid in seen:
                     continue
                 seen.add(mid)
@@ -197,6 +286,14 @@ def _scan_file(path, cpt, out):
                             ev.append(("E", (chars - PREVIEW_CHARS) / cpt))
                 if not results and _is_prompt(o):
                     ev.append(("P",))
+    prev = False
+    for n, call, c in per.values():  # lectures seules juste après une autre : regroupables
+        is_read = n == 1 and _is_read(*call)
+        if is_read and prev:
+            out["solo"][0] += 1
+            out["solo"][1] += c
+        prev = is_read
+    out["solo"][2] += len(per)
     if not sub and not first:
         out["fixed"].append(pre)  # session principale qui a eu sa 1re réponse : coût fixe de son démarrage
     live = False
@@ -235,7 +332,8 @@ def measure(hours=48.0, cpt=None) -> dict:
         eco_out = 10000
     out = {"hours": hours, "files": len(files), "subfiles": sum("subagents" in f.parts for f in files),
            "reqs": [], "first_main": [], "first_sub": [], "habits": {}, "ratios": [],
-           "fixed": [], "relances": 0, "relance_reqs": 0, "relance_ctx": 0, "eco_bash": [0, 0.0], "eco_out": eco_out}
+           "fixed": [], "relances": 0, "relance_reqs": 0, "relance_ctx": 0, "eco_bash": [0, 0.0], "eco_out": eco_out,
+           "solo": [0, 0, 0]}
     for f in files:
         _scan_file(f, cpt or CHARS_PER_TOKEN, out)
     return out
@@ -278,10 +376,19 @@ def _advice(d, cpt) -> list:
     if over and not 0 < cur.get(eco.WIN_KEY, 0) <= win:
         L.append(f"→ {100 * len(over) / len(d['reqs']):.0f} % des requêtes relisent plus de {win // 1000} k tokens : "
                  "`brain eco --appliquer` résume la conversation plus tôt")
+    n_solo, ctx_solo, n_reqs = d.get("solo") or (0, 0, 0)
+    if n_reqs and n_solo >= SOLO_SHARE * n_reqs:
+        L.append(f"→ {n_solo} lectures enchaînées une par une ({100 * n_solo / n_reqs:.0f} % des requêtes, {_m(ctx_solo)} "
+                 "tok de contexte relus pour elles) : grouper plages et fichiers, appels indépendants dans un même message "
+                 "(rappelé tout seul après chaque compaction)")
     rows = [r for r in eco.unused_plugins(cpt=cpt) if r[1] > 0]  # poids nul : agit par hooks ou MCP, rien à gagner ici
     if rows:
         L.append(f"→ {len(rows)} plugin(s) actif(s) jamais utilisé(s) en {eco.UNUSED_DAYS} j "
                  f"(≈ {_k(sum(t for _, t in rows))} tok de descriptions par session) : `brain eco`")
+    synced = eco.unused_synced(cpt=cpt)
+    if synced:
+        L.append(f"→ {len(synced)} plugin(s) du compte claude.ai jamais utilisé(s) en {eco.UNUSED_DAYS} j "
+                 f"({', '.join(n for n, _, _ in synced[:6])}) : à retirer dans l'app, `brain eco` pour le détail")
     return L
 
 

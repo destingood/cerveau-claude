@@ -25,7 +25,7 @@ S'en servir AVANT d'explorer ou de redemander. Outil : `{CMD} <cmd>` (Bash/Power
    learning (piège, solution), reference, todo (`--due`) — après un `q` anti-doublon.
 3. Jamais : secrets, mots de passe, paiement, santé ou vie privée de tiers, ce que le code ou git disent déjà.
 4. Fait qui change → `add … --replaces <id>` ; erreur → `edit`/`rm` ; vérifier un souvenir ancien avant d'agir.
-Tokens : filtrer les sorties Bash (`| tail -n 30`, `grep -c`, `-q`) ; gros fichier → `explain`/Grep puis Read offset/limit ; Edit plutôt que réécrire un fichier ; appels indépendants dans un même message ; ToolSearch : un seul `select:a,b,c` ; web : get_page_text/find plutôt que read_page entier ou capture (sinon `scale: 0.5`) ; sous-agent (repart de ~90 k) seulement pour une très large recherche ; pas de relecture ; réponses courtes, résultat vérifié.
+Tokens : filtrer les sorties Bash (`| tail -n 30`, `grep -c`, `-q`) ; gros fichier → `explain`/Grep puis Read offset/limit ; Edit plutôt que réécrire un fichier ; chaque appel relit tout le contexte : grouper les lectures (plusieurs plages ou fichiers par commande) et les appels indépendants dans un même message ; ToolSearch : un seul `select:a,b,c` ; web : get_page_text/find plutôt que read_page entier ou capture (sinon `scale: 0.5`) ; sous-agent (repart de ~90 k) seulement pour une très large recherche ; pas de relecture ; réponses courtes, résultat vérifié.
 <!-- BRAIN:END -->
 """
 

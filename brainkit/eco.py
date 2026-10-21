@@ -798,6 +798,37 @@ def unused_plugins(settings=None, days=UNUSED_DAYS, cpt=CHARS_PER_TOKEN) -> list
     return _audit(settings, days, cpt)[0]
 
 
+def synced_plugins() -> dict:
+    """{nom: dossier} des plugins synchronisés depuis le compte claude.ai (plugins/synced/<compte>/<nom>). Claude Code les
+    charge sans les inscrire dans installed_plugins.json, et ni enabledPlugins ni skillOverrides ne les retirent (essai
+    du 21/10/2026) : seule l'app le peut."""
+    root = CLAUDE_HOME / "plugins" / "synced"
+    out = {}
+    for meta in sorted(root.glob("*/*.meta.json")) if root.is_dir() else ():
+        name = meta.name[:-len(".meta.json")]
+        if name != OWN_PLUGIN and (meta.parent / name).is_dir():
+            out.setdefault(name, meta.parent / name)
+    return out
+
+
+def _mcp_count(folder) -> int:
+    data = read_json(folder / ".mcp.json", {}) or {}
+    servers = data.get("mcpServers", data) if isinstance(data, dict) else None
+    return len(servers) if isinstance(servers, dict) else 0
+
+
+def unused_synced(days=UNUSED_DAYS, cpt=CHARS_PER_TOKEN) -> list:
+    """[(nom, tokens de skills listées, serveurs MCP)] des plugins du compte claude.ai sans aucun usage depuis `days`
+    jours (skill, commande, agent ou outil MCP), du plus lourd au plus léger."""
+    synced = synced_plugins()
+    if not synced:
+        return []
+    used, listing = _scan(set(synced), days)
+    rows = [(n, _weight(listing, n) / cpt, _mcp_count(d)) for n, d in synced.items() if n not in used]
+    rows.sort(key=lambda r: (-r[1], -r[2], r[0]))
+    return rows
+
+
 def _disable(keys) -> tuple:
     """enabledPlugins à false pour ces plugins (avec retour). → (ok, {clé: False posée}, lignes)."""
     installed = installed_plugins()
@@ -1170,6 +1201,13 @@ def status(cfg=None) -> str:
               f"  - {key} (aucune skill listée : agit peut-être par hooks, agents ou serveur MCP — à vérifier avant)"
               for key, tok in rows[:8]]
         L.append(f"→ `{CMD} eco --desactiver nom@marketplace` (demande d'abord à l'utilisateur)")
+    synced = unused_synced()
+    if synced:
+        L.append(f"Plugins du compte claude.ai jamais utilisés depuis {UNUSED_DAYS} j (chargés à chaque session ; "
+                 "ni le cerveau ni settings.json ne peuvent les couper) :")
+        L += [f"  - {n}" + (f" ≈ {_tok(t)} tokens de skills" if t else "") + (f" · {m} serveur(s) MCP" if m else "")
+              for n, t, m in synced[:8]]
+        L.append("→ à retirer par l'utilisateur dans l'app Claude (plugins du compte)")
     props = proposals(settings)
     posed = eco.get("propositions") if isinstance(eco.get("propositions"), dict) else {}
     if props or posed:

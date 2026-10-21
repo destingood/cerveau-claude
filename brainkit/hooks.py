@@ -357,6 +357,13 @@ def on_session_start(data, cfg):
             if extra:
                 text = f"{text}\n\n{extra}"
                 st["injected"] = sorted(set(ids) | set(shown))
+            try:
+                from . import tokens
+                line = tokens.solo_notice(data["transcript_path"]) if data.get("transcript_path") else ""
+                if line:
+                    text = f"{text}\n\n{line}"
+            except Exception as exc:
+                log(f"lectures une par une (compaction) : {exc!r}")
     else:
         st["injected"] = sorted(set(st.get("injected", [])) | set(ids))
         try:

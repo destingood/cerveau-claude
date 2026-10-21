@@ -905,6 +905,59 @@ check(c == 0 and msg and "⏸ Reprise après 2 h" in msg.get("systemMessage", ""
       "message après 2 h de pause : signalé à l'utilisateur seulement (systemMessage)", out[-400:])
 time.sleep(0.5)
 
+# ------------------------------------------------------------------ 20. lectures une par une, plugins du compte claude.ai
+SP = TMP / "solo" / "s.jsonl"
+rd = lambda i, ctx=150000: asst(f"r{i}", ctx, ("Bash", {"command": f"cd /x && sed -n {i},+40p a.py"}))  # noqa: E731
+split = [{"type": "assistant", "message": {"id": "r9", "content": [{"type": "text", "text": "je lis"}], "usage": usage(150000)}},
+         {"type": "assistant", "message": {"id": "r9", "content": [{"type": "tool_use", "id": "t-r9", "name": "Read",
+                                                                    "input": {"file_path": "a.py"}}], "usage": usage(150000)}}]
+before = [prompt("go")] + [rd(i) for i in range(5)] + [{"type": "system", "subtype": "compact_boundary"}]
+cycle = split + [rd(i) for i in range(10, 29)] + [asst("w1", 150000, ("Edit", {}), ("Read", {"file_path": "x"}))]
+write_transcript(SP, before + cycle)
+s = tokens.solo(SP)
+check(s == {"reqs": 21, "single": 20, "chained": 19, "ctx": 150000},
+      "lectures une par une : comptées depuis la dernière compaction, réponse sur 2 lignes comptée une fois", s)
+note = tokens.solo_notice(SP)
+check("21 requêtes, 95 % à un seul appel, dont 19 lectures enchaînées" in note and "≈ 150 k" in note and "&&" in note,
+      "lectures une par une : la ligne dit combien et comment grouper", note)
+write_transcript(SP, before + cycle + [{"type": "system", "subtype": "compact_boundary"}])
+check(tokens.solo(SP)["chained"] == 19, "juste après la compaction : c'est le cycle qui vient de finir qui compte")
+mixed = [prompt("go")] + [x for i in range(15) for x in (rd(i), asst(f"e{i}", 150000, ("Edit", {})))]
+write_transcript(SP, mixed)
+check(tokens.solo(SP)["chained"] == 0 and tokens.solo_notice(SP) == "", "lecture puis modification : rien à signaler")
+check(tokens.solo(TMP / "absent.jsonl")["reqs"] == 0 and tokens.solo_notice(TMP / "absent.jsonl") == "",
+      "transcript absent : rien, sans erreur")
+write_transcript(SP, before + cycle + [{"type": "system", "subtype": "compact_boundary"}])
+W = World("solo")
+c, msg, out = W.hook("session-start", "c1", source="compact", transcript_path=str(SP))
+check(c == 0 and "19 lectures enchaînées" in context_of(msg), "après une compaction : l'alerte part dans le contexte",
+      out[-400:])
+c, msg, out = W.hook("session-start", "c2", source="startup", transcript_path=str(SP))
+check(c == 0 and "lectures enchaînées" not in context_of(msg), "démarrage normal : pas d'alerte de lectures")
+write_transcript(TMP / "unite" / "claude" / "projects" / "-solo" / "s.jsonl", before + cycle)
+d = tokens.measure(1000)
+check(d["solo"][0] >= 23 and d["solo"][2] >= 26, "brain tokens : lectures enchaînées mesurées", d["solo"])
+
+eco._SCANS.clear()
+SY = TMP / "unite" / "claude" / "plugins" / "synced" / "compte"
+for name, mcp in (("kindle", {"mcpServers": {"a": {}, "b": {}}}), ("sert", None), (eco.OWN_PLUGIN, None)):
+    (SY / name).mkdir(parents=True, exist_ok=True)
+    (SY / f"{name}.meta.json").write_text(json.dumps({"marketplace_name": "m"}), encoding="utf-8")
+    if mcp:
+        (SY / name / ".mcp.json").write_text(json.dumps(mcp), encoding="utf-8")
+(SY / "orphelin.meta.json").write_text("{}", encoding="utf-8")  # métadonnées sans dossier : ignorées
+write_transcript(TMP / "unite" / "claude" / "projects" / "-s" / "s.jsonl", [
+    att("skill_listing", "skills", content=f"- kindle:notes: {'k' * 400}\n- sert:go: {'s' * 400}"),
+    prompt("go"), asst("s1", 5000, ("Skill", {"skill": "sert:go"}))])
+check(sorted(eco.synced_plugins()) == ["kindle", "sert"], "plugins du compte claude.ai trouvés (jamais le cerveau)",
+      eco.synced_plugins())
+rows = eco.unused_synced()
+check(len(rows) == 1 and rows[0][0] == "kindle" and rows[0][1] > 90 and rows[0][2] == 2,
+      "plugin du compte jamais utilisé : listé avec ses tokens de skills et ses serveurs MCP", rows)
+st = eco.status()
+check("Plugins du compte claude.ai jamais utilisés" in st and "- kindle ≈" in st and "2 serveur(s) MCP" in st
+      and "- sert" not in st, "brain eco : plugins du compte inutilisés, à retirer dans l'app", st[-600:])
+
 shutil.rmtree(TMP, ignore_errors=True)
 print(f"\n{len(OK)} vérifications OK, {len(FAIL)} échec(s)")
 sys.exit(1 if FAIL else 0)
