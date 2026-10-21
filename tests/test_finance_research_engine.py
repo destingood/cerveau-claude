@@ -607,3 +607,13 @@ def test_the_cash_stays_on_the_cent_between_two_fills() -> None:
     # 3 × 0.10 is 0.30000000000000004: the cash of 0.30 still covers the three shares.
     done = schedule([Order("A", 3, 0.3)], 0.3, {"A": 0.1}, FREE)
     assert ([f.quantity for f in done.fills], done.cuts, str(done.cash)) == ([3], [], "0.0")
+
+
+def test_the_cash_is_rounded_down_to_the_cent() -> None:
+    """B246: a price with more than two decimals never overstates the cash."""
+    assert [FREE.balance(cash) for cash in (100.009, 100.0049, -0.001)] == [100.0, 100.0, -0.01]
+    assert FREE.balance(0.7 + 0.1) == 0.8  # the float's drift is no lost cent
+    assert str(FREE.balance(-0.0)) == "0.0"
+    assert replace(FREE, rounding="none").balance(100.009) == 100.009
+    sold = schedule([Order("A", -1, -10.007)], 0.0, {"A": 10.007}, FREE)
+    assert sold.cash == 10.0  # the nearest cent would have been 10.01

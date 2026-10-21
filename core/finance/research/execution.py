@@ -86,8 +86,14 @@ class Costs:
 
     def balance(self, cash: float) -> float:
         """``cash`` as a broker holds it: to the cent in ``cent`` mode, so that no float drift
-        between two fills cuts a buy that fits to the cent; as computed otherwise."""
-        return round(cash, 2) + 0.0 if self.rounding == "cent" else cash  # + 0.0: never -0.0
+        between two fills cuts a buy that fits to the cent; as computed otherwise.
+
+        The cent is the one below, never the nearest: a price with more than two decimals then
+        never overstates the cash (B246). The 1e-6 of a cent only absorbs the float's drift, so
+        that 12.34 held as 12.339999999999 stays 12.34."""
+        if self.rounding != "cent":
+            return cash
+        return math.floor(cash * 100 + 1e-6) / 100  # an int over 100: never -0.0
 
     def stressed(self, multiplier: float) -> Costs:
         """Every cost multiplied: the cost-stress gate of the protocol."""

@@ -63,7 +63,9 @@ Option 3.
     `fx_conversion_bps` est lu et validé, sans autre effet (multidevise au backlog) ;
   - arrondi : mode `cent` (glissement et commission arrondis séparément au centime, au pair le plus
     proche) pour le réalisme et le recoupement avec NautilusTrader ; mode `none` (aucun arrondi)
-    pour le recoupement avec vectorbt (ADR-025).
+    pour le recoupement avec vectorbt (ADR-025). Depuis la phase 6 (B246, D7), le cash du mode
+    `cent` est tenu au centime inférieur, jamais au plus proche : avec un cours à plus de deux
+    décimales, il n'est jamais surévalué (au plus un centime de moins par exécution).
 - **Valeurs des frais** : elles viennent de `config/risk.yaml#trading_costs`. Tant qu'elles valent
   `A_DEFINIR`, un backtest sur données réelles est refusé (R7). La démonstration utilise un jeu de
   frais **fictif**, nommé comme tel dans chaque sortie.
