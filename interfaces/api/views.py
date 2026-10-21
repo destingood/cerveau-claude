@@ -136,11 +136,14 @@ def orders_view(stack: ExitStack, root: Path, journal: AuditJournal) -> dict[str
     return {"open": len(book.orders(OPEN)), "total": len(book.orders())}
 
 
-def reconciliation_view(stack: ExitStack, root: Path, journal: AuditJournal) -> dict[str, Any]:
+def reconciliation_view(
+    stack: ExitStack, root: Path, journal: AuditJournal, *, read_only: bool = False
+) -> dict[str, Any]:
     path = default_log_path(root)
     if not path.is_file():
         return {"last_at": None, "open_gaps": 0, "awaiting_acknowledgement": False}
-    log = stack.enter_context(ReconciliationLog.open(path, Recorder(journal, READER, "api")))
+    recorder = Recorder(journal, READER, "api")
+    log = stack.enter_context(ReconciliationLog.open(path, recorder, read_only=read_only))
     return {
         "last_at": _iso(log.last_reconciled_at()),
         "open_gaps": log.open_gaps(),
@@ -148,9 +151,11 @@ def reconciliation_view(stack: ExitStack, root: Path, journal: AuditJournal) -> 
     }
 
 
-def loop_log(stack: ExitStack, root: Path) -> LoopLog | None:
+def loop_log(stack: ExitStack, root: Path, *, read_only: bool = False) -> LoopLog | None:
     path = default_loop_path(root)
-    return stack.enter_context(LoopLog.open(path)) if path.is_file() else None
+    if not path.is_file():
+        return None
+    return stack.enter_context(LoopLog.open(path, read_only=read_only))
 
 
 def loop_view(log: LoopLog | None) -> dict[str, Any]:

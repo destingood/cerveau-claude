@@ -1,0 +1,49 @@
+{% extends "base.html" %}
+{% block content %}
+<h2>Approbations en attente</h2>
+{% if approvals.problem %}<p class="alerte">{{ approvals.problem }}</p>{% endif %}
+{% if approvals.locked %}
+<p class="alerte">Approbations verrouillées : trop de codes faux récemment.</p>
+{% endif %}
+{% if approvals.pending %}
+<table>
+<tr><th>Demande</th><th>Créée le</th><th>Échéance</th><th>Essais restants</th><th>Porte de risque</th></tr>
+{% for item in approvals.pending %}
+<tr><td>{{ item.summary }}<br><code class="note">{{ item.approval_id }}</code></td>
+<td>{{ item.created_at|quand }}</td><td>{{ item.expires_at|quand }}</td>
+<td class="n">{{ item.attempts_left }}</td>
+<td>{{ item.gate.result }}
+{%- if item.gate.quantity is not none %}, quantité {{ item.gate.quantity }}
+{%- if item.gate.requested_quantity is not none and item.gate.requested_quantity != item.gate.quantity %} sur {{ item.gate.requested_quantity }} demandée(s){% endif %}
+{%- endif %}
+{%- if item.gate.failed_checks %}<br><span class="alerte">contrôles échoués : {{ item.gate.failed_checks|join(", ") }}</span>{% endif -%}
+</td></tr>
+{% endfor %}
+</table>
+{% elif not approvals.problem %}
+<p>Aucune demande en attente.</p>
+{% endif %}
+{% if approvals.counts is not none %}
+<table>
+<tr>{% for state in approvals.counts %}<th>{{ state }}</th>{% endfor %}</tr>
+<tr>{% for count in approvals.counts.values() %}<td class="n">{{ count }}</td>{% endfor %}</tr>
+</table>
+{% endif %}
+
+<h2>Ordres ouverts du compte paper</h2>
+{% if orders_problem %}<p class="alerte">{{ orders_problem }}</p>{% endif %}
+{% if orders %}
+<table>
+<tr><th>Décision</th><th>Instrument</th><th>Sens</th><th>Quantité</th><th>Exécutée</th><th>Limite</th><th>État</th><th>Origine</th></tr>
+{% for order in orders %}
+<tr><td>{{ order.intent.decision_date|jour }}</td><td>{{ order.intent.instrument.symbol }}</td>
+<td>{{ "achat" if order.intent.side == "BUY" else "vente" }}</td>
+<td class="n">{{ order.intent.quantity|nombre }}</td><td class="n">{{ order.filled|nombre }}</td>
+<td class="n">{{ order.intent.limit_price|prix }} {{ order.intent.instrument.currency }}</td>
+<td>{{ order.state.value }}</td><td>{{ order.intent.origin.kind }}</td></tr>
+{% endfor %}
+</table>
+{% elif not orders_problem %}
+<p>Aucun ordre ouvert.</p>
+{% endif %}
+{% endblock %}

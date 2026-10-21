@@ -72,7 +72,7 @@ from core.execution.uuid7 import uuid7
 from core.finance.calendars import exchange_calendar
 from core.finance.model import canonical_json, local_date, utc_text
 from core.finance.research.copilot import decision_day
-from core.finance.schema import migrate
+from core.finance.schema import SchemaError, migrate, schema_version
 from core.finance.store import FinanceStore
 from core.governance.signatures import effective_autonomy
 from core.notify.alerts import Alert, Alerts
@@ -137,6 +137,7 @@ MIGRATIONS: tuple[tuple[int, tuple[str, ...]], ...] = (
         ),
     ),
 )
+LATEST_VERSION = MIGRATIONS[-1][0]
 
 
 @dataclass(frozen=True)
@@ -163,17 +164,28 @@ class LoopLog:
     """The days the loop treated and the valuations the loss limits are measured from;
     append-only."""
 
-    def __init__(self, conn: sqlite3.Connection) -> None:
+    def __init__(self, conn: sqlite3.Connection, *, read_only: bool = False) -> None:
         self._conn = conn
-        migrate(conn, MIGRATIONS)
+        if read_only:
+            conn.execute("PRAGMA query_only = ON")
+            version = schema_version(conn)
+            if version != LATEST_VERSION:
+                raise SchemaError(f"boucle paper au schéma {version}, attendu {LATEST_VERSION}")
+        else:
+            migrate(conn, MIGRATIONS)
 
     @classmethod
-    def open(cls, path: Path) -> LoopLog:
-        path.parent.mkdir(parents=True, exist_ok=True)
-        conn = sqlite3.connect(str(path), autocommit=True)
+    def open(cls, path: Path, *, read_only: bool = False) -> LoopLog:
+        """Read only (the dashboard, ADR-041): nothing is created or migrated; a missing file
+        raises :class:`sqlite3.OperationalError`, an older schema :class:`SchemaError`."""
+        if read_only:
+            conn = sqlite3.connect(path.resolve().as_uri() + "?mode=ro", uri=True, autocommit=True)
+        else:
+            path.parent.mkdir(parents=True, exist_ok=True)
+            conn = sqlite3.connect(str(path), autocommit=True)
         conn.execute("PRAGMA busy_timeout = 5000")
         try:
-            return cls(conn)
+            return cls(conn, read_only=read_only)
         except BaseException:
             conn.close()
             raise

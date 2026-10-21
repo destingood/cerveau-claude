@@ -38,6 +38,7 @@
 | nautilus-trader | 1.231.0 | LGPL-3.0-or-later | adaptateur de backtest, seul import dans `core/finance/research/nautilus.py` (phase 3, ADR-024) |
 | fastapi | 0.156.8 | MIT | API interne locale (phase 5, ADR-037) ; le plan citait 0.156.7, 0.156.8 est la dernière publiée au 2026-10-21 ; aucune nouvelle transitive : annotated-doc 0.0.5 (MIT), starlette 1.8.0 (BSD-3-Clause), opentelemetry-api 1.45.1 (Apache-2.0) et typing-inspection 0.4.4 (MIT) étaient déjà au verrou |
 | uvicorn | 0.54.0 | BSD-3-Clause | serveur de l'API interne, lié à 127.0.0.1 (phase 5, ADR-037) ; déjà au verrou en transitive |
+| jinja2 | 3.1.6 | BSD-3-Clause | gabarits du dashboard en lecture seule, échappement automatique (phase 5, ADR-041) ; déjà au verrou en transitive, comme MarkupSafe 3.0.4 (BSD-3-Clause, métadonnées du paquet) ; licence de Jinja2 vérifiée le 2026-10-21 (ADR-041 ; classifieur « BSD License » du paquet installé) |
 
 ## Recherche (groupe `research`, usage personnel uniquement)
 | Composant | Version | Licence | Usage |

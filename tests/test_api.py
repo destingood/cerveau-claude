@@ -145,7 +145,16 @@ def test_a_token_of_the_minimum_length_starts_it(root: Path) -> None:
 
 
 @pytest.mark.parametrize(("method", "path"), ROUTES)
-@pytest.mark.parametrize("header", [None, "Bearer wrong", f"Basic {TOKEN}", f"Bearer {TOKEN}x"])
+@pytest.mark.parametrize(
+    "header",
+    [
+        None,
+        "Bearer wrong",
+        f"Basic {TOKEN}",
+        "Basic " + base64.b64encode(f"lucas:{TOKEN}".encode()).decode(),  # dashboard only
+        f"Bearer {TOKEN}x",
+    ],
+)
 def test_every_route_needs_the_token(
     root: Path, config_dir: Path, method: str, path: str, header: str | None
 ) -> None:
@@ -163,19 +172,30 @@ def test_no_documentation_no_schema_and_no_rearm(root: Path, config_dir: Path) -
     opened = client(root, config_dir)
     for path in ("/docs", "/redoc", "/openapi.json"):
         assert opened.get(path).status_code == 404
-    paths = {getattr(route, "path", "") for route in opened.app.routes}  # type: ignore[attr-defined]
-    assert paths == {
-        "/status",
-        "/kill",
-        "/approvals/pending",
-        "/approvals/{approval_id}/approve",
-        "/approvals/{approval_id}/refuse",
-        "/reports/daily",
-        "/alerts",
-        "/events/ignored",
-        "/bot/settings",
+    # FastAPI includes routers lazily, so app.routes no longer lists them: the inventory comes
+    # from the schema, generated here and never served (openapi_url=None).
+    schema = opened.app.openapi()  # type: ignore[attr-defined]
+    routes = {(method.upper(), path) for path, ops in schema["paths"].items() for method in ops}
+    assert routes == {
+        ("GET", "/status"),
+        ("POST", "/kill"),
+        ("GET", "/approvals/pending"),
+        ("POST", "/approvals/{approval_id}/approve"),
+        ("POST", "/approvals/{approval_id}/refuse"),
+        ("GET", "/reports/daily"),
+        ("GET", "/alerts"),
+        ("POST", "/events/ignored"),
+        ("GET", "/bot/settings"),
+        ("GET", "/dashboard"),
+        ("GET", "/dashboard/paper"),
+        ("GET", "/dashboard/risque"),
+        ("GET", "/dashboard/decisions"),
+        ("GET", "/dashboard/evals"),
+        ("GET", "/dashboard/plugins"),
     }
-    assert not any("rearm" in path or "arm" in path for path in paths)
+    assert not any("arm" in path for _, path in routes)
+    assert opened.get("/rearm").status_code == 404
+    assert opened.post("/kill/rearm").status_code == 404
 
 
 @pytest.mark.parametrize("base_url", ["http://evil.com", "http://192.168.1.10", "http://[::1]"])

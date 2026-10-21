@@ -1,9 +1,10 @@
 """The local internal API (ADR-037, D1): the only door of the Discord bot and the dashboard.
 
 `cerveau api serve` binds it to 127.0.0.1 (D16), and only Lucas starts it (D22). Every route
-needs the bearer token of ``CERVEAU_API_TOKEN``, compared in constant time; a Host other than the
-loopback is refused, and there is neither documentation route nor OpenAPI schema. No route
-rearms the kill switch: rearming stays at Lucas's interactive terminal (ADR-034).
+needs the bearer token of ``CERVEAU_API_TOKEN``, compared in constant time; the dashboard's
+read-only pages take the same token as an HTTP Basic password instead (ADR-041). A Host other
+than the loopback is refused, and there is neither documentation route nor OpenAPI schema. No
+route rearms the kill switch: rearming stays at Lucas's interactive terminal (ADR-034).
 
 Answers carry states, counts and percentages, never an amount or a position, except the
 summary of an approval request (D12). The configuration is read again at each request, so an
@@ -23,7 +24,7 @@ from pathlib import Path
 from typing import Annotated, Any, Literal
 from uuid import UUID
 
-from fastapi import Body, Depends, FastAPI, Header, HTTPException, Query, Request
+from fastapi import APIRouter, Body, Depends, FastAPI, Header, HTTPException, Query, Request
 from fastapi.exceptions import RequestValidationError
 from fastapi.middleware.trustedhost import TrustedHostMiddleware
 from fastapi.responses import JSONResponse
@@ -38,6 +39,7 @@ from core.execution.loop import send_approved
 from core.execution.operations import PaperUnavailable, open_paper_day, stop_everything
 from core.notify import Alert, Alerts, alerts_from, default_outbox_path, read_outbox
 from interfaces.api import views
+from interfaces.api.dashboard import dashboard_router
 
 TOKEN_ENV = "CERVEAU_API_TOKEN"  # noqa: S105 - the variable's name, not a secret
 MIN_TOKEN_CHARS = 32
@@ -113,13 +115,8 @@ def create_app(
                 401, "jeton absent ou invalide", headers={"WWW-Authenticate": "Bearer"}
             )
 
-    app = FastAPI(
-        title="CERVEAU",
-        docs_url=None,
-        redoc_url=None,
-        openapi_url=None,
-        dependencies=[Depends(require_token)],
-    )
+    app = FastAPI(title="CERVEAU", docs_url=None, redoc_url=None, openapi_url=None)
+    api = APIRouter(dependencies=[Depends(require_token)])
     app.add_middleware(TrustedHostMiddleware, allowed_hosts=ALLOWED_HOSTS)
 
     @app.exception_handler(RequestValidationError)
@@ -162,7 +159,7 @@ def create_app(
             raise HTTPException(404, f"approbation {approval_id} inconnue") from exc
         return opened
 
-    @app.get("/status")
+    @api.get("/status")
     def status() -> dict[str, Any]:
         """Kill switch, live, levels, approvals, orders, reconciliation, loop, budget (D1)."""
         now, request_id, audit, loaded = clock(), _request_id(), journal(), config()
@@ -179,7 +176,7 @@ def create_app(
                 "budget": views.budget_view(loaded, audit, now),
             }
 
-    @app.post("/kill")
+    @api.post("/kill")
     def kill(body: Annotated[KillBody | None, Body()] = None) -> dict[str, Any]:
         """Stop everything, without a code (D11); timed from reception to the stop's return."""
         started = monotonic()
@@ -216,7 +213,7 @@ def create_app(
             "clean": stop.clean,
         }
 
-    @app.get("/approvals/pending")
+    @api.get("/approvals/pending")
     def pending() -> dict[str, Any]:
         """The requests waiting for Lucas, oldest first, with what each one asks (D12)."""
         now, request_id, audit, loaded = clock(), _request_id(), journal(), config()
@@ -234,7 +231,7 @@ def create_app(
                 ],
             }
 
-    @app.post("/approvals/{approval_id}/approve")
+    @api.post("/approvals/{approval_id}/approve")
     def approve(approval_id: UUID, body: CodeBody) -> dict[str, Any]:
         """Check Lucas's one-time code; a granted intent is sent at once, to paper while the live
         is disabled (D10), exactly as ``cerveau paper envoyer`` would send it."""
@@ -306,7 +303,7 @@ def create_app(
             "notes": list(report.notes),
         }
 
-    @app.post("/approvals/{approval_id}/refuse")
+    @api.post("/approvals/{approval_id}/refuse")
     def refuse(
         approval_id: UUID, body: Annotated[RefusalBody | None, Body()] = None
     ) -> dict[str, Any]:
@@ -322,7 +319,7 @@ def create_app(
                 raise HTTPException(409, str(exc)) from exc
         return {"state": state.value}
 
-    @app.get("/reports/daily")
+    @api.get("/reports/daily")
     def daily(day: date | None = None) -> dict[str, Any]:
         """The report of ``day``, or of the last day the loop treated (D12, D13)."""
         now, request_id, audit, loaded = clock(), _request_id(), journal(), config()
@@ -336,7 +333,7 @@ def create_app(
                 )
             return views.daily_report(stack, root, loaded, audit, request_id, now, run, log)
 
-    @app.get("/alerts")
+    @api.get("/alerts")
     def outbox(
         after: Annotated[int, Query(ge=0)] = 0,
         limit: Annotated[int, Query(ge=1, le=MAX_ALERTS)] = 50,
@@ -358,7 +355,7 @@ def create_app(
             ]
         }
 
-    @app.post("/events/ignored")
+    @api.post("/events/ignored")
     def ignored(body: IgnoredBody) -> dict[str, Any]:
         """Journal that the bot ignored a user or a channel other than Lucas's private messages;
         neither an identifier nor a content is kept (R5)."""
@@ -372,7 +369,7 @@ def create_app(
         )
         return {"request_id": request_id}
 
-    @app.get("/bot/settings")
+    @api.get("/bot/settings")
     def bot_settings() -> dict[str, Any]:
         """Whom the Discord bot answers; 503 while ``interfaces.yaml`` leaves it to Lucas, so the
         bot refuses to start rather than answer anyone (R7, ADR-037)."""
@@ -382,4 +379,6 @@ def create_app(
             raise HTTPException(503, "bot Discord bloqué : " + " ; ".join(blockers))
         return {"owner_user_id": loaded.interfaces.discord.owner_user_id}
 
+    app.include_router(api)
+    app.include_router(dashboard_router(root, token=expected, configs=configs, clock=clock))
     return app

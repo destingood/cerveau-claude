@@ -37,7 +37,7 @@ from core.execution.broker import AccountStatement, BrokerAdapter
 from core.execution.states import ExecutionIncident
 from core.finance.model import StatementLine, Transaction, canonical_json, local_date, utc_text
 from core.finance.portfolio import Booked, Gap, PortfolioError, compare, replay
-from core.finance.schema import migrate
+from core.finance.schema import SchemaError, migrate, schema_version
 from core.finance.store import PortfolioFile
 
 PAPER_ACCOUNT = "paper"
@@ -221,6 +221,7 @@ MIGRATIONS: tuple[tuple[int, tuple[str, ...]], ...] = (
         ),
     ),
 )
+LATEST_VERSION = MIGRATIONS[-1][0]
 
 _OPEN_GAPS = (
     "SELECT gaps FROM entries WHERE kind = 'reconciliation' AND gaps > 0 AND seq > COALESCE(("
@@ -245,18 +246,31 @@ class ReconciliationError(Exception):
 class ReconciliationLog:
     """``with ReconciliationLog.open(path, recorder) as log: log.record(result)``."""
 
-    def __init__(self, conn: sqlite3.Connection, recorder: Recorder) -> None:
+    def __init__(
+        self, conn: sqlite3.Connection, recorder: Recorder, *, read_only: bool = False
+    ) -> None:
         self._conn = conn
         self._recorder = recorder
-        migrate(conn, MIGRATIONS)
+        if read_only:
+            conn.execute("PRAGMA query_only = ON")
+            version = schema_version(conn)
+            if version != LATEST_VERSION:
+                raise SchemaError(f"réconciliation au schéma {version}, attendu {LATEST_VERSION}")
+        else:
+            migrate(conn, MIGRATIONS)
 
     @classmethod
-    def open(cls, path: Path, recorder: Recorder) -> ReconciliationLog:
-        path.parent.mkdir(parents=True, exist_ok=True)
-        conn = sqlite3.connect(str(path), autocommit=True)
+    def open(cls, path: Path, recorder: Recorder, *, read_only: bool = False) -> ReconciliationLog:
+        """Read only (the dashboard, ADR-041): nothing is created or migrated; a missing file
+        raises :class:`sqlite3.OperationalError`, an older schema :class:`SchemaError`."""
+        if read_only:
+            conn = sqlite3.connect(path.resolve().as_uri() + "?mode=ro", uri=True, autocommit=True)
+        else:
+            path.parent.mkdir(parents=True, exist_ok=True)
+            conn = sqlite3.connect(str(path), autocommit=True)
         conn.execute("PRAGMA busy_timeout = 5000")
         try:
-            return cls(conn, recorder)
+            return cls(conn, recorder, read_only=read_only)
         except BaseException:
             conn.close()
             raise
