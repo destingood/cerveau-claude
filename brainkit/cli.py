@@ -1085,6 +1085,19 @@ def cmd_doctor(a):
         ok(not stale, f"veille PC : {('dernière mesure ' + when) if last else when}{ram} · "
            f"{pcst.get('killed_total', 0)} serveur(s) MCP orphelin(s) fermé(s) au total"
            + (" · hooks inactifs depuis plus de 24 h ?" if stale else ""))
+    if os.name == "nt":
+        from . import auto
+        acfg = load_config().get("auto") or {}
+        last = (read_json(auto.LAST, {}) or {}).get("le")
+        seen = f" · dernière passe {last[8:10]}/{last[5:7]} {last[11:16]}" if last else ""
+        if acfg.get("coupe"):
+            ok(True, f"veille automatique : retirée exprès le {acfg['coupe'][8:10]}/{acfg['coupe'][5:7]}{seen} "
+                     "(`brain auto --installer` la remet)")
+        else:
+            why = auto.broken(auto.task_action())
+            ok(not why, f"veille automatique : {'toutes les ' + str(auto.EVERY) + ' min' if not why else why}{seen}"
+               + (" → `brain doctor --fix` la répare" if why and acfg.get("tache")
+                  else " → `brain auto --installer` la pose" if why else ""))
     if LOG_FILE.exists():
         errs = [l for l in LOG_FILE.read_text(encoding="utf-8", errors="replace").splitlines() if "ERREUR" in l][-3:]
         ok(not errs, "journal d'erreurs des hooks : " + ("vide" if not errs else " | ".join(short(e, 160) for e in errs)))
@@ -1417,6 +1430,9 @@ def _doctor_fix():
         print(f"✓ sauvegarde : {path}")
     except Exception as exc:
         print(f"✗ sauvegarde : {exc}")
+    from . import auto
+    for line in auto.heal():
+        print(line)
     print("✓ index, caches de recherche, vue 3D et entretien refaits\n")
 
 
@@ -1511,6 +1527,7 @@ def cmd_auto(a):
     """Veille automatique : une passe sans session de Claude, ou la tâche planifiée qui en lance une toutes les 30 min."""
     from . import auto
     lines = (auto.install(dry=a.dry_run) if a.installer else auto.uninstall() if a.retirer
+             else (auto.heal() or ["✓ veille saine (ou jamais posée, ou retirée exprès)"]) if a.reparer
              else auto.state_lines() if a.etat else auto.main())
     if lines:
         print("\n".join(lines))
@@ -1933,6 +1950,8 @@ def build_parser():
     s.add_argument("--installer", action="store_true", help="poser la tâche planifiée (Windows ; ailleurs : la ligne cron)")
     s.add_argument("--retirer", action="store_true", help="retirer la tâche planifiée")
     s.add_argument("--etat", action="store_true", help="tâche posée ? dernière passe et ses étapes")
+    s.add_argument("--reparer", action="store_true",
+                   help="reposer la tâche si elle a disparu ou pointe vers un Python absent (jamais après --retirer)")
     s.add_argument("--dry-run", action="store_true", help="avec --installer : montrer la tâche sans la poser")
     s = cmd("boutique", cmd_boutique, "boutiques en ligne suivies (données privées) : liste · ajouter \"Nom\" · plan · "
             "kpi (semaine) · audit · bilan · regler", ["boutiques", "shop"])

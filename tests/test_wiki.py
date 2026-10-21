@@ -537,6 +537,32 @@ code, out = brain("auto", "--installer", "--dry-run")
 check(code == 0 and "rien n'est fait" in out and "<Interval>PT30M</Interval>" in out and "pythonw.exe" in out
       and "InteractiveToken" in out and "LeastPrivilege" in out and "&quot; auto" not in out and '" auto</Arguments>' in out,
       "veille : --installer --dry-run montre la tâche (30 min, pythonw, sans mot de passe, droits limités)", out[:900])
+# auto-réparation : jamais la vraie tâche de Windows (même nom pour tous) → install et lecture simulées
+_real = (auto.install, auto.task_action)
+posees = []
+auto.install = lambda dry=False: posees.append(1) or ["✓ posée (simulé)"]
+good = (sys.executable, f'"{Path(auto.launcher())}" auto')
+set_config("auto.tache", None)
+auto.task_action = lambda: None
+check(auto.heal() == [] and not posees, "veille : jamais posée → la réparation ne la pose pas (accord jamais donné)")
+set_config("auto.tache", "2026-10-21T10:00:00")
+check(auto.wanted() == (os.name == "nt"), "veille : posée un jour → voulue (Windows)")
+if os.name == "nt":
+    out = auto.heal()
+    check(posees and "disparue" in out[0], "veille : tâche disparue → reposée", out)
+    posees.clear()
+    auto.task_action = lambda: (r"C:\Python-absent\pythonw.exe", good[1])
+    out = auto.heal()
+    check(posees and "Python" in out[0], "veille : Python déplacé ou mis à jour → reposée", out)
+    posees.clear()
+    auto.task_action = lambda: good
+    check(auto.heal() == [] and not posees, "veille : tâche saine → rien")
+    set_config("auto.coupe", "2026-10-21T11:00:00")
+    auto.task_action = lambda: None
+    check(auto.heal() == [] and not posees, "veille : retirée exprès (--retirer) → jamais reposée")
+set_config("auto.coupe", None)
+set_config("auto.tache", None)
+auto.install, auto.task_action = _real
 # textes d'Obsidian : la veille n'est annoncée que si la tâche est posée ; mode d'emploi 8.8 mis à jour une fois
 check("toutes les 30 min" not in page("Cerveau.md"), "Obsidian : page Cerveau sans veille annoncée (tâche non posée)")
 set_config("auto.tache", "2026-09-12T10:00:00")

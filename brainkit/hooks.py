@@ -42,6 +42,14 @@ CAPTURE_RX = re.compile(r"\b(je (?:veux|voudrais|pr[ée]f[èe]re|n'aime pas|d[é
                         r"arr[êe]te de|ne (?:fais|mets|touche|change) (?:pas|plus|jamais)|n'oublie pas|retiens|"
                         r"d[ée]sormais|dor[ée]navant|[àa] partir de maintenant|on part sur|on garde|c'est bon pour|"
                         r"ok pour|vas-y pour|pas comme [çc]a|c'est faux|corrige|il faut que tu|tu dois)\b", re.I)
+TASK_CUES = {"corrige", "il faut que tu", "tu dois"}  # seuls, un ordre du moment (« oui corrige les 4 tests »)
+
+
+def durable_cue(text) -> bool:
+    """Préférence, correction ou décision possible ? Pas quand le seul indice est un ordre de travail."""
+    return bool({fold(m.group(1)) for m in CAPTURE_RX.finditer(text)} - TASK_CUES)
+
+
 RECALL_RX = re.compile(r"\b(tu te souviens|te rappelles|rappelle[- ]moi|on avait (?:dit|fait|d[ée]cid)|"
                        r"la derni[èe]re fois|d[ée]j[àa] (?:fait|vu|dit)|qu'est-ce qu'on avait)", re.I)
 
@@ -322,6 +330,13 @@ def on_session_start(data, cfg):
         journal_catchup(cfg, sid)
     except Exception as exc:
         log(f"rattrapage du journal : {exc!r}")
+    try:  # veille automatique posée un jour : reposée si elle a disparu ou vise un Python absent (une fois par jour)
+        acfg = cfg.get("auto") or {}
+        if os.name == "nt" and acfg.get("tache") and not acfg.get("coupe") and days_since(acfg.get("verifie_le")) >= 1:
+            set_config("auto.verifie_le", now_iso())
+            spawn_background(["auto", "--reparer"])
+    except Exception as exc:
+        log(f"veille (réparation) : {exc!r}")
     if source == "resume" and st.get("started"):
         # Reprise : l'injection de départ est encore dans l'historique (7 reprises sur 7) → les nouveautés seulement.
         text = idx.resume_delta(brain, st.get("injected_at") or st["started"], cfg)
@@ -731,6 +746,43 @@ def pick_memories(brain, query, rc, project=None, injected=(), before=None, prev
     return [(r["node"], memory_line(r["node"], full)) for r, full in neurone.choose(cands, probs, accs, injected, rc)]
 
 
+FICHE_CHARS = 800  # part du budget du rappel prise au plus par une fiche de synthèse
+
+
+def overview_lines(brain, query, proj, st) -> tuple:
+    """Question large (« où en est la boutique ? », « le point sur… », « bilan ») : aucun souvenir ne la couvre seul,
+    la fiche de synthèse du sujet si → (lignes entières dans FICHE_CHARS, une fois par fiche et par session ; projet
+    nommé ou None, pour écarter les souvenirs d'autres sujets qui ne font que le citer)."""
+    if not search.OVERVIEW_RX.search(query):
+        return [], None
+    found = search.search_memories(brain, query, limit=10, project=proj["id"] if proj else None, expand=False)
+    f = search._fiche_for(brain, query, found) if found else None
+    # Projet nommé (« le point sur nestwise », « où en est le projet aide ») : sa fiche projet, que le rappel ordinaire
+    # écarte, sauf si la fiche de synthèse trouvée est déjà la sienne (boutique → fiche dropshipping). Nommé = titre qui
+    # couvre la question, parmi les 3 premiers, et seul projet dans ce cas (« le cerveau » : cerveau-dev ou -plateforme ?).
+    topic = [t for t in tokenize(query) if t not in search.OVERVIEW_TOKENS and t not in ("projet", "projets")]
+    named = [r for r in found if r["node"]["type"] == "project" and search._covers(r["node"], topic)] if topic else []
+    top = named[0]["node"] if len(named) == 1 and named[0] in found[:3] \
+        and named[0]["score"] >= 0.5 * found[0]["score"] else None
+    if top and (not f or (f["fiche"].get("project") or "") != top["id"]):
+        if top["id"] in st.get("fiches", []):
+            return [], top["id"]
+        st["fiches"] = st.get("fiches", []) + [top["id"]]
+        return [f"📂 Projet « {top['title']} » `{top['id']}` — {gist(top, 400)}"], top["id"]
+    if not f or f["key"] in st.get("fiches", []):
+        return [], None
+    out, used = [], 0
+    for line in f["node"]["body"].splitlines():
+        if used + len(line) + 1 > FICHE_CHARS:
+            break
+        out.append(line)
+        used += len(line) + 1
+    if len(out) < 2:
+        return [], None
+    st["fiches"] = st.get("fiches", []) + [f["key"]]
+    return out, None
+
+
 def recall_context(data, cfg, raw, saved="") -> str:
     """Rappel automatique du message : souvenirs et fichiers liés (texte pour Claude), ou ''. `saved` : la ligne de
     l'enregistrement automatique d'une demande « retiens… » (sinon Claude est prié de la mémoriser)."""
@@ -767,8 +819,17 @@ def recall_context(data, cfg, raw, saved="") -> str:
             if logged:
                 st["cands"] = (st.get("cands") or [])[-2:] + [{"t": now_iso(), "c": logged}]
             learn = True
+    named = None
+    if tokenize(query) and not saved:
+        try:
+            ov, named = overview_lines(brain, query, proj, st)
+            lines += ov
+            if named:  # « où en est le projet aide » : pas la décision globale qui cite « aide » en passant
+                picks = [(n, l) for n, l in picks if n.get("project") == named or search._covers(n, [named])]
+        except Exception as exc:
+            log(f"fiche (rappel) : {exc!r}")
     files = []
-    if rc["files"] and proj and tokenize(query) and len(st.get("files", [])) < rc["session_cap_files"]:
+    if rc["files"] and proj and named in (None, proj["id"]) and tokenize(query)             and len(st.get("files", [])) < rc["session_cap_files"]:  # autre projet nommé : pas les fichiers d'ici
         from . import filesearch
         files = filesearch.recall_files(proj["id"], query, rc, exclude=set(st.get("files", [])))
     # Lignes entières seulement, dans le budget (jamais une ligne coupée qu'on paierait sans pouvoir s'en servir) ;
@@ -972,7 +1033,7 @@ def on_stop(data, cfg):
         reason = STOP_REASON
         base = tx.get("last_save_tools", 0)
         done = st.get("auto_saved", [])  # demandes « retiens… » déjà enregistrées par le hook
-        cands = [p["t"] for p in tx.get("recent", []) if p.get("i", 0) >= base and CAPTURE_RX.search(p["t"])
+        cands = [p["t"] for p in tx.get("recent", []) if p.get("i", 0) >= base and durable_cue(p["t"])
                  and p["t"] not in done][-3:]
         if cands:  # capture assistée : les phrases de l'utilisateur qui ressemblent à une préférence ou une décision
             reason += " Candidats repérés dans ses messages : " + " · ".join(f"« {short(c, 160)} »" for c in cands) + "."

@@ -37,7 +37,7 @@ def _save(st):
 def heard_corrections(brain, since=None, limit=8):
     """Phrases de l'utilisateur (sessions récentes) qui ressemblent à une préférence, une correction ou une décision,
     et qu'aucun souvenir ne reflète encore."""
-    from .hooks import CAPTURE_RX
+    from .hooks import durable_cue
     out, seen = [], set()
     files = sorted(SESSIONS_DIR.glob("*.json"), key=lambda p: p.stat().st_mtime) if SESSIONS_DIR.exists() else []
     for f in files:
@@ -46,7 +46,7 @@ def heard_corrections(brain, since=None, limit=8):
         st = read_json(f, {}) or {}
         for p in (st.get("tx") or {}).get("recent", []):
             t = " ".join(str(p.get("t", "")).split())
-            if len(t) < 15 or not CAPTURE_RX.search(t):
+            if len(t) < 15 or not durable_cue(t):
                 continue
             key = fold(t)[:80]
             if key in seen:

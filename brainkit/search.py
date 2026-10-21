@@ -192,6 +192,7 @@ class Index:
             for v, *_ in exp[q]:
                 cand.update(self.post.get(v, ()))
         nms = getattr(self, "named", None) or {}
+        vs = {q: {q} | {v for v, *_ in exp[q]} for q in qterms}  # formes trouvées de chaque terme (proximité, plus bas)
         results = []
         for i in cand:
             tf, dl, nm = self.tfs[i], self.lens[i], nms.get(i)
@@ -214,7 +215,7 @@ class Index:
                     midf += qidf[q]
             if score > 0:
                 results.append({"key": self.keys[i], "score": score, "matched": matched,
-                                "midf": midf, "cov": midf / total, "nq": len(qterms)})
+                                "midf": midf, "cov": midf / total, "nq": len(qterms), "vars": vs})
         results.sort(key=lambda r: -r["score"])
         return results[:limit]
 
@@ -397,8 +398,17 @@ def _fiche_for(brain, query, bm25, use_cache=True):
             count[c] = count.get(c, 0) + 1
     if not mass:
         return None
-    cid = max(mass, key=lambda c: (mass[c], -c))
-    if mass[cid] / total < (0.35 if cue else 0.45) or count[cid] < (2 if cue else 3):
+    # Un gros projet se découpe en plusieurs communautés (boutique : thème, produits, SEO…) : le seuil se juge sur le
+    # sujet entier (communautés du même projet réunies), la fiche reste celle de la plus lourde.
+    proj = {c["id"]: c.get("project") for c in an.get("communities", [])}
+    subj = lambda c: proj.get(c) or f"#{c}"
+    smass, scount = {}, {}
+    for c in mass:
+        smass[subj(c)] = smass.get(subj(c), 0.0) + mass[c]
+        scount[subj(c)] = scount.get(subj(c), 0) + count[c]
+    s = max(smass, key=lambda k: (smass[k], k))
+    cid = max((c for c in mass if subj(c) == s), key=lambda c: (mass[c], -c))
+    if smass[s] / total < (0.35 if cue else 0.45) or scount[s] < (2 if cue else 3):
         return None
     fs = fiches.ensure(brain, an, write=use_cache)
     f = fs.get(cid)
@@ -528,6 +538,22 @@ def _fuse(brain, query, bm25, limit, project, types, include_archived, only_proj
 
 
 LONG_BODY, LONG_COV = 400, 0.62
+NEAR = 12  # mots : au-delà, deux termes du message ne parlent plus de la même chose dans le souvenir
+
+
+def _near(node, vs, window=NEAR) -> bool:
+    """Deux termes différents du message à moins de `window` mots l'un de l'autre dans le souvenir ? Vrai aussi quand
+    on ne retrouve pas deux termes (forme approchée hors texte) : dans le doute, la règle d'avant décide.
+    « qui a gagné la coupe du monde » ↛ « tout le monde » … 60 mots … « connecteurs coupés »."""
+    last, found = {}, set()
+    for i, t in enumerate(tokenize(f"{node['title']} {node.get('body') or ''}")):
+        for q, forms in vs.items():
+            if t in forms:
+                found.add(q)
+                if any(q2 != q and i - j <= window for q2, j in last.items()):
+                    return True
+                last[q] = i
+    return len(found) < 2
 
 
 def _head_hit(node, qterms) -> bool:
@@ -546,4 +572,9 @@ def accept_recall(r, min_cov, min_score=0.0, query=None) -> bool:
     node = r.get("node")
     if query is not None and node is not None and len(node.get("body") or "") >= LONG_BODY and r.get("cov", 0) < LONG_COV:
         return _head_hit(node, set(tokenize(query)))
+    # Termes épars : message pas entièrement retrouvé, titre muet, et ses mots semés loin les uns des autres → coïncidence
+    # (342 rappels réels rejoués : 9 inutiles coupés, aucun utile perdu ; tous les mots retrouvés → la règle d'avant).
+    if query is not None and node is not None and 2 <= r["matched"] < r["nq"] and r.get("vars") \
+            and not _head_hit(node, set(tokenize(query))) and not _near(node, r["vars"]):
+        return False
     return True

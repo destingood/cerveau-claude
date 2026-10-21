@@ -232,6 +232,7 @@ def install(dry=False) -> list:
     if code:
         return [f"✗ tâche planifiée non posée : {short(text, 300)}"]
     set_config("auto.tache", now_iso())
+    set_config("auto.coupe", None)
     return [f"✓ tâche planifiée « {TASK} » posée : une passe toutes les {EVERY} min, sans fenêtre, zéro token",
             "  état : brain auto --etat · retirer : brain auto --retirer"]
 
@@ -241,7 +242,49 @@ def uninstall() -> list:
         return ["· hors Windows : retire la ligne `… brain.py\" auto` de ta crontab (`crontab -e`)"]
     code, text = _schtasks("/Delete", "/TN", TASK, "/F")
     set_config("auto.tache", None)
+    set_config("auto.coupe", now_iso())  # choix de l'utilisateur : la réparation automatique ne la remet pas
     return ["✓ tâche planifiée retirée" if code == 0 else f"· aucune tâche à retirer ({short(text, 200)})"]
+
+
+def task_action():
+    """(programme, arguments) de la tâche posée ; None s'il n'y a pas de tâche."""
+    from html import unescape
+    code, text = _schtasks("/Query", "/TN", TASK, "/XML")
+    if code:
+        return None
+    cmd, args = (re.search(rf"<{t}>(.*?)</{t}>", text, re.S) for t in ("Command", "Arguments"))
+    return unescape(cmd.group(1).strip()) if cmd else "", unescape(args.group(1).strip()) if args else ""
+
+
+def wanted() -> bool:
+    """Veille voulue : posée un jour par `--installer` (accord donné une fois) et jamais retirée par `--retirer`."""
+    cfg = load_config().get("auto") or {}
+    return os.name == "nt" and bool(cfg.get("tache")) and not cfg.get("coupe") and cfg.get("enabled", True)
+
+
+def broken(action) -> str:
+    """Raison pour laquelle la tâche ne peut plus tourner ('' si elle est saine)."""
+    if action is None:
+        return "tâche disparue"
+    cmd, args = action
+    if not cmd or not Path(cmd).is_file():
+        return f"programme introuvable ({cmd or 'vide'}) : Python déplacé ou mis à jour"
+    script = re.match(r'\s*"([^"]+)"', args)
+    if not script or not Path(script.group(1)).is_file():
+        return f"lanceur introuvable ({script.group(1) if script else args or 'vide'})"
+    return ""
+
+
+def heal() -> list:
+    """Garde la veille en vie sans rien demander : tâche disparue (mise à jour de Windows, nettoyage) ou qui pointe vers
+    un Python ou un lanceur qui n'existent plus → reposée. Seulement si elle a été posée un jour, jamais après `--retirer`."""
+    if not wanted():
+        return []
+    why = broken(task_action())
+    if not why:
+        return []
+    log(f"auto : {why} → tâche reposée")
+    return [f"· veille : {why} → reposée"] + install()
 
 
 def state_lines() -> list:
