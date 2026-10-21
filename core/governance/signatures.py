@@ -19,8 +19,9 @@ It counts when its name, its header and its date agree and, from N3 on, when the
 it cites exists under ``var/promotion/`` with that digest, opens with the header that
 ``cerveau promotion report`` writes (ADR-040) for the same domain and level, and concludes
 ``promotion_possible``: a signature cannot promote on a report that refuses the promotion.
-Anything else is ignored and reported, never repaired. This module reads; it never writes a
-signature (R3, D18).
+A signature dated after today, or before the day (in Paris) its report was generated, does not
+count either (B240). Files are read up to a bound, never whole (B233). Anything else is ignored
+and reported, never repaired. This module reads; it never writes a signature (R3, D18).
 """
 
 from __future__ import annotations
@@ -29,14 +30,15 @@ import hashlib
 import re
 from collections.abc import Iterable, Mapping
 from dataclasses import dataclass
-from datetime import date
+from datetime import UTC, date, datetime
 from pathlib import Path
-from typing import Final, Literal
+from typing import Annotated, Final, Literal
 
 import yaml
-from pydantic import BaseModel, ConfigDict, Field, ValidationError
+from pydantic import AwareDatetime, BaseModel, ConfigDict, Field, ValidationError
 
 from core.config.loader import LEVELS, AutonomyConfig, Level
+from core.finance.model import local_date
 
 SIGNATURES_DIR = Path("governance") / "approvals"
 PROMOTION_DIR = Path("var") / "promotion"
@@ -44,6 +46,7 @@ REPORT_FROM = "N3"  # from this level on, the cited promotion report must exist 
 REPORT_KIND: Final = "promotion"  # the header ``rapport`` of a promotion report
 REPORT_PASSED: Final = "promotion_possible"  # the only ``statut`` a signature may rest on
 MAX_BYTES = 64 * 1024  # a signature is a short header and a few lines
+MAX_REPORT_BYTES = 1024 * 1024  # a promotion report is a few pages of Markdown (B233)
 _NAME = re.compile(r"^(\d{4}-\d{2}-\d{2})-([a-z][a-z0-9_]*)-(N[0-4])\.md$")
 _HEADER = re.compile(r"\A---\r?\n(.*?)\r?\n---\r?\n", re.DOTALL)
 
@@ -67,6 +70,7 @@ class _ReportHeader(BaseModel):
     domain: str
     level: Level
     statut: str
+    genere_le: Annotated[AwareDatetime, Field(strict=False)]  # quoted ISO text in the header
 
 
 @dataclass(frozen=True)
@@ -104,19 +108,31 @@ def _report_header(raw: bytes) -> _ReportHeader | None:
         return None
 
 
-def _reports(root: Path) -> Reports | str:
-    """Each regular file under ``var/promotion/`` by its SHA-256, with its header, or why they
-    cannot be read."""
+def _head(path: Path, limit: int) -> bytes | None:
+    """The bytes of ``path``, or None when it holds more than ``limit``: never read whole."""
+    with path.open("rb") as handle:
+        raw = handle.read(limit + 1)
+    return raw if len(raw) <= limit else None
+
+
+def _reports(root: Path) -> tuple[Reports, tuple[str, ...]] | str:
+    """Each regular file under ``var/promotion/`` by its SHA-256, with its header, and why each
+    oversized one was set aside; or why they cannot be read."""
     folder = root / PROMOTION_DIR
     try:
         if not folder.is_dir():
-            return {}
+            return {}, ()
         reports: dict[str, _ReportHeader | None] = {}
+        oversized: list[str] = []
         for path in sorted(folder.iterdir()):
             if path.is_file() and not path.is_symlink():
-                raw = path.read_bytes()
-                reports[hashlib.sha256(raw).hexdigest()] = _report_header(raw)
-        return reports
+                raw = _head(path, MAX_REPORT_BYTES)
+                if raw is None:
+                    where = f"{PROMOTION_DIR.as_posix()}/{path.name}"
+                    oversized.append(f"{where} : plus de {MAX_REPORT_BYTES} octets, ignoré")
+                else:
+                    reports[hashlib.sha256(raw).hexdigest()] = _report_header(raw)
+        return reports, tuple(oversized)
     except OSError as exc:
         return f"{PROMOTION_DIR.as_posix()} illisible ({type(exc).__name__})"
 
@@ -129,11 +145,16 @@ def _report_problem(header: _Header, cited: _ReportHeader | None) -> str | None:
         return f"le rapport cité porte sur {cited.domain} {cited.level}"
     if cited.statut != REPORT_PASSED:
         return f"le rapport cité conclut « {cited.statut} », pas « {REPORT_PASSED} »"
+    generated = local_date(cited.genere_le)
+    if header.date < generated:
+        return (
+            f"datée du {header.date:%d/%m/%Y}, avant le rapport qu'elle cite ({generated:%d/%m/%Y})"
+        )
     return None
 
 
-def _read(path: Path, reports: Reports | str) -> Signature | str:
-    """The signature in ``path``, or why it does not count."""
+def _read(path: Path, reports: Reports | str, today: date) -> Signature | str:
+    """The signature in ``path``, or why it does not count on ``today``."""
     name = path.name
     match = _NAME.match(name)
     if match is None:
@@ -141,10 +162,10 @@ def _read(path: Path, reports: Reports | str) -> Signature | str:
     if path.is_symlink() or not path.is_file():
         return f"{name} : pas un fichier ordinaire"
     try:
-        raw = path.read_bytes()
+        raw = _head(path, MAX_BYTES)
     except OSError as exc:
         return f"{name} : illisible ({type(exc).__name__})"
-    if len(raw) > MAX_BYTES:
+    if raw is None:
         return f"{name} : plus de {MAX_BYTES} octets"
     try:
         text = raw.decode("utf-8")
@@ -161,6 +182,8 @@ def _read(path: Path, reports: Reports | str) -> Signature | str:
     named = (match.group(1), match.group(2), match.group(3))
     if named != (header.date.isoformat(), header.domain, header.level):
         return f"{name} : le nom et l'en-tête ne concordent pas"
+    if header.date > today:
+        return f"{name} : datée du {header.date:%d/%m/%Y}, après aujourd'hui ({today:%d/%m/%Y})"
     if LEVELS.index(header.level) >= LEVELS.index(REPORT_FROM):
         if isinstance(reports, str):
             return f"{name} : rapport de promotion invérifiable, {reports}"
@@ -187,8 +210,14 @@ def _first(exc: ValidationError) -> str:
     return f"{where} : {error['msg']}"
 
 
-def read_signatures(root: Path) -> SignedLevels:
-    """Every signature under ``governance/approvals/``; an unreadable folder signs nothing."""
+def today_in_paris() -> date:
+    return local_date(datetime.now(UTC))
+
+
+def read_signatures(root: Path, *, today: date | None = None) -> SignedLevels:
+    """Every signature under ``governance/approvals/`` that counts on ``today`` (by default,
+    today in Paris); an unreadable folder signs nothing."""
+    today = today_in_paris() if today is None else today
     folder = root / SIGNATURES_DIR
     try:
         if not folder.is_dir():
@@ -196,11 +225,12 @@ def read_signatures(root: Path) -> SignedLevels:
         paths = sorted(p for p in folder.iterdir() if p.suffix == ".md")
     except OSError as exc:
         return SignedLevels((), (f"{SIGNATURES_DIR.as_posix()} illisible ({type(exc).__name__})",))
-    reports = _reports(root)
+    found = _reports(root)
+    reports, set_aside = (found, ()) if isinstance(found, str) else found
     signatures: list[Signature] = []
-    problems: list[str] = []
+    problems: list[str] = list(set_aside)
     for path in paths:
-        read = _read(path, reports)
+        read = _read(path, reports, today)
         if isinstance(read, str):
             problems.append(read)
         else:
@@ -221,10 +251,15 @@ class EffectiveAutonomy:
 
 
 def effective_autonomy(
-    autonomy: AutonomyConfig, root: Path, *, signed: SignedLevels | None = None
+    autonomy: AutonomyConfig,
+    root: Path,
+    *,
+    signed: SignedLevels | None = None,
+    today: date | None = None,
 ) -> EffectiveAutonomy:
-    """``autonomy`` with each promoted domain at min(written level, highest signed level)."""
-    signed = read_signatures(root) if signed is None else signed
+    """``autonomy`` with each promoted domain at min(written level, highest level signed by
+    ``today``)."""
+    signed = read_signatures(root, today=today) if signed is None else signed
     domains = dict(autonomy.domains)
     capped: list[str] = []
     for domain in sorted(promoted_domains(autonomy) & set(domains)):
@@ -240,8 +275,10 @@ def effective_autonomy(
     )
 
 
-def effective_level(autonomy: AutonomyConfig, root: Path, domain: str) -> Level:
-    return effective_autonomy(autonomy, root).autonomy.domains[domain].level
+def effective_level(
+    autonomy: AutonomyConfig, root: Path, domain: str, *, today: date | None = None
+) -> Level:
+    return effective_autonomy(autonomy, root, today=today).autonomy.domains[domain].level
 
 
 def signature_text(

@@ -3,14 +3,17 @@ from __future__ import annotations
 import hashlib
 from datetime import date
 from pathlib import Path
+from typing import Any
 
 import pytest
 from hypothesis import given
 from hypothesis import strategies as st
 
 from core.config.loader import LEVELS, AutonomyConfig, load_config
+from core.governance import signatures
 from core.governance.signatures import (
     MAX_BYTES,
+    MAX_REPORT_BYTES,
     PROMOTION_DIR,
     REPORT_PASSED,
     SIGNATURES_DIR,
@@ -112,7 +115,7 @@ def _cite(root: Path, report: bytes) -> str:
     (root / PROMOTION_DIR / "rapport.md").write_bytes(report)
     digest = hashlib.sha256(report).hexdigest()
     _write(root, f"{DAY.isoformat()}-finance-N3.md", signature_text("finance", "N3", DAY, digest))
-    (problem,) = read_signatures(root).problems
+    (problem,) = read_signatures(root, today=DAY).problems
     return problem
 
 
@@ -131,6 +134,15 @@ def _cite(root: Path, report: bytes) -> str:
             "n'a pas l'en-tête",
         ),
         (b"---\n\xff\n---\n", "n'a pas l'en-tête"),
+        (  # no genere_le (B240)
+            b"---\nrapport: promotion\ndomain: finance\nlevel: N3\n"
+            b"statut: promotion_possible\n---\n",
+            "n'a pas l'en-tête",
+        ),
+        (  # a generation time without its offset is no instant at all
+            report_text("finance", "N3", DAY, generated="2026-10-21T08:00:00"),
+            "n'a pas l'en-tête",
+        ),
         (b"---\n[: :\n---\n", "n'a pas l'en-tête"),
     ],
 )
@@ -254,14 +266,14 @@ def test_an_unreadable_signature_is_reported(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     sign(tmp_path, "finance", "N1", DAY)
-    original = Path.read_bytes
+    original = Path.open
 
-    def refuse(self: Path) -> bytes:
+    def refuse(self: Path, *args: Any, **kwargs: Any) -> Any:
         if self.parent.name == "approvals":
             raise PermissionError("refusé")
-        return original(self)
+        return original(self, *args, **kwargs)
 
-    monkeypatch.setattr(Path, "read_bytes", refuse)
+    monkeypatch.setattr(Path, "open", refuse)
     (problem,) = read_signatures(tmp_path).problems
     assert problem == "2026-10-21-finance-N1.md : illisible (PermissionError)"
 
@@ -269,18 +281,93 @@ def test_an_unreadable_signature_is_reported(
 def test_unreadable_reports_refuse_n3(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     sign(tmp_path, "finance", "N3", DAY)
     sign(tmp_path, "finance", "N2", date(2026, 7, 1))
-    original = Path.read_bytes
+    original = Path.open
 
-    def refuse(self: Path) -> bytes:
+    def refuse(self: Path, *args: Any, **kwargs: Any) -> Any:
         if self.parent.name == "promotion":
             raise PermissionError("refusé")
-        return original(self)
+        return original(self, *args, **kwargs)
 
-    monkeypatch.setattr(Path, "read_bytes", refuse)
+    monkeypatch.setattr(Path, "open", refuse)
     signed = read_signatures(tmp_path)
     assert signed.highest("finance") == "N2"
     (problem,) = signed.problems
     assert "rapport de promotion invérifiable" in problem
+
+
+def test_a_signature_dated_after_today_does_not_count(tmp_path: Path) -> None:
+    sign(tmp_path, "finance", "N2", DAY)
+    before = date(2026, 10, 20)
+    signed = read_signatures(tmp_path, today=before)
+    assert signed.signatures == ()
+    assert signed.problems == (
+        "2026-10-21-finance-N2.md : datée du 21/10/2026, après aujourd'hui (20/10/2026)",
+    )
+    assert effective_level(_at("N2"), tmp_path, "finance", today=before) == "N0"
+    assert effective_level(_at("N2"), tmp_path, "finance", today=DAY) == "N2"
+
+
+def test_today_is_today_in_paris_by_default(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    sign(tmp_path, "finance", "N2", DAY)
+    monkeypatch.setattr(signatures, "today_in_paris", lambda: date(2026, 10, 20))
+    assert effective_level(_at("N2"), tmp_path, "finance") == "N0"
+    monkeypatch.setattr(signatures, "today_in_paris", lambda: DAY)
+    assert effective_level(_at("N2"), tmp_path, "finance") == "N2"
+
+
+def test_today_in_paris_is_a_date() -> None:
+    assert isinstance(signatures.today_in_paris(), date)
+
+
+def _cite_dated(root: Path, report: bytes, level: str = "N3") -> str:
+    """File ``report`` and a signature of ``level`` on DAY citing it; the signature's name."""
+    (root / PROMOTION_DIR).mkdir(parents=True, exist_ok=True)
+    (root / PROMOTION_DIR / f"rapport-{level}.md").write_bytes(report)
+    digest = hashlib.sha256(report).hexdigest()
+    name = f"{DAY.isoformat()}-finance-{level}.md"
+    _write(root, name, signature_text("finance", level, DAY, digest))  # type: ignore[arg-type]
+    return name
+
+
+@pytest.mark.parametrize(
+    ("generated", "counts"),
+    [
+        ("2026-10-21T21:59:59+00:00", True),  # 23:59:59 in Paris, the day of the signature
+        ("2026-10-21T22:00:00+00:00", False),  # midnight in Paris: the report is from the 22nd
+        ("2026-10-22T08:00:00+02:00", False),
+        ("2026-10-20T08:00:00+02:00", True),
+    ],
+)
+def test_a_signature_before_the_report_it_cites_does_not_count(
+    tmp_path: Path, generated: str, counts: bool
+) -> None:
+    name = _cite_dated(tmp_path, report_text("finance", "N3", DAY, generated=generated))
+    signed = read_signatures(tmp_path, today=date(2026, 10, 23))
+    if counts:
+        assert (signed.highest("finance"), signed.problems) == ("N3", ())
+    else:
+        assert signed.problems == (
+            f"{name} : datée du 21/10/2026, avant le rapport qu'elle cite (22/10/2026)",
+        )
+
+
+def test_an_oversized_report_is_set_aside_unread(tmp_path: Path) -> None:
+    sign(tmp_path, "finance", "N3", DAY)
+    report = report_text("finance", "N4", DAY)
+    _cite_dated(tmp_path, report + b"x" * (MAX_REPORT_BYTES + 1 - len(report)), "N4")
+    signed = read_signatures(tmp_path, today=DAY)
+    assert signed.highest("finance") == "N3"
+    oversized, uncited = signed.problems
+    assert oversized == f"var/promotion/rapport-N4.md : plus de {MAX_REPORT_BYTES} octets, ignoré"
+    assert "aucun rapport de promotion" in uncited
+
+
+def test_a_report_at_the_bound_is_read(tmp_path: Path) -> None:
+    report = report_text("finance", "N3", DAY)
+    _cite_dated(tmp_path, report + b"x" * (MAX_REPORT_BYTES - len(report)))
+    assert read_signatures(tmp_path, today=DAY).highest("finance") == "N3"
 
 
 def test_the_signature_text_round_trips(tmp_path: Path) -> None:

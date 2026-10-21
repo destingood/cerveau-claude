@@ -181,7 +181,8 @@ class World:
         self.journal: Any = MemoryJournal() if journal is None else journal
         level = self.cfg.autonomy.domains["finance"].level
         if level != "N0":
-            sign(root, "finance", level)  # ADR-036: the level the test sets is the one signed
+            # ADR-036: the level the test sets is the one signed, before the days it runs (B240)
+            sign(root, "finance", level, OPENED.date())
         settings = PaperSettings.from_config(
             self.cfg.risk_limits_paper, self.cfg.execution, self.cfg.risk.trading_costs
         )

@@ -47,8 +47,9 @@ live relèvent d'une phase dédiée, avec ses revues.
    `powershell -ExecutionPolicy Bypass -File infra\windows\protect-live.ps1 -Unprotect`.
 4. **Signer** : copier le texte affiché dans `governance/approvals/AAAA-MM-JJ-finance-N3.md`. Son
    en-tête YAML porte `domain: finance`, `level: N3`, la date, `promotion_report_sha256` et
-   `signed_by: lucas`. Une signature dont le nom, l'en-tête ou la date divergent, ou qui cite un
-   rapport absent, modifié ou négatif, est ignorée (ADR-036).
+   `signed_by: lucas`. Une signature dont le nom, l'en-tête ou la date divergent, datée après
+   aujourd'hui ou avant le jour du rapport qu'elle cite, ou qui cite un rapport absent, modifié ou
+   négatif, est ignorée (ADR-036). Dater la signature du jour où elle est écrite.
 5. **Niveau** : dans `config/autonomy.yaml`, `domains.finance.level: N3`. Le niveau effectif est le
    plus bas du niveau écrit et du plus haut niveau signé : ni la signature seule ni le fichier seul
    ne suffisent.

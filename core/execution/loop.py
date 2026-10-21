@@ -731,7 +731,7 @@ def _treat(
         now=now,
     )
     decision = decide_order(
-        effective_autonomy(config.autonomy, env.root).autonomy,  # ADR-036: the signed ceiling
+        effective_autonomy(config.autonomy, env.root, today=local_date(now)).autonomy,  # ADR-036
         request_id=env.request_id,
         kill_switch=kill_switch_engaged(env.root),
         live_enabled=config.live.enabled,
@@ -1182,7 +1182,7 @@ def _send_granted(
         now=now,
     )
     decision = decide_order(
-        effective_autonomy(config.autonomy, env.root).autonomy,  # ADR-036: the signed ceiling
+        effective_autonomy(config.autonomy, env.root, today=local_date(now)).autonomy,  # ADR-036
         request_id=env.request_id,
         kill_switch=kill_switch_engaged(env.root),
         live_enabled=config.live.enabled,

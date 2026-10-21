@@ -226,7 +226,8 @@ def _paper(case: Case) -> tuple[PaperFixture, ExpectPaper]:
 def _report(home: Path, level: Level, day: date, statut: str) -> str:
     """A promotion report of ``level`` in the case's home, concluding ``statut``; its SHA-256."""
     text = (
-        f"---\nrapport: {REPORT_KIND}\ndomain: finance\nlevel: {level}\nstatut: {statut}\n---\n"
+        f"---\nrapport: {REPORT_KIND}\ndomain: finance\nlevel: {level}\nstatut: {statut}\n"
+        f'genere_le: "{day.isoformat()}T08:00:00+02:00"\n---\n'  # signed the same day (B240)
         f"# Rapport de promotion finance {level} du {day.isoformat()} (cas d'éval)\n"
     ).encode()
     reports = home / PROMOTION_DIR  # not « folder »: the scan taints that name, _sign's (ADR-039)
@@ -393,7 +394,7 @@ def _run(case: Case, root: Path, home: Path) -> PaperRun:
             len(simulator.open_orders()),
             offset=None if isinstance(offset, str) else Decimal(str(offset)),
             journal_errors=tuple(verify(home / JOURNAL).errors),
-            level=effective_level(config.autonomy, home, "finance"),
+            level=effective_level(config.autonomy, home, "finance", today=fixture.days[-1].day),
         )
         if lucas is not None and approvals is not None and lucas.latest is not None:
             requests = approvals.requests(now=lucas.latest)

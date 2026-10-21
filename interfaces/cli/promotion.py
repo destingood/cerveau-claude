@@ -19,6 +19,7 @@ import typer
 from core.audit import AuditJournal, default_journal_path
 from core.config import BlockedFeatureError
 from core.evals.promotion import PromotionError, check_promotion, load_report
+from core.finance.model import local_date
 from core.governance.promotion_report import (
     STATUS_TEXT,
     VERDICT_TEXT,
@@ -123,6 +124,7 @@ def report(
     config = _load(config_dir)
     root = project_root()
     now = datetime.now().astimezone()
+    day = local_date(now)  # the day in Paris, the one the signature check uses (B240)
     try:
         built = build_report(root, config, domain=domain, level=to, at=now, evals=evals)
         path = write_report(root, built)
@@ -158,10 +160,10 @@ def report(
     typer.echo(f"Conclusion : {VERDICT_TEXT[verdict]}.")
     typer.echo(
         f"Texte à copier toi-même, si tu signes, dans governance/approvals/"
-        f"{now.date().isoformat()}-{domain}-{built.level}.md (la date du nom et de l'en-tête est "
+        f"{day.isoformat()}-{domain}-{built.level}.md (la date du nom et de l'en-tête est "
         "celle du jour où tu signes) :"
     )
-    typer.echo(signature_text(domain, built.level, now.date(), digest), nl=False)
+    typer.echo(signature_text(domain, built.level, day, digest), nl=False)
     typer.echo(
         f"Le niveau écrit (domains.{domain}.level dans config/autonomy.yaml) se change aussi à la "
         "main ; le live reste une décision séparée."

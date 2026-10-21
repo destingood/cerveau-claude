@@ -20,10 +20,15 @@ from core.governance.signatures import (
 )
 
 
-def report_text(domain: str, level: str, day: date, statut: str = REPORT_PASSED) -> bytes:
-    """A promotion report as ``signatures.py`` reads it: its header, then a title."""
+def report_text(
+    domain: str, level: str, day: date, statut: str = REPORT_PASSED, *, generated: str = ""
+) -> bytes:
+    """A promotion report as ``signatures.py`` reads it: its header, then a title. It was
+    generated on ``day`` in Paris unless ``generated`` gives its ISO timestamp."""
+    generated = generated or f"{day.isoformat()}T08:00:00+02:00"
     return (
         f"---\nrapport: {REPORT_KIND}\ndomain: {domain}\nlevel: {level}\nstatut: {statut}\n"
+        f'genere_le: "{generated}"\n'
         f"---\n# Rapport de promotion {domain} {level} du {day.isoformat()}\n"
     ).encode()
 

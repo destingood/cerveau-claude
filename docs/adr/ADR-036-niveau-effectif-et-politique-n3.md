@@ -22,7 +22,10 @@ Option 2, et la décision `approbation` en N3.
   `domain`, `level`, `date`, `promotion_report_sha256`, `signed_by: lucas`. Le code le lit et ne
   l'écrit jamais. Une signature compte si son nom, son en-tête et sa date concordent et, à partir
   de N3, si le rapport de promotion cité existe sous `var/promotion/` avec cette empreinte. Une
-  signature invalide est ignorée et signalée.
+  signature invalide est ignorée et signalée. Depuis la phase 6 (B240), une signature datée après
+  aujourd'hui (à Paris ; la boucle paper prend le jour de sa séance) ou avant le jour, à Paris, où
+  le rapport cité a été généré (`genere_le`) ne compte pas ; une signature est lue jusqu'à 64 Kio
+  et un rapport jusqu'à 1 Mio, au-delà ils sont ignorés et signalés (B233).
 - **Niveau effectif (D6)** : `core/governance/signatures.py`, appliqué par les appelants du moteur
   (adaptateur MCP, boucle paper, API), pas par le chargeur de configuration. Seuls les domaines
   présents sous `promotion` y sont soumis (aujourd'hui `finance`) ; N0 n'exige aucune signature.

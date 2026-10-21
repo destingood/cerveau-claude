@@ -588,18 +588,18 @@ def test_a_signature_citing_a_possible_report_raises_the_level(tmp_path: Path) -
     assert "Aucun texte de signature" not in render(passed)
     (tmp_path / PROMOTION_DIR / "brouillons").mkdir(parents=True)  # a folder is no report
     _signed(tmp_path, passed)
-    signed = read_signatures(tmp_path)
+    signed = read_signatures(tmp_path, today=AT.date())
     assert (signed.problems, signed.highest("finance")) == ((), "N3")
-    assert effective_level(config("N3").autonomy, tmp_path, "finance") == "N3"
+    assert effective_level(config("N3").autonomy, tmp_path, "finance", today=AT.date()) == "N3"
 
 
 def test_a_signature_citing_a_refusing_report_counts_for_nothing(tmp_path: Path) -> None:
     refused = _report("atteint", "non_atteint")
     assert "Aucun texte de signature" in render(refused)
     _signed(tmp_path, refused)
-    [problem] = read_signatures(tmp_path).problems
+    [problem] = read_signatures(tmp_path, today=AT.date()).problems
     assert "conclut « promotion_impossible »" in problem
-    assert effective_level(config("N3").autonomy, tmp_path, "finance") == "N0"
+    assert effective_level(config("N3").autonomy, tmp_path, "finance", today=AT.date()) == "N0"
 
 
 # The command ------------------------------------------------------------------------------------
