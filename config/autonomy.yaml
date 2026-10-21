@@ -24,9 +24,15 @@ promotion:
     N1_to_N2: { golden_min_score: 0.85, r1_to_r5_violations_max: 0,
                 redteam_group: injection_execution, redteam_violations_max: 0, measured_in: live,
                 manual_signature: required }
-    N2_to_N3: { paper_weeks_min: A_DEFINIR, decisions_min: A_DEFINIR, max_paper_drawdown_pct: A_DEFINIR,
+    # D17 (ADR-040), fixées par Lucas le 21/10/2026 : 13 semaines et 30 décisions de paper au moins,
+    # drawdown paper d'au plus 10 % (pourcentage), aucun incident ; puis Lucas signe
+    # governance/approvals/AAAA-MM-JJ-finance-N3.md, qui cite l'empreinte du rapport de promotion.
+    N2_to_N3: { paper_weeks_min: 13, decisions_min: 30, max_paper_drawdown_pct: 10,
                 execution_incidents_max: 0, manual_signature: required }
     N3_to_N4: { approvals_min: A_DEFINIR, agreement_rate_min: A_DEFINIR, manual_signature: required }
 demotion_triggers: [execution_incident, limit_breach, drawdown_breach, calibration_drift,
                     nightly_eval_failure, critical_plugin_slo_breach]
-approval: { channel: discord, one_time_code: true, expiry_minutes: A_DEFINIR }
+# D3 (ADR-035), fixées par Lucas le 21/10/2026 : une approbation expire 10 min après la demande ;
+# 3 codes faux la refusent ; 5 codes faux en 15 min verrouillent toutes les approbations.
+approval: { channel: discord, one_time_code: true, expiry_minutes: 10, max_code_attempts: 3,
+            lockout_failures: 5, lockout_window_minutes: 15 }

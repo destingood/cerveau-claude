@@ -901,3 +901,105 @@ def test_committee_budget_limits_are_positive(config_dir: Path, field: str) -> N
     edit_yaml(config_dir / "budgets.yaml", lambda d: d["per_committee"].update({field: 0}))
     with pytest.raises(ConfigError, match="per_committee"):
         load_config(config_dir)
+
+
+def test_approval_and_promotion_values_validated_by_lucas() -> None:
+    """D3 and D17 of the phase 5 plan, set by Lucas on 21/10/2026."""
+    autonomy = load_config(REPO_ROOT / "config").autonomy
+    approval = autonomy.approval
+    assert (approval.expiry_minutes, approval.max_code_attempts) == (10, 3)
+    assert (approval.lockout_failures, approval.lockout_window_minutes) == (5, 15)
+    promotion = autonomy.promotion.finance.N2_to_N3
+    assert (promotion.paper_weeks_min, promotion.decisions_min) == (13, 30)
+    assert promotion.max_paper_drawdown_pct == 10
+
+
+@pytest.mark.parametrize(
+    "feature", ["approvals", "interfaces.api", "interfaces.discord", "notify.ntfy"]
+)
+def test_interfaces_stay_blocked_until_lucas_sets_them(feature: str) -> None:
+    reasons = load_config(REPO_ROOT / "config").blockers(feature)
+    assert reasons
+    assert all(reason.startswith("interfaces.yaml") for reason in reasons)
+
+
+@pytest.mark.parametrize(
+    ("mutate", "where"),
+    [
+        (lambda d: d.update(one_time_code=False), "one_time_code"),
+        (lambda d: d.update(expiry_minutes=0), "expiry_minutes"),
+        (lambda d: d.update(expiry_minutes=61), "expiry_minutes"),
+        (lambda d: d.update(expiry_minutes=10.5), "expiry_minutes"),
+        (lambda d: d.update(max_code_attempts=0), "max_code_attempts"),
+        (lambda d: d.update(max_code_attempts=6), "max_code_attempts"),
+        (lambda d: d.update(lockout_failures=0), "lockout_failures"),
+        (lambda d: d.update(lockout_window_minutes=0), "lockout_window_minutes"),
+        (lambda d: d.update(channel="email"), "channel"),
+    ],
+)
+def test_invalid_approval_parameters_are_refused(config_dir: Path, mutate, where: str) -> None:
+    edit_yaml(config_dir / "autonomy.yaml", lambda d: mutate(d["approval"]))
+    with pytest.raises(ConfigError, match=where):
+        load_config(config_dir)
+
+
+@pytest.mark.parametrize(
+    ("mutate", "where"),
+    [
+        (lambda d: d.update(paper_weeks_min=0), "paper_weeks_min"),
+        (lambda d: d.update(decisions_min=-1), "decisions_min"),
+        (lambda d: d.update(max_paper_drawdown_pct=0), "max_paper_drawdown_pct"),
+        (lambda d: d.update(max_paper_drawdown_pct=101), "max_paper_drawdown_pct"),
+        (lambda d: d.update(max_paper_drawdown_pct=float("nan")), "max_paper_drawdown_pct"),
+    ],
+)
+def test_invalid_n2_to_n3_thresholds_are_refused(config_dir: Path, mutate, where: str) -> None:
+    edit_yaml(config_dir / "autonomy.yaml", lambda d: mutate(d["promotion"]["finance"]["N2_to_N3"]))
+    with pytest.raises(ConfigError, match=where):
+        load_config(config_dir)
+
+
+def test_valid_interfaces_unblock_the_api_and_the_bot(config_dir: Path) -> None:
+    def fill(d: dict[str, Any]) -> None:
+        d["discord"]["owner_user_id"] = "123456789012345678"
+        d["api"]["port"] = 8765
+        d["ntfy"]["server"] = "https://ntfy.example"
+
+    edit_yaml(config_dir / "interfaces.yaml", fill)
+    config = load_config(config_dir)
+    for feature in ("approvals", "interfaces.api", "interfaces.discord", "notify.ntfy"):
+        assert config.blockers(feature) == []
+    assert config.interfaces.api.host == "127.0.0.1"
+
+
+@pytest.mark.parametrize(
+    ("section", "field", "value"),
+    [
+        ("api", "host", "0.0.0.0"),  # noqa: S104 - the value under test is refused
+        ("api", "host", "localhost"),
+        ("api", "port", 80),
+        ("api", "port", 70000),
+        ("api", "port", "8765"),
+        ("discord", "owner_user_id", 123456789012345678),  # unquoted: lost in JavaScript
+        ("discord", "owner_user_id", "12345"),
+        ("discord", "owner_user_id", "lucas"),
+        ("ntfy", "server", "http://ntfy.sh"),
+        ("ntfy", "server", "https://ntfy.sh/"),
+        ("ntfy", "server", "https://ntfy.sh/sujet"),
+        ("ntfy", "timeout_seconds", 0),
+        ("ntfy", "timeout_seconds", 6),
+    ],
+)
+def test_invalid_interface_settings_are_refused(
+    config_dir: Path, section: str, field: str, value: Any
+) -> None:
+    edit_yaml(config_dir / "interfaces.yaml", lambda d: d[section].update({field: value}))
+    with pytest.raises(ConfigError, match=field):
+        load_config(config_dir)
+
+
+def test_interfaces_refuse_a_secret_field(config_dir: Path) -> None:
+    """Tokens live in environment variables (R6): the schema has no place for one."""
+    edit_yaml(config_dir / "interfaces.yaml", lambda d: d["ntfy"].update({"token": "x"}))
+    with pytest.raises(ConfigError, match="token"):
+        load_config(config_dir)

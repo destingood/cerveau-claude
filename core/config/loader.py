@@ -129,9 +129,9 @@ class PromotionN1N2(PromotionN0N1):
 
 
 class PromotionN2N3(_Strict):
-    paper_weeks_min: int | Marker
-    decisions_min: int | Marker
-    max_paper_drawdown_pct: float | Marker
+    paper_weeks_min: Annotated[int, Field(strict=True, ge=1)] | Marker
+    decisions_min: Annotated[int, Field(strict=True, ge=1)] | Marker
+    max_paper_drawdown_pct: Annotated[float, Field(gt=0, le=100, allow_inf_nan=False)] | Marker
     execution_incidents_max: int
     manual_signature: Literal["required"]
 
@@ -154,9 +154,16 @@ class Promotion(_Strict):
 
 
 class Approval(_Strict):
+    """ADR-035 (D3): an approval expires ``expiry_minutes`` after the request; ``max_code_attempts``
+    wrong codes refuse it; ``lockout_failures`` wrong codes within ``lockout_window_minutes`` lock
+    every approval. A code is always required."""
+
     channel: Literal["discord"]
-    one_time_code: bool
-    expiry_minutes: int | Marker
+    one_time_code: Literal[True]
+    expiry_minutes: Annotated[int, Field(strict=True, ge=1, le=60)] | Marker
+    max_code_attempts: Annotated[int, Field(strict=True, ge=1, le=5)] | Marker
+    lockout_failures: Annotated[int, Field(strict=True, ge=1, le=10)] | Marker
+    lockout_window_minutes: Annotated[int, Field(strict=True, ge=1, le=1440)] | Marker
 
 
 class AutonomyConfig(_Strict):
@@ -650,6 +657,30 @@ class CommitteeConfig(_Strict):
     finance: CommitteePack
 
 
+class DiscordSettings(_Strict):
+    # A Discord snowflake, quoted: it does not fit a JavaScript number.
+    owner_user_id: Annotated[str, Field(pattern=r"^[1-9][0-9]{16,19}$")] | Marker
+
+
+class ApiSettings(_Strict):
+    host: Literal["127.0.0.1"]  # the loopback only (D16): never reachable from another machine
+    port: Annotated[int, Field(strict=True, ge=1024, le=65535)] | Marker
+
+
+class NtfySettings(_Strict):
+    server: Annotated[str, Field(pattern=r"^https://[a-z0-9.-]+(:[0-9]{1,5})?$")] | Marker
+    timeout_seconds: Annotated[float, Field(gt=0, le=5, allow_inf_nan=False)]
+
+
+class InterfacesConfig(_Strict):
+    """ADR-037 and ADR-038. Tokens, the TOTP secret and the ntfy topic live in Lucas's
+    environment variables, never in this file (R6)."""
+
+    discord: DiscordSettings
+    api: ApiSettings
+    ntfy: NtfySettings
+
+
 FILES: dict[str, tuple[str, type[BaseModel]]] = {
     "models": ("models.yaml", ModelsConfig),
     "autonomy": ("autonomy.yaml", AutonomyConfig),
@@ -665,6 +696,7 @@ FILES: dict[str, tuple[str, type[BaseModel]]] = {
     "guardrails": ("guardrails.yaml", GuardrailsConfig),
     "research": ("research.yaml", ResearchConfig),
     "committee": ("committee.yaml", CommitteeConfig),
+    "interfaces": ("interfaces.yaml", InterfacesConfig),
 }
 
 
@@ -685,7 +717,16 @@ FEATURES: dict[str, Feature] = {
     "budgets": Feature(
         "Plafonds de dépense LLM", ("budgets:llm_budget_eur", "budgets:per_request")
     ),
-    "approvals": Feature("Approbations N3 (Discord, code à usage unique)", ("autonomy:approval",)),
+    # An approval is asked on Discord and answered through the local API (ADR-035, ADR-037).
+    "approvals": Feature(
+        "Approbations N3 (Discord, code à usage unique)",
+        ("autonomy:approval", "interfaces:discord", "interfaces:api"),
+    ),
+    "interfaces.api": Feature("API interne locale et dashboard", ("interfaces:api",)),
+    "interfaces.discord": Feature(
+        "Bot Discord (approbations, /kill, /status)", ("interfaces:discord", "interfaces:api")
+    ),
+    "notify.ntfy": Feature("Alertes ntfy", ("interfaces:ntfy",)),
     "promotion.finance.N0_to_N1": Feature(
         "Promotion finance N0 → N1",
         ("autonomy:promotion.finance.N0_to_N1", "evals:thresholds.finance_golden_min_score"),
@@ -853,6 +894,7 @@ class Config:
     guardrails: GuardrailsConfig
     research: ResearchConfig
     committee: CommitteeConfig
+    interfaces: InterfacesConfig
     markers: tuple[MarkerHit, ...]
     digest: str
 
@@ -1005,6 +1047,7 @@ def load_config(directory: Path) -> Config:
         guardrails=parsed["guardrails"],  # type: ignore[arg-type]
         research=parsed["research"],  # type: ignore[arg-type]
         committee=parsed["committee"],  # type: ignore[arg-type]
+        interfaces=parsed["interfaces"],  # type: ignore[arg-type]
         markers=tuple(markers),
         digest=config_digest(directory),
     )
