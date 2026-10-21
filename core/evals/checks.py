@@ -97,6 +97,8 @@ def free_texts(answer: Answer) -> list[str]:
         texts.append(answer.confiance.justification)
     if answer.comite is not None:  # the proposal is the synthesis; its reasons may quote a model
         texts += [*answer.comite.invalidation, *answer.comite.desaccords, *answer.comite.raisons]
+        if answer.comite.catalyseur is not None:
+            texts.append(answer.comite.catalyseur)
     return [text for text in texts if text]
 
 

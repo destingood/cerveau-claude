@@ -7,7 +7,7 @@ import hashlib
 import json
 from collections.abc import AsyncIterator, Mapping, Sequence
 from contextlib import asynccontextmanager
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, replace
 from datetime import UTC
 from pathlib import Path
 from typing import Any
@@ -20,7 +20,7 @@ from typer.testing import CliRunner
 
 from core.audit.chain import AuditJournal, verify
 from core.budget.ledger import COST_KEY
-from core.committee import CommitteeSpec
+from core.committee import CommitteeSpec, LimitCheck
 from core.config import load_config
 from core.config.loader import Config
 from core.models.router import ModelRequest, ModelRouter
@@ -31,7 +31,7 @@ from core.orchestrator.runtime import WEB_PLUGIN, RequestScope
 from core.policy.engine import KILL_SWITCH_FILE
 from interfaces.cli.main import app
 from tests.conftest import REPO_ROOT
-from tests.test_committee import FOLIO, MARKET, RISK, SPEC, TOOLS, as_json
+from tests.test_committee import CATALYST, FOLIO, MARKET, RISK, SPEC, TOOLS, act, as_json
 from tests.test_committee import Brain as CommitteeBrain
 from tests.test_committee import ScriptedModel as MemberModel
 from tests.test_orchestrator import NOW, PROMPTS, FakePseudonymiser, World, final, opener
@@ -385,6 +385,32 @@ def test_show_reads_an_intact_session(rig: Rig, monkeypatch: pytest.MonkeyPatch)
     assert "Question (pseudonymisée) : Faut-il renforcer FICT-A pour <PERSON_1> ?" in result.stdout
     assert "Verdict des contrôles : OK" in result.stdout
     assert "intact (empreinte SHA-256 conforme au journal)" in result.stdout
+
+
+def test_a_decision_to_act_shows_its_catalyst(
+    tmp_path: Path, config_dir: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """ADR-029: what makes the action timely is shown in the answer and in the session file."""
+    checks = (LimitCheck("poids_max", True, "sous la limite"),)
+    spec = replace(SPEC, limit_checks=lambda decision, outputs: checks)
+    rig = make_rig(tmp_path, _config(config_dir), {"finance": spec})
+    rig.brain.scripts["gestionnaire"] = [act(CATALYST)]
+    result = rig.ask()
+    view = result.answer.comite
+    assert view is not None and view.decision == "agir"
+    assert view.catalyseur == "Le stress reste borné (C2)"
+    lines = result.markdown().splitlines()
+    decided = lines.index("- Décision proposée : agir")
+    assert lines[decided + 1] == "- Catalyseur : Le stress reste borné (C2)"
+    shown = _show(rig, view.record_id, monkeypatch)
+    assert shown.exit_code == 0, shown.output
+    assert "Catalyseur : Le stress reste borné (C2)" in shown.stdout
+
+
+def test_a_decision_without_a_catalyst_shows_none(rig: Rig) -> None:
+    result = rig.ask()
+    assert result.answer.comite is not None and result.answer.comite.catalyseur is None
+    assert "Catalyseur" not in result.markdown()
 
 
 def test_show_reports_an_altered_session(rig: Rig, monkeypatch: pytest.MonkeyPatch) -> None:

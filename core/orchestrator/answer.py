@@ -252,6 +252,9 @@ def committee_answer(
             update={
                 "decision": decision["decision"],
                 "proposition": links(decision["proposition"]),
+                "catalyseur": links(f"{c['texte']} ({', '.join(c['constats'])})")
+                if (c := decision.get("catalyseur"))
+                else None,
                 "horizon": decision["horizon"],
                 "horizon_bornes": HORIZONS,
                 "invalidation": tuple(
@@ -331,6 +334,7 @@ def map_texts(answer: Answer, fn: Callable[[str], str]) -> Answer:
         view = view.model_copy(
             update={
                 "proposition": fn(view.proposition),
+                "catalyseur": view.catalyseur and fn(view.catalyseur),
                 "invalidation": tuple(fn(text) for text in view.invalidation),
                 "desaccords": tuple(fn(text) for text in view.desaccords),
                 "raisons": tuple(fn(text) for text in view.raisons),
@@ -369,6 +373,8 @@ def _committee_lines(view: CommitteeView) -> list[str]:
     parts = [f"## Décision du Comité ({view.libelle})", ""]
     choice = CHOICE_LABEL.get(view.decision or "", NO_DECISION.lower())
     parts.append(f"- Décision proposée : {choice}")
+    if view.catalyseur:
+        parts.append(f"- Catalyseur : {view.catalyseur}")
     if view.horizon:
         parts.append(f"- Horizon : {view.horizon} ({view.horizon_bornes})")
     if view.invalidation:

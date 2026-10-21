@@ -67,6 +67,11 @@ class Invalidation(_Llm):
     constats: list[ConstatId] = Field(min_length=1, max_length=6)
 
 
+class Catalyseur(_Llm):
+    texte: str = Field(min_length=1, max_length=300)
+    constats: list[ConstatId] = Field(min_length=1, max_length=6)
+
+
 class Treatment(_Llm):
     id: ArgumentId
     sort: Literal["retenu", "ecarte"]
@@ -78,6 +83,12 @@ class ManagerDecision(_Llm):
     proposition: str = Field(min_length=1, max_length=600)
     confiance: Confidence
     horizon: Horizon = Field(description=HORIZONS)
+    catalyseur: Catalyseur | None = Field(
+        default=None,
+        description="obligatoire pour « agir » : ce qui rend l'action opportune maintenant "
+        "plutôt qu'attendre, relié aux constats qui le fondent ; null pour « ne_pas_agir » et "
+        "« attendre »",
+    )
     invalidation: list[Invalidation] = Field(min_length=1, max_length=5)
     desaccords: list[Line] = Field(default_factory=list, max_length=5)
     arguments: list[Treatment] = Field(min_length=1, max_length=40)
@@ -122,6 +133,8 @@ def text_fields(output: RoleOutput) -> list[tuple[str, str]]:
         fields.append(("changer_avis", output.changer_avis))
     elif isinstance(output, ManagerDecision):
         fields.append(("proposition", output.proposition))
+        if output.catalyseur:
+            fields.append(("catalyseur.texte", output.catalyseur.texte))
         fields += [
             (f"invalidation[{n}].condition", item.condition)
             for n, item in enumerate(output.invalidation, start=1)

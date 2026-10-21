@@ -46,6 +46,7 @@ from core.committee.rules import (
     analyst_errors,
     controller_errors,
     debate_errors,
+    decision_blockers,
     final_verdict,
     finding_origin,
     manager_errors,
@@ -546,6 +547,9 @@ class _Committee:
             "\nUn seuil chiffré d'une condition d'invalidation doit venir d'une sortie d'outil."
             "\nSi tu décides d'agir, chaque nombre de la proposition vient d'une sortie d'outil "
             "ou de la question de Lucas, jamais d'une page."
+            "\nSi tu décides d'agir, nomme le catalyseur : ce qui rend l'action opportune "
+            "maintenant, relié à ses constats ; une décision d'agir sans catalyseur est bloquée "
+            "par le code."
         )
         constats = {finding.id for finding in self.sitting.constats}
 
@@ -559,7 +563,10 @@ class _Committee:
             )
 
         decision, record = await self._speak(card, prompt, ManagerDecision, check)
-        record.constats = tuple(sorted({c for i in decision.invalidation for c in i.constats}))
+        cited = {c for i in decision.invalidation for c in i.constats}
+        if decision.catalyseur is not None:
+            cited |= set(decision.catalyseur.constats)
+        record.constats = tuple(sorted(cited))
         self.sitting.roles.append(record)
         self.sitting.decision = decision
         return {"done": [card.member]}
@@ -580,13 +587,24 @@ class _Committee:
             + f" ({check.reason})"
             for check in checks
         ] or ["aucun contrôle n'a pu être fait"]
+        blockers = decision_blockers(decision)
+        blocked = (
+            "Blocages de la proposition, calculés par le code (tu ne peux pas les lever) :\n- "
+            + "\n- ".join(blockers)
+            + "\n"
+            if blockers
+            else ""
+        )
         proposal = json.dumps(decision.model_dump(mode="json"), ensure_ascii=False)
         prompt = (
             self._head()
             + f"Proposition du gestionnaire :\n{mark_untrusted(proposal, source='gestionnaire')}\n"
             "Contrôles des limites, calculés par le code (une limite dépassée ou inconnue "
-            "bloque, et tu ne peux pas lever ce blocage) :\n- " + "\n- ".join(shown) + "\n"
-            f"Outils à ta disposition : {', '.join(tools) or 'aucun'}.\n"
+            "bloque, et tu ne peux pas lever ce blocage) :\n- "
+            + "\n- ".join(shown)
+            + "\n"
+            + blocked
+            + f"Outils à ta disposition : {', '.join(tools) or 'aucun'}.\n"
             "Chiffre chaque scénario défavorable par un appel d'outil, dont tu donnes "
             "l'identifiant tel qu'il t'est montré ; un scénario sans appel (null) bloque."
         )
@@ -606,7 +624,9 @@ class _Committee:
             self.sitting.sessions[card.member] = session  # its tool outputs, even on failure
         self.sitting.roles.append(record)
         self.sitting.controller = report
-        self.sitting.verdict, self.sitting.verdict_reasons = final_verdict(checks, report)
+        self.sitting.verdict, self.sitting.verdict_reasons = final_verdict(
+            checks, report, decision=decision
+        )
         self.sitting.status, self.sitting.reason = "complete", None
         return {"done": [card.member]}
 

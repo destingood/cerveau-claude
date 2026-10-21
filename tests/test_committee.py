@@ -23,8 +23,14 @@ from core.audit.chain import AuditJournal
 from core.budget.gate import RequestBudget
 from core.committee import Card, CommitteeSpec, LimitCheck, Sitting, run_committee, seat_for
 from core.committee.engine import LAB_MODE, _Committee, digest
+from core.committee.rules import (
+    NO_CATALYST,
+    decision_blockers,
+    final_verdict,
+    injection_errors,
+    manager_errors,
+)
 from core.committee.rules import QUESTION as QUESTION_ORIGIN
-from core.committee.rules import final_verdict, injection_errors, manager_errors
 from core.committee.schemas import ControllerReport, ManagerDecision
 from core.config import BlockedFeatureError, load_config
 from core.config.loader import Config
@@ -641,7 +647,8 @@ def test_final_verdict_starts_from_the_code(
     checks: tuple[LimitCheck, ...], verdict: str, appel: str | None, expected: str
 ) -> None:
     report = ControllerReport.model_validate_json(controller(verdict, appel))
-    assert final_verdict(checks, report)[0] == expected
+    decision = ManagerDecision.model_validate_json(manager())
+    assert final_verdict(checks, report, decision=decision)[0] == expected
 
 
 def test_confidence_and_horizon_are_categories() -> None:
@@ -649,6 +656,75 @@ def test_confidence_and_horizon_are_categories() -> None:
     for key, value in (("confiance", 0.8), ("horizon", "6 mois")):
         with pytest.raises(ValidationError):
             ManagerDecision.model_validate(data | {key: value})
+
+
+# --- the catalyst of a decision to act (ADR-029) -----------------------------------------------
+
+CATALYST = {"texte": "Le stress reste borné", "constats": ["C2"]}
+
+
+def act(catalyseur: dict[str, Any] | None = None) -> str:
+    data = json.loads(manager()) | {"decision": "agir", "proposition": "Renforcer FICT-A"}
+    return as_json(data if catalyseur is None else data | {"catalyseur": catalyseur})
+
+
+def acting(rig: Rig, reply: str) -> Sitting:
+    rig.brain.scripts["gestionnaire"] = [reply, reply]
+    return rig.sit(replace(SPEC, limit_checks=lambda decision, outputs: (OK_CHECK,)))
+
+
+@pytest.mark.parametrize(
+    "catalyseur",
+    [{"texte": "", "constats": ["C1"]}, {"texte": "Le cours tient", "constats": []}],
+)
+def test_a_catalyst_states_a_reason_tied_to_findings(catalyseur: dict[str, Any]) -> None:
+    with pytest.raises(ValidationError):
+        ManagerDecision.model_validate_json(act(catalyseur))
+
+
+@pytest.mark.parametrize(
+    ("choice", "catalyseur", "blockers"),
+    [
+        ("agir", None, [NO_CATALYST]),
+        ("agir", CATALYST, []),
+        ("attendre", None, []),
+        ("ne_pas_agir", None, []),
+    ],
+)
+def test_only_a_decision_to_act_without_a_catalyst_is_blocked(
+    choice: str, catalyseur: dict[str, Any] | None, blockers: list[str]
+) -> None:
+    data = json.loads(act(catalyseur)) | {"decision": choice}
+    assert decision_blockers(ManagerDecision.model_validate(data)) == blockers
+
+
+def test_a_decision_to_act_without_a_catalyst_blocks_whatever_the_limits(rig: Rig) -> None:
+    sitting = acting(rig, act())
+    assert (sitting.status, sitting.verdict) == ("complete", "BLOQUER")
+    assert sitting.verdict_reasons == (NO_CATALYST,)
+    controller_prompt = rig.brain.texts("controleur_risque")
+    assert "Blocages de la proposition, calculés par le code" in controller_prompt
+    assert NO_CATALYST in controller_prompt
+
+
+def test_a_decision_to_act_with_its_catalyst_cites_its_findings(rig: Rig) -> None:
+    sitting = acting(rig, act(CATALYST))
+    assert (sitting.status, sitting.verdict, sitting.verdict_reasons) == ("complete", "OK", ())
+    assert "Blocages de la proposition" not in rig.brain.texts("controleur_risque")
+    manager_record = next(r for r in sitting.roles if r.member == "gestionnaire")
+    assert manager_record.constats == ("C1", "C2")  # invalidation and catalyst
+
+
+def test_a_catalyst_citing_an_unknown_finding_is_refused(rig: Rig) -> None:
+    sitting = acting(rig, act({"texte": "Le cours tient", "constats": ["C9"]}))
+    assert sitting.status == "echec"
+    assert "catalyseur.constats : C9 n'existe pas" in (sitting.reason or "")
+
+
+def test_a_catalyst_is_checked_as_text(rig: Rig) -> None:
+    sitting = acting(rig, act({"texte": INJECTION, "constats": ["C1"]}))
+    assert sitting.status == "echec"
+    assert "catalyseur.texte : formulation d'instruction (R5)" in (sitting.reason or "")
 
 
 # --- stops: budget, kill switch, configuration -------------------------------------------------

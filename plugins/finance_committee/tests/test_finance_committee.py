@@ -193,7 +193,7 @@ def test_every_session_blocks_while_a_paper_limit_is_undefined(config: Any, choi
             assert (check.ok, check.reason) == (None, NO_SIZE)
         else:
             assert check.ok is True
-    verdict, _ = final_verdict(checks, report())
+    verdict, _ = final_verdict(checks, report(), decision=decision(choice))
     assert verdict == "BLOQUER"
 
 
@@ -211,6 +211,7 @@ def test_golden_cases(case: dict[str, Any]) -> None:
     verdict, _ = final_verdict(
         checks,
         report(controller.get("verdict", "OK"), controller.get("appel", "risk_report#1")),
+        decision=decision(case["decision"]),
     )
     assert {c.name: c.ok for c in checks} == case["expected"]["checks"]
     assert verdict == case["expected"]["verdict"]

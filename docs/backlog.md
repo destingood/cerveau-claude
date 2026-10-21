@@ -168,6 +168,7 @@ reporté (phase 3 : décision D23 de `docs/plans/phase-3-plan.md`).
 | B171 | Kill switch : un appel au courtier qui ne rend pas la main n'est pas interrompu (la cible ne coupe que les appels suivants) ; un adaptateur live devra borner chaque appel par un délai d'attente inférieur à la cible | `core/execution/kill_switch.py`, `core/execution/broker.py`, ADR-034 | ? |
 | B172 | Alerte ntfy d'un arrêt du kill switch et d'une annulation non confirmée ; aujourd'hui journal, console et rapport (D13) | ADR-034, plan phase 4 D13 | ? |
 | B173 | Étendre l'ACL de `protect-live.ps1` à `governance/kill_switch/` (suppression de `KILL` refusée au compte de Claude Code) et à `var/incidents/` ; les hooks ne sont qu'un confort | R4, ADR-034, ADR-003 | ? |
+| B174 | Catalyseur : faire d'un « agir » sans catalyseur une faute réparée (comme une invalidation manquante) plutôt qu'un blocage, une fois le golden `comite-agir-taille-inconnue` corrigé dans une PR dédiée que Lucas valide (R9) ; aujourd'hui la proposition est BLOQUER et aucune intention d'ordre n'en naît | `core/committee/rules.py`, ADR-029, `evals/behaviors/finance_comite.yaml` | ? |
 
 ## Évaluations
 | # | Élément | Origine | Phase |

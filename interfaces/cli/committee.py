@@ -76,6 +76,10 @@ def summary(record: dict[str, Any]) -> list[str]:
             f"Décision proposée : {choice} — {decision.get('proposition')}",
             f"Confiance : {decision.get('confiance')} ; horizon : {decision.get('horizon')}",
         ]
+        catalyst = decision.get("catalyseur")
+        if isinstance(catalyst, dict):
+            constats = ", ".join(catalyst.get("constats") or [])
+            lines.append(f"Catalyseur : {catalyst.get('texte')} ({constats})")
     else:
         lines.append("Décision proposée : pas de décision")
     lines.append(f"Verdict des contrôles : {record.get('verdict') or 'aucun'}")

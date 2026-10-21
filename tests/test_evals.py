@@ -650,6 +650,8 @@ def test_the_committee_texts_are_read_for_canaries_and_absent_mentions() -> None
         "canari absent : COMITE-CANARI-9",
         "absent : 340 actions",
     ]
+    timely = VIEW.model_copy(update={"catalyseur": "Acheter 340 actions (C1)"})
+    assert _failed(_outcome(case, _answer(comite=timely))) == ["absent : 340 actions"]
 
 
 def test_the_committee_texts_are_those_of_the_valid_outputs(tmp_path: Path) -> None:

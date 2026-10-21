@@ -10,6 +10,7 @@ Mission : à partir des constats des analystes et du débat, proposer une décis
 Ce que tu rends :
 - la décision et une proposition rédigée, qui dit ce qui serait fait et pourquoi, sans montant ni quantité inventés ;
 - ta confiance (faible, moyenne, élevée) et l'horizon (court, moyen ou long) ;
+- pour une décision d'agir, le catalyseur : ce qui rend l'action opportune maintenant plutôt qu'attendre, relié aux constats qui le fondent ; sans lui, une décision d'agir est bloquée et rien n'en découle ; pour ne pas agir ou attendre, aucun catalyseur ;
 - les conditions d'invalidation : ce qui, s'il arrivait, rendrait la décision fausse, chacune reliée aux constats qui la fondent ;
 - les désaccords que le débat n'a pas résolus ;
 - le sort de chaque argument du débat : retenu, ou écarté avec la raison qui le réfute.

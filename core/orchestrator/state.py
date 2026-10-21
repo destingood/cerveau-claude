@@ -224,6 +224,7 @@ class CommitteeView(_Node):
     libelle: str  # « analyse » at N0, « proposition non exécutée » from N1
     decision: str | None = None  # agir, ne_pas_agir or attendre; None: pas de décision
     proposition: str = ""
+    catalyseur: str | None = None  # for « agir »: what makes it timely, with its findings
     horizon: str | None = None
     horizon_bornes: str = ""
     invalidation: tuple[str, ...] = ()

@@ -56,3 +56,17 @@ Option 3.
 - Un ordre au marché, un ordre live ou une quantité fractionnaire sont impossibles à construire.
 - **Tests** : vecteurs de la RFC 9562, monotonie des UUID générés dans une même milliseconde,
   rejets du schéma, prix limite toujours dans la bande, rédacteur sans aucun chiffre venu du modèle.
+
+## Mise en œuvre (21/10/2026)
+- **Catalyseur du Comité** : `ManagerDecision.catalyseur {texte, constats}` est facultatif dans le
+  schéma ; ses constats doivent exister, et son texte passe les contrôles R1 et R5 des autres champs.
+  Une décision « agir » sans catalyseur n'est pas réparée : elle bloque. Le code ajoute la raison
+  `NO_CATALYST` au verdict, qui devient BLOQUER quelles que soient les limites, le contrôleur la voit
+  sans pouvoir la lever, et aucune intention d'ordre n'en naît.
+- **Pourquoi bloquer plutôt que réparer** : une réparation exigerait un catalyseur dès la première
+  réponse. Or le cas golden gelé `comite-agir-taille-inconnue` scripte un « agir » sans catalyseur ;
+  il aurait échoué, et R9 interdit de retoucher un golden pour faire passer un commit. Le blocage
+  garde ce cas vert (son verdict était déjà BLOQUER) et tient la règle en échec fermé. Passer à la
+  réparation, une fois ce cas corrigé dans une PR validée par Lucas, est inscrit au backlog (B174).
+- La fiche du gestionnaire demande le catalyseur : la version du Comité change et les évals sont
+  relancées (R9). Deux cas de comportement s'ajoutent, avec et sans catalyseur.

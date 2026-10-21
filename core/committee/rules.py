@@ -5,6 +5,8 @@
 - the manager treats every argument exactly once, a figure in an invalidation condition comes
   from a tool output, and a figure in a proposal to act from a tool output or Lucas's question,
   never from a page (R1, R5);
+- a decision to act names its catalyst, tied to findings that exist; without one the proposal
+  is blocked, never repaired, and no order intent is drafted from it (ADR-029);
 - every number and date of every role is traced to its evidence (R1), and no text reads as an
   instruction (R5); a stock order is what the roles argue about, so it is looked for in the pages
   and tool outputs they read, not in what they write (B99);
@@ -37,6 +39,7 @@ from core.verification.trace import FIGURE_ORIGIN, Evidence, trace
 _SOURCE = re.compile(r"^source \[([1-9][0-9]*)\]$")
 QUESTION = "question"  # origins of the evidence the code writes: Lucas's question, the date
 TODAY = "date du jour"
+NO_CATALYST = "décision « agir » sans catalyseur : aucune intention d'ordre n'en naîtra (ADR-029)"
 
 
 @dataclass(frozen=True)
@@ -152,6 +155,10 @@ def manager_errors(
                     f"invalidation[{n}].condition : seuil n° {k} qui ne vient pas d'une sortie "
                     "d'outil (R1)"
                 )
+    if decision.catalyseur is not None:
+        unknown_constats = [c for c in decision.catalyseur.constats if c not in constats]
+        if unknown_constats:
+            errors.append(f"catalyseur.constats : {', '.join(unknown_constats)} n'existe pas")
     if decision.decision == "agir":  # what would size an order: never a page (R1, R5)
         for k, row in enumerate(trace(decision.proposition, evidence), start=1):
             origin = row.origin or ""
@@ -180,8 +187,17 @@ def controller_errors(
     return errors + _common(report, evidence)
 
 
+def decision_blockers(decision: ManagerDecision) -> list[str]:
+    """What blocks the proposal itself, whatever the limits (ADR-029).
+
+    A decision to act names the catalyst that makes it timely; without one it is blocked rather
+    than repaired, and no order intent is drafted from it.
+    """
+    return [NO_CATALYST] if decision.decision == "agir" and decision.catalyseur is None else []
+
+
 def final_verdict(
-    checks: Sequence[LimitCheck], report: ControllerReport
+    checks: Sequence[LimitCheck], report: ControllerReport, *, decision: ManagerDecision
 ) -> tuple[Verdict, tuple[str, ...]]:
     """D21: the deterministic checks come first; the model may harden the verdict, not soften it.
 
@@ -195,6 +211,7 @@ def final_verdict(
             reasons.append(f"{check.name} : limite inconnue ou non calculée ({check.reason})")
         elif not check.ok:
             reasons.append(f"{check.name} : limite dépassée ({check.reason})")
+    reasons += decision_blockers(decision)
     if any(scenario.appel is None for scenario in report.scenarios):
         reasons.append("un scénario défavorable n'est chiffré par aucun outil")
     if report.verdict == "BLOQUER":
