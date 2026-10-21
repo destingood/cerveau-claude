@@ -264,6 +264,25 @@ def test_a_close_not_ingested_yet_waits_for_the_data(world: World) -> None:
     assert world.states() == [OrderState.EXECUTEE]
 
 
+def test_a_close_missing_beyond_the_staleness_limit_trips_the_kill_switch(world: World) -> None:
+    world.run(MONDAY_RUN)
+    assert world.run(run_at(WEDNESDAY)).outcome == "attente_donnees"  # one session old
+    report = world.run(run_at(THURSDAY))  # Tuesday's close, two sessions later
+    assert report.outcome == "arret"
+    assert report.stop is not None and report.stop.trigger == "perte_donnees"
+    assert "clôture du 2026-10-20 absente pour FICT-ACME depuis 2 séances" in report.stop.reason
+
+
+def test_a_close_missing_waits_while_the_staleness_limit_is_to_define(world: World) -> None:
+    world.run(MONDAY_RUN)
+    sources = world.cfg.data_sources
+    quality = sources.quality.model_copy(update={"max_staleness_sessions": "A_DEFINIR"})
+    world.env.config = replace(
+        world.cfg, data_sources=sources.model_copy(update={"quality": quality})
+    )
+    assert world.run(run_at(THURSDAY)).outcome == "attente_donnees"
+
+
 def test_a_kill_file_stops_the_day_and_then_every_day(world: World, tmp_path: Path) -> None:
     kill = tmp_path / KILL_SWITCH_FILE
     kill.parent.mkdir(parents=True)

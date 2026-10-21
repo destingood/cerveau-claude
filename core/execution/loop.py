@@ -7,7 +7,8 @@ gate and send the day's intents.
    stops the day;
 2. the sessions due: each order the simulator works on a session whose close is past is worked
    at that close, from the store as known now; a close the store does not have yet stops the day
-   until it is ingested (``attente_donnees``);
+   until it is ingested (``attente_donnees``), unless it is older than ``max_staleness_sessions``:
+   the kill switch is then tripped (``perte_donnees``);
 3. the reconciliation (:func:`core.execution.reconcile.settle`), then the book follows the
    simulator: an order it no longer works expired with its session; an incident trips the kill
    switch (``incident_execution``);
@@ -50,7 +51,14 @@ from core.execution.broker import NETWORK_ERRORS, AccountStatement, BrokerOrder
 from core.execution.drafter import DraftError, IntentDrafter, TargetOrder, clip
 from core.execution.intent import IntentOrigin, IntentRationale, OrderIntent, SizingSource
 from core.execution.kill_switch import Stop, Trigger, detect, engage, loss_breaches
-from core.execution.market import PLACES, MarketFacts, StoreMarket, gate_snapshot, market_facts
+from core.execution.market import (
+    PLACES,
+    MarketFacts,
+    StoreMarket,
+    gate_snapshot,
+    market_facts,
+    sessions_since,
+)
 from core.execution.paper import EURO, PaperSimulator, SessionReport, SimulatorError
 from core.execution.reconcile import Reconciliation, ReconciliationLog, settle
 from core.execution.states import FILLABLE, ExecutionIncident, OrderState
@@ -392,14 +400,27 @@ def _due(env: PaperDay, day: date, now: datetime) -> dict[date, list[BrokerOrder
     return dict(sorted(due.items()))
 
 
+class _DataLoss(Exception):
+    """A close the simulator needs is missing for longer than ``max_staleness_sessions``."""
+
+
 def _close_sessions(env: PaperDay, report: DayReport) -> bool:
-    """Work the sessions due; False when a close is not in the store yet."""
+    """Work the sessions due; False when a close is not in the store yet, :class:`_DataLoss`
+    when it is missing for longer than ``max_staleness_sessions``."""
     now = report.as_of
     market = StoreMarket(env.store, as_of=now)
+    limit = env.config.data_sources.quality.max_staleness_sessions
     for session, orders in _due(env, report.day, now).items():
-        missing = sorted({o.symbol for o in orders if market.bar(o.symbol, session) is None})
-        if missing:
-            report.notes.append(f"clôture du {session} absente pour {', '.join(missing)}")
+        late = [o for o in orders if market.bar(o.symbol, session) is None]
+        if late:
+            missing = ", ".join(sorted({o.symbol for o in late}))
+            age = max(
+                sessions_since(env.book.order(o.intent_id).intent.instrument.venue, session, now)
+                for o in late
+            )
+            if not isinstance(limit, str) and age > limit:
+                raise _DataLoss(f"clôture du {session} absente pour {missing} depuis {age} séances")
+            report.notes.append(f"clôture du {session} absente pour {missing}")
             return False
         try:
             report.sessions.append(env.simulator.close_session(session, market, now=now))
@@ -724,6 +745,8 @@ def _run(env: PaperDay, report: DayReport) -> DayReport:
         _follow_simulator(env, report)
     except ExecutionIncident as exc:
         return _engage(env, report, "incident_execution", f"{exc.kind} : {exc}")
+    except _DataLoss as exc:
+        return _engage(env, report, "perte_donnees", str(exc))
 
     statement = env.simulator.account_snapshot()
     exposed, read = _symbols(env, statement)
