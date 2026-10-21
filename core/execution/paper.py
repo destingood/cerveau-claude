@@ -39,7 +39,7 @@ from pydantic import AwareDatetime, BaseModel, ConfigDict, Field
 
 from core.config.loader import ExecutionConfig, PaperRiskLimits, TradingCosts
 from core.execution.book import REASON_CHARS, Fill, Positive, _connect, _immutable
-from core.execution.broker import AccountStatement, BrokerAck, BrokerOrder, FillBatch
+from core.execution.broker import AccountStatement, AckCode, BrokerAck, BrokerOrder, FillBatch
 from core.execution.intent import OrderIntent
 from core.execution.states import ExecutionIncident
 from core.finance.calendars import exchange_calendar
@@ -379,9 +379,12 @@ class PaperSimulator:
             yield
         except sqlite3.IntegrityError as exc:
             # The database caught what the checks above it missed: the broker is incoherent.
+            # The simulator stands for the broker: its type only, never its text (B197).
             self._conn.execute("ROLLBACK")
             raise ExecutionIncident(
-                "execution_incoherente", None, f"le simulateur refuse l'écriture : {exc}"
+                "execution_incoherente",
+                None,
+                f"le simulateur refuse l'écriture : {type(exc).__name__}",
             ) from exc
         except BaseException:
             self._conn.execute("ROLLBACK")
@@ -515,24 +518,32 @@ class PaperSimulator:
             ),
         )
 
-    def _refusal(self, intent: OrderIntent, now: datetime) -> tuple[date | None, str | None]:
-        """The session the order would be worked on, and why it is rejected, if it is."""
+    def _refusal(
+        self, intent: OrderIntent, now: datetime
+    ) -> tuple[date | None, tuple[AckCode, str] | None]:
+        """The session the order would be worked on, and why it is rejected, if it is: the code
+        the loop records and the simulator's own text, kept in its database only (B197)."""
+        outside = AckCode.HORS_PERIMETRE
         if now < intent.created_at:
-            return None, "envoyé avant la création de l'intention"
+            return None, (outside, "envoyé avant la création de l'intention")
         if intent.instrument.currency != EURO:
             return None, (
+                outside,
                 f"devise {intent.instrument.currency} : le simulateur paper ne traite que l'euro "
-                "en phase 4 (ADR-033)"
+                "en phase 4 (ADR-033)",
             )
         if intent.quantity * intent.limit_price > MONEY_MAX:
-            return None, f"montant au-delà de MONEY_MAX de NautilusTrader ({MONEY_MAX} €, B122)"
+            return None, (
+                outside,
+                f"montant au-delà de MONEY_MAX de NautilusTrader ({MONEY_MAX} €, B122)",
+            )
         try:
             session = self._sessions(intent.instrument.venue, intent.decision_date)
         except SimulatorError as exc:
-            return None, str(exc)
+            return None, (outside, str(exc))
         last = self._last_session()
         if last is not None and session <= last:
-            return session, f"séance du {session} déjà close"
+            return session, (AckCode.SEANCE_CLOSE, f"séance du {session} déjà close")
         ledger = self._ledger()
         working = [order for order in self._orders() if order.open]
         reserved = sum(
@@ -547,9 +558,15 @@ class PaperSimulator:
                 if o.intent.side == "SELL" and o.intent.instrument.symbol == symbol
             )
             if ledger.positions.get(symbol, 0) - selling < intent.quantity:
-                return session, "position insuffisante : pas de vente à découvert (D16)"
+                return session, (
+                    AckCode.POSITION_INSUFFISANTE,
+                    "position insuffisante : pas de vente à découvert (D16)",
+                )
         if self._reserve(intent.side, intent.quantity, intent.limit_price) > ledger.cash - reserved:
-            return session, "cash libre insuffisant, frais compris : pas de levier (D16)"
+            return session, (
+                AckCode.CASH_INSUFFISANT,
+                "cash libre insuffisant, frais compris : pas de levier (D16)",
+            )
         return session, None
 
     def submit(self, intent: OrderIntent, *, now: datetime) -> BrokerAck:
@@ -570,25 +587,34 @@ class PaperSimulator:
                         True,
                         "ordre déjà reçu : aucun second ordre",
                         duplicate=True,
+                        code=AckCode.DEJA_RECU,
                     )
                 return BrokerAck(
                     intent.intent_id,
                     False,
                     "intent_id déjà reçu avec un autre contenu",
                     duplicate=True,
+                    code=AckCode.AUTRE_CONTENU,
                 )
             rejected = self._conn.execute(
                 "SELECT reason FROM rejections WHERE intent_id = ?", (key,)
             ).fetchone()
             if rejected is not None:
-                return BrokerAck(intent.intent_id, False, rejected["reason"], duplicate=True)
+                return BrokerAck(
+                    intent.intent_id,
+                    False,
+                    rejected["reason"],
+                    duplicate=True,
+                    code=AckCode.DEJA_RECU,
+                )
             session, refusal = self._refusal(intent, now)
             if refusal is not None:
+                code, text = refusal
                 self._conn.execute(
                     "INSERT INTO rejections (intent_id, reason, rejected_at) VALUES (?, ?, ?)",
-                    (key, refusal, utc_text(now)),
+                    (key, text, utc_text(now)),
                 )
-                return BrokerAck(intent.intent_id, False, refusal)
+                return BrokerAck(intent.intent_id, False, text, code=code)
             self._conn.execute(
                 "INSERT INTO orders (intent_id, intent_sha256, intent, symbol, side, quantity, "
                 "session, submitted_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
@@ -603,7 +629,12 @@ class PaperSimulator:
                     utc_text(now),
                 ),
             )
-        return BrokerAck(intent.intent_id, True, f"ordre accepté pour la séance du {session}")
+        return BrokerAck(
+            intent.intent_id,
+            True,
+            f"ordre accepté pour la séance du {session}",
+            code=AckCode.ACCEPTE,
+        )
 
     def cancel(self, intent_id: UUID, *, reason: str, now: datetime) -> bool:
         """Cancel what is left of a working order; False if it is unknown or already closed."""

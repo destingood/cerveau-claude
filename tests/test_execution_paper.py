@@ -13,7 +13,7 @@ from hypothesis import given, settings
 from hypothesis import strategies as st
 
 from core.config.loader import ExecutionConfig, PaperRiskLimits, TradingCosts
-from core.execution.broker import BrokerAdapter
+from core.execution.broker import AckCode, BrokerAdapter
 from core.execution.intent import OrderIntent
 from core.execution.paper import (
     MONEY_MAX,
@@ -194,7 +194,7 @@ def test_the_simulator_is_a_broker_adapter_kept_in_var_paper(tmp_path: Path) -> 
 def test_a_buy_fills_at_the_next_close_with_slippage_and_fees() -> None:
     sim = simulator()
     ack = sim.submit(make_intent(0), now=SUBMITTED)
-    assert (ack.accepted, ack.duplicate) == (True, False)
+    assert (ack.accepted, ack.duplicate, ack.code) == (True, False, AckCode.ACCEPTE)
     assert ack.reason == "ordre accepté pour la séance du 2026-10-19"  # Saturday → Monday
     (order,) = sim.open_orders()
     assert (order.remaining, order.session, order.limit_price) == (10, SESSION, Decimal("123.45"))
@@ -275,30 +275,45 @@ def test_sells_are_worked_before_buys() -> None:
 # Rejections -------------------------------------------------------------------------------------
 
 
+OUTSIDE = AckCode.HORS_PERIMETRE
+
+
 @pytest.mark.parametrize(
-    ("intent", "now", "reason"),
+    ("intent", "now", "code", "reason"),
     [
-        (make_intent(0), SUBMITTED - timedelta(minutes=6), "envoyé avant la création"),
-        (make_intent(0, instrument__currency="USD"), SUBMITTED, "devise USD"),
-        (make_intent(0, instrument__venue="XXXX"), SUBMITTED, "calendrier inconnu pour la place"),
-        (make_intent(0, quantity=81), SUBMITTED, "cash libre insuffisant, frais compris"),
-        (sell(0), CLOSED + timedelta(hours=1), "position insuffisante : pas de vente à découvert"),
+        (make_intent(0), SUBMITTED - timedelta(minutes=6), OUTSIDE, "envoyé avant la création"),
+        (make_intent(0, instrument__currency="USD"), SUBMITTED, OUTSIDE, "devise USD"),
+        (make_intent(0, instrument__venue="XXXX"), SUBMITTED, OUTSIDE, "calendrier inconnu"),
+        (
+            make_intent(0, quantity=81),
+            SUBMITTED,
+            AckCode.CASH_INSUFFISANT,
+            "cash libre insuffisant, frais compris",
+        ),
+        (
+            sell(0),
+            CLOSED + timedelta(hours=1),
+            AckCode.POSITION_INSUFFISANTE,
+            "position insuffisante : pas de vente à découvert",
+        ),
         (
             make_intent(0, quantity=100_000_000, limit_price=Decimal("100.00")),
             SUBMITTED,
+            OUTSIDE,
             "montant au-delà de MONEY_MAX",
         ),
     ],
 )
 def test_an_order_beyond_the_account_is_rejected_and_kept(
-    intent: OrderIntent, now: datetime, reason: str
+    intent: OrderIntent, now: datetime, code: AckCode, reason: str
 ) -> None:
     sim = simulator()
     ack = sim.submit(intent, now=now)
-    assert (ack.accepted, ack.duplicate) == (False, False)
+    assert (ack.accepted, ack.duplicate, ack.code) == (False, False, code)
     assert ack.reason.startswith(reason)
     again = sim.submit(intent, now=now)
     assert (again.accepted, again.duplicate, again.reason) == (False, True, ack.reason)
+    assert again.code == AckCode.DEJA_RECU
     assert sim.open_orders() == ()
 
 
@@ -323,10 +338,10 @@ def test_an_intent_id_is_received_once() -> None:
     sim = simulator()
     first = sim.submit(make_intent(0), now=SUBMITTED)
     again = sim.submit(make_intent(0), now=SUBMITTED + timedelta(minutes=1))
-    assert (again.accepted, again.duplicate) == (True, True)
+    assert (again.accepted, again.duplicate, again.code) == (True, True, AckCode.DEJA_RECU)
     assert again.reason == "ordre déjà reçu : aucun second ordre"
     other = sim.submit(make_intent(0, quantity=9), now=SUBMITTED)
-    assert (other.accepted, other.duplicate) == (False, True)
+    assert (other.accepted, other.duplicate, other.code) == (False, True, AckCode.AUTRE_CONTENU)
     assert other.reason == "intent_id déjà reçu avec un autre contenu"
     assert first.accepted
     assert len(sim.open_orders()) == 1
@@ -343,6 +358,7 @@ def test_a_session_closes_once_and_in_order() -> None:
             sim.close_session(session, Market(), now=CLOSED + timedelta(days=1))
     ack = sim.submit(make_intent(0), now=SUBMITTED)
     assert ack.reason == f"séance du {SESSION} déjà close"
+    assert ack.code == AckCode.SEANCE_CLOSE
 
 
 def test_an_order_of_a_session_never_closed_expires_with_a_later_one() -> None:
@@ -510,8 +526,10 @@ def test_a_sell_beyond_the_position_is_an_incident_and_closes_nothing() -> None:
 def test_a_write_the_database_refuses_is_an_incident() -> None:
     sim = simulator()
     holding(sim)
-    with pytest.raises(ExecutionIncident, match="le simulateur refuse l'écriture"), sim._write():
+    with pytest.raises(ExecutionIncident) as caught, sim._write():
         sim._conn.execute("INSERT INTO sessions VALUES (?, 'x')", (str(SESSION),))
+    # The simulator stands for the broker: its type only, never its text (B197).
+    assert str(caught.value) == "le simulateur refuse l'écriture : IntegrityError"
     assert sim.account_snapshot().positions == {"FICT-ACME": 10}
 
 

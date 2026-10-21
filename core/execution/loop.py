@@ -639,8 +639,9 @@ def _treat(
             raise
         state = OrderState.ENVOYEE
         if not ack.accepted:
-            env.book.transition(key, OrderState.REJETEE, reason=clip(ack.reason, 200), now=now)
-            state, reasons = OrderState.REJETEE, (*reasons, ack.reason)
+            # The broker's text is external content: the book keeps our label (B197).
+            env.book.transition(key, OrderState.REJETEE, reason=ack.label, now=now)
+            state, reasons = OrderState.REJETEE, (*reasons, ack.label)
     elif effect == "approbation":
         # ADR-036: the intent stays INTENTION until Lucas grants, refuses or lets it expire.
         filed = _file_for_approval(env, booked, gate, now)

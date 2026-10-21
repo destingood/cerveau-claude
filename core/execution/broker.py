@@ -10,6 +10,7 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 from datetime import date, datetime
 from decimal import Decimal
+from enum import StrEnum
 from typing import Literal, Protocol, runtime_checkable
 from uuid import UUID
 
@@ -17,18 +18,56 @@ from core.execution.book import Fill
 from core.execution.intent import OrderIntent
 
 
+class AckCode(StrEnum):
+    """What a broker's answer means, in CERVEAU's own closed vocabulary (B197).
+
+    A client maps its broker's answers onto these codes; what it cannot map stays ``INCONNU``.
+    """
+
+    ACCEPTE = "accepte"
+    DEJA_RECU = "deja_recu"
+    AUTRE_CONTENU = "autre_contenu"
+    POSITION_INSUFFISANTE = "position_insuffisante"
+    CASH_INSUFFISANT = "cash_insuffisant"
+    SEANCE_CLOSE = "seance_close"
+    HORS_PERIMETRE = "hors_perimetre"
+    INCONNU = "inconnu"
+
+
+# What the book and the reports say of an answer: our words, never the broker's (ADR-034, B197).
+ACK_LABELS: dict[AckCode, str] = {
+    AckCode.ACCEPTE: "ordre accepté par le courtier",
+    AckCode.DEJA_RECU: "intent_id déjà reçu par le courtier : aucun second ordre",
+    AckCode.AUTRE_CONTENU: "intent_id déjà reçu par le courtier avec un autre contenu",
+    AckCode.POSITION_INSUFFISANTE: "position insuffisante : pas de vente à découvert (D16)",
+    AckCode.CASH_INSUFFISANT: "cash libre insuffisant, frais compris : pas de levier (D16)",
+    AckCode.SEANCE_CLOSE: "séance visée déjà close chez le courtier",
+    AckCode.HORS_PERIMETRE: (
+        "ordre hors du périmètre du courtier (date, devise, montant ou calendrier)"
+    ),
+    AckCode.INCONNU: "refus du courtier (code inconnu)",
+}
+
+
 @dataclass(frozen=True)
 class BrokerAck:
-    """The broker's answer to a submission: accepted, or rejected with its reason.
+    """The broker's answer to a submission: accepted, or rejected, with its code.
 
     ``duplicate`` marks an ``intent_id`` the broker had already received: nothing new was sent,
     and the answer is the one of the first submission, or a rejection if the content differs.
+    ``reason`` is the broker's own text: external content, never written to the book, the
+    journal or a report; ``code`` is what they record, through :data:`ACK_LABELS` (B197).
     """
 
     intent_id: UUID
     accepted: bool
     reason: str
     duplicate: bool = False
+    code: AckCode = AckCode.INCONNU
+
+    @property
+    def label(self) -> str:
+        return ACK_LABELS[self.code]
 
 
 @dataclass(frozen=True)

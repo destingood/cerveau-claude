@@ -21,6 +21,7 @@ from core.approvals.store import (
 )
 from core.config.loader import AutonomyConfig, Config, load_config
 from core.execution.book import OrderBook, Recorder
+from core.execution.broker import AckCode, BrokerAck
 from core.execution.drafter import TargetOrder
 from core.execution.intent import IntentOrigin, IntentRationale, SizingSource
 from core.execution.loop import (
@@ -45,6 +46,7 @@ from core.policy.engine import KILL_SWITCH_FILE, kill_switch_engaged
 from core.risk_gate.snapshot import GateSnapshot
 from tests.execution_cases import MemoryJournal, make_intent
 from tests.signing import sign
+from tests.test_execution_intent import INJECTION
 from tests.test_execution_paper import costs_config
 
 REPO = Path(__file__).resolve().parents[1]
@@ -327,6 +329,35 @@ def test_a_kill_switch_engaged_after_the_decision_sends_nothing(
     assert world.states() == [OrderState.ANNULEE]
     assert world.simulator.open_orders() == ()
     assert (tmp_path / KILL_SWITCH_FILE).exists()
+
+
+@pytest.mark.parametrize(
+    ("code", "label"),
+    [
+        (AckCode.CASH_INSUFFISANT, "cash libre insuffisant, frais compris : pas de levier (D16)"),
+        (AckCode.INCONNU, "refus du courtier (code inconnu)"),
+    ],
+)
+def test_a_broker_refusal_is_recorded_in_our_words_never_the_brokers(
+    world: World, tmp_path: Path, monkeypatch: pytest.MonkeyPatch, code: AckCode, label: str
+) -> None:
+    """B197: the broker's text is external content; the book, the journal and the report
+    keep the label of its code."""
+
+    def refuse(intent: Any, *, now: datetime) -> BrokerAck:
+        return BrokerAck(intent.intent_id, False, INJECTION, code=code)
+
+    monkeypatch.setattr(world.simulator, "submit", refuse)
+    report = world.run(MONDAY_RUN)
+    [outcome] = report.intents
+    assert outcome.state == OrderState.REJETEE
+    assert outcome.reasons[-1] == label
+    stored = world.book._conn.execute("SELECT reason FROM transitions").fetchall()
+    assert label in [row["reason"] for row in stored]
+    text = (default_reports_dir(tmp_path) / "2026-10-19.md").read_text(encoding="utf-8")
+    assert label in text
+    for written in ([row["reason"] for row in stored], text, world.journal.entries):
+        assert INJECTION not in str(written)
 
 
 def test_a_holding_without_a_fresh_close_trips_the_kill_switch(world: World) -> None:
