@@ -7,9 +7,10 @@ same ``intent_id`` (the client order id), whatever the code does.
 
 Each state change, and each fill, writes an ``ORDER_STATE`` entry to the audit journal within the
 same write: the order, its state, the reason and the fingerprints of the intent and of the fill,
-never an amount, which stays in the book as for the portfolio. A journal that refuses the entry
-leaves the book unchanged. An incoherence of execution raises :class:`ExecutionIncident` and
-records nothing.
+never an amount, which stays in the book as for the portfolio. The kill switch's bulk
+cancellation is the one exception: a single entry lists every order it moves
+(:meth:`OrderBook.cancel_many`). A journal that refuses the entry leaves the book unchanged. An
+incoherence of execution raises :class:`ExecutionIncident` and records nothing.
 """
 
 from __future__ import annotations
@@ -419,6 +420,41 @@ class OrderBook:
             self._move(key, target, why, when)
             self._journal(recorder, row, target, why, when)
         return target
+
+    def cancel_many(
+        self, intent_ids: Collection[UUID], *, reason: str, now: datetime | None = None
+    ) -> tuple[UUID, ...]:
+        """Move these orders to ANNULEE in one transaction and one ``ORDER_STATE`` entry: the
+        kill switch's bulk move (ADR-034). An entry per order costs a synchronised write each,
+        about 5 ms (measured 21/10/2026): 1 000 orders would take the whole 5 s target. Any
+        order that cannot move leaves them all where they were."""
+        why = _reason(reason)
+        when = now or datetime.now(UTC)
+        keys = sorted({str(intent_id) for intent_id in intent_ids})
+        if not keys:
+            return ()
+        with self._write() as recorder:
+            rows = []
+            for key in keys:
+                rows.append(self._known(key))
+                check_move(UUID(key), self._state(key), OrderState.ANNULEE)
+                self._move(key, OrderState.ANNULEE, why, when)
+            recorder.journal.append(
+                actor=recorder.actor,
+                event="ORDER_STATE",
+                request_id=recorder.request_id,
+                versions=recorder.versions,
+                payload={
+                    "state": OrderState.ANNULEE.value,
+                    "reason": why,
+                    "orders": [
+                        {"intent_id": row["intent_id"], "intent_sha256": row["intent_sha256"]}
+                        for row in rows
+                    ],
+                },
+                now=when,
+            )
+        return tuple(UUID(key) for key in keys)
 
     def record_fill(self, fill: Fill, *, now: datetime | None = None) -> OrderState:
         """Book a fill and move the order to PARTIELLE or EXECUTEE. The same fill reported

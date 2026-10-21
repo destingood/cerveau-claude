@@ -47,3 +47,31 @@ Option 2.
   Windows (ADR-003).
 - **Tests** : durée sous la cible avec 1 000 ordres ouverts et un adaptateur lent ; réarmement
   refusé hors terminal interactif ; suppression manuelle détectée ; hooks.
+
+## Mise en œuvre (21/10/2026)
+`core/execution/kill_switch.py` et `cerveau kill` / `cerveau rearm` (`interfaces/cli/kill_switch.py`).
+
+- **Ordre des effets** : fichier `KILL` d'abord (l'arrêt survit au processus), entrée `KILL`
+  « déclenchement », courtier, carnet, rapport, état, entrée `KILL` « arrêt ». Rien n'interrompt
+  l'arrêt : un journal qui refuse, un carnet illisible ou une configuration invalide deviennent une
+  erreur du rapport et une sortie 1.
+- **Courtier** : « tout annuler » (3 essais), relevé des ordres encore travaillés, puis annulation
+  ordre par ordre (3 essais ; un refus n'est pas retenté). Passé la cible, plus aucun appel n'est
+  tenté, sauf le premier ; chaque appel sauté est compté dans le rapport.
+- **Carnet** : un seul passage à `ANNULEE`, en une transaction (ADR-032). Un ordre `VALIDEE` n'y
+  passe que si le courtier a dit ne pas le travailler ; sinon son annulation reste non confirmée.
+  Un ordre annulé chez le courtier mais absent du carnet, ou sans carnet lisible, lève une alerte.
+- **Durée** : horloge monotone, de l'appel à `engage` à l'état écrit. Le démarrage de la commande
+  n'est pas compté (B170) ; un appel au courtier en cours n'est pas coupé (B171).
+- **Rapport** `var/incidents/AAAAMMJJTHHMMSSZ-<déclencheur>.md` : jamais écrasé (suffixes `-2` à
+  `-999`). Journal et rapport ne portent que des nombres d'ordres, des identifiants et des types
+  d'erreur : ni montant, ni texte du courtier (R5, R6).
+- **État** `var/incidents/kill_switch.json` : il distingue un arrêt journalisé d'un fichier `KILL`
+  créé ou supprimé à la main. `cerveau rearm` l'affiche (rapport, annulations non confirmées) avant
+  de demander la phrase `REARMER`.
+- **Pertes** : `loss_breaches` reprend les trois contrôles de pertes de la Porte (ADR-030) ; une
+  propriété Hypothesis vérifie qu'ils se déclenchent ensemble. Une valeur inconnue lève une erreur au
+  lieu de passer pour « pas de perte ». Le branchement à la valorisation et aux incidents vient avec
+  la CLI paper ; les hooks, avec le commit suivant.
+- **Mesure** : le test des 1 000 ordres, sur disque, avec le vrai journal et un courtier qui répond
+  en 0,5 s après un premier délai dépassé, reste sous 5 s.

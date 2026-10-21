@@ -164,6 +164,9 @@ reporté (phase 3 : décision D23 de `docs/plans/phase-3-plan.md`).
 | B167 | Frais du compte paper non figés : des frais relevés entre l'envoi et la clôture font expirer un ordre (« cash insuffisant à l'exécution »), sans emprunt ; décider s'ils se figent à l'ouverture du compte, comme le capital (D16) | `core/execution/paper.py`, ADR-033 | ? |
 | B168 | Barre absente = ordre expiré : une suspension de cotation ne se distingue pas d'une donnée manquante ; lire le statut de séance de la source avant le live | `core/execution/paper.py`, ADR-033 | ? |
 | B169 | Réconciliation : exécutions et relevé lus en deux appels ; le simulateur paper est synchrone, un adaptateur live devra les fournir dans une même coupe cohérente (ou un curseur commun) pour qu'une exécution arrivée entre les deux ne crée pas un faux écart | `core/execution/reconcile.py`, ADR-033 | ? |
+| B170 | Kill switch : la cible de 5 s se mesure depuis l'appel à `engage` ; le démarrage de `cerveau kill` (interpréteur, imports, configuration) n'est pas compté. Mesurer la commande de bout en bout, ou garder un processus prêt, avant le live | `core/execution/kill_switch.py`, `interfaces/cli/kill_switch.py`, ADR-034 | ? |
+| B171 | Kill switch : un appel au courtier qui ne rend pas la main n'est pas interrompu (la cible ne coupe que les appels suivants) ; un adaptateur live devra borner chaque appel par un délai d'attente inférieur à la cible | `core/execution/kill_switch.py`, `core/execution/broker.py`, ADR-034 | ? |
+| B172 | Alerte ntfy d'un arrêt du kill switch et d'une annulation non confirmée ; aujourd'hui journal, console et rapport (D13) | ADR-034, plan phase 4 D13 | ? |
 
 ## Évaluations
 | # | Élément | Origine | Phase |

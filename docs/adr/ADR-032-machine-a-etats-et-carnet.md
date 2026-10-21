@@ -32,7 +32,9 @@ Option 2, comme pour le portefeuille réel (les montants restent hors du journal
   insertion seule. La base impose l'unicité de `intent_id`, qui sert d'identifiant client de
   l'ordre : un renvoi ne crée jamais un second ordre.
 - **Journal** : chaque transition écrit `ORDER_STATE` avec `intent_id`, état, raison et SHA-256 de
-  l'intention.
+  l'intention. Seule exception, l'annulation groupée du kill switch (ADR-034) : une transaction et
+  une entrée `ORDER_STATE` qui liste chaque ordre (`intent_id` et SHA-256), tout ou rien. Avec un
+  journal à environ 5 ms l'entrée, 1 000 entrées séparées dépasseraient la cible de 5 s.
 - **Contrôles d'exécution** : la quantité exécutée cumulée ne dépasse jamais la quantité de l'ordre ;
   une exécution d'un ordre inconnu est un incident.
 - **Glissement réel** : écart entre le prix d'exécution et le prix de décision, en points de base,
