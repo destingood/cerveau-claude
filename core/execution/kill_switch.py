@@ -6,8 +6,9 @@ action at N0 (:func:`core.policy.engine.decide`), and so does every reader of th
 at best and reports it: a ``KILL`` audit entry, the cancellation of every open order at the
 adapter with retries bounded by the target, the book's moves to ANNULEE in one transaction, the
 refusal of every open approval request (ADR-035), a state file, a second ``KILL`` entry with the
-measured duration, and an incident report in French in ``var/incidents/``. A step that fails goes
-to the report, never stops the rest: R4 comes first.
+measured duration, an incident report in French in ``var/incidents/``, then the alerts, once the
+stop is in force (ADR-038, B172). A step that fails goes to the report, never stops the rest: R4
+comes first.
 An order whose cancellation is not confirmed stays open in the book, marked as such in the
 journal, the state and the report, until a reconciliation settles it.
 
@@ -37,6 +38,7 @@ from core.execution.broker import BrokerAdapter
 from core.execution.reconcile import interactive_terminal
 from core.execution.states import OrderState
 from core.finance.model import utc_text
+from core.notify.alerts import Alerts, stop_alerts
 from core.policy.engine import KILL_SWITCH_FILE, kill_switch_engaged
 from core.risk_gate.snapshot import Account
 
@@ -81,6 +83,7 @@ class Stop:
     target_s: float | None  # None while kill_switch.target_seconds is A_DEFINIR
     report: Path | None = field(default=None)
     approvals_refused: tuple[UUID, ...] = ()  # open approval requests moved to REFUSEE
+    alerts_failed: tuple[str, ...] = ()  # "<channel> : <error type>": the stop holds anyway
 
     @property
     def within_target(self) -> bool | None:
@@ -268,6 +271,7 @@ def engage(
     adapter: BrokerAdapter | None = None,
     book: OrderBook | None = None,
     approvals: ApprovalStore | None = None,
+    alerts: Alerts | None = None,
     versions: Mapping[str, str] | None = None,
     unavailable: Sequence[str] = (),
     clock: Callable[[], float] = time.monotonic,
@@ -282,6 +286,8 @@ def engage(
     the adapter confirms its cancellation, or when it was VALIDEE and the reachable adapter does
     not work it (it was never sent); any other open order stays open, and its cancellation is
     unconfirmed. Every open approval request is refused: none outlives the stop (ADR-035).
+    ``alerts`` then sends the stop and each unconfirmed cancellation; a channel that fails is
+    journaled and reported, and the stop stands (ADR-038).
     """
     start = clock()
     deadline = None if target_seconds is None else start + target_seconds
@@ -385,6 +391,19 @@ def engage(
             report.write_text(render_report(stop), encoding="utf-8")
         except OSError as exc:  # the stop is in force: the journal entry above says so
             stop = replace(stop, errors=(*stop.errors, _failure("rapport non écrit", exc)))
+    if alerts is not None:
+        try:
+            failed = alerts.send(
+                stop_alerts(trigger, request_id, stop.unconfirmed, now),
+                journal=journal,
+                actor="policy",
+                request_id=request_id,
+                versions=versions,
+                now=now,
+            )
+        except Exception as exc:  # an alert never holds a stop (R4)
+            failed = (f"alertes : {type(exc).__name__}",)
+        stop = replace(stop, alerts_failed=failed)
     return stop
 
 

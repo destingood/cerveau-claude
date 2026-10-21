@@ -9,6 +9,7 @@ from typing import TYPE_CHECKING, Annotated, NoReturn
 import typer
 
 from core.config import BlockedFeatureError, ConfigError, load_config
+from core.notify import Alerts, alerts_from
 
 if TYPE_CHECKING:
     from core.config.loader import Config
@@ -46,6 +47,14 @@ def load(config_dir: Path | None) -> Config:
 
 def blocked(exc: BlockedFeatureError) -> NoReturn:
     fail(f"Bloqué (R7) : {exc}. Voir `cerveau config check`.", EXIT_BLOCKED)
+
+
+def alert_channels(config: Config | None, root: Path) -> Alerts:
+    """The configured alert channels; each one that is off is said on stderr (ADR-038)."""
+    alerts, notes = alerts_from(config, root, os.environ)
+    for note in notes:
+        typer.echo(f"AVERTISSEMENT : {note}", err=True)
+    return alerts
 
 
 def var_path(path: Path | None, default: Path, *, option: str, outside: bool) -> Path:

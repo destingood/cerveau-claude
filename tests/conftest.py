@@ -19,6 +19,13 @@ def _no_langfuse(monkeypatch: pytest.MonkeyPatch) -> None:
         monkeypatch.delenv(name)
 
 
+@pytest.fixture(autouse=True)
+def _no_ntfy(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Lucas's NTFY_TOPIC and NTFY_TOKEN never reach a test: no alert leaves a test run."""
+    for name in ("NTFY_TOPIC", "NTFY_TOKEN"):
+        monkeypatch.delenv(name, raising=False)
+
+
 QUESTIONS_XML = (
     "<evaluation>\n"
     + "".join(

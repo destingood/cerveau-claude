@@ -976,7 +976,7 @@ def test_cerveau_kill_takes_a_journal_under_var_or_with_the_option(
     extra = () if under_var else ("--hors-var",)
     result = kill(config_dir, "--journal", str(journal), *extra)
     assert result.exit_code == 0, result.output
-    assert "AVERTISSEMENT" not in result.stderr and journal.is_file()
+    assert "AVERTISSEMENT (B103)" not in result.stderr and journal.is_file()
 
 
 def test_cerveau_rearm_refuses_a_journal_outside_var(home: Path, tmp_path: Path) -> None:

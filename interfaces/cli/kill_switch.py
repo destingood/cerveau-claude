@@ -1,7 +1,8 @@
 """`cerveau kill` and `cerveau rearm`: the kill switch by hand (R4, D12, ADR-034).
 
 ``kill`` never refuses: a configuration, a book, a simulator or an approval store that cannot be
-read is reported, and the stop goes on without it; every open approval request is refused.
+read is reported, and the stop goes on without it; every open approval request is refused, then
+the stop is alerted on the configured channels (ADR-038), whose failures never change the exit.
 ``rearm`` is Lucas's alone, at an interactive terminal; Claude Code's hooks refuse it (ADR-034).
 """
 
@@ -32,12 +33,14 @@ from core.execution.kill_switch import (
 )
 from core.execution.paper import PaperSettings, PaperSimulator, default_simulator_path
 from core.execution.reconcile import interactive_terminal
+from core.notify import Alerts
 from interfaces.cli.common import (
     EXIT_BLOCKED,
     EXIT_ERROR,
     ConfigDirOpt,
     JournalOpt,
     OutsideVarOpt,
+    alert_channels,
     fail,
     var_path,
 )
@@ -50,14 +53,15 @@ ReasonOpt = Annotated[
 
 def _settings(
     root: Path, config_dir: Path, unavailable: list[str]
-) -> tuple[float | None, PaperSettings | None, ApprovalRules | None]:
-    """The target, the paper settings and the approval rules, None for what is unknown; a paper
-    account or an approval store that exists but cannot be opened goes in ``unavailable``."""
+) -> tuple[float | None, PaperSettings | None, ApprovalRules | None, Alerts]:
+    """The target, the paper settings, the approval rules, None for what is unknown, and the
+    alert channels; a paper account or an approval store that exists but cannot be opened goes in
+    ``unavailable``."""
     try:
         config = load_config(config_dir)
     except ConfigError:
         unavailable.append("configuration invalide : cible, compte paper et approbations inconnus")
-        return None, None, None
+        return None, None, None, alert_channels(None, root)
     target = config.risk.kill_switch.target_seconds
     settings: PaperSettings | None = None
     try:
@@ -73,7 +77,8 @@ def _settings(
     except ApprovalError as exc:
         if approvals_path(root).is_file():
             unavailable.append(f"registre des approbations non ouvert ({exc})")
-    return (None if isinstance(target, str) else float(target)), settings, rules
+    target_s = None if isinstance(target, str) else float(target)
+    return target_s, settings, rules, alert_channels(config, root)
 
 
 def _seconds(value: float, spec: str) -> str:
@@ -101,6 +106,8 @@ def _summary(stop: Stop) -> None:
         typer.echo(f"ALERTE : ordre {key} annulé chez le courtier, absent du carnet", err=True)
     for error in stop.errors:
         typer.echo(f"ERREUR : {error}", err=True)
+    for failure in stop.alerts_failed:
+        typer.echo(f"AVERTISSEMENT : alerte non envoyée ({failure})", err=True)
 
 
 def _kill_journal(root: Path, journal: Path | None, outside: bool) -> Path:
@@ -131,7 +138,7 @@ def kill_command(
     request_id = f"kill-{uuid.uuid4().hex[:12]}"
     audit = AuditJournal(_kill_journal(root, journal, outside))
     unavailable: list[str] = []
-    target, settings, rules = _settings(root, config_dir or root / "config", unavailable)
+    target, settings, rules, alerts = _settings(root, config_dir or root / "config", unavailable)
     with ExitStack() as stack:
         book: OrderBook | None = None
         if default_book_path(root).is_file():
@@ -173,6 +180,7 @@ def kill_command(
             adapter=adapter,
             book=book,
             approvals=approvals,
+            alerts=alerts,
             unavailable=unavailable,
         )
     _summary(stop)

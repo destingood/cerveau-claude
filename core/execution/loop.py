@@ -11,7 +11,7 @@ gate and send the day's intents.
    the kill switch is then tripped (``perte_donnees``);
 3. the reconciliation (:func:`core.execution.reconcile.settle`), then the book follows the
    simulator: an order it no longer works expired with its session; an incident trips the kill
-   switch (``incident_execution``);
+   switch (``incident_execution``); a gap is alerted (ADR-038);
 4. the freshness of the market data the account depends on: a held or working instrument without
    a close younger than ``max_staleness_sessions`` trips the kill switch (``perte_donnees``);
 5. the valuation, recorded once a day in ``var/paper/loop.db``, and the loss limits
@@ -75,6 +75,7 @@ from core.finance.research.copilot import decision_day
 from core.finance.schema import migrate
 from core.finance.store import FinanceStore
 from core.governance.signatures import effective_autonomy
+from core.notify.alerts import Alert, Alerts
 from core.policy.engine import decide_order, kill_switch_engaged
 from core.risk_gate.gate import Result, RiskGateResult, evaluate
 from core.risk_gate.snapshot import Account, GateSnapshot
@@ -314,6 +315,7 @@ class PaperDay:
     sources: Sequence[IntentSource] = ()
     ids: Callable[[], UUID] = uuid7
     approvals: ApprovalStore | None = None  # where an N3 intent waits for Lucas (ADR-036)
+    alerts: Alerts | None = None  # ntfy and Discord (ADR-038); None: journal and console only
 
 
 @dataclass(frozen=True)
@@ -398,10 +400,26 @@ def _engage(env: PaperDay, report: DayReport, trigger: Trigger, reason: str) -> 
         adapter=env.simulator,
         book=env.book,
         approvals=env.approvals,
+        alerts=env.alerts,
         versions=_versions(env),
     )
     report.outcome = "arret"
     return report
+
+
+def _alert(env: PaperDay, report: DayReport, alert: Alert) -> None:
+    """An alert that does not leave is a note of the day, never a stop (ADR-038)."""
+    if env.alerts is None:
+        return
+    failed = env.alerts.send(
+        [alert],
+        journal=env.journal,
+        actor=BOOK_ACTOR,
+        request_id=env.request_id,
+        versions=_versions(env),
+        now=report.as_of,
+    )
+    report.notes.extend(f"alerte non envoyée ({failure})" for failure in failed)
 
 
 def _due(env: PaperDay, day: date, now: datetime) -> dict[date, list[BrokerOrder]]:
@@ -824,6 +842,8 @@ def _run(env: PaperDay, report: DayReport) -> DayReport:
         return _engage(env, report, "incident_execution", f"{exc.kind} : {exc}")
     except _DataLoss as exc:
         return _engage(env, report, "perte_donnees", str(exc))
+    if report.reconciliation is not None and not report.reconciliation.clean:
+        _alert(env, report, Alert.of("ecart_reconciliation", env.request_id, now))
 
     statement = env.simulator.account_snapshot()
     exposed, read = _symbols(env, statement)

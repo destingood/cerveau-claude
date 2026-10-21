@@ -2,9 +2,11 @@
 
 ``BudgetGate.check`` runs before every request. It is blocked while a budget holds a marker
 (R7), journals each alert threshold of ``alerts_pct`` once per period as a ``POLICY`` entry,
-and refuses any new request once a budget is reached (100 %, D9). Phase 1 implements only the
-refusal: ``downgrade_to_fast_or_local`` and ``stop_non_critical_tasks`` are in the backlog, so a
-reached budget refuses whatever ``on_exceeded`` lists. The check happens before a request, so
+sends it as an alert when channels are given (B46, ADR-038: the period and the percentage, never
+an amount), and refuses any new request once a budget is reached (100 %, D9). Phase 1
+implements only the refusal: ``downgrade_to_fast_or_local`` and ``stop_non_critical_tasks`` are
+in the backlog, so a reached budget refuses whatever ``on_exceeded`` lists. The check happens
+before a request, so
 the overshoot is at most the cost of one request, itself bounded by ``RequestBudget``.
 
 Two requests started at the same instant may both pass the gate or both journal an alert:
@@ -25,6 +27,7 @@ from core.budget.ledger import ALERT_KEY, Spending, read_spending
 from core.config.loader import Config, PerRequest
 from core.learning.errors import budget_error, journal_errors
 from core.models.meter import Meter
+from core.notify.alerts import Alert, Alerts, budget_severity
 
 Period = Literal["jour", "mois"]
 Limit = Literal["tool_calls", "tokens", "seconds"]
@@ -56,6 +59,11 @@ class BudgetAlert:
             "spent_eur": str(self.spent_eur),
             "limit_eur": str(self.limit_eur),
         }
+
+    def alert(self, at: datetime) -> Alert:
+        """The alert of this threshold: the period and the percentage, never an amount (D14)."""
+        ref = f"{self.period}-{self.period_key}-{self.pct}"
+        return Alert.of("budget", ref, at, budget_severity(self.pct))
 
     def message(self) -> str:
         return (
@@ -95,10 +103,18 @@ class BudgetExceededError(Exception):
 
 
 class BudgetGate:
-    def __init__(self, config: Config, journal: AuditJournal, *, tz: tzinfo | None = None) -> None:
+    def __init__(
+        self,
+        config: Config,
+        journal: AuditJournal,
+        *,
+        tz: tzinfo | None = None,
+        alerts: Alerts | None = None,
+    ) -> None:
         self._config = config
         self._journal = journal
         self._tz = tz  # None: the machine's local time
+        self._alerts = alerts  # None: the journal and the console only
 
     def _limits(self) -> tuple[Decimal, Decimal]:
         self._config.require("budgets")  # a marker blocks every request (R7)
@@ -139,6 +155,15 @@ class BudgetGate:
                 now=now,
             )
             journaled.append(alert)
+        if journaled and self._alerts is not None:  # never refuses for an alert (ADR-038)
+            self._alerts.send(
+                [alert.alert(now) for alert in journaled],
+                journal=self._journal,
+                actor="policy",
+                request_id=request_id,
+                versions={"config": self._config.digest},
+                now=now,
+            )
         check = BudgetCheck(
             check.spending,
             check.daily_limit_eur,

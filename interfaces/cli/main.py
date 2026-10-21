@@ -23,6 +23,7 @@ from core.finance.research.registry import RegistryError
 from core.governance.signatures import effective_autonomy, promoted_domains
 from core.learning import FeedbackError, default_feedback_path, give_feedback
 from core.learning.feedback import NotePseudonymiser
+from core.notify import alerts_from
 from core.observability import build_tracer
 from core.registry import validate_all, validate_plugin
 from interfaces.cli import evaluate
@@ -85,7 +86,8 @@ def missing_keys(names: tuple[str, ...]) -> list[str]:
 def build_orchestrator(config: Config, root: Path, tracer: Tracer | None = None) -> Orchestrator:
     from core.orchestrator.graph import Orchestrator  # langgraph and spaCy load only for `ask`
 
-    return Orchestrator(config, project_root=root, tracer=tracer)
+    alerts, _ = alerts_from(config, root, os.environ)  # `cerveau config check` says what is off
+    return Orchestrator(config, project_root=root, tracer=tracer, alerts=alerts)
 
 
 def _decimal(value: object, places: int) -> str:
@@ -334,7 +336,8 @@ def _open_campaign(config: Config, root: Path, campaign: str, suites: list[Path]
     journal = AuditJournal(default_journal_path(root))
     request_id = f"eval-{campaign}"
     try:
-        check = BudgetGate(config, journal).check(request_id=request_id)
+        alerts, _ = alerts_from(config, root, os.environ)
+        check = BudgetGate(config, journal, alerts=alerts).check(request_id=request_id)
     except BlockedFeatureError as exc:
         _blocked(exc)
     except BudgetExceededError as exc:
@@ -454,6 +457,11 @@ def config_check(
         typer.echo(f"  · {domain} : écrit {spec.level}, effectif {level}{signed}")
     for problem in effective.problems:
         typer.echo(f"  ⚠ signature ignorée : {problem}")
+    alerts, notes = alerts_from(config, project_root(), os.environ)
+    channels = ", ".join(c.channel for c in alerts.channels) or "aucun (journal et console)"
+    typer.echo(f"\nCanaux d'alerte (ADR-038) : {channels}")
+    for note in notes:
+        typer.echo(f"  ⚠ {note}")
     try:
         count, refusals = registry_errors(project_root())
     except RegistryError as exc:

@@ -61,6 +61,7 @@ from interfaces.cli.common import (
     ConfigDirOpt,
     JournalOpt,
     OutsideVarOpt,
+    alert_channels,
     fail,
     load,
     project_root,
@@ -186,6 +187,7 @@ def _open_day(
         log=stack.enter_context(LoopLog.open(default_loop_path(root))),
         journal=audit,
         request_id=request_id,
+        alerts=alert_channels(config, root),
     )
 
 

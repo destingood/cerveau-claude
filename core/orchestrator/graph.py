@@ -37,6 +37,7 @@ from core.config.loader import Config
 from core.guardrails.pii import PiiAnalyzer, Pseudonymiser
 from core.learning.errors import decision_errors, journal_errors
 from core.models.router import ModelRouter
+from core.notify.alerts import Alerts
 from core.observability.tracing import NoTracer, Tracer
 from core.orchestrator.answer import map_texts, output_node, render_json, render_markdown
 from core.orchestrator.intake import KILL_MESSAGE, context_node, guard_node, route_node
@@ -417,6 +418,7 @@ class Orchestrator:
         budget_clock: Callable[[], float] | None = None,
         tz: tzinfo | None = None,
         committees: Mapping[str, CommitteeSpec] | None = None,  # pack → spec; None: its agent
+        alerts: Alerts | None = None,  # budget thresholds (B46); None: journal and console only
     ) -> None:
         self.config = config
         self.project_root = project_root
@@ -431,6 +433,7 @@ class Orchestrator:
         self._clock = clock or (lambda: datetime.now().astimezone())
         self._budget_clock = budget_clock
         self._tz = tz
+        self.alerts = alerts
         self._analyzer: PiiAnalyzer | None = None
         self._committees: dict[str, CommitteeSpec | None] = dict(committees or {})
         self._given_committees = committees is not None
@@ -462,7 +465,7 @@ class Orchestrator:
     ) -> RunResult:
         request_id = request_id or str(uuid.uuid4())
         now = self._clock()
-        gate = BudgetGate(self.config, self.journal, tz=self._tz)
+        gate = BudgetGate(self.config, self.journal, tz=self._tz, alerts=self.alerts)
         alerts = tuple(a.message() for a in gate.check(now=now, request_id=request_id).highest())
         meter = self.router.new_meter()
         clock = {"clock": self._budget_clock} if self._budget_clock is not None else {}
