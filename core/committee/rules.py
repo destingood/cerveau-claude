@@ -40,6 +40,10 @@ _SOURCE = re.compile(r"^source \[([1-9][0-9]*)\]$")
 QUESTION = "question"  # origins of the evidence the code writes: Lucas's question, the date
 TODAY = "date du jour"
 NO_CATALYST = "décision « agir » sans catalyseur : aucune intention d'ordre n'en naîtra (ADR-029)"
+# A decision to act has no size until its intents exist: the Risk Gate measures each one (B108).
+SIZE_PENDING = (
+    "proposition sans ordre chiffré : la taille s'évaluera sur l'intention structurée (B108)"
+)
 
 
 @dataclass(frozen=True)

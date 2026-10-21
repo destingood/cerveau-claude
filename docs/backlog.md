@@ -169,6 +169,7 @@ reporté (phase 3 : décision D23 de `docs/plans/phase-3-plan.md`).
 | B172 | Alerte ntfy d'un arrêt du kill switch et d'une annulation non confirmée ; aujourd'hui journal, console et rapport (D13) | ADR-034, plan phase 4 D13 | ? |
 | B173 | Étendre l'ACL de `protect-live.ps1` à `governance/kill_switch/` (suppression de `KILL` refusée au compte de Claude Code) et à `var/incidents/` ; les hooks ne sont qu'un confort | R4, ADR-034, ADR-003 | ? |
 | B174 | Catalyseur : faire d'un « agir » sans catalyseur une faute réparée (comme une invalidation manquante) plutôt qu'un blocage, une fois le golden `comite-agir-taille-inconnue` corrigé dans une PR dédiée que Lucas valide (R9) ; aujourd'hui la proposition est BLOQUER et aucune intention d'ordre n'en naît | `core/committee/rules.py`, ADR-029, `evals/behaviors/finance_comite.yaml` | ? |
+| B175 | Rédacteur d'intentions : (1) calibrer les tables horizon (92, 365, 3 650 jours) et confiance (0,17, 0,5, 0,83) du gestionnaire, conventions posées sans données ; (2) garder dans la séance du Comité la charge complète de `rebalance_proposal`, pour que le rédacteur la relise au lieu de la recalculer et de la comparer aux chiffres et aux textes lus | `core/execution/drafter.py`, `core/committee/engine.py`, ADR-029 | ? |
 
 ## Évaluations
 | # | Élément | Origine | Phase |

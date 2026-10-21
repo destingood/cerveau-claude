@@ -9,6 +9,7 @@ from typing import Any
 
 import pytest
 import yaml
+from pydantic import ValidationError
 
 from core.audit import AuditJournal
 from core.finance.research.registry import (
@@ -147,8 +148,12 @@ def test_a_missing_class_or_module_is_refused() -> None:
 DAY = date(2026, 10, 20)
 
 
+# What every intent of a candidate carries (ADR-029).
+CARRIED = {"invalidation": "La règle perd sur 60 séances glissantes.", "horizon_jours": 60}
+
+
 def candidate(**changes: Any) -> StrategySpec:
-    return spec_with(statut="candidate", donnees="reelles", **changes)
+    return spec_with(**{"statut": "candidate", "donnees": "reelles", **CARRIED, **changes})
 
 
 def approve(directory: Path, spec: StrategySpec, report: str, **changes: str) -> None:
@@ -198,6 +203,25 @@ def test_a_valid_candidate_passes(tmp_path: Path) -> None:
     assert promotion_errors(spec, root=REPO, approvals=tmp_path / "approvals", local=local) == []
     # Without a local base, only the approval and the fingerprints are checked.
     assert promotion_errors(spec, root=REPO, approvals=tmp_path / "approvals") == []
+
+
+@pytest.mark.parametrize("name", ["invalidation", "horizon_jours"])
+def test_a_candidate_must_carry_what_its_intents_need(tmp_path: Path, name: str) -> None:
+    spec = candidate(**{name: None})
+    sha = report(tmp_path / "reports", stamp(spec))
+    approve(tmp_path / "approvals", spec, sha)
+    [error] = promotion_errors(spec, root=REPO, approvals=tmp_path / "approvals")
+    assert error == (
+        f"{spec.id} (candidate) : {name} absent, que porte chaque intention d'ordre (ADR-029)"
+    )
+    # Outside the grid, they change no fingerprint: an approval stays valid when they are added.
+    assert grid_sha256(spec) == grid_sha256(candidate())
+
+
+@pytest.mark.parametrize("value", [0, 3651])
+def test_the_horizon_of_a_strategy_is_bounded(value: int) -> None:
+    with pytest.raises(ValidationError):
+        candidate(horizon_jours=value)
 
 
 def test_a_candidate_without_a_readable_approval_is_refused(tmp_path: Path) -> None:

@@ -28,6 +28,7 @@ from pydantic import BaseModel, ConfigDict, Field, ValidationError, model_valida
 
 from core.audit import AuditError, AuditJournal
 from core.config.loader import Marker
+from core.execution.intent import MAX_HORIZON_DAYS
 from core.finance.model import (
     ParamName,
     ParamValue,
@@ -97,6 +98,9 @@ class StrategySpec(_Strict):
         dict[ParamName, Annotated[list[ParamValue], Field(min_length=1)]], Field(min_length=1)
     ]
     contraintes: list[Constraint] = []
+    # What a candidate's order intents carry (ADR-029): outside the grid, they change no result.
+    invalidation: Text | None = None
+    horizon_jours: Annotated[int, Field(ge=1, le=MAX_HORIZON_DAYS)] | None = None
 
     @model_validator(mode="after")
     def _coherent(self) -> StrategySpec:
@@ -334,13 +338,18 @@ def promotion_errors(
     if spec.statut != "candidate":
         return []
     where = f"{spec.id} (candidate)"
+    card = [
+        f"{where} : {name} absent, que porte chaque intention d'ordre (ADR-029)"
+        for name in ("invalidation", "horizon_jours")
+        if getattr(spec, name) is None
+    ]
     try:
         approval = load_approval(spec, root / approvals)
     except RegistryError as exc:
-        return [f"{where} : {exc}"]
+        return [*card, f"{where} : {exc}"]
     if approval is None:
-        return [f"{where} : aucune approbation dans {approvals.as_posix()}/{spec.id}.yaml"]
-    errors: list[str] = []
+        return [*card, f"{where} : aucune approbation dans {approvals.as_posix()}/{spec.id}.yaml"]
+    errors: list[str] = card
     if approval.strategie != spec.id:
         errors.append(f"{where} : l'approbation porte sur {approval.strategie}")
     code, grid = code_sha256(spec, root), grid_sha256(spec)

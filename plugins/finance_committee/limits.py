@@ -20,7 +20,7 @@ from collections.abc import Sequence
 from typing import get_args
 
 from core.committee.engine import LimitChecks
-from core.committee.rules import LimitCheck
+from core.committee.rules import SIZE_PENDING, LimitCheck
 from core.committee.schemas import Choice, ManagerDecision
 from core.config.loader import Marker, PaperRiskLimits
 from core.verification.trace import ToolOutput
@@ -28,7 +28,7 @@ from core.verification.trace import ToolOutput
 LIMITS_FILE = "config/risk_limits.paper.yaml"
 CHECKED: tuple[str, ...] = tuple(name for name in PaperRiskLimits.model_fields if name != "allow")
 _MARKERS = frozenset(get_args(Marker))
-NO_SIZE = "proposition sans ordre chiffré : la taille s'évaluera sur l'intention structurée (B108)"
+NO_SIZE = SIZE_PENDING  # the drafter lifts this reason once the Risk Gate measures each intent
 
 
 def check_limit(name: str, value: object, decision: Choice) -> LimitCheck:

@@ -70,3 +70,29 @@ Option 3.
   réparation, une fois ce cas corrigé dans une PR validée par Lucas, est inscrit au backlog (B174).
 - La fiche du gestionnaire demande le catalyseur : la version du Comité change et les évals sont
   relancées (R9). Deux cas de comportement s'ajoutent, avec et sans catalyseur.
+- **Rédacteur** (`core/execution/drafter.py`, B108) : il reçoit des ordres cibles (instrument,
+  quantité signée entière, appel qui l'a calculée) et le snapshot de la Porte. Le prix limite est le
+  dernier cours de ce snapshot, déplacé de `limit_offset_pct` vers l'exécution, arrondi au centime du
+  côté prudent (vers le bas à l'achat, vers le haut à la vente), puis vérifié avec la formule de la
+  bande de la Porte : le cours cité est donc celui que la Porte contrôle, publié avant la décision
+  (R10). Un offset ou une bande à `A_DEFINIR`, un offset supérieur à la bande, un instrument en
+  double, une quantité nulle, un référentiel ou un cours absent, un prix hors bande : aucune
+  intention n'est rédigée (échec fermé, tout le lot ou rien). Un cours au-delà du centime peut
+  donner un achat limité sous le dernier cours ; c'est l'arrondi prudent, voulu.
+- **Source stratégie** : seule une `candidate` rédige. `promotion_errors` refuse une `candidate`
+  sans `invalidation` ni `horizon_jours` (1 à 3 650 jours), champs hors de l'empreinte de la grille.
+  Le catalyseur est écrit par le code : « Signal de la règle … à la clôture du JJ/MM/AAAA ».
+- **Source Comité** : seule une séance conclue sur « agir », sans autre blocage que la taille, rédige.
+  La raison `SIZE_PENDING` des contrôles du Comité est levée, puisque la Porte mesure chaque
+  intention ; une limite inconnue, un contrôleur qui bloque ou l'absence de catalyseur bloquent
+  toujours. Les quantités sont celles de `rebalance_proposal` : la séance ne garde que les chiffres
+  et les textes de l'appel, si bien que l'appelant recalcule la proposition avec les mêmes entrées,
+  et le rédacteur exige qu'elle donne exactement les chiffres et les textes lus par la séance. Une
+  proposition sans opérations (coûts à `A_DEFINIR`, D13) ne rédige rien.
+- **Catégories en nombres [Hypothèse]** : horizon court = 92 jours, moyen = 365, long = 3 650
+  (borne haute de chaque classe) ; confiance faible = 0,17, moyenne = 0,5, élevée = 0,83 (centre de
+  chaque tiers de [0, 1]). Une stratégie en paper n'a rien prouvé : sa confiance vaut « faible ».
+  Ces tables sont des conventions à revoir par Lucas (B175).
+- **Textes** : une intention garde 400 caractères par champ ; un texte plus long (proposition jusqu'à
+  600, invalidations jointes par « ; ») est coupé sur un mot avec « … ». Le texte entier reste dans
+  la fiche de stratégie ou le compte rendu de séance, que l'origine de l'intention nomme.
