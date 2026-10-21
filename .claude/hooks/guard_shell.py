@@ -5,7 +5,9 @@ forced, `--force`, hook bypasses (R6), any command that writes, moves or changes
 permissions of a protected path (redirection, tee, sed -i, mv, cp, chmod, chown, icacls...)
 and any read of `.env` or `secrets/`. The kill switch (R4, ADR-034): `cerveau rearm`, and any
 command that removes, moves or rewrites governance/kill_switch/KILL or one of its folders, are
-refused; creating an absent KILL stays allowed, since it stops CERVEAU.
+refused; creating an absent KILL stays allowed, since it stops CERVEAU. Approvals (D2, D18,
+D22): `cerveau approvals enroll`, any write under var/approvals, and starting the Discord bot
+(anything but its tests, installation or inspection) are refused.
 
 The shell grammar is approximated on purpose: ambiguous constructs are refused rather than
 guessed. This is a convenience guard-rail; the effective protection of config/live.yaml
@@ -84,12 +86,27 @@ UV_VALUE_OPTS = frozenset(
         "--overrides", "--torch-backend",
     }
 )  # fmt: skip
-# A segment that names `rearm` and launches one of these, or a dynamic command, is refused.
-REARM_LAUNCHERS = frozenset(
+# A segment that names a reserved subcommand and launches one of these, or a dynamic command,
+# is refused.
+RESERVED_LAUNCHERS = frozenset(
     {"cerveau", "uv", "uvx", "winpty", "start-process", "saps", "start", "start-job"}
 )
-# Tools that `uv run` may launch with `rearm` as a mere argument (`pytest -k rearm`).
-REARM_SAFE = frozenset({"pytest", "ruff", "mypy", "coverage", "pre-commit", "pip-audit"})
+# Tools that `uv run` may launch with a reserved word as a mere argument (`pytest -k rearm`).
+RESERVED_SAFE = frozenset({"pytest", "ruff", "mypy", "coverage", "pre-commit", "pip-audit"})
+# The Discord bot is started by Lucas alone (D22): these launch it, or a script that does.
+BOT_DIR = "interfaces/discord_bot"
+BOT_LAUNCHERS = frozenset(
+    {
+        "node", "npm", "pnpm", "yarn", "bun", "deno", "tsx", "nodemon", "pm2", "start-process",
+        "saps", "start", "start-job",
+    }
+)  # fmt: skip
+PACKAGE_MANAGERS = frozenset({"npm", "pnpm", "yarn", "bun"})
+# Package-manager subcommands that test, install or inspect without starting the bot.
+PACKAGE_SAFE = frozenset(
+    {"test", "t", "ci", "install", "i", "ls", "list", "audit", "view", "outdated", "why"}
+)
+PACKAGE_VALUE_OPTS = frozenset({"--prefix", "-C", "--cwd", "--dir", "--workspace", "-w"})
 LINK_TYPES = ("symboliclink", "junction", "hardlink")
 SHELLS = frozenset({"bash", "sh", "zsh", "dash", "ksh", "fish"})
 PS_SHELLS = frozenset({"pwsh", "powershell"})
@@ -130,7 +147,13 @@ ICACLS_WRITE = (
     "/inheritance", "/restore", "/substitute",
 )  # fmt: skip
 NULL_SINKS = frozenset({"/dev/null", "nul", "nul:", "$null"})
-WRITE_PROTECTED_NAMES = ("live.yaml", "governance/approvals", "var/audit", "var/incidents")
+WRITE_PROTECTED_NAMES = (
+    "live.yaml",
+    "governance/approvals",
+    "var/approvals",
+    "var/audit",
+    "var/incidents",
+)
 KILL_NAMES = ("governance/kill_switch", "kill_switch/kill")
 # Commands that only create the file they name: allowed on KILL while it is absent (R4).
 KILL_CREATORS = frozenset(
@@ -138,9 +161,14 @@ KILL_CREATORS = frozenset(
 )
 UNKNOWN_CWD_CANDIDATES = (
     "config", "governance", "governance/approvals", "governance/kill_switch", "var",
-    "var/audit", "var/incidents", "infra", "secrets",
+    "var/approvals", "var/audit", "var/incidents", "infra", "secrets",
 )  # fmt: skip
 REARM_REFUSAL = "cerveau rearm est réservé à Lucas (R4, ADR-034) : Claude Code ne réarme jamais"
+ENROLL_REFUSAL = (
+    "cerveau approvals enroll est réservé à Lucas (D2, D18) : Claude Code n'enrôle jamais de secret"
+)
+RESERVED_REFUSALS = {"rearm": REARM_REFUSAL, "enroll": ENROLL_REFUSAL}
+BOT_REFUSAL = "le bot Discord n'est lancé que par Lucas (D22) : Claude Code ne le démarre jamais"
 GIT_STASH_UNTRACKED = ("--include-untracked", "--all")
 
 _ASSIGNMENT = re.compile(r"^[A-Za-z_][A-Za-z0-9_]*\+?=")
@@ -152,8 +180,8 @@ _HOOK_BYPASS_ENV = re.compile(
     re.IGNORECASE,
 )
 _SED_WRITE_COMMAND = re.compile(r"(^|[/;}\s])[wW]\s+\S|(^|[/;}\s])e(\s|$)")
-_REARM = re.compile(r"(?<![\w-])rearm(?![\w-])", re.IGNORECASE)
-_CERVEAU_CODE = re.compile(r"cerveau|interfaces|kill_switch", re.IGNORECASE)
+_RESERVED = re.compile(r"(?<![\w-])(rearm|enroll)(?![\w-])", re.IGNORECASE)
+_CERVEAU_CODE = re.compile(r"cerveau|interfaces|kill_switch|approvals", re.IGNORECASE)
 
 
 # --- tokenizer ---------------------------------------------------------------------------------
@@ -971,27 +999,73 @@ def _words(tokens: list[str]) -> set[str]:
     return {w.lower() for w in words if w}
 
 
-def check_rearm(seg: Segment, tokens: list[str], cmd: str) -> str | None:
-    """`cerveau rearm` is Lucas's alone (R4, ADR-034), however it is launched: through uv and
-    its options, winpty, Start-Process, a variable or the module path all count."""
+def check_reserved(seg: Segment, tokens: list[str], cmd: str) -> str | None:
+    """`cerveau rearm` (R4, ADR-034) and `cerveau approvals enroll` (D2, D18) are Lucas's alone,
+    however they are launched: through uv and its options, winpty, Start-Process, a variable or
+    the module path all count."""
     if cmd in INTERPRETERS:
         text = seg.raw + "\n" + seg.heredoc
-        hit = bool(_REARM.search(text) and _CERVEAU_CODE.search(text))
-        return REARM_REFUSAL if hit else None
+        found = _RESERVED.search(text)
+        hit = found is not None and bool(_CERVEAU_CODE.search(text))
+        return RESERVED_REFUSALS[found.group(1).lower()] if found and hit else None
     words = _words(tokens)
-    if "rearm" not in words:
+    reserved = sorted(words & RESERVED_REFUSALS.keys())
+    if not reserved:
         return None
     names = {basename(w) for w in words}
     launched = (
-        cmd in REARM_LAUNCHERS
-        or cmd == "rearm"  # `& (Get-Command cerveau) rearm` splits at the parentheses
+        cmd in RESERVED_LAUNCHERS
+        or cmd in RESERVED_REFUSALS  # `& (Get-Command cerveau) rearm` splits at the parentheses
         or is_dynamic(cmd)
         or bool(_CERVEAU_CODE.search(cmd))
         or "cerveau" in names
         or any(is_dynamic(name) or "interfaces.cli" in name for name in names)
-        or (bool(names & REARM_LAUNCHERS) and cmd not in REARM_SAFE)
+        or (bool(names & RESERVED_LAUNCHERS) and cmd not in RESERVED_SAFE)
     )
-    return REARM_REFUSAL if launched else None
+    return RESERVED_REFUSALS[reserved[0]] if launched else None
+
+
+def _package_words(args: list[str]) -> list[str]:
+    """Positional words of a package-manager command, option values skipped, lower case."""
+    words: list[str] = []
+    skip = False
+    for arg in args:
+        if skip:
+            skip = False
+        elif arg in PACKAGE_VALUE_OPTS:
+            skip = True
+        elif not arg.startswith("-"):
+            words.append(arg.lower())
+    return words
+
+
+def _bot_safe(cmd: str, args: list[str]) -> bool:
+    """`node --test` on test files, or a package manager that tests, installs or inspects."""
+    if cmd == "node":
+        files = [a.lower() for a in args if not a.startswith("-")]
+        return "--test" in args and all("test" in f for f in files)
+    if cmd in PACKAGE_MANAGERS:
+        words = _package_words(args)
+        if words[:2] == ["run", "test"]:
+            return True
+        return bool(words) and words[0] in PACKAGE_SAFE
+    return False
+
+
+def check_bot_launch(seg: Segment, tokens: list[str], cmd: str, ctx: Context) -> str | None:
+    """The Discord bot is started by Lucas alone (D22): naming its folder, or standing in it
+    or in an unknown folder, with a launcher that does not merely test or install refuses."""
+    names = {basename(w) for w in _words(tokens)}
+    wrapped = (cmd in RESERVED_LAUNCHERS or is_dynamic(cmd)) and bool(names & BOT_LAUNCHERS)
+    if cmd not in BOT_LAUNCHERS and not wrapped:
+        return None
+    text = (seg.raw + "\n" + seg.heredoc).replace("\\", "/").lower()
+    here = ctx.cwd is None or f"/{BOT_DIR}" in ctx.cwd.lower()
+    if BOT_DIR not in text and "discord_bot" not in text and not here:
+        return None
+    cmd_index, _, _ = command_word(tokens)
+    args = tokens[cmd_index + 1 :] if cmd_index is not None else []
+    return None if _bot_safe(cmd, args) else BOT_REFUSAL
 
 
 def update_cwd(cmd: str, args: list[str], ctx: Context) -> None:
@@ -1027,7 +1101,8 @@ def check_segment(seg: Segment, ctx: Context, segments: list[Segment]) -> str | 
     git = parse_git(args, ctx) if cmd == "git" else None
     checks = (
         lambda: check_nested(seg, args, cmd, ctx),
-        lambda: check_rearm(seg, tokens, cmd),
+        lambda: check_reserved(seg, tokens, cmd),
+        lambda: check_bot_launch(seg, tokens, cmd, ctx),
         lambda: check_recursive_delete(tokens, cmd, ctx.powershell),
         lambda: check_force_and_bypass(tokens, cmd, assignments),
         lambda: check_git(git) if git else None,

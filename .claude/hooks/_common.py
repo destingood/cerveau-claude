@@ -25,7 +25,8 @@ IS_WINDOWS = os.name == "nt"
 
 # Write-protected: Claude Code never modifies these (R3, R4, R11, governance).
 WRITE_PROTECTED_FILES = ("config/live.yaml",)
-WRITE_PROTECTED_DIRS = ("governance/approvals", "var/audit", "var/incidents")
+# var/approvals holds the approval store (D18): only CERVEAU, run by Lucas, writes there.
+WRITE_PROTECTED_DIRS = ("governance/approvals", "var/approvals", "var/audit", "var/incidents")
 # Kill switch (R4, ADR-034): creating KILL stops CERVEAU and stays allowed; removing, moving or
 # rewriting it would rearm CERVEAU, which only Lucas does (`cerveau rearm`).
 KILL_FILE = "governance/kill_switch/KILL"
@@ -37,6 +38,7 @@ SENSITIVE_LOCATIONS = (
     "config/live.yaml",
     "governance/approvals",
     KILL_FILE,
+    "var/approvals",
     "var/audit",
     "var/incidents",
     ".env",
@@ -48,6 +50,7 @@ GLOB_SAMPLES_WRITE = (
     "config/live.yaml",
     "governance/approvals/x",
     KILL_FILE,
+    "var/approvals/approvals.db",
     "var/audit/journal.jsonl",
     "var/incidents/x.md",
 )
@@ -235,7 +238,10 @@ def write_protection_reason(abs_norm: str, *, creating: bool = False) -> str | N
             return f"{rel} est protégé (R3) : seul Lucas le modifie, à la main"
         for directory in map(_fold, WRITE_PROTECTED_DIRS):
             if rel == directory or rel.startswith(directory + "/"):
-                return f"{rel} est protégé (gouvernance, journal d'audit R11, incidents R4)"
+                return (
+                    f"{rel} est protégé (gouvernance, approbations D18, journal d'audit R11, "
+                    "incidents R4)"
+                )
     # Same file names in another checkout or worktree (mega-prompt 16.5 pattern).
     if abs_norm.endswith("/config/live.yaml") or "/governance/approvals/" in abs_norm + "/":
         return f"{abs_norm} est protégé (R3)"
