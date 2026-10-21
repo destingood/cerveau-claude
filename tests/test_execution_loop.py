@@ -740,7 +740,13 @@ def test_an_answer_other_than_a_grant_rejects_the_intent(
             sha = built.book.order(intent_id).intent.sha256()
             approvals.consume(grant(built, intent_id), intent_sha256=sha, now=GRANTED)
         [sent] = send_approved(built.env, now=now).sent
-        why = f"approbation {answer.value} : jamais envoyée"
+        why = {
+            ApprovalState.REFUSEE: "approbation REFUSEE : jamais envoyée",
+            ApprovalState.EXPIREE: "approbation EXPIREE : échéance passée, elle vaut refus : "
+            "jamais envoyée",
+            ApprovalState.CONSOMMEE: "approbation CONSOMMEE : déjà utilisée une fois : "
+            "jamais envoyée",
+        }[answer]
         assert (sent.approval, sent.state, sent.reasons) == (answer, OrderState.REJETEE, (why,))
         assert built.book.order(intent_id).state == OrderState.REJETEE
         assert built.simulator.open_orders() == ()

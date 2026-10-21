@@ -166,8 +166,8 @@ def test_paper_send_with_nothing_approved(home: Path, config_dir: Path) -> None:
     result = paper(config_dir, "envoyer")
     assert result.exit_code == 0, result.output
     assert result.stdout.splitlines() == [
-        "Intentions approuvées du 19/10/2026 : journée traitée.",
-        "Aucune intention approuvée à traiter.",
+        "Envoi paper des approbations du 19/10/2026 : journée traitée.",
+        "Aucune approbation répondue : rien à envoyer.",
     ]
     assert approvals_path(home).is_file()
 
@@ -232,7 +232,7 @@ def test_paper_send_lists_each_intent_in_our_words(
     result = paper(config_dir, "envoyer")
     assert result.exit_code == 2
     assert result.stdout.splitlines() == [
-        "Intentions approuvées du 19/10/2026 : kill switch engagé : la journée s'arrête.",
+        "Envoi paper des approbations du 19/10/2026 : kill switch engagé : la journée s'arrête.",
         "Kill switch engagé (fichier) : fichier KILL trouvé avant l'envoi des approuvées",
         f"{str(intent.intent_id)[:8]}… {intent.side} {intent.quantity} "
         f"{intent.instrument.symbol} : approbation REFUSEE, ordre REJETEE",

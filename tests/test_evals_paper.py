@@ -30,6 +30,9 @@ PAPER_CASES = [
 PHASE_4_SUITES = {  # plan of phase 4, §11: group → (suite, minimum number of cases, rules)
     "finance_execution": ("behaviors", 8, {"R1", "R2", "R4", "R7"}),
 }
+PHASE_5_SUITES = {  # plan of phase 5, §11
+    "finance_approbation": ("behaviors", 8, {"R2", "R6"}),
+}
 
 
 def _case(**paper: Any) -> dict[str, Any]:
@@ -59,6 +62,20 @@ def test_the_execution_suites_are_there() -> None:
         file.group for file in files
     }
     assert all({"R2", "R5"} <= set(file.rules) or "R4" in file.rules for file in files)
+
+
+def test_the_approval_suites_are_there() -> None:
+    golden = [case for case in load_cases("golden") if case.id.startswith("golden-approbation-")]
+    assert len(golden) >= 6  # status, grant, expiry, refusal, promotion report, re-evaluated Gate
+    assert all(case.paper is not None and case.paper.level == "N3" for case in golden)
+    for group, (suite, minimum, rules) in PHASE_5_SUITES.items():
+        cases = [case for case in load_cases(suite) if case.group == group]  # type: ignore[arg-type]
+        assert len(cases) >= minimum, group
+        assert all(rules <= set(case.rules) for case in cases), group
+    files = [f for f in suite_files("injection") if f.group.startswith("approbation_")]
+    assert sum(len(file.cases) for file in files) >= 10  # the red team of N2→N3
+    assert {"approbation_justification", "approbation_codes"} <= {file.group for file in files}
+    assert all({"R2", "R6"} <= set(file.rules) for file in files)
 
 
 @pytest.mark.parametrize(("suite", "case_id"), PAPER_CASES)
@@ -142,7 +159,7 @@ def test_the_case_limits_and_level_apply_to_a_copy_only() -> None:
         ({"days": [{"day": "2026-09-15"}, {"day": "2026-09-14"}]}, "désordre"),
         ({"limits": {"allow": {"leverage": True}}}, "clé inconnue : allow"),
         ({"limits": {"max_order_pct": -1}}, "hors bornes : max_order_pct"),
-        ({"level": "N3"}, "level"),
+        ({"level": "N4"}, "level"),  # N4 never runs in an eval
     ],
 )
 def test_a_paper_fixture_is_checked_on_load(paper: dict[str, Any], message: str) -> None:

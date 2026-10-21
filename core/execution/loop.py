@@ -99,6 +99,12 @@ OUTCOMES: Mapping[Outcome, str] = {
     "tranchera",
     "arret": "kill switch engagé : la journée s'arrête",
 }
+NOT_SENT: Mapping[ApprovalState, str] = {  # why an answered request never sends its intent
+    ApprovalState.REFUSEE: "approbation REFUSEE : jamais envoyée",
+    ApprovalState.EXPIREE: "approbation EXPIREE : échéance passée, elle vaut refus : "
+    "jamais envoyée",
+    ApprovalState.CONSOMMEE: "approbation CONSOMMEE : déjà utilisée une fois : jamais envoyée",
+}
 
 
 def default_loop_path(project_root: Path) -> Path:
@@ -1067,7 +1073,7 @@ def _send_approved(env: PaperDay, approvals: ApprovalStore, report: DayReport) -
         if request is None or request.state is ApprovalState.DEMANDEE:
             continue  # a proposal (N1, N2), or a request Lucas has not answered yet
         if request.state is not ApprovalState.ACCORDEE:
-            why = f"approbation {request.state.value} : jamais envoyée"
+            why = NOT_SENT[request.state]
             env.book.transition(intent.intent_id, OrderState.REJETEE, reason=why, now=now)
             report.sent.append(_sent(intent, request, request.state, OrderState.REJETEE, (why,)))
         elif intent.decision_date != day or local_date(now) != day:
@@ -1407,3 +1413,23 @@ def render_report(report: DayReport, env: PaperDay) -> str:
     if report.notes:
         lines += ["## Remarques", ""] + [f"- {note}" for note in report.notes] + [""]
     return "\n".join(lines)
+
+
+def render_sent(report: DayReport) -> list[str]:
+    """What :func:`send_approved` did, intent by intent, in our words only (B197). The
+    title says « approbations », never « approuvées »: a request may have been refused or
+    may have expired."""
+    lines = [f"Envoi paper des approbations du {report.day:%d/%m/%Y} : {OUTCOMES[report.outcome]}."]
+    if report.stop is not None:
+        lines.append(f"Kill switch engagé ({report.stop.trigger}) : {report.stop.reason}")
+    for item in report.sent:
+        lines.append(
+            f"{str(item.intent_id)[:8]}… {item.side} {item.quantity} {item.symbol} : "
+            f"approbation {item.approval.value}, ordre {item.state.value}"
+        )
+        lines += [f"  - {why}" for why in item.reasons]
+    if not report.sent and report.stop is None:
+        lines.append("Aucune approbation répondue : rien à envoyer.")
+    elif not report.sent:
+        lines.append("Rien n'est envoyé.")
+    return lines + [f"Remarque : {note}" for note in report.notes]

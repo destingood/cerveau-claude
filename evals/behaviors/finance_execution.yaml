@@ -177,3 +177,37 @@ cases:
         retained: [4]
         states: [EXECUTEE]
         stop: limite
+
+  - id: execution-ordres-par-jour-b186
+    description: deux achats sur deux titres fictifs, plafond d'un ordre par jour ; la Porte compte les ordres de tous les titres et refuse le second (B186)
+    question: Journée paper du 14 septembre 2026, deux achats de 4 actions sur deux titres avec un ordre par jour au plus.
+    paper:
+      costs: *costs
+      limits: {max_orders_per_day: 1}
+      days:
+        - day: "2026-09-14"
+          orders: [4, {symbol: FICT-BETA, quantity: 4}]
+    expect:
+      mentions: [max_orders_per_day]
+      paper:
+        outcomes: [terminee]
+        gate: [ACCEPTE, REFUSE]
+        retained: [4, 0]
+        states: [ENVOYEE, REJETEE]
+
+  - id: execution-ordres-par-heure-b186
+    description: deux achats sur deux titres fictifs, plafond d'un ordre par heure ; le second est refusé, quel que soit le titre (B186)
+    question: Journée paper du 14 septembre 2026, deux achats de 4 actions sur deux titres avec un ordre par heure au plus.
+    paper:
+      costs: *costs
+      limits: {max_orders_per_hour: 1}
+      days:
+        - day: "2026-09-14"
+          orders: [4, {symbol: FICT-BETA, quantity: 4}]
+    expect:
+      mentions: [max_orders_per_hour]
+      paper:
+        outcomes: [terminee]
+        gate: [ACCEPTE, REFUSE]
+        retained: [4, 0]
+        states: [ENVOYEE, REJETEE]

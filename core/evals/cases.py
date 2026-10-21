@@ -9,9 +9,10 @@ cites: their displays are frozen from the reference store (ADR-023) and the real
 must compute them again, in both modes. It may add to its own copy of that store what Lucas would
 import (a CSV file of instruments or transactions, possibly trapped) and quality scores (D12).
 
-A paper case (``paper``) runs the daily paper loop on a synthetic market of one fictitious
-instrument, with no model: its source proposes target orders and the drafter, the policy and the
-Risk Gate decide, over a copy of the configuration (``core/evals/paper.py``).
+A paper case (``paper``) runs the daily paper loop on a synthetic market of fictitious
+instruments, with no model: its source proposes target orders and the drafter, the policy and the
+Risk Gate decide, over a copy of the configuration; at N3, the case answers the approval requests
+as Lucas would, with the one-time codes of a test key (``core/evals/paper.py``).
 """
 
 from __future__ import annotations
@@ -33,6 +34,7 @@ from pydantic import (
     model_validator,
 )
 
+from core.approvals.store import ApprovalState
 from core.config.loader import Allow, PaperRiskLimits, TradingCosts
 from core.execution.intent import IntentOrigin
 from core.execution.kill_switch import Trigger
@@ -65,11 +67,13 @@ BEHAVIOR_DIR = Path("evals") / "behaviors"
 INJECTION_DIR = Path("evals") / "redteam" / "injection_base"
 FINANCE_INJECTION_DIR = Path("evals") / "redteam" / "injection_finance"
 EXECUTION_INJECTION_DIR = Path("evals") / "redteam" / "injection_execution"
+APPROVAL_INJECTION_DIR = Path("evals") / "redteam" / "injection_approbation"
 WEB_FIXTURES = Path("evals") / "fixtures" / "web.yaml"
 CASE_ID = r"^[a-z0-9][a-z0-9-]{2,63}$"
 TOOL_NAME = r"^[a-z][a-z0-9_]{1,63}$"
 MAX_LABEL_CHARS = 120
-PAPER_SYMBOL = "FICT-ACME"  # the paper cases' only instrument, fictitious
+PAPER_SYMBOL = "FICT-ACME"  # the paper cases' first instrument, fictitious
+PAPER_SYMBOLS = r"^FICT-[A-Z]{1,8}$"  # the others (B186: limits across instruments)
 
 Suite = Literal["golden", "behaviors", "injection"]
 SUITES: tuple[Suite, ...] = ("golden", "behaviors", "injection")
@@ -212,29 +216,80 @@ class PaperRationaleFixture(_Data):
     confidence: float = 0.5
 
 
+class PaperOrderFixture(_Data):
+    """A target order on another fictitious instrument than ``PAPER_SYMBOL``."""
+
+    symbol: str = Field(pattern=PAPER_SYMBOLS)
+    quantity: int  # signed: above zero buys
+
+    @model_validator(mode="after")
+    def _whole(self) -> PaperOrderFixture:
+        if self.quantity == 0:
+            raise ValueError(f"{self.symbol} : ordre de quantité nulle")
+        return self
+
+
+class PaperAnswerFixture(_Data):
+    """Lucas's answer to one approval request of the day (N3), as from the bot: wrong codes
+    first, then the right one-time code, a refusal, or nothing."""
+
+    answer: Literal["accorder", "refuser", "aucune"] = "accorder"
+    wrong_codes: int = Field(default=0, ge=0, le=5)
+    after: int | None = Field(default=None, ge=1, le=60)  # minutes after the loop's run
+
+
 class PaperDayFixture(_Data):
-    """One decision day: the session's close, then the target orders the source proposes."""
+    """One decision day: the session's close, then the target orders the source proposes; at
+    N3, Lucas's answers to the day's approval requests, in the order they were filed."""
 
     day: date
     close: float | None = Field(default=100.0, gt=0)  # None: the close is never published
-    orders: tuple[int, ...] = Field(default=(), max_length=5)  # signed: above zero buys
+    # signed: above zero buys; a bare quantity is on PAPER_SYMBOL
+    orders: tuple[int | PaperOrderFixture, ...] = Field(default=(), max_length=5)
+    answers: tuple[PaperAnswerFixture, ...] = Field(default=(), max_length=5)
+    kill_switch: bool = False  # the KILL file is put in place after the run (R4)
+    send_after: int | None = Field(default=None, ge=1, le=120)  # `paper envoyer`, minutes
 
     @model_validator(mode="after")
     def _whole_orders(self) -> PaperDayFixture:
         if 0 in self.orders:
             raise ValueError(f"{self.day} : ordre de quantité nulle")
+        minutes = self.answer_minutes()
+        if list(minutes) != sorted(set(minutes)):
+            raise ValueError(f"{self.day} : deux réponses à la même minute ou dans le désordre")
+        if self.send_after is not None and minutes and self.send_after < minutes[-1]:
+            raise ValueError(f"{self.day} : envoi avant la dernière réponse")
         return self
+
+    def targets(self) -> tuple[tuple[str, int], ...]:
+        """Each order as (instrument, signed quantity)."""
+        return tuple(
+            (PAPER_SYMBOL, order) if isinstance(order, int) else (order.symbol, order.quantity)
+            for order in self.orders
+        )
+
+    def answer_minutes(self) -> tuple[int, ...]:
+        """When each answer comes, in minutes after the run: two, then one more per earlier
+        request, unless given. A right code is never of the last one's step (anti-replay), so
+        two answers never share a minute."""
+        return tuple(
+            2 + index if answer.after is None else answer.after
+            for index, answer in enumerate(self.answers)
+        )
 
 
 class PaperFixture(_Data):
-    """A run of the paper loop on a synthetic market of one instrument, with no model.
+    """A run of the paper loop on a synthetic market of fictitious instruments, with no model.
 
     The level, the limits and the costs apply to a copy of the configuration, never to the
-    files. Limits left out keep the file's values (the universe is the case's instrument);
-    costs left out keep the file's ``A_DEFINIR``, so the paper account is refused (R7).
+    files. Limits left out keep the file's values (the universe is the case's instruments);
+    costs left out keep the file's ``A_DEFINIR``, so the paper account is refused (R7). N3 is
+    signed on a promotion report of the case's home: « promotion_impossible » leaves it unsigned,
+    and the loop runs at N2 (ADR-036).
     """
 
-    level: Literal["N0", "N1", "N2"] = "N2"
+    level: Literal["N0", "N1", "N2", "N3"] = "N2"
+    promotion_report: Literal["promotion_possible", "promotion_impossible"] = "promotion_possible"
     limits: dict[str, Any] = Field(default_factory=dict)
     costs: TradingCosts | None = None
     price: float = Field(default=100.0, gt=0)  # every close before the first day
@@ -250,7 +305,15 @@ class PaperFixture(_Data):
         days = [item.day for item in self.days]
         if days != sorted(set(days)):
             raise ValueError("paper.days : jours en double ou dans le désordre")
+        approving = any(d.answers or d.kill_switch or d.send_after for d in self.days)
+        if approving and self.level != "N3":
+            raise ValueError("paper.days : réponses, kill switch du jour et envoi en N3 seulement")
         return self
+
+    def symbols(self) -> tuple[str, ...]:
+        """The case's instruments: ``PAPER_SYMBOL`` first, then the others by name."""
+        others = {symbol for day in self.days for symbol, _ in day.targets()}
+        return (PAPER_SYMBOL, *sorted(others - {PAPER_SYMBOL}))
 
 
 PaperOutcome = Literal[
@@ -267,6 +330,7 @@ class ExpectPaper(_Data):
     states: tuple[OrderState, ...] = ()  # where each order of the book ended
     stop: Trigger | None = None  # the kill switch's trigger, when the loop engages it
     notes: tuple[str, ...] = ()  # substrings of the day's remarks
+    approvals: tuple[ApprovalState, ...] = ()  # each request at the end, in filing order (N3)
 
 
 class ExpectedFigure(_Data):
@@ -526,7 +590,13 @@ def suite_files(suite: Suite, root: Path = REPO_ROOT) -> list[SuiteFile]:
     if suite == "behaviors":
         return load_suite_files(root, BEHAVIOR_DIR, *PACK_BEHAVIOR_FILES)
     if suite == "injection":
-        return load_suite_files(root, INJECTION_DIR, FINANCE_INJECTION_DIR, EXECUTION_INJECTION_DIR)
+        return load_suite_files(
+            root,
+            INJECTION_DIR,
+            FINANCE_INJECTION_DIR,
+            EXECUTION_INJECTION_DIR,
+            APPROVAL_INJECTION_DIR,
+        )
     return []
 
 

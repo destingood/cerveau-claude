@@ -22,8 +22,6 @@ from core.config.loader import Config
 from core.execution.book import OrderBook, Recorder, default_book_path
 from core.execution.kill_switch import recorded_stop
 from core.execution.loop import (
-    OUTCOMES,
-    DayReport,
     LoopError,
     LoopLog,
     PaperDay,
@@ -31,6 +29,7 @@ from core.execution.loop import (
     default_loop_path,
     default_reports_dir,
     finish_day,
+    render_sent,
     run_day,
     send_approved,
 )
@@ -133,7 +132,7 @@ def send(
         report = send_approved(env, now=now)
     if closed is not None:
         report.notes.append(closed)
-    for line in _sent_lines(report):
+    for line in render_sent(report):
         typer.echo(line)
     code = EXIT_CODES.get(report.outcome, 0)
     if code:
@@ -157,22 +156,6 @@ def _open_day(
         if exc.blocked:
             fail(f"Bloqué (R7) : {exc}. Voir `cerveau config check`.", EXIT_BLOCKED)
         fail(f"Base finance : {exc}", EXIT_ERROR)
-
-
-def _sent_lines(report: DayReport) -> list[str]:
-    """What ``paper envoyer`` did, intent by intent, in our words only (B197)."""
-    lines = [f"Intentions approuvées du {report.day:%d/%m/%Y} : {OUTCOMES[report.outcome]}."]
-    if report.stop is not None:
-        lines.append(f"Kill switch engagé ({report.stop.trigger}) : {report.stop.reason}")
-    for item in report.sent:
-        lines.append(
-            f"{str(item.intent_id)[:8]}… {item.side} {item.quantity} {item.symbol} : "
-            f"approbation {item.approval.value}, ordre {item.state.value}"
-        )
-        lines += [f"  - {why}" for why in item.reasons]
-    if not report.sent:
-        lines.append("Aucune intention approuvée à traiter.")
-    return lines + [f"Remarque : {note}" for note in report.notes]
 
 
 def _paper_lines(root: Path) -> list[str]:

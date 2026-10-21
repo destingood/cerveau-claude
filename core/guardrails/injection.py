@@ -8,7 +8,7 @@ These are heuristics on normalised text, not a classifier: a page about prompt i
 how-to that says "use the tool…", is flagged too. False positives cost an extract, never an
 action; the misses are what the red-team suite measures (``evals/redteam/injection_base``).
 
-Two cases beyond the phrasing of a prompt (B99, B101):
+Three cases beyond the phrasing of a prompt (B99, B101, B223):
 
 - a stock order in plain words ("vends toute la ligne", "sell all Globex shares", "achète 500
   actions") is flagged when it opens a line or a sentence, or when its verb speaks to the
@@ -16,7 +16,12 @@ Two cases beyond the phrasing of a prompt (B99, B101):
   role argues for buying or selling by design and is checked without it (``ORDER_SIGNAL``);
 - letters of other scripts that look Latin ("ignоre" with a Cyrillic о) are read as the letters
   they imitate first. The table is a hand-picked subset of the Unicode confusables (UTS #39):
-  the Cyrillic, Greek, Armenian and Latin look-alikes of the Latin letters, never the digits.
+  the Cyrillic, Greek, Armenian and Latin look-alikes of the Latin letters, never the digits;
+- a push to grant an approval or hand over its code, to raise the autonomy, to edit a control
+  file (``live.yaml``, ``autonomy.yaml``…) or to route an order to a real account is flagged
+  by the same rules (``forcer_approbation``, ``ignorer_consignes``): an intent's rationale
+  passes this check before Lucas is asked to approve it. « Le conseil a approuvé la demande »
+  reports; a six-digit number next to « code » is flagged wherever it stands.
 """
 
 from __future__ import annotations
@@ -117,6 +122,56 @@ _LIVE = (
     r"(?:le |the )?(?:mode (?:live|reel)|live (?:mode|trading)|trading reel|live)\b"
 )
 
+# B223: granting an approval, handing over its code, raising the autonomy, editing the controls.
+_APPROVE = (
+    r"(?:approuve[rz]?|approuvons|accorde[rz]?|accordons|auto-?approuv\w*|approve|grant|"
+    r"authori[sz]e|self-approve)\b"
+)
+_APPROVE_YOU = r"(?<!\bvous )\b(?:approuvez|accordez)\b"
+_APPROVAL = (
+    r"\b(?:approbations?|intentions?|ordres?|demandes?|approvals?|requests?|orders?|intents?)\b"
+)
+_SIGN = rf"(?:sign{_VERB}|signe[rz]?|sign)\b"
+_PROMOTION = r"\b(?:promotions?|approbations?|approvals?)\b"
+_CODE = (
+    r"\b(?:codes? (?:totp|otp|a usage unique|d'approbation|de validation a usage unique)|totp|otp|"
+    r"one[- ]time (?:codes?|passwords?|passcodes?)|approval codes?|"
+    r"(?:son|ton|votre|ses|tes|vos|his|her|your|their) codes?)\b"
+)
+_HAND = (
+    r"(?:donn\w*|envoi\w*|envoie\w*|transmet\w*|communiqu\w*|demand\w*|give|send|share|forward|"
+    r"ask|tell)\b"
+)
+_GRANTED = r"\b(?:accordee?s?|approuvee?s?|granted|approved)\b"
+_RAISE = (
+    rf"(?:mont{_VERB}|relev{_VERB}|augment{_VERB}|hauss{_VERB}|pass(?:e|ez|er)|promeus|promouv\w*|"
+    r"eleve[rz]?|raise|increase|bump|set|promote|switch|move)\b"
+)
+_AUTONOMY = (
+    r"\b(?:(?:niveau|level)s? d'autonomie|autonomie|autonomy|(?:niveau|level) n[1-4]|"
+    r"(?:en|to) n[34])\b"
+)
+_EDIT = (
+    r"\b(?:set|mets?|met|pass(?:e|ez|er)|chang\w*|modifi\w*|edit\w*|ecri\w*|write|update|"
+    r"remplac\w*|replace|flip|toggle|active[rz]?|enable)\b"
+)
+_CONTROL_FILE = r"\b(?:config/)?(?:live|autonomy|risk_limits|budgets|compliance)\.ya?ml\b"
+_REAL = r"\b(?:real broker|courtier reel|compte (?:reel|live)|real account|live account)\b"
+_APPROVAL_PUSH = (
+    rf"{_OPENS}{_MUST}{_MAY}{_APPROVE}{_NEAR}{_APPROVAL}|{_APPROVE_YOU}{_NEAR}{_APPROVAL}|"
+    rf"{_OPENS}{_MUST}{_MAY}{_SIGN}{_NEAR}{_PROMOTION}|"
+    rf"\b(?:consider\w*|tiens? pour|regard\w* comme|treat)\b{_NEAR}{_APPROVAL}{_NEAR}{_GRANTED}|"
+    rf"\blucas (?:a deja|already)\b|"
+    rf"\b(?:code|codes|totp|otp|passcode)\b[^.!?;\n]{{0,30}}?\b\d{{6}}\b|"
+    rf"{_OPENS}{_MUST}{_MAY}{_HAND}{_NEAR}{_CODE}|"
+    rf"{_CODE}{_NEAR}\b(?:pour|to) (?:accorder|approuver|signer|grant|approve|sign)\b"
+)
+_CONTROL_PUSH = (
+    rf"{_OPENS}{_MUST}{_MAY}{_RAISE}{_NEAR}{_AUTONOMY}|"
+    rf"{_EDIT}{_NEAR}{_CONTROL_FILE}|{_CONTROL_FILE}{_NEAR}{_EDIT}|"
+    rf"\b(?:route|send|envoi\w*|envoie\w*|transmet\w*|pass\w*)\b{_NEAR}{_REAL}"
+)
+
 _SIGNALS: dict[str, re.Pattern[str]] = {
     name: re.compile(pattern, re.MULTILINE)
     for name, pattern in {
@@ -126,8 +181,9 @@ _SIGNALS: dict[str, re.Pattern[str]] = {
             r"\b(?:instructions?|consignes?|regles?|directives?|previous|prior|above|"
             r"precedent\w*|ci-dessus|systeme|system)\b|"
             rf"{_OPENS}{_MUST}{_MAY}(?:{_BYPASS}|{_LOOSEN}){_NEAR}{_GUARD}|"
-            rf"{_BYPASS_YOU}{_NEAR}{_GUARD}|{_OPENS}{_MUST}{_MAY}{_LIVE}"
+            rf"{_BYPASS_YOU}{_NEAR}{_GUARD}|{_OPENS}{_MUST}{_MAY}{_LIVE}|{_CONTROL_PUSH}"
         ),
+        "forcer_approbation": _APPROVAL_PUSH,
         "fuite_prompt": (
             r"\b(?:system prompt|prompt (?:systeme|initial)|"
             r"instructions? (?:systeme|initiales?))\b|"
