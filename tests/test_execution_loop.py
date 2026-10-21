@@ -23,7 +23,7 @@ from core.approvals.store import (
 )
 from core.approvals.totp import totp
 from core.config.loader import AutonomyConfig, Config, load_config
-from core.execution.book import OrderBook, Recorder
+from core.execution.book import Journal, OrderBook, Recorder
 from core.execution.broker import AckCode, BrokerAck
 from core.execution.drafter import TargetOrder
 from core.execution.intent import IntentOrigin, IntentRationale, SizingSource
@@ -170,9 +170,15 @@ class Fixed:
 
 
 class World:
-    def __init__(self, root: Path, cfg: Config | None = None, source: Fixed | None = None) -> None:
+    def __init__(
+        self,
+        root: Path,
+        cfg: Config | None = None,
+        source: Fixed | None = None,
+        journal: Journal | None = None,
+    ) -> None:
         self.cfg = cfg or config()
-        self.journal = MemoryJournal()
+        self.journal: Any = MemoryJournal() if journal is None else journal
         level = self.cfg.autonomy.domains["finance"].level
         if level != "N0":
             sign(root, "finance", level)  # ADR-036: the level the test sets is the one signed
