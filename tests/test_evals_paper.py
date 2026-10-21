@@ -3,11 +3,15 @@
 from __future__ import annotations
 
 import asyncio
+import tempfile
+from datetime import date
+from pathlib import Path
 from typing import Any
 
 import pytest
 from pydantic import ValidationError
 
+from core.evals import paper as paper_eval
 from core.evals.cases import (
     Case,
     PaperDayFixture,
@@ -195,3 +199,22 @@ def test_only_a_paper_case_runs_the_paper_loop() -> None:
     data["expect"] = {}
     with pytest.raises(ValueError, match="pas un cas paper"):
         run_paper(Case.model_validate(data), REPO_ROOT)
+
+
+@pytest.mark.parametrize("home", ["projet", "hors_temp", "temp"])
+def test_a_case_signs_only_in_a_temporary_home_outside_the_project(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, home: str
+) -> None:
+    """B239: _sign, the one writer of signatures the scan allows, refuses any other home."""
+    temp = tmp_path / "temp"
+    project = temp / "projet"  # a checkout may itself live under the temporary directory
+    project.mkdir(parents=True)
+    monkeypatch.setattr(tempfile, "gettempdir", lambda: str(temp))
+    fixture = Case.model_validate(_case(level="N2")).paper
+    assert fixture is not None
+    refused = {"projet": project / "cas", "hors_temp": tmp_path / "ailleurs", "temp": temp}[home]
+    with pytest.raises(ValueError, match="pas un dossier temporaire hors du projet"):
+        paper_eval._sign(refused, project, fixture, date(2026, 9, 14))
+    assert list(tmp_path.rglob("*.md")) == []
+    paper_eval._sign(temp / "cas", project, fixture, date(2026, 9, 14))
+    assert [path.name for path in tmp_path.rglob("*.md")] == ["2026-09-14-finance-N2.md"]

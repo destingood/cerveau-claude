@@ -214,7 +214,8 @@ def test_the_scan_lets_a_read_or_another_path_through(source: str) -> None:
 
 
 # The one writer allowed: an eval case signs its level in the TemporaryDirectory that run_paper
-# gives it as home, never under the project root. Listed here, it is also proof the scan sees it.
+# gives it as home, never under the project root (it refuses any other home: B239). Listed here,
+# it is also proof the scan sees it.
 EXEMPT = {("core/evals/paper.py", "_sign")}
 
 

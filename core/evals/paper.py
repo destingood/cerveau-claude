@@ -236,12 +236,21 @@ def _report(home: Path, level: Level, day: date, statut: str) -> str:
     return hashlib.sha256(text).hexdigest()
 
 
-def _sign(home: Path, fixture: PaperFixture, day: date) -> None:
+def _temporary_home(home: Path, root: Path) -> None:
+    """B239: a case signs only below the system's temporary directory and outside the project,
+    so that no caller can make it write the real ``governance/approvals/``."""
+    temp, where = Path(tempfile.gettempdir()).resolve(), home.resolve()
+    if where == temp or not where.is_relative_to(temp) or where.is_relative_to(root.resolve()):
+        raise ValueError(f"{home} : pas un dossier temporaire hors du projet, aucune signature")
+
+
+def _sign(home: Path, root: Path, fixture: PaperFixture, day: date) -> None:
     """The case's level, signed in its temporary home (ADR-036): the case runs at that level.
 
     Up to N2, a signature cites no report that must exist. N3 is signed over N2, on a report
     filed in the home; one that does not conclude « promotion_possible » leaves N3 unsigned.
     """
+    _temporary_home(home, root)
     levels: tuple[Level, ...] = {"N0": (), "N1": ("N1",), "N2": ("N2",), "N3": ("N2", "N3")}[
         fixture.level
     ]
@@ -339,7 +348,7 @@ def _run(case: Case, root: Path, home: Path) -> PaperRun:
     journal = AuditJournal(home / JOURNAL)
     request_id = f"eval-{case.id}"
     first = fixture.days[0].day
-    _sign(home, fixture, first)
+    _sign(home, root, fixture, first)
     store = market(fixture)
     book = OrderBook.memory(Recorder(journal, "policy", request_id))
     simulator = PaperSimulator.memory(
