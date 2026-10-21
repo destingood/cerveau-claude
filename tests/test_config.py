@@ -483,6 +483,94 @@ def test_the_promotion_rule_cannot_be_dropped(config_dir: Path) -> None:
         load_config(config_dir)
 
 
+def test_the_finance_n1_to_n2_promotion_adds_the_execution_red_team() -> None:
+    config = load_config(REPO_ROOT / "config")
+    config.require("promotion.finance.N1_to_N2")
+    rule = config.autonomy.promotion.finance.N1_to_N2
+    first = config.autonomy.promotion.finance.N0_to_N1
+    assert rule.golden_min_score == first.golden_min_score  # D9: the conditions of N0 → N1
+    assert (rule.r1_to_r5_violations_max, rule.measured_in) == (0, "live")
+    assert (rule.redteam_group, rule.redteam_violations_max) == ("injection_execution", 0)
+    assert rule.manual_signature == "required"
+    assert config.autonomy.domains["finance"].level == "N0"  # Lucas promotes, by hand
+
+
+@pytest.mark.parametrize(
+    ("field", "value"),
+    [
+        ("r1_to_r5_violations_max", 1),
+        ("redteam_violations_max", 1),
+        ("redteam_violations_max", False),
+        ("redteam_group", "finance_chiffres"),
+        ("measured_in", "offline"),
+        ("manual_signature", "optional"),
+        ("golden_min_score", 1.2),
+    ],
+)
+def test_the_n1_to_n2_rule_cannot_be_loosened(config_dir: Path, field: str, value: object) -> None:
+    edit_yaml(
+        config_dir / "autonomy.yaml",
+        lambda d: d["promotion"]["finance"]["N1_to_N2"].update({field: value}),
+    )
+    with pytest.raises(ConfigError, match=f"N1_to_N2.{field}"):
+        load_config(config_dir)
+
+
+@pytest.mark.parametrize(
+    "field",
+    [
+        "golden_min_score",
+        "r1_to_r5_violations_max",
+        "redteam_group",
+        "redteam_violations_max",
+        "measured_in",
+        "manual_signature",
+    ],
+)
+def test_an_incomplete_n1_to_n2_rule_is_refused(config_dir: Path, field: str) -> None:
+    edit_yaml(
+        config_dir / "autonomy.yaml", lambda d: d["promotion"]["finance"]["N1_to_N2"].pop(field)
+    )
+    with pytest.raises(ConfigError, match=f"N1_to_N2.{field}"):
+        load_config(config_dir)
+
+
+def test_the_n1_to_n2_rule_cannot_be_dropped(config_dir: Path) -> None:
+    edit_yaml(config_dir / "autonomy.yaml", lambda d: d["promotion"]["finance"].pop("N1_to_N2"))
+    with pytest.raises(ConfigError, match="N1_to_N2"):
+        load_config(config_dir)
+
+
+def test_the_n1_to_n2_score_cannot_go_below_the_golden_gate(config_dir: Path) -> None:
+    edit_yaml(
+        config_dir / "autonomy.yaml",
+        lambda d: d["promotion"]["finance"]["N1_to_N2"].update(golden_min_score=0.80),
+    )
+    with pytest.raises(ConfigError, match=r"N1_to_N2\.golden_min_score : 0\.8 est sous le seuil"):
+        load_config(config_dir)
+
+
+def test_the_n1_to_n2_score_cannot_go_below_the_n0_to_n1_score(config_dir: Path) -> None:
+    def edit(d: dict[str, Any]) -> None:
+        d["promotion"]["finance"]["N0_to_N1"]["golden_min_score"] = 0.95
+        d["promotion"]["finance"]["N1_to_N2"]["golden_min_score"] = 0.90
+
+    edit_yaml(config_dir / "autonomy.yaml", edit)
+    with pytest.raises(ConfigError, match=r"0\.9 est sous celui de N0_to_N1 \(0\.95\)"):
+        load_config(config_dir)
+
+
+def test_a_missing_n1_to_n2_score_blocks_only_that_promotion(config_dir: Path) -> None:
+    edit_yaml(
+        config_dir / "autonomy.yaml",
+        lambda d: d["promotion"]["finance"]["N1_to_N2"].update(golden_min_score="A_DEFINIR"),
+    )
+    config = load_config(config_dir)
+    config.require("promotion.finance.N0_to_N1")
+    with pytest.raises(BlockedFeatureError):
+        config.require("promotion.finance.N1_to_N2")
+
+
 def test_a_golden_gate_raised_above_the_promotion_score_is_refused(config_dir: Path) -> None:
     edit_yaml(
         config_dir / "evals.yaml",

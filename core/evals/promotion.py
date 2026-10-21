@@ -1,10 +1,12 @@
-"""A live eval report checked against the finance N0 → N1 promotion rule (D16, B107).
+"""A live eval report checked against a finance promotion rule (D16, D9, B107).
 
-``config/autonomy.yaml`` sets the rule: a mean judge score of at least ``golden_min_score`` on
-the finance golden set and no R1–R5 violation, both measured in a live campaign, then Lucas's
-signature. Lucas signs ``governance/approvals/`` and changes the level by hand; this check only
-tells him whether the report he would cite proves the rule. It reads the report, the eval cases
-and the audit journal; it writes nothing.
+``config/autonomy.yaml`` sets the rules. N0 → N1: a mean judge score of at least
+``golden_min_score`` on the finance golden set and no R1–R5 violation, both measured in a live
+campaign, then Lucas's signature. N1 → N2 adds the finance red team on execution
+(``redteam_group``): every case of that group ran and passed in the same report; a group without
+a case proves nothing. Lucas signs ``governance/approvals/`` and changes the level by hand;
+this check only tells him whether the report he would cite proves the rule. It reads the report,
+the eval cases and the audit journal; it writes nothing.
 
 A report is a file anyone could edit: its campaign must have been opened live in the
 hash-chained journal (``cerveau eval --live`` journals it before any paid call) under the same
@@ -31,7 +33,10 @@ from core.evals.cases import REPO_ROOT, Case, load_cases
 from core.evals.judge import golden_threshold
 
 R1_TO_R5 = frozenset({"R1", "R2", "R3", "R4", "R5"})
-RULES = {("finance", "N1"): "N0_to_N1"}  # the promotions this check measures
+RULES = {  # the promotions this check measures
+    ("finance", "N1"): "N0_to_N1",
+    ("finance", "N2"): "N1_to_N2",
+}
 CAMPAIGN_STATUS = "campagne_eval"  # the journal entry of `cerveau eval --live`
 REPORT_STATUS = "rapport_eval"  # the entry that seals the report of a live campaign
 
@@ -197,6 +202,34 @@ def _rule_cases(root: Path) -> list[Case]:
     ]
 
 
+def _failures(cases: list[Case], results: Mapping[tuple[str, str], Mapping[str, Any]]) -> list[str]:
+    """The cases the report lacks, that ended in error or that did not pass."""
+    return [
+        case.id
+        for case in cases
+        if (ran := _clean(results.get((case.suite, case.id)))) is None
+        or ran.get("passed") is not True
+    ]
+
+
+def _listed(ids: list[str]) -> str:
+    return f" ({', '.join(ids[:5])}{', …' if len(ids) > 5 else ''})" if ids else ""
+
+
+def _redteam(
+    results: Mapping[tuple[str, str], Mapping[str, Any]], root: Path, group: str, limit: int
+) -> Check:
+    """The rule's red team: each case of ``group`` ran and passed; no case proves nothing."""
+    cases = [case for case in load_cases("injection", root) if case.group == group]
+    failed = _failures(cases, results)
+    if cases:
+        measured = f"{len(failed)} cas en échec ou absent(s) sur {len(cases)}{_listed(failed)}"
+    else:
+        measured = f"aucun cas du groupe {group} dans evals/redteam"
+    passed = bool(cases) and len(failed) <= limit
+    return Check(f"red team {group}", f"≤ {limit} violation", measured, passed)
+
+
 def check_promotion(
     report: Mapping[str, Any],
     config: Config,
@@ -276,26 +309,25 @@ def check_promotion(
     complete = bool(golden) and len(judged) == len(golden)
     checks.append(Check(f"golden set {domain}", expected, f"{len(judged)}/{len(golden)}", complete))
 
-    threshold = golden_threshold(config, domain)  # the pack's gate, raised to the rule's score
+    # The pack's gate, raised to the N0 → N1 score and to this rule's own.
+    threshold = max(golden_threshold(config, domain), Decimal(str(rule.golden_min_score)))
     average = sum(judged, Decimal(0)) / len(golden) if golden else Decimal(0)
     measured = f"{average:.4f} (cas manquant ou en erreur compté 0)"
     passed = bool(golden) and average >= threshold
     checks.append(Check(f"score moyen du juge ({domain})", f"≥ {threshold}", measured, passed))
 
     cases = _rule_cases(root)
-    failed = [
-        case.id
-        for case in cases
-        if (ran := _clean(results.get((case.suite, case.id)))) is None
-        or ran.get("passed") is not True
-    ]
+    failed = _failures(cases, results)
     breaches = sum(_breaches(result) for result in results.values())
     limit = rule.r1_to_r5_violations_max
     measured = f"{len(failed)} cas en échec ou absent(s) sur {len(cases)}, {breaches} fuite(s) R5"
-    if failed:
-        measured += f" ({', '.join(failed[:5])}{', …' if len(failed) > 5 else ''})"
+    measured += _listed(failed)
     passed = bool(cases) and len(failed) + breaches <= limit
     checks.append(Check("violations R1 à R5", f"≤ {limit}", measured, passed))
+
+    group = getattr(rule, "redteam_group", None)
+    if group is not None:
+        checks.append(_redteam(results, root, group, rule.redteam_violations_max))
 
     if approval is not None:
         checks.append(_approval(approval, run, campaign, digest, created, rule.measured_in))

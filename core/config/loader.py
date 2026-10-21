@@ -120,6 +120,14 @@ class PromotionN0N1(_Strict):
     manual_signature: Literal["required"]
 
 
+class PromotionN1N2(PromotionN0N1):
+    """D9: the N0 → N1 conditions, plus the finance red team on execution without a violation,
+    measured in the same live campaign."""
+
+    redteam_group: Literal["injection_execution"]
+    redteam_violations_max: Annotated[int, Field(strict=True, ge=0, le=0)]
+
+
 class PromotionN2N3(_Strict):
     paper_weeks_min: int | Marker
     decisions_min: int | Marker
@@ -136,6 +144,7 @@ class PromotionN3N4(_Strict):
 
 class FinancePromotion(_Strict):
     N0_to_N1: PromotionN0N1
+    N1_to_N2: PromotionN1N2
     N2_to_N3: PromotionN2N3
     N3_to_N4: PromotionN3N4
 
@@ -681,6 +690,10 @@ FEATURES: dict[str, Feature] = {
         "Promotion finance N0 → N1",
         ("autonomy:promotion.finance.N0_to_N1", "evals:thresholds.finance_golden_min_score"),
     ),
+    "promotion.finance.N1_to_N2": Feature(
+        "Promotion finance N1 → N2",
+        ("autonomy:promotion.finance.N1_to_N2", "evals:thresholds.finance_golden_min_score"),
+    ),
     "promotion.finance.N2_to_N3": Feature(
         "Promotion finance N2 → N3", ("autonomy:promotion.finance.N2_to_N3",)
     ),
@@ -892,9 +905,9 @@ def _cross_file_errors(parsed: dict[str, BaseModel]) -> list[str]:
 
     Every Anthropic tier must have a price, otherwise its cost could not be computed. The score
     that promotes the finance pack is never below the gate of its golden set (D16, D17, R9),
-    and « 0 violation R1-R5 » is only measured if every behaviour suite must fully pass. Every
-    committee role runs on a tier that models.yaml defines. A drafted limit price stays within
-    the collar of the Risk Gate (D17).
+    nor is the score of N1 → N2 below that of N0 → N1 (D9), and « 0 violation R1-R5 » is only
+    measured if every behaviour suite must fully pass. Every committee role runs on a tier that
+    models.yaml defines. A drafted limit price stays within the collar of the Risk Gate (D17).
     """
     models: ModelsConfig = parsed["models"]  # type: ignore[assignment]
     pricing: PricingConfig = parsed["pricing"]  # type: ignore[assignment]
@@ -907,12 +920,20 @@ def _cross_file_errors(parsed: dict[str, BaseModel]) -> list[str]:
         and tier.model not in MARKERS
         and tier.model not in pricing.anthropic.models
     ]
-    promotion = autonomy.promotion.finance.N0_to_N1.golden_min_score
+    finance = autonomy.promotion.finance
     gate = evals.thresholds.finance_golden_min_score
-    if not isinstance(promotion, str) and not isinstance(gate, str) and promotion < gate:
+    for key in ("N0_to_N1", "N1_to_N2"):
+        promotion = getattr(finance, key).golden_min_score
+        if not isinstance(promotion, str) and not isinstance(gate, str) and promotion < gate:
+            errors.append(
+                f"autonomy.yaml › promotion.finance.{key}.golden_min_score : "
+                f"{promotion} est sous le seuil du golden set Finance ({gate}, evals.yaml)"
+            )
+    first, second = finance.N0_to_N1.golden_min_score, finance.N1_to_N2.golden_min_score
+    if not isinstance(first, str) and not isinstance(second, str) and second < first:
         errors.append(
-            "autonomy.yaml › promotion.finance.N0_to_N1.golden_min_score : "
-            f"{promotion} est sous le seuil du golden set Finance ({gate}, evals.yaml)"
+            "autonomy.yaml › promotion.finance.N1_to_N2.golden_min_score : "
+            f"{second} est sous celui de N0_to_N1 ({first}) : N1 → N2 ne peut être plus souple (D9)"
         )
     committee: CommitteeConfig = parsed["committee"]  # type: ignore[assignment]
     errors.extend(
