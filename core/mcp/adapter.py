@@ -69,6 +69,7 @@ class RequestScope:
     budget: RequestBudget
     meter: Meter
     project_root: Path
+    live_enabled: bool  # an enabled live configuration refuses every call (R3, ADR-030)
 
 
 def server_environment(names: Sequence[str], environ: Mapping[str, str]) -> dict[str, str]:
@@ -184,7 +185,7 @@ class McpPlugin:
         self.tools = []
         for spec in self.manifest.tools:
             decision = self._decide(spec)
-            if decision.allowed:
+            if decision.effect == "executer":
                 self.tools.append(self._as_langchain(spec))
             else:
                 self.skipped[spec.name] = "politique : " + " ; ".join(decision.reasons)
@@ -219,6 +220,7 @@ class McpPlugin:
             domain=scope.domain,
             action_class=spec.action_class,
             kill_switch=kill_switch_engaged(scope.project_root),
+            live_enabled=scope.live_enabled,
         )
 
     def _schema(self, path: str) -> dict[str, Any]:
@@ -246,7 +248,7 @@ class McpPlugin:
             reason = self._mismatch(spec, published.pop(spec.name, None))
             if reason is None:
                 decision = self._decide(spec)
-                if not decision.allowed:
+                if decision.effect != "executer":
                     reason = "politique : " + " ; ".join(decision.reasons)
             if reason is not None:
                 self.skipped[spec.name] = reason
@@ -299,7 +301,7 @@ class McpPlugin:
         """
         shown = arguments if journaled is None else journaled
         decision = self._decide(spec)
-        if not decision.allowed:
+        if decision.effect != "executer":
             self._journal(spec, shown, status="refuse", policy=decision.to_payload())
             raise ToolRefusedError(decision)
         try:

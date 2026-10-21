@@ -22,7 +22,7 @@ from typing import Any
 from core.committee.schemas import HORIZONS
 from core.guardrails.injection import injection_signals
 from core.guardrails.pii import PSEUDONYM
-from core.orchestrator.intake import KILL_MESSAGE
+from core.orchestrator.intake import KILL_MESSAGE, LIVE_MESSAGE
 from core.orchestrator.planner import LIMIT_TEXT, MAX_PLANNER_TURNS
 from core.orchestrator.runtime import Run
 from core.orchestrator.state import (
@@ -183,6 +183,8 @@ def _early_answer(state: CerveauState) -> Answer | None:
     context = required(state.context, "contexte")
     if context.kill_switch:
         return Answer(statut="refus", message=KILL_MESSAGE)
+    if context.live_enabled:
+        return Answer(statut="refus", message=LIVE_MESSAGE)
     guarded = required(state.guarded, "garde")
     links = _Links(guarded.urls)
     if guarded.decision == "refus":

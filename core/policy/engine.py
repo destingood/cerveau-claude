@@ -1,13 +1,18 @@
 """Autonomy policy: action class × autonomy level → decision (section 8, Annex C.4).
 
-``decide`` is a pure function of ``autonomy.yaml``: no model, no I/O. The kill switch is read
-apart (``kill_switch_engaged``) and passed in, so the decision stays reproducible from its
+``decide`` is a pure function of ``autonomy.yaml``: no model, no I/O. The kill switch and the
+live configuration are read apart and passed in, so the decision stays reproducible from its
 inputs. The engine is never more permissive than the matrix: a cell grants at most what it
-says, and only the decisions this phase can carry out are granted. In phase 2 that is ``auto``
-for ``LECTURE`` in every domain and for ``CALCUL`` in the finance pack alone, whose computing
-tools are deterministic, tested and evaluated (R1, R8, ADR-022); every other cell, including
-``brouillon`` or ``proposition``, is refused with its reason, because no component can yet draft,
-simulate or ask for an approval.
+says, and only the decisions this phase can carry out are granted, each with an explicit
+``effect`` that the caller must read (ADR-030).
+
+The orchestrator and the plugins carry out ``auto`` for ``LECTURE`` in every domain and for
+``CALCUL`` in the finance pack alone, whose computing tools are deterministic, tested and
+evaluated (R1, R8, ADR-022): their effect is ``executer``. The paper loop alone carries out an
+order intent of the finance pack (``decide_order``): ``proposition`` at N1 drafts it, ``paper`` at
+N2 sends it to the paper adapter, and both need the Risk Gate's answer (R2). Every other cell,
+including ``brouillon`` or ``simule``, is refused with its reason, because no component carries
+it out. A live configuration that is enabled refuses everything, since no live adapter exists (R3).
 """
 
 from __future__ import annotations
@@ -15,11 +20,14 @@ from __future__ import annotations
 from collections.abc import Mapping
 from pathlib import Path
 from types import MappingProxyType
-from typing import Any, Literal
+from typing import TYPE_CHECKING, Any, Literal
 
 from pydantic import BaseModel, ConfigDict, Field
 
 from core.config.loader import ActionClass, AutonomyConfig, Level, MatrixDecision
+
+if TYPE_CHECKING:
+    from core.risk_gate.gate import RiskGateResult
 
 # What phase 2 can carry out. Widening any of these is a phase decision (ADR, evals, Lucas).
 PHASE_ACTION_CLASSES: frozenset[ActionClass] = frozenset({"LECTURE"})  # in every domain
@@ -32,40 +40,61 @@ ROUTED_ACTION_CLASSES: frozenset[ActionClass] = (
     frozenset[ActionClass]().union(*PHASE_DOMAIN_ACTION_CLASSES.values()) - PHASE_ACTION_CLASSES
 )
 PHASE_DECISIONS: frozenset[MatrixDecision] = frozenset({"auto"})
+# What the paper loop can carry out (ADR-030): an order intent of the finance pack, drafted at
+# N1 and sent to the paper adapter at N2. The orchestrator never carries one out.
+ORDER_DOMAIN = "finance"
+ORDER_ACTION_CLASSES: frozenset[ActionClass] = frozenset({"FINANCIERE"})
+ORDER_DECISIONS: frozenset[MatrixDecision] = frozenset({"proposition", "paper"})
 
 KILL_SWITCH_FILE = Path("governance") / "kill_switch" / "KILL"
+
+Effect = Literal["executer", "proposer", "paper", "refuser"]
+# What a granted cell lets the caller do. A financial action is never executed in this phase.
+_EFFECTS: Mapping[bool, Mapping[MatrixDecision, Effect]] = MappingProxyType(
+    {
+        False: MappingProxyType({"auto": "executer"}),
+        True: MappingProxyType({"proposition": "proposer", "paper": "paper"}),
+    }
+)
+
+
+def _effect(action_class: ActionClass, decision: MatrixDecision) -> Effect | None:
+    return _EFFECTS[action_class == "FINANCIERE"].get(decision)
 
 
 class _Strict(BaseModel):
     model_config = ConfigDict(extra="forbid", frozen=True)
 
 
-class RiskCheck(_Strict):
+class RecordedCheck(_Strict):
     name: str
     ok: bool
     value: str
     limit: str
 
 
-class RiskGateResult(_Strict):
+class RiskGateRecord(_Strict):
+    """The ``risk_gate`` block of Annex C.4: the Risk Gate's answer, without its quantities."""
+
     result: Literal["ACCEPTE", "REFUSE", "REDUIT"]
-    checks: tuple[RiskCheck, ...] = ()
+    checks: tuple[RecordedCheck, ...] = ()
 
 
 class PolicyDecision(_Strict):
-    """Annex C.4. ``risk_gate`` stays empty until the finance risk gate exists."""
+    """Annex C.4. ``risk_gate`` records the Risk Gate's answer to a financial action."""
 
     request_id: str = Field(min_length=1)
     domain: str
     action_class: ActionClass
     autonomy_level: Level
     decision: MatrixDecision
-    risk_gate: RiskGateResult | None = None
+    risk_gate: RiskGateRecord | None = None
     reasons: tuple[str, ...] = Field(min_length=1)
 
     @property
-    def allowed(self) -> bool:
-        return self.decision == "auto"
+    def effect(self) -> Effect:
+        """What the caller may do: execute, draft, send to the paper adapter, or nothing."""
+        return _effect(self.action_class, self.decision) or "refuser"
 
     def to_payload(self) -> dict[str, Any]:
         return self.model_dump(mode="json")
@@ -92,17 +121,25 @@ def decide(
     domain: str,
     action_class: ActionClass,
     kill_switch: bool,
+    live_enabled: bool,
     action_classes: frozenset[ActionClass] | None = None,
     decisions: frozenset[MatrixDecision] = PHASE_DECISIONS,
+    risk_gate: RiskGateResult | None = None,
 ) -> PolicyDecision:
     """Decision for one action of ``action_class`` in ``domain``.
 
-    The kill switch overrides everything (R4); an unknown domain is refused; otherwise the
-    matrix cell for the domain's current level is granted only when this phase implements both
-    the decision and the action class in that domain (``action_classes``, by default
-    ``phase_action_classes(domain)``). Anything else is ``refus``.
+    The kill switch overrides everything (R4); an unknown domain is refused, and so is every
+    action while the live configuration is enabled (R3). Otherwise the matrix cell for the
+    domain's current level is granted only when this phase implements the decision and the
+    action class in that domain (``action_classes``, by default ``phase_action_classes(domain)``)
+    and the decision has an effect for that class. A financial action also needs the Risk Gate's
+    answer, recorded in the decision, and is refused when the gate refuses (R2); any other
+    action must come without one. Anything else is ``refus``.
     """
     granted = phase_action_classes(domain) if action_classes is None else action_classes
+    record = (
+        None if risk_gate is None else RiskGateRecord.model_validate(risk_gate.policy_payload())
+    )
 
     def refuse(level: Level, *reasons: str) -> PolicyDecision:
         return PolicyDecision(
@@ -111,6 +148,7 @@ def decide(
             action_class=action_class,
             autonomy_level=level,
             decision="refus",
+            risk_gate=record,
             reasons=reasons,
         )
 
@@ -120,6 +158,12 @@ def decide(
     if spec is None:
         return refuse("N0", f"domaine « {domain} » absent de autonomy.yaml : refus")
     level = spec.level
+    if live_enabled:
+        return refuse(
+            level,
+            "ALERTE : la configuration live est activée alors qu'aucun adaptateur live n'existe "
+            "(R3) : toute action est refusée",
+        )
     cell = autonomy.matrix[action_class][level]
     matrix = f"matrice {action_class} × {level} : {cell}"
     if cell == "refus":
@@ -132,11 +176,45 @@ def decide(
             matrix,
             f"aucune capacité {action_class} pour le domaine « {domain} » dans cette phase : refus",
         )
+    if _effect(action_class, cell) is None:
+        return refuse(level, matrix, f"« {cell} » n'a aucun effet pour {action_class} : refus")
+    reasons = (matrix,)
+    if action_class == "FINANCIERE":
+        if record is None:
+            return refuse(level, matrix, "la Porte de risque n'a pas été consultée (R2) : refus")
+        if record.result == "REFUSE":
+            return refuse(level, matrix, "Porte de risque : REFUSE")
+        reasons = (matrix, f"Porte de risque : {record.result}")
+    elif record is not None:
+        return refuse(level, matrix, "Porte de risque consultée pour une action non financière")
     return PolicyDecision(
         request_id=request_id,
         domain=domain,
         action_class=action_class,
         autonomy_level=level,
         decision=cell,
-        reasons=(matrix,),
+        risk_gate=record,
+        reasons=reasons,
+    )
+
+
+def decide_order(
+    autonomy: AutonomyConfig,
+    *,
+    request_id: str,
+    kill_switch: bool,
+    live_enabled: bool,
+    risk_gate: RiskGateResult | None,
+) -> PolicyDecision:
+    """Decision for one order intent of the paper loop: ``proposer``, ``paper`` or ``refuser``."""
+    return decide(
+        autonomy,
+        request_id=request_id,
+        domain=ORDER_DOMAIN,
+        action_class="FINANCIERE",
+        kill_switch=kill_switch,
+        live_enabled=live_enabled,
+        action_classes=ORDER_ACTION_CLASSES,
+        decisions=ORDER_DECISIONS,
+        risk_gate=risk_gate,
     )

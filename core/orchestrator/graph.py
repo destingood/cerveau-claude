@@ -1,9 +1,10 @@
 """The graph of section 7.1 and the orchestrator that runs one request.
 
 context → guard → route → plan → verify → output → policy → audit; a decision question routed to
-a pack's committee (D15) goes route → committee → output instead. The kill switch, a refused
-question (by the guard, or once routed to a domain that cannot carry out its action class) and a
-question that needs a clarification go straight to the output; a kill switch
+a pack's committee (D15) goes route → committee → output instead. The kill switch, an enabled
+live configuration (R3), a refused question (by the guard, or once routed to a domain that cannot
+carry out its action class) and a question that needs a clarification go straight to the output,
+before any model call or tool for the first two; a kill switch
 engaged while the request runs stops it before the next model call, with a refusal. Every request,
 answered or not, ends with one DECISION entry in the audit journal (R11) that carries its cost
 (the ledger reads it) and counts, never the question, the answer or a URL; one ERROR entry per
@@ -78,8 +79,9 @@ async def policy_node(run: Run, state: CerveauState) -> dict[str, Any]:
         domain=context.domain,
         action_class=action,
         kill_switch=kill_switch_engaged(run.project_root),
+        live_enabled=run.config.live.enabled,
     )
-    if not decision.allowed and answer.statut != "refus":
+    if decision.effect != "executer" and answer.statut != "refus":
         reasons = " ; ".join(decision.reasons)
         answer = Answer(statut="refus", message=f"{POLICY_REFUSAL} : {reasons}")
     return {"policy": decision.to_payload(), "answer": answer}
@@ -244,6 +246,7 @@ def halted_state(run: Run) -> CerveauState:
         domain=domain,
         action_class="LECTURE",
         kill_switch=True,
+        live_enabled=run.config.live.enabled,
     )
     answer = Answer(statut="refus", message=KILL_MESSAGE)
     return state.model_copy(update={"answer": answer, "policy": decision.to_payload()})
@@ -330,7 +333,8 @@ NODES: Sequence[tuple[str, Node]] = (
 
 
 def _after_context(state: CerveauState) -> str:
-    return "sortie" if required(state.context, "contexte").kill_switch else "garde"
+    context = required(state.context, "contexte")
+    return "sortie" if context.kill_switch or context.live_enabled else "garde"
 
 
 def _after_guard(state: CerveauState) -> str:

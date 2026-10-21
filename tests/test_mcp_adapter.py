@@ -86,6 +86,7 @@ def make_scope(root: Path, limits: PerRequest = LIMITS) -> RequestScope:
         budget=RequestBudget(limits, meter, clock=lambda: 0.0),
         meter=meter,
         project_root=root,
+        live_enabled=False,
     )
 
 
@@ -257,6 +258,14 @@ def test_the_kill_switch_stops_a_running_request(scope: RequestScope, tmp_path: 
     assert payload["policy"]["decision"] == "refus"
     assert scope.budget.tool_calls == 0
     assert scope.meter.search_calls == ()
+
+
+def test_an_enabled_live_configuration_hides_every_tool(tmp_path: Path) -> None:
+    scope = replace(make_scope(tmp_path), live_enabled=True)
+    plugin = session(scope, lambda p: asyncio.sleep(0, p))
+    assert plugin.tools == []
+    assert plugin.skipped
+    assert all("ALERTE" in reason for reason in plugin.skipped.values())
 
 
 def test_a_domain_absent_from_autonomy_gets_no_tool(tmp_path: Path) -> None:

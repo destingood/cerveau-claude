@@ -310,6 +310,7 @@ class Run:
             budget=self.budget,
             meter=self.meter,
             project_root=self.project_root,
+            live_enabled=self.config.live.enabled,
         )
 
         async def open_one(plugin: str) -> Toolbox | str:

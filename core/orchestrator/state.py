@@ -57,6 +57,7 @@ class RequestContext(_Node):  # node 1
     app_context: str = "interface en ligne de commande (CLI), un seul utilisateur"
     memory: str = "aucune (mémoire désactivée en phase 1)"
     kill_switch: bool
+    live_enabled: bool = False  # no live adapter exists: refused before any call (R3)
 
 
 class InputVerdict(_Llm):  # the classifier's output, node 2

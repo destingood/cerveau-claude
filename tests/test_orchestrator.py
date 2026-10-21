@@ -7,7 +7,7 @@ import itertools
 import json
 from collections.abc import AsyncIterator, Callable, Iterator, Mapping, Sequence
 from contextlib import asynccontextmanager, contextmanager
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, replace
 from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
@@ -27,7 +27,7 @@ from core.mcp.adapter import McpAdapterError, RequestScope
 from core.models.router import ModelRequest, ModelRouter
 from core.orchestrator.answer import _Links
 from core.orchestrator.graph import Orchestrator, RunResult
-from core.orchestrator.intake import KILL_MESSAGE
+from core.orchestrator.intake import KILL_MESSAGE, LIVE_MESSAGE
 from core.orchestrator.prompts import PromptSet
 from core.orchestrator.runtime import OUTPUT_CAPS, WEB_PLUGIN
 from core.orchestrator.state import MARKER
@@ -785,6 +785,24 @@ def test_kill_switch_refuses_before_any_model_call(rig: Rig, tmp_path: Path) -> 
     assert payload["status"] == "refus"
     assert payload["cost"]["llm_calls"] == []
     assert payload["policy"]["decision"] != "auto"
+
+
+def test_an_enabled_live_configuration_refuses_with_an_alert(
+    tmp_path: Path, config_dir: Path
+) -> None:
+    config = _config(config_dir)
+    live = replace(config, live=config.live.model_copy(update={"enabled": True}))
+    rig = make_rig(tmp_path, live)
+    rig.brain.planner = [tool_call("web_search", query="population France 2025"), final()]
+    result = rig.ask("Quelle est la population de la France ?")
+    assert result.answer.statut == "refus"
+    assert result.answer.message == LIVE_MESSAGE
+    assert rig.brain.seen == []  # no model call, no tool (R3, ADR-030)
+    assert rig.world.opened == 0
+    payload = rig.payload()
+    assert payload["status"] == "refus"
+    assert payload["policy"]["decision"] == "refus"
+    assert payload["policy"]["reasons"][0].startswith("ALERTE : la configuration live est activée")
 
 
 def test_refused_question_is_not_planned(rig: Rig) -> None:

@@ -45,6 +45,10 @@ KILL_MESSAGE = (
     "Le kill switch est engagé : CERVEAU est à l'arrêt et ne traite aucune requête (R4). "
     "Seul Lucas peut le désengager."
 )
+LIVE_MESSAGE = (
+    "ALERTE : la configuration live est activée alors qu'aucun adaptateur live n'existe : "
+    "CERVEAU ne traite aucune requête (R3). Seul Lucas peut la désactiver, à la main."
+)
 
 
 def paris_time(now: datetime) -> str:
@@ -64,6 +68,7 @@ async def context_node(run: Run, state: CerveauState) -> dict[str, Any]:
         domain=DEFAULT_DOMAIN,
         autonomy_level="N0" if kill else level,
         kill_switch=kill,
+        live_enabled=run.config.live.enabled,
     )
     return {"context": context}
 
@@ -131,8 +136,9 @@ async def guard_node(run: Run, state: CerveauState) -> dict[str, Any]:
             domain=context.domain,
             action_class=verdict.classe_action,
             kill_switch=kill_switch_engaged(run.project_root),
+            live_enabled=run.config.live.enabled,
         )
-        if not policy.allowed:
+        if policy.effect != "executer":
             return _refusal(
                 question,
                 f"action de classe {verdict.classe_action} : " + " ; ".join(policy.reasons),
@@ -160,8 +166,9 @@ def _routed_refusal(run: Run, guarded: GuardedInput, domain: str) -> GuardedInpu
         domain=domain,
         action_class=guarded.action_class,
         kill_switch=kill_switch_engaged(run.project_root),
+        live_enabled=run.config.live.enabled,
     )
-    if policy.allowed:
+    if policy.effect == "executer":
         return None
     reason = f"action de classe {guarded.action_class} : " + " ; ".join(policy.reasons)
     return guarded.model_copy(update={"decision": "refus", "reason": reason})

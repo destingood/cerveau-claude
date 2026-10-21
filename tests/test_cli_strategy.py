@@ -80,6 +80,7 @@ def copilot_backtest(home: Path, **arguments: Any) -> dict[str, Any]:
         budget=RequestBudget(limits, meter, clock=lambda: 0.0),
         meter=meter,
         project_root=home,
+        live_enabled=False,
     )
     server = research_server(home, REPO / "config", lambda: NOW)
 
