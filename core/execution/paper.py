@@ -473,8 +473,9 @@ class PaperSimulator:
 
     def _ledger(self, through: date | None = None) -> _Ledger:
         """Cash and positions replayed from the capital, the fills and the actions booked (those
-        of the sessions up to ``through``): the simulator's own. A fill happens at the session
-        of its order; the cursor counts the events only (ADR-042)."""
+        of the sessions before ``through``, and the splits of ``through``, which apply at its
+        start; its dividends are paid after its fills and never fund them): the simulator's own.
+        A fill happens at the session of its order; the cursor counts the events only (ADR-042)."""
         capital = Decimal(self._conn.execute("SELECT capital_eur FROM account").fetchone()[0])
         movements = []
         cursor = 0
@@ -493,7 +494,13 @@ class PaperSimulator:
                         Decimal(row["cash_eur"]),
                     )
                 )
-        actions = [a for a in self._actions() if through is None or a.session <= through]
+        actions = [
+            a
+            for a in self._actions()
+            if through is None
+            or a.session < through
+            or (a.session == through and a.kind == "split")
+        ]
         replayed = replay_account(actions, movements)
         return _Ledger(capital + replayed.cash, replayed.positions, cursor)
 

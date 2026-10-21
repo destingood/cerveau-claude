@@ -5,6 +5,7 @@ from __future__ import annotations
 import sqlite3
 from datetime import date, datetime, timedelta
 from decimal import Decimal
+from pathlib import Path
 from typing import Any
 
 import pytest
@@ -19,7 +20,7 @@ from core.execution.actions import (
 )
 from core.execution.book import OrderBook
 from core.execution.intent import OrderIntent
-from core.execution.paper import PaperSimulator
+from core.execution.paper import PaperCosts, PaperSettings, PaperSimulator
 from core.execution.reconcile import ReconciliationLog, settle
 from core.execution.states import ExecutionIncident
 from core.finance.model import PARIS, CorporateAction
@@ -29,14 +30,18 @@ from tests.test_execution_paper import (
     CAPITAL,
     CLOSED,
     FILLED_AT,
+    OPENED,
     SESSION,
+    SETTINGS,
     SUBMITTED,
     TUESDAY,
     Market,
     bar,
+    holding,
     sell,
     simulator,
     tuesday,
+    weekdays,
 )
 
 SYMBOL = "FICT-ACME"
@@ -302,3 +307,26 @@ def test_the_actions_only_grow() -> None:
     for statement in ("UPDATE actions SET value = '3'", "DELETE FROM actions"):
         with pytest.raises(sqlite3.IntegrityError, match="ne se"):
             sim._conn.execute(statement)
+
+
+def test_a_dividend_is_not_spent_by_the_fills_of_its_own_session(tmp_path: Path) -> None:
+    path = tmp_path / "simulator.db"
+    with PaperSimulator.open(path, SETTINGS, now=OPENED, sessions=weekdays) as sim:
+        holding(sim)
+        evening = make_intent(
+            1,
+            quantity=68,
+            limit_price=Decimal("124.00"),
+            created_at=datetime(2026, 10, 19, 18, 30, tzinfo=PARIS),
+            decision_date=SESSION,
+        )
+        assert sim.submit(evening, now=CLOSED + timedelta(hours=1)).accepted
+    # Dearer costs: 68 × 123.07 and 5 % of it is 8,787.20, which the cash of 8,767.30 does not
+    # cover, though it would with the dividend of 20.00 paid at the end of the same session.
+    dearer = PaperSettings(CAPITAL, PaperCosts(Decimal(5), Decimal(2), Decimal(5)), Decimal(5))
+    with PaperSimulator.open(path, dearer, now=NEXT_DAY, sessions=weekdays) as sim:
+        assert sim.book_actions([dividend(2.0)], Market(tuesday()), now=NEXT_DAY).booked
+        report = sim.close_session(TUESDAY, Market(tuesday(volume=10_000)), now=NEXT_DAY)
+        assert report.fills == ()
+        assert report.expired[0][1].startswith("cash insuffisant à l'exécution")
+        assert sim.account_snapshot().cash_eur == CASH + Decimal("20.00")
