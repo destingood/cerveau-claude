@@ -9,31 +9,25 @@ the stop is alerted on the configured channels (ADR-038), whose failures never c
 from __future__ import annotations
 
 import uuid
-from contextlib import ExitStack
 from datetime import UTC, datetime
 from pathlib import Path
 from typing import Annotated
 
 import typer
 
-from core.approvals.store import ApprovalError, ApprovalRules, ApprovalStore, Trail
-from core.approvals.store import default_store_path as approvals_path
 from core.audit import AuditJournal, default_journal_path
 from core.config import ConfigError, load_config
-from core.execution.book import OrderBook, Recorder, default_book_path
-from core.execution.broker import BrokerAdapter
+from core.config.loader import Config
 from core.execution.kill_switch import (
     REARM_PHRASE,
     KillSwitchError,
     Stop,
     detect,
-    engage,
     rearm,
     recorded_stop,
 )
-from core.execution.paper import PaperSettings, PaperSimulator, default_simulator_path
+from core.execution.operations import stop_everything
 from core.execution.reconcile import interactive_terminal
-from core.notify import Alerts
 from interfaces.cli.common import (
     EXIT_BLOCKED,
     EXIT_ERROR,
@@ -49,36 +43,6 @@ from interfaces.cli.common import project_root as _project_root
 ReasonOpt = Annotated[
     str, typer.Option("--raison", help="Pourquoi l'arrêt (une ligne, 200 caractères au plus).")
 ]
-
-
-def _settings(
-    root: Path, config_dir: Path, unavailable: list[str]
-) -> tuple[float | None, PaperSettings | None, ApprovalRules | None, Alerts]:
-    """The target, the paper settings, the approval rules, None for what is unknown, and the
-    alert channels; a paper account or an approval store that exists but cannot be opened goes in
-    ``unavailable``."""
-    try:
-        config = load_config(config_dir)
-    except ConfigError:
-        unavailable.append("configuration invalide : cible, compte paper et approbations inconnus")
-        return None, None, None, alert_channels(None, root)
-    target = config.risk.kill_switch.target_seconds
-    settings: PaperSettings | None = None
-    try:
-        settings = PaperSettings.from_config(
-            config.risk_limits_paper, config.execution, config.risk.trading_costs
-        )
-    except Exception as exc:  # a stop never waits for a setting
-        if default_simulator_path(root).is_file():
-            unavailable.append(f"simulateur paper non ouvert ({exc})")
-    rules: ApprovalRules | None = None
-    try:
-        rules = ApprovalRules.from_config(config.autonomy.approval)
-    except ApprovalError as exc:
-        if approvals_path(root).is_file():
-            unavailable.append(f"registre des approbations non ouvert ({exc})")
-    target_s = None if isinstance(target, str) else float(target)
-    return target_s, settings, rules, alert_channels(config, root)
 
 
 def _seconds(value: float, spec: str) -> str:
@@ -137,52 +101,21 @@ def kill_command(
     now = datetime.now(UTC)
     request_id = f"kill-{uuid.uuid4().hex[:12]}"
     audit = AuditJournal(_kill_journal(root, journal, outside))
-    unavailable: list[str] = []
-    target, settings, rules, alerts = _settings(root, config_dir or root / "config", unavailable)
-    with ExitStack() as stack:
-        book: OrderBook | None = None
-        if default_book_path(root).is_file():
-            try:
-                book = stack.enter_context(
-                    OrderBook.open(
-                        default_book_path(root), recorder=Recorder(audit, "lucas", request_id)
-                    )
-                )
-            except Exception as exc:
-                unavailable.append(f"carnet d'ordres non ouvert ({type(exc).__name__})")
-        adapter: BrokerAdapter | None = None
-        if settings is not None and default_simulator_path(root).is_file():
-            try:
-                adapter = stack.enter_context(
-                    PaperSimulator.open(default_simulator_path(root), settings, now=now)
-                )
-            except Exception as exc:
-                unavailable.append(f"simulateur paper non ouvert ({type(exc).__name__})")
-        approvals: ApprovalStore | None = None
-        if rules is not None and approvals_path(root).is_file():
-            try:
-                approvals = stack.enter_context(
-                    ApprovalStore.open(
-                        approvals_path(root), rules=rules, trail=Trail(audit, request_id)
-                    )
-                )
-            except Exception as exc:
-                unavailable.append(f"registre des approbations non ouvert ({type(exc).__name__})")
-        stop = engage(
-            root,
-            trigger="commande",
-            reason=raison,
-            journal=audit,
-            actor="lucas",
-            request_id=request_id,
-            now=now,
-            target_seconds=target,
-            adapter=adapter,
-            book=book,
-            approvals=approvals,
-            alerts=alerts,
-            unavailable=unavailable,
-        )
+    try:
+        config: Config | None = load_config(config_dir or root / "config")
+    except ConfigError:
+        config = None
+    stop = stop_everything(
+        root,
+        config,
+        trigger="commande",
+        reason=raison,
+        journal=audit,
+        actor="lucas",
+        request_id=request_id,
+        now=now,
+        alerts=alert_channels(config, root),
+    )
     _summary(stop)
     if not stop.clean:
         raise typer.Exit(EXIT_ERROR)

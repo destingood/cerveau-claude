@@ -309,6 +309,13 @@ class ReconciliationLog:
         ).fetchone()
         return last is not None and last[0] == 0 and self.open_gaps() > 0
 
+    def last_reconciled_at(self) -> datetime | None:
+        """The statement time of the last reconciliation, or None before the first one."""
+        row = self._conn.execute(
+            "SELECT at FROM entries WHERE kind = 'reconciliation' ORDER BY seq DESC LIMIT 1"
+        ).fetchone()
+        return None if row is None else datetime.fromisoformat(row[0])
+
     def record(self, result: Reconciliation, *, now: datetime | None = None) -> int:
         """Record a reconciliation and journal it; returns the gaps that now block intents."""
         when = now or datetime.now(UTC)

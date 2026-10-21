@@ -477,7 +477,8 @@ def test_a_reconciliation_gap_is_alerted(tmp_path: Path, monkeypatch: pytest.Mon
     report = clean.run(MONDAY_RUN)
     clean.store.close()
     assert report.reconciliation is not None and report.reconciliation.clean
-    assert channel.kinds == []  # a clean reconciliation is not alerted
+    assert channel.kinds == ["rapport_quotidien"]  # a clean reconciliation is not alerted
+    channel.received.clear()
 
     monkeypatch.setattr(loop, "settle", gapped)
     world = World(tmp_path / "ecart")
@@ -485,7 +486,7 @@ def test_a_reconciliation_gap_is_alerted(tmp_path: Path, monkeypatch: pytest.Mon
     report = world.run(MONDAY_RUN)
     world.store.close()
     assert report.reconciliation is not None and not report.reconciliation.clean
-    assert channel.kinds == ["ecart_reconciliation"]
+    assert channel.kinds == ["ecart_reconciliation", "rapport_quotidien"]
     assert channel.received[0].ref == "loop-test"
     assert "alerte non envoyée (ntfy : RuntimeError)" in report.notes
 

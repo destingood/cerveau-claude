@@ -1,5 +1,5 @@
 """Approval hooks: Claude Code never enrolls the TOTP secret, never writes the approval store and
-never starts the Discord bot (D2, D18, D22, ADR-035).
+never starts the Discord bot or the internal API (D2, D18, D22, ADR-035, ADR-037).
 """
 
 from __future__ import annotations
@@ -48,6 +48,22 @@ BLOCKED_BASH = [
     "uv run node interfaces/discord_bot/index.js",
     "pm2 start interfaces/discord_bot/index.js",
     "nohup node interfaces\\discord_bot\\index.js &",
+    # starting the internal API
+    "cerveau api serve",
+    "uv run cerveau api serve",
+    "uv run --color never cerveau api SERVE",
+    "uv run python -m interfaces.cli.main api serve",
+    "bash -c 'uv run cerveau api serve'",
+    "uvicorn --factory interfaces.api:create_app",
+    "uv run uvicorn interfaces.api.app:create_app --factory --port 8800",
+    "nohup uvicorn x:app &",
+    "uvx uvicorn x:app",
+    "uv tool run gunicorn x:app",
+    "fastapi run interfaces/api/app.py",
+    "python -m uvicorn x:app",
+    "uv run python -m hypercorn x:app",
+    "python -c 'import uvicorn; from interfaces.api import create_app; uvicorn.run(create_app())'",
+    "$launcher uvicorn x:app",
 ]
 BLOCKED_POWERSHELL = [
     "Remove-Item var\\approvals\\approvals.db",
@@ -60,6 +76,10 @@ BLOCKED_POWERSHELL = [
     "Start-Process node -ArgumentList interfaces\\discord_bot\\index.js",
     "node interfaces\\discord_bot\\index.js",
     "Set-Location interfaces\\discord_bot; npm start",
+    "cerveau api serve",
+    "Start-Process cerveau -ArgumentList 'api','serve'",
+    "Start-Process uvicorn -ArgumentList 'x:app'",
+    "& .venv\\Scripts\\uvicorn.exe x:app",
 ]
 ALLOWED_BASH = [
     "cat var/approvals/approvals.db",
@@ -79,9 +99,19 @@ ALLOWED_BASH = [
     "grep -n node interfaces/discord_bot/index.js",
     "git add interfaces/discord_bot/index.js",
     "npx promptfoo eval",
+    "uv add uvicorn==0.54.0",
+    "uv lock --upgrade-package fastapi",
+    "uv run pip-audit",
+    "grep -n uvicorn uv.lock",
+    "uv run pytest tests/test_api.py -k serve",
+    "uv run cerveau api --help",
+    "uv run ruff check interfaces/api",
+    "git add interfaces/api/app.py interfaces/cli/api.py",
+    "python -c 'import fastapi; print(fastapi.__version__)'",
 ]
 ALLOWED_POWERSHELL = [
     "Get-Content var\\approvals\\approvals.db",
+    "Select-String -Pattern uvicorn uv.lock",
     "Set-Location interfaces\\discord_bot; npm test",
     "node --test interfaces\\discord_bot\\test",
 ]
@@ -111,6 +141,9 @@ def test_refusals_name_their_rule() -> None:
     assert bot and "D22" in bot and "Lucas" in bot
     rearm = guard.analyse("uv run cerveau rearm", False, CWD)
     assert rearm and "R4" in rearm
+    for api in ("uv run cerveau api serve", "uv run uvicorn x:app"):
+        reason = guard.analyse(api, False, CWD)
+        assert reason and "D22" in reason and "API" in reason
 
 
 def test_standing_in_the_bot_folder_counts() -> None:

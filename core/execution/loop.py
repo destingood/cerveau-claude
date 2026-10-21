@@ -150,6 +150,15 @@ class Valuation:
     valued_at: datetime
 
 
+@dataclass(frozen=True)
+class Run:
+    """A day the loop treated to the end."""
+
+    day: date
+    completed_at: datetime
+    intents: int
+
+
 class LoopLog:
     """The days the loop treated and the valuations the loss limits are measured from;
     append-only."""
@@ -201,6 +210,17 @@ class LoopLog:
     def days(self) -> list[date]:
         rows = self._conn.execute("SELECT day FROM runs ORDER BY day")
         return [date.fromisoformat(row[0]) for row in rows]
+
+    def run(self, day: date | None = None) -> Run | None:
+        """The run of ``day``, or the last one; None if there is none."""
+        query = "SELECT day, completed_at, intents FROM runs"
+        if day is None:
+            row = self._conn.execute(f"{query} ORDER BY day DESC LIMIT 1").fetchone()
+        else:
+            row = self._conn.execute(f"{query} WHERE day = ?", (day.isoformat(),)).fetchone()
+        if row is None:
+            return None
+        return Run(date.fromisoformat(row[0]), datetime.fromisoformat(row[1]), int(row[2]))
 
     def valuations(self) -> list[Valuation]:
         rows = self._conn.execute(
@@ -906,6 +926,7 @@ def finish_day(env: PaperDay, report: DayReport) -> str:
         env.log.record_run(
             report.day, completed_at=report.as_of, intents=len(report.intents), report=text
         )
+        _alert(env, report, Alert.of("rapport_quotidien", report.day.isoformat(), report.as_of))
     return text
 
 

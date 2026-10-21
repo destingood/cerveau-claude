@@ -1,5 +1,5 @@
 """`cerveau` command line: ask, feedback, eval, audit, config, registry, finance, portfolio,
-strategy, committee, promotion, paper, status, kill, rearm."""
+strategy, committee, promotion, paper, approvals, api, status, kill, rearm."""
 
 from __future__ import annotations
 
@@ -27,6 +27,8 @@ from core.notify import alerts_from
 from core.observability import build_tracer
 from core.registry import validate_all, validate_plugin
 from interfaces.cli import evaluate
+from interfaces.cli.api import api_app
+from interfaces.cli.approvals import approvals_app
 from interfaces.cli.committee import committee_app
 from interfaces.cli.common import (
     EXIT_BLOCKED,
@@ -64,6 +66,8 @@ app.add_typer(strategy_app, name="strategy")
 app.add_typer(committee_app, name="committee")
 app.add_typer(promotion_app, name="promotion")
 app.add_typer(paper_app, name="paper")
+app.add_typer(approvals_app, name="approvals")
+app.add_typer(api_app, name="api")
 app.command("status")(status_command)
 app.command("kill")(kill_command)
 app.command("rearm")(rearm_command)

@@ -26,6 +26,13 @@ def _no_ntfy(monkeypatch: pytest.MonkeyPatch) -> None:
         monkeypatch.delenv(name, raising=False)
 
 
+@pytest.fixture(autouse=True)
+def _no_interface_secrets(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Lucas's API token, TOTP secret and bot token never reach a test: tests set their own."""
+    for name in ("CERVEAU_API_TOKEN", "CERVEAU_TOTP_SECRET", "DISCORD_BOT_TOKEN"):
+        monkeypatch.delenv(name, raising=False)
+
+
 QUESTIONS_XML = (
     "<evaluation>\n"
     + "".join(

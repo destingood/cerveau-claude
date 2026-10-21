@@ -17,15 +17,11 @@ from typing import Annotated
 
 import typer
 
-from core.approvals.store import ApprovalError, ApprovalRules, ApprovalStore, Trail
-from core.approvals.store import default_store_path as approvals_path
 from core.audit import AuditJournal, default_journal_path
 from core.config.loader import Config
 from core.execution.book import OrderBook, Recorder, default_book_path
 from core.execution.kill_switch import recorded_stop
 from core.execution.loop import (
-    BOOK_ACTOR,
-    LOOP_ACTOR,
     OUTCOMES,
     DayReport,
     LoopError,
@@ -38,12 +34,7 @@ from core.execution.loop import (
     run_day,
     send_approved,
 )
-from core.execution.paper import (
-    PaperSettings,
-    PaperSimulator,
-    SimulatorError,
-    default_simulator_path,
-)
+from core.execution.operations import PaperUnavailable, open_approvals, open_paper_day
 from core.execution.reconcile import (
     ReconciliationError,
     ReconciliationLog,
@@ -52,7 +43,6 @@ from core.execution.reconcile import (
 )
 from core.execution.sources import strategy_sources
 from core.execution.states import OPEN
-from core.finance.store import FinanceStore, FinanceStoreError, default_store_path
 from core.policy.engine import kill_switch_engaged
 from interfaces.cli.common import (
     EXIT_BLOCKED,
@@ -108,7 +98,7 @@ def run(
         env = _open_day(stack, root, config, audit, request_id, now)
         cutoff = config.research.execution.decision_cutoff_utc
         env.sources, refused = strategy_sources(root, env.store, cutoff)
-        env.approvals, _ = _approvals(stack, root, config, audit, request_id)  # N3 (ADR-036)
+        env.approvals, _ = open_approvals(stack, root, config, audit, request_id)  # N3 (ADR-036)
         try:
             report = run_day(env, now=now)
         except LoopError as exc:
@@ -139,7 +129,7 @@ def send(
     audit = AuditJournal(journal)
     with ExitStack() as stack:
         env = _open_day(stack, root, config, audit, request_id, now)
-        env.approvals, closed = _approvals(stack, root, config, audit, request_id)
+        env.approvals, closed = open_approvals(stack, root, config, audit, request_id)
         report = send_approved(env, now=now)
     if closed is not None:
         report.notes.append(closed)
@@ -160,49 +150,13 @@ def _open_day(
 ) -> PaperDay:
     """The paper account's files, opened in ``stack``; without sources nor approval store."""
     try:
-        settings = PaperSettings.from_config(
-            config.risk_limits_paper, config.execution, config.risk.trading_costs
+        return open_paper_day(
+            stack, root, config, audit, request_id, now, alerts=alert_channels(config, root)
         )
-    except SimulatorError as exc:
-        fail(f"Bloqué (R7) : {exc}. Voir `cerveau config check`.", EXIT_BLOCKED)
-    try:
-        store = stack.enter_context(FinanceStore.open(default_store_path(root), read_only=True))
-    except FinanceStoreError as exc:
+    except PaperUnavailable as exc:
+        if exc.blocked:
+            fail(f"Bloqué (R7) : {exc}. Voir `cerveau config check`.", EXIT_BLOCKED)
         fail(f"Base finance : {exc}", EXIT_ERROR)
-    return PaperDay(
-        root=root,
-        config=config,
-        store=store,
-        book=stack.enter_context(
-            OrderBook.open(
-                default_book_path(root), recorder=Recorder(audit, BOOK_ACTOR, request_id)
-            )
-        ),
-        simulator=stack.enter_context(
-            PaperSimulator.open(default_simulator_path(root), settings, now=now)
-        ),
-        reconciliations=stack.enter_context(
-            ReconciliationLog.open(default_log_path(root), Recorder(audit, LOOP_ACTOR, request_id))
-        ),
-        log=stack.enter_context(LoopLog.open(default_loop_path(root))),
-        journal=audit,
-        request_id=request_id,
-        alerts=alert_channels(config, root),
-    )
-
-
-def _approvals(
-    stack: ExitStack, root: Path, config: Config, audit: AuditJournal, request_id: str
-) -> tuple[ApprovalStore | None, str | None]:
-    """The approval store opened in ``stack``, or why it stays closed (R7)."""
-    try:
-        rules = ApprovalRules.from_config(config.autonomy.approval)
-    except ApprovalError as exc:
-        return None, f"registre des approbations fermé : {exc}"
-    trail = Trail(audit, request_id, {"config": config.digest})
-    return stack.enter_context(
-        ApprovalStore.open(approvals_path(root), rules=rules, trail=trail)
-    ), None
 
 
 def _sent_lines(report: DayReport) -> list[str]:

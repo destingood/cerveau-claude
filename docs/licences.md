@@ -1,7 +1,9 @@
 # Licences des composants — CERVEAU
 
 - Relevé du 2026-10-17 (phase 0), mis à jour le 2026-10-18 (phases 1 et 2), le 2026-10-20
-  (phase 3) et le 2026-10-21 (phase 4) ; à jour à chaque nouvelle dépendance (R14)
+  (phase 3) et le 2026-10-21 (phases 4 et 5) ; à jour à chaque nouvelle dépendance (R14)
+- Phase 5 : licences lues dans les métadonnées des paquets installés (`License-Expression`) ;
+  `pip-audit` sans vulnérabilité connue au 2026-10-21
 - Phase 4 : aucune nouvelle dépendance directe ni transitive (plan de phase 4, section 13) ; seule
   la transitive certifi passe en 2026.10.19 (PYSEC-2026-4320), licence MPL-2.0 inchangée
 - Phases 1 et 2 : licences lues dans les métadonnées des paquets installés (`*.dist-info/METADATA`)
@@ -33,6 +35,8 @@
 | skfolio | 1.8.1 | BSD-3-Clause | optimisation, shrinkage, recoupement des mesures (phase 2) ; 1.8.2 à 1.9.4 ont moins de 7 jours |
 | exchange-calendars | 4.13.2 | Apache-2.0 | calendriers des places (phase 2) |
 | nautilus-trader | 1.231.0 | LGPL-3.0-or-later | adaptateur de backtest, seul import dans `core/finance/research/nautilus.py` (phase 3, ADR-024) |
+| fastapi | 0.156.8 | MIT | API interne locale (phase 5, ADR-037) ; le plan citait 0.156.7, 0.156.8 est la dernière publiée au 2026-10-21 ; aucune nouvelle transitive : annotated-doc 0.0.5 (MIT), starlette 1.8.0 (BSD-3-Clause), opentelemetry-api 1.45.1 (Apache-2.0) et typing-inspection 0.4.4 (MIT) étaient déjà au verrou |
+| uvicorn | 0.54.0 | BSD-3-Clause | serveur de l'API interne, lié à 127.0.0.1 (phase 5, ADR-037) ; déjà au verrou en transitive |
 
 ## Recherche (groupe `research`, usage personnel uniquement)
 | Composant | Version | Licence | Usage |

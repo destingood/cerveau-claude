@@ -17,6 +17,7 @@ remains the file-system ACL (R3, ADR-003).
 from __future__ import annotations
 
 import fnmatch
+import itertools
 import re
 import subprocess
 from dataclasses import dataclass, field
@@ -167,8 +168,12 @@ REARM_REFUSAL = "cerveau rearm est réservé à Lucas (R4, ADR-034) : Claude Cod
 ENROLL_REFUSAL = (
     "cerveau approvals enroll est réservé à Lucas (D2, D18) : Claude Code n'enrôle jamais de secret"
 )
-RESERVED_REFUSALS = {"rearm": REARM_REFUSAL, "enroll": ENROLL_REFUSAL}
+API_REFUSAL = "l'API interne n'est lancée que par Lucas (D22) : Claude Code ne la démarre jamais"
+RESERVED_REFUSALS = {"rearm": REARM_REFUSAL, "enroll": ENROLL_REFUSAL, "serve": API_REFUSAL}
 BOT_REFUSAL = "le bot Discord n'est lancé que par Lucas (D22) : Claude Code ne le démarre jamais"
+# ASGI servers that would start the internal API (D22), and the wrappers that launch them.
+API_SERVERS = frozenset({"uvicorn", "hypercorn", "gunicorn", "granian", "fastapi", "daphne"})
+API_WRAPPERS = RESERVED_LAUNCHERS - {"cerveau", "uv"}  # `uv add uvicorn` installs, never serves
 GIT_STASH_UNTRACKED = ("--include-untracked", "--all")
 
 _ASSIGNMENT = re.compile(r"^[A-Za-z_][A-Za-z0-9_]*\+?=")
@@ -180,7 +185,10 @@ _HOOK_BYPASS_ENV = re.compile(
     re.IGNORECASE,
 )
 _SED_WRITE_COMMAND = re.compile(r"(^|[/;}\s])[wW]\s+\S|(^|[/;}\s])e(\s|$)")
-_RESERVED = re.compile(r"(?<![\w-])(rearm|enroll)(?![\w-])", re.IGNORECASE)
+_RESERVED = re.compile(r"(?<![\w-])(rearm|enroll|serve)(?![\w-])", re.IGNORECASE)
+_API_SERVER = re.compile(
+    r"(?<![\w-])(?:uvicorn|hypercorn|gunicorn|granian|fastapi|daphne)(?![\w-])", re.IGNORECASE
+)
 _CERVEAU_CODE = re.compile(r"cerveau|interfaces|kill_switch|approvals", re.IGNORECASE)
 
 
@@ -1000,9 +1008,9 @@ def _words(tokens: list[str]) -> set[str]:
 
 
 def check_reserved(seg: Segment, tokens: list[str], cmd: str) -> str | None:
-    """`cerveau rearm` (R4, ADR-034) and `cerveau approvals enroll` (D2, D18) are Lucas's alone,
-    however they are launched: through uv and its options, winpty, Start-Process, a variable or
-    the module path all count."""
+    """`cerveau rearm` (R4, ADR-034), `cerveau approvals enroll` (D2, D18) and `cerveau api
+    serve` (D22) are Lucas's alone, however they are launched: through uv and its options,
+    winpty, Start-Process, a variable or the module path all count."""
     if cmd in INTERPRETERS:
         text = seg.raw + "\n" + seg.heredoc
         found = _RESERVED.search(text)
@@ -1068,6 +1076,24 @@ def check_bot_launch(seg: Segment, tokens: list[str], cmd: str, ctx: Context) ->
     return None if _bot_safe(cmd, args) else BOT_REFUSAL
 
 
+def check_api_launch(seg: Segment, tokens: list[str], cmd: str) -> str | None:
+    """The internal API is started by Lucas alone (D22): an ASGI server run directly, through
+    a wrapper or a variable, as a module, or from an interpreter on CERVEAU's code refuses.
+    Installing, auditing or searching for one stays allowed."""
+    if cmd in API_SERVERS:
+        return API_REFUSAL
+    if cmd in INTERPRETERS:
+        cmd_index, _, _ = command_word(tokens)
+        args = [a.lower() for a in tokens[cmd_index + 1 :]] if cmd_index is not None else []
+        module = any(a == "-m" and b in API_SERVERS for a, b in itertools.pairwise(args))
+        text = seg.raw + "\n" + seg.heredoc
+        served = bool(_API_SERVER.search(text)) and bool(_CERVEAU_CODE.search(text))
+        return API_REFUSAL if module or served else None
+    names = {basename(w) for w in _words(tokens)}
+    wrapped = cmd in API_WRAPPERS or is_dynamic(cmd)
+    return API_REFUSAL if wrapped and names & API_SERVERS else None
+
+
 def update_cwd(cmd: str, args: list[str], ctx: Context) -> None:
     if cmd == "popd":
         ctx.cwd = None
@@ -1103,6 +1129,7 @@ def check_segment(seg: Segment, ctx: Context, segments: list[Segment]) -> str | 
         lambda: check_nested(seg, args, cmd, ctx),
         lambda: check_reserved(seg, tokens, cmd),
         lambda: check_bot_launch(seg, tokens, cmd, ctx),
+        lambda: check_api_launch(seg, tokens, cmd),
         lambda: check_recursive_delete(tokens, cmd, ctx.powershell),
         lambda: check_force_and_bypass(tokens, cmd, assignments),
         lambda: check_git(git) if git else None,
