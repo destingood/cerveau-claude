@@ -893,6 +893,35 @@ def test_cerveau_rearm_after_a_removal_by_hand(home: Path, config_dir: Path) -> 
     assert "supprimé à la main : suppression journalisée" in result.stdout
 
 
+def test_cerveau_kill_keeps_its_journal_under_var(
+    home: Path, config_dir: Path, tmp_path: Path
+) -> None:
+    elsewhere = tmp_path / "ailleurs" / "journal.jsonl"
+    result = kill(config_dir, "--journal", str(elsewhere))
+    assert result.exit_code == 0, result.output  # a stop never refuses (R4)
+    assert "AVERTISSEMENT (B103) : --journal" in result.stderr
+    assert not elsewhere.exists() and (home / "var" / "audit").is_dir()
+    assert kill_switch_engaged(home)
+
+
+@pytest.mark.parametrize("under_var", [True, False])
+def test_cerveau_kill_takes_a_journal_under_var_or_with_the_option(
+    home: Path, config_dir: Path, tmp_path: Path, under_var: bool
+) -> None:
+    journal = home / "var" / "essai.jsonl" if under_var else tmp_path / "ailleurs.jsonl"
+    extra = () if under_var else ("--hors-var",)
+    result = kill(config_dir, "--journal", str(journal), *extra)
+    assert result.exit_code == 0, result.output
+    assert "AVERTISSEMENT" not in result.stderr and journal.is_file()
+
+
+def test_cerveau_rearm_refuses_a_journal_outside_var(home: Path, tmp_path: Path) -> None:
+    elsewhere = tmp_path / "ailleurs.jsonl"
+    result = runner.invoke(app, ["rearm", "--journal", str(elsewhere)])
+    assert result.exit_code == 1
+    assert "Refus (B103) : --journal" in result.output and not elsewhere.exists()
+
+
 def test_cerveau_rearm_of_a_file_created_by_hand(
     home: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:

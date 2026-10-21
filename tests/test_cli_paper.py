@@ -55,6 +55,18 @@ def read(*args: str) -> Any:
     return runner.invoke(app, ["paper", *args])
 
 
+@pytest.mark.parametrize("command", [["run", "--config-dir", "{config}"], ["acquitter"]])
+def test_a_journal_outside_var_needs_the_option(
+    home: Path, config_dir: Path, tmp_path: Path, command: list[str]
+) -> None:
+    elsewhere = tmp_path / "ailleurs.jsonl"
+    args = [part.format(config=config_dir) for part in command]
+    result = read(*args, "--journal", str(elsewhere))
+    assert result.exit_code == 1
+    assert "Refus (B103) : --journal" in result.output and not elsewhere.exists()
+    assert not (home / "var").exists()
+
+
 def test_the_paper_run_waits_for_the_costs(home: Path, config_dir: Path) -> None:
     result = paper(config_dir, "run")
     assert result.exit_code == 2

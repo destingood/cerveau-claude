@@ -53,9 +53,11 @@ from interfaces.cli.common import (
     EXIT_GAP,
     ConfigDirOpt,
     JournalOpt,
+    OutsideVarOpt,
     fail,
     load,
     project_root,
+    var_path,
 )
 
 paper_app = typer.Typer(
@@ -78,7 +80,9 @@ def _request_id(kind: str) -> str:
 
 
 @paper_app.command("run")
-def run(journal: JournalOpt = None, config_dir: ConfigDirOpt = None) -> None:
+def run(
+    journal: JournalOpt = None, config_dir: ConfigDirOpt = None, outside: OutsideVarOpt = False
+) -> None:
     """Traite une fois la journée de décision de maintenant et écrit son rapport (ADR-033).
 
     Pas de --date : une date choisie à la main déciderait sur une séance dont la suite est
@@ -86,11 +90,12 @@ def run(journal: JournalOpt = None, config_dir: ConfigDirOpt = None) -> None:
     ou adaptateur sans réponse ;
     2 kill switch engagé ou paramètre à définir (R7) ; 4 clôture attendue absente de la base.
     """
-    config = load(config_dir)
     root = project_root()
+    journal = var_path(journal, default_journal_path(root), option="--journal", outside=outside)
+    config = load(config_dir)
     now = _now()
     request_id = _request_id("paper")
-    audit = AuditJournal(journal or default_journal_path(root))
+    audit = AuditJournal(journal)
     try:
         settings = PaperSettings.from_config(
             config.risk_limits_paper, config.execution, config.risk.trading_costs
@@ -235,13 +240,14 @@ def report(
 
 
 @paper_app.command("acquitter")
-def acknowledge(journal: JournalOpt = None) -> None:
+def acknowledge(journal: JournalOpt = None, outside: OutsideVarOpt = False) -> None:
     """Lève le blocage après un écart réconcilié : Lucas seul, en terminal interactif (D14)."""
     root = project_root()
+    journal = var_path(journal, default_journal_path(root), option="--journal", outside=outside)
     path = default_log_path(root)
     if not path.is_file():
         fail("Aucune réconciliation enregistrée : rien à acquitter.", EXIT_ERROR)
-    audit = AuditJournal(journal or default_journal_path(root))
+    audit = AuditJournal(journal)
     with ReconciliationLog.open(path, Recorder(audit, "lucas", _request_id("ack"))) as log:
         try:
             gaps = log.acknowledge(interactive=interactive_terminal)

@@ -30,7 +30,15 @@ from core.execution.kill_switch import (
 )
 from core.execution.paper import PaperSettings, PaperSimulator, default_simulator_path
 from core.execution.reconcile import interactive_terminal
-from interfaces.cli.common import EXIT_BLOCKED, EXIT_ERROR, ConfigDirOpt, JournalOpt, fail
+from interfaces.cli.common import (
+    EXIT_BLOCKED,
+    EXIT_ERROR,
+    ConfigDirOpt,
+    JournalOpt,
+    OutsideVarOpt,
+    fail,
+    var_path,
+)
 from interfaces.cli.common import project_root as _project_root
 
 ReasonOpt = Annotated[
@@ -86,16 +94,33 @@ def _summary(stop: Stop) -> None:
         typer.echo(f"ERREUR : {error}", err=True)
 
 
+def _kill_journal(root: Path, journal: Path | None, outside: bool) -> Path:
+    """The journal of a stop: a --journal outside var/ without --hors-var falls back to the
+    default journal with a warning, since a stop never refuses (R4, B103)."""
+    default = default_journal_path(root)
+    if journal is None or outside:
+        return journal or default
+    if journal.resolve().is_relative_to((root / "var").resolve()):
+        return journal
+    typer.echo(
+        f"AVERTISSEMENT (B103) : --journal {journal} est hors de var/ sans --hors-var ; "
+        f"l'arrêt est journalisé dans {default}.",
+        err=True,
+    )
+    return default
+
+
 def kill_command(
     raison: ReasonOpt = "commande de Lucas",
     journal: JournalOpt = None,
     config_dir: ConfigDirOpt = None,
+    outside: OutsideVarOpt = False,
 ) -> None:
     """Arrêt total : fichier KILL, annulation des ordres ouverts, N0 forcé (R4)."""
     root = _project_root()
     now = datetime.now(UTC)
     request_id = f"kill-{uuid.uuid4().hex[:12]}"
-    audit = AuditJournal(journal or default_journal_path(root))
+    audit = AuditJournal(_kill_journal(root, journal, outside))
     unavailable: list[str] = []
     target, settings = _settings(root, config_dir or root / "config", unavailable)
     with ExitStack() as stack:
@@ -135,12 +160,13 @@ def kill_command(
         raise typer.Exit(EXIT_ERROR)
 
 
-def rearm_command(journal: JournalOpt = None) -> None:
+def rearm_command(journal: JournalOpt = None, outside: OutsideVarOpt = False) -> None:
     """Réarmer le kill switch : Lucas seul, en terminal interactif (D12)."""
     root = _project_root()
+    journal = var_path(journal, default_journal_path(root), option="--journal", outside=outside)
     now = datetime.now(UTC)
     request_id = f"rearm-{uuid.uuid4().hex[:12]}"
-    audit = AuditJournal(journal or default_journal_path(root))
+    audit = AuditJournal(journal)
     status = detect(root, journal=audit, request_id=request_id, now=now)
     if status == "removed_by_hand":
         typer.echo("Fichier KILL supprimé à la main : suppression journalisée, rien à réarmer.")
