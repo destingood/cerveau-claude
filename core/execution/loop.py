@@ -19,6 +19,7 @@ gate and send the day's intents.
 6. each intent source's orders, drafted (:mod:`core.execution.drafter`), gated
    (:func:`core.risk_gate.gate.evaluate`), decided (:func:`core.policy.engine.decide_order`) and,
    for ``paper``, sent to the simulator, one at a time against a snapshot rebuilt from the book;
+   for ``approbation`` (N3, ADR-036), filed in the approval store and left an ``INTENTION``;
    a day that already drafted, stopped and run again, drafts nothing more.
 
 The day ends with its Markdown report and a line in ``runs``: a day already there is never
@@ -45,6 +46,7 @@ from uuid import UUID
 
 import pandas as pd
 
+from core.approvals.store import ApprovalError, ApprovalStore
 from core.config.loader import Config
 from core.execution.book import Journal, OrderBook, OrderBookError, slippage_bps
 from core.execution.broker import NETWORK_ERRORS, AccountStatement, BrokerOrder
@@ -69,7 +71,7 @@ from core.finance.research.copilot import decision_day
 from core.finance.schema import migrate
 from core.finance.store import FinanceStore
 from core.policy.engine import decide_order, kill_switch_engaged
-from core.risk_gate.gate import Result, evaluate
+from core.risk_gate.gate import Result, RiskGateResult, evaluate
 from core.risk_gate.snapshot import Account, GateSnapshot
 
 PRICE_TOOL = "paper_market"  # the read of the store's closes the intents are priced from
@@ -306,6 +308,7 @@ class PaperDay:
     request_id: str
     sources: Sequence[IntentSource] = ()
     ids: Callable[[], UUID] = uuid7
+    approvals: ApprovalStore | None = None  # where an N3 intent waits for Lucas (ADR-036)
 
 
 @dataclass(frozen=True)
@@ -544,7 +547,7 @@ def _snapshot(env: PaperDay, facts: MarketFacts, account: Account) -> GateSnapsh
 def _treat(
     env: PaperDay, intent: OrderIntent, snapshot: GateSnapshot, report: DayReport
 ) -> IntentOutcome:
-    """Gate, decide, book and, for ``paper``, send one intent."""
+    """Gate, decide, book and, for ``paper``, send one intent, or file it for ``approbation``."""
     now, config = report.as_of, env.config
     gate = evaluate(
         intent,
@@ -637,11 +640,49 @@ def _treat(
         if not ack.accepted:
             env.book.transition(key, OrderState.REJETEE, reason=clip(ack.reason, 200), now=now)
             state, reasons = OrderState.REJETEE, (*reasons, ack.reason)
+    elif effect == "approbation":
+        # ADR-036: the intent stays INTENTION until Lucas grants, refuses or lets it expire.
+        filed = _file_for_approval(env, booked, gate, now)
+        if filed is not None:
+            env.book.transition(key, OrderState.REJETEE, reason=filed, now=now)
+            state, reasons = OrderState.REJETEE, (*reasons, filed)
     elif effect != "proposer":
         why = clip(f"Porte : {gate.result}, politique : {effect}", 200)
         env.book.transition(key, OrderState.REJETEE, reason=why, now=now)
         state = OrderState.REJETEE
     return outcome(state, reasons)
+
+
+def _file_for_approval(
+    env: PaperDay, booked: OrderIntent, gate: RiskGateResult, now: datetime
+) -> str | None:
+    """Ask Lucas to approve ``booked`` as the Gate left it; why it cannot be asked, or None.
+
+    The summary is the one message that names an amount (D12): what Lucas approves."""
+    if env.approvals is None:
+        return "aucun registre des approbations : l'intention ne peut pas être soumise"
+    side = {"BUY": "Achat", "SELL": "Vente"}[booked.side]
+    summary = (
+        f"{side} de {booked.quantity} {booked.instrument.symbol} à cours limité "
+        f"{booked.limit_price} {booked.instrument.currency} ; Porte de risque : {gate.result} ; "
+        f"origine : {booked.origin.id}"
+    )
+    try:
+        env.approvals.request(
+            intent_id=booked.intent_id,
+            intent_sha256=booked.sha256(),
+            environment="paper",
+            gate={
+                **gate.policy_payload(),
+                "requested_quantity": gate.requested_quantity,
+                "quantity": gate.quantity,
+            },
+            summary=summary,
+            now=now,
+        )
+    except ApprovalError as exc:
+        return clip(f"demande d'approbation refusée : {exc}", 200)
+    return None
 
 
 def _intents(env: PaperDay, facts: MarketFacts, account: Account, report: DayReport) -> None:

@@ -152,9 +152,10 @@ def test_every_cell_of_finance_in_phase_2(action_class: str, level: str) -> None
 def test_every_cell_once_all_decisions_exist(action_class: str, level: str) -> None:
     """With every decision and class implemented, a cell is granted only if it has an effect.
 
-    ``auto`` executes any class but a financial one; a financial action is only drafted or sent
-    to the paper adapter, with the Risk Gate's answer. ``brouillon``, ``simule``, ``approbation``
-    and ``auto_dans_limites`` have no effect yet and are refused.
+    ``auto`` executes any class but a financial one; a financial action is only drafted, sent
+    to the paper adapter or filed for approval, with the Risk Gate's answer. ``brouillon``,
+    ``simule``, ``auto_dans_limites`` and ``approbation`` for any other class have no effect and
+    are refused (D5).
     """
     cell = SPEC_MATRIX[action_class][LEVELS.index(level)]
     financial = action_class == "FINANCIERE"
@@ -166,7 +167,11 @@ def test_every_cell_once_all_decisions_exist(action_class: str, level: str) -> N
         decisions=frozenset(CELLS),
         risk_gate=_gate("ACCEPTE") if financial else None,
     )
-    effects = {"proposition": "proposer", "paper": "paper"} if financial else {"auto": "executer"}
+    effects = (
+        {"proposition": "proposer", "paper": "paper", "approbation": "approbation"}
+        if financial
+        else {"auto": "executer"}
+    )
     if cell in effects:
         assert (result.decision, result.effect) == (cell, effects[cell])
     else:
@@ -260,7 +265,7 @@ def test_never_more_permissive_than_the_matrix(
     )
     cell = matrix[action_class][level]
     financial = action_class == "FINANCIERE"
-    effective = {"proposition", "paper"} if financial else {"auto"}
+    effective = {"proposition", "paper", "approbation"} if financial else {"auto"}
     gate_ok = gate is not None and gate.result != "REFUSE" if financial else gate is None
     if result.decision != "refus":
         assert result.decision == cell
@@ -340,14 +345,19 @@ DOMAINS = ("generaliste", "finance", "recherche", "test", "inconnu")
 def test_order_constants() -> None:
     assert ORDER_DOMAIN == "finance"
     assert frozenset({"FINANCIERE"}) == ORDER_ACTION_CLASSES
-    assert frozenset({"proposition", "paper"}) == ORDER_DECISIONS
+    assert frozenset({"proposition", "paper", "approbation"}) == ORDER_DECISIONS
 
 
 @pytest.mark.parametrize("result", ["ACCEPTE", "REDUIT"])
 @pytest.mark.parametrize(
-    ("level", "cell", "effect"), [("N1", "proposition", "proposer"), ("N2", "paper", "paper")]
+    ("level", "cell", "effect"),
+    [
+        ("N1", "proposition", "proposer"),
+        ("N2", "paper", "paper"),
+        ("N3", "approbation", "approbation"),
+    ],
 )
-def test_an_order_is_drafted_at_n1_and_sent_to_paper_at_n2(
+def test_an_order_is_drafted_at_n1_sent_at_n2_and_awaits_approval_at_n3(
     level: str, cell: str, effect: str, result: str
 ) -> None:
     decision = _order(level, _gate(result))
@@ -365,14 +375,14 @@ def test_an_order_is_drafted_at_n1_and_sent_to_paper_at_n2(
     assert decision.risk_gate == RiskGateRecord(result=result, checks=(check,))  # type: ignore[arg-type]
 
 
-@pytest.mark.parametrize("level", ["N1", "N2"])
+@pytest.mark.parametrize("level", ["N1", "N2", "N3"])
 def test_an_order_without_the_risk_gate_is_refused(level: str) -> None:
     decision = _order(level, None)
     assert (decision.decision, decision.effect, decision.risk_gate) == ("refus", "refuser", None)
     assert decision.reasons[1] == "la Porte de risque n'a pas été consultée (R2) : refus"
 
 
-@pytest.mark.parametrize("level", ["N1", "N2"])
+@pytest.mark.parametrize("level", ["N1", "N2", "N3"])
 def test_an_order_the_risk_gate_refuses_is_refused_and_recorded(level: str) -> None:
     decision = _order(level, _gate("REFUSE"))
     assert (decision.decision, decision.effect) == ("refus", "refuser")
@@ -383,8 +393,8 @@ def test_an_order_the_risk_gate_refuses_is_refused_and_recorded(level: str) -> N
 
 
 @pytest.mark.parametrize("gate", GATES)
-@pytest.mark.parametrize("level", ["N0", "N3", "N4"])
-def test_an_order_outside_n1_and_n2_is_refused(level: str, gate: RiskGateResult | None) -> None:
+@pytest.mark.parametrize("level", ["N0", "N4"])
+def test_an_order_at_n0_or_n4_is_refused(level: str, gate: RiskGateResult | None) -> None:
     decision = _order(level, gate)
     cell = SPEC_MATRIX["FINANCIERE"][LEVELS.index(level)]
     matrix = f"matrice FINANCIERE × {level} : {cell}"
@@ -464,8 +474,9 @@ def test_no_path_is_more_permissive_than_phase_3() -> None:
     """Every domain, level, class, kill switch, live state and gate answer, for both entry points.
 
     ``decide`` still executes exactly what phase 3 executed, without live and without a gate
-    answer, and nothing else; ``decide_order`` never executes: it drafts at N1 and sends to paper
-    at N2 an order the gate accepted or reduced, without the kill switch and without live.
+    answer, and nothing else; ``decide_order`` never executes: it drafts at N1, sends to paper
+    at N2 and files for approval at N3 an order the gate accepted or reduced, without the kill
+    switch and without live.
     """
     autonomies = {(d, lvl): _at(lvl, domain=d) for d in DOMAINS[:-1] for lvl in LEVELS}
     for domain, level, action_class, kill, live, gate in product(
@@ -481,8 +492,29 @@ def test_no_path_is_more_permissive_than_phase_3() -> None:
     for level, kill, live, gate in product(LEVELS, (False, True), (False, True), GATES):
         result = _order(level, gate, kill_switch=kill, live_enabled=live)
         gate_ok = gate is not None and gate.result != "REFUSE"
-        expected = {"N1": "proposer", "N2": "paper"}.get(level) if gate_ok else None
+        expected = (
+            {"N1": "proposer", "N2": "paper", "N3": "approbation"}.get(level) if gate_ok else None
+        )
         assert result.effect == (expected if not (kill or live) and expected else "refuser")
+
+
+@pytest.mark.parametrize("level", LEVELS)
+@pytest.mark.parametrize("action_class", ACTION_CLASSES)
+def test_approbation_files_only_a_financial_action(action_class: str, level: str) -> None:
+    """D5: with every class and every decision granted, only FINANCIERE waits for an approval."""
+    matrix = {c: dict.fromkeys(LEVELS, "approbation") for c in ACTION_CLASSES}
+    financial = action_class == "FINANCIERE"
+    result = _decide(
+        _at(level, matrix),
+        "test",
+        action_class,
+        action_classes=frozenset(ACTION_CLASSES),
+        decisions=frozenset(CELLS),
+        risk_gate=_gate("ACCEPTE") if financial else None,
+    )
+    assert result.effect == ("approbation" if financial else "refuser")
+    if not financial:
+        assert result.reasons[-1] == f"« approbation » n'a aucun effet pour {action_class} : refus"
 
 
 def test_an_order_decision_payload_records_the_risk_gate() -> None:

@@ -10,9 +10,12 @@ The orchestrator and the plugins carry out ``auto`` for ``LECTURE`` in every dom
 ``CALCUL`` in the finance pack alone, whose computing tools are deterministic, tested and
 evaluated (R1, R8, ADR-022): their effect is ``executer``. The paper loop alone carries out an
 order intent of the finance pack (``decide_order``): ``proposition`` at N1 drafts it, ``paper`` at
-N2 sends it to the paper adapter, and both need the Risk Gate's answer (R2). Every other cell,
-including ``brouillon`` or ``simule``, is refused with its reason, because no component carries
-it out. A live configuration that is enabled refuses everything, since no live adapter exists (R3).
+N2 sends it to the paper adapter, ``approbation`` at N3 files it for Lucas's approval before it
+is sent (ADR-035, ADR-036), and all three need the Risk Gate's answer (R2). ``approbation`` has an
+effect for ``FINANCIERE`` alone: ``COMMUNICATION_EXTERNE`` and ``IRREVERSIBLE`` stay refused at
+every level (D5). Every other cell, including ``brouillon`` or ``simule``, is refused with its
+reason, because no component carries it out. A live configuration that is enabled refuses
+everything, since no live adapter exists (R3).
 """
 
 from __future__ import annotations
@@ -40,20 +43,24 @@ ROUTED_ACTION_CLASSES: frozenset[ActionClass] = (
     frozenset[ActionClass]().union(*PHASE_DOMAIN_ACTION_CLASSES.values()) - PHASE_ACTION_CLASSES
 )
 PHASE_DECISIONS: frozenset[MatrixDecision] = frozenset({"auto"})
-# What the paper loop can carry out (ADR-030): an order intent of the finance pack, drafted at
-# N1 and sent to the paper adapter at N2. The orchestrator never carries one out.
+# What the paper loop can carry out (ADR-030, ADR-036): an order intent of the finance pack,
+# drafted at N1, sent to the paper adapter at N2 and filed for Lucas's approval at N3. The
+# orchestrator never carries one out.
 ORDER_DOMAIN = "finance"
 ORDER_ACTION_CLASSES: frozenset[ActionClass] = frozenset({"FINANCIERE"})
-ORDER_DECISIONS: frozenset[MatrixDecision] = frozenset({"proposition", "paper"})
+ORDER_DECISIONS: frozenset[MatrixDecision] = frozenset({"proposition", "paper", "approbation"})
 
 KILL_SWITCH_FILE = Path("governance") / "kill_switch" / "KILL"
 
-Effect = Literal["executer", "proposer", "paper", "refuser"]
-# What a granted cell lets the caller do. A financial action is never executed in this phase.
+Effect = Literal["executer", "proposer", "paper", "approbation", "refuser"]
+# What a granted cell lets the caller do. A financial action is never executed by the engine:
+# at most it waits for an approval. No other class has an effect for ``approbation`` (D5).
 _EFFECTS: Mapping[bool, Mapping[MatrixDecision, Effect]] = MappingProxyType(
     {
         False: MappingProxyType({"auto": "executer"}),
-        True: MappingProxyType({"proposition": "proposer", "paper": "paper"}),
+        True: MappingProxyType(
+            {"proposition": "proposer", "paper": "paper", "approbation": "approbation"}
+        ),
     }
 )
 
@@ -93,7 +100,7 @@ class PolicyDecision(_Strict):
 
     @property
     def effect(self) -> Effect:
-        """What the caller may do: execute, draft, send to the paper adapter, or nothing."""
+        """What the caller may do: execute, draft, send to paper, file for approval, or nothing."""
         return _effect(self.action_class, self.decision) or "refuser"
 
     def to_payload(self) -> dict[str, Any]:
@@ -206,7 +213,7 @@ def decide_order(
     live_enabled: bool,
     risk_gate: RiskGateResult | None,
 ) -> PolicyDecision:
-    """Decision for one order intent of the paper loop: ``proposer``, ``paper`` or ``refuser``."""
+    """Decision for one order intent: ``proposer``, ``paper``, ``approbation`` or ``refuser``."""
     return decide(
         autonomy,
         request_id=request_id,

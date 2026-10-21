@@ -12,6 +12,13 @@ from typing import Any
 
 import pytest
 
+from core.approvals.store import (
+    ApprovalError,
+    ApprovalRules,
+    ApprovalState,
+    ApprovalStore,
+    Trail,
+)
 from core.config.loader import AutonomyConfig, Config, load_config
 from core.execution.book import OrderBook, Recorder
 from core.execution.drafter import TargetOrder
@@ -345,6 +352,74 @@ def test_at_n1_the_intent_stays_a_proposal(tmp_path: Path) -> None:
     [intent] = report.intents
     assert (intent.effect, intent.state) == ("proposer", OrderState.INTENTION)
     assert built.simulator.open_orders() == ()
+    built.store.close()
+
+
+APPROVAL_RULES = ApprovalRules(
+    expiry=timedelta(minutes=10),
+    max_code_attempts=3,
+    lockout_failures=5,
+    lockout_window=timedelta(minutes=15),
+)
+
+
+def test_at_n3_the_intent_waits_for_lucas_approval(tmp_path: Path) -> None:
+    built = World(tmp_path, config("N3"))
+    built.env.approvals = ApprovalStore.memory(APPROVAL_RULES, Trail(built.journal, "loop-test"))
+    report = built.run(MONDAY_RUN)
+    [intent] = report.intents
+    assert (intent.effect, intent.state) == ("approbation", OrderState.INTENTION)
+    assert built.simulator.open_orders() == ()
+    booked = built.book.order(intent.intent_id).intent
+    request = built.env.approvals.for_intent(intent.intent_id, now=MONDAY_RUN)
+    assert request is not None
+    assert (request.state, request.environment, request.intent_sha256) == (
+        ApprovalState.DEMANDEE,
+        "paper",
+        booked.sha256(),
+    )
+    assert request.expires_at == MONDAY_RUN + timedelta(minutes=10)
+    assert (request.gate["result"], request.gate["quantity"]) == ("ACCEPTE", intent.quantity)
+    assert request.summary.startswith(f"Achat de {intent.quantity} {SYMBOL} à cours limité ")
+    assert "origine : croisement_mm" in request.summary
+    filed = [
+        e for e in built.journal.entries if e["payload"].get("intent_id") == str(booked.intent_id)
+    ]
+    assert [e["actor"] for e in filed][:3] == ["risk_gate", "policy", "policy"]
+    built.env.approvals.close()
+    built.store.close()
+
+
+def test_at_n3_without_an_approval_store_the_intent_is_rejected(tmp_path: Path) -> None:
+    built = World(tmp_path, config("N3"))
+    report = built.run(MONDAY_RUN)
+    [intent] = report.intents
+    assert (intent.effect, intent.state) == ("approbation", OrderState.REJETEE)
+    assert intent.reasons[-1] == (
+        "aucun registre des approbations : l'intention ne peut pas être soumise"
+    )
+    assert built.book.order(intent.intent_id).state == OrderState.REJETEE
+    assert built.simulator.open_orders() == ()
+    built.store.close()
+
+
+def test_at_n3_a_request_the_store_refuses_rejects_the_intent(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    built = World(tmp_path, config("N3"))
+    built.env.approvals = ApprovalStore.memory(APPROVAL_RULES, Trail(built.journal, "loop-test"))
+
+    def refuse(*args: Any, **kwargs: Any) -> None:
+        raise ApprovalError("intention déjà soumise : pas de seconde demande")
+
+    monkeypatch.setattr(built.env.approvals, "request", refuse)
+    report = built.run(MONDAY_RUN)
+    [intent] = report.intents
+    assert intent.state == OrderState.REJETEE
+    assert intent.reasons[-1] == (
+        "demande d'approbation refusée : intention déjà soumise : pas de seconde demande"
+    )
+    built.env.approvals.close()
     built.store.close()
 
 
