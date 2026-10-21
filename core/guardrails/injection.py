@@ -94,13 +94,27 @@ _BYPASS = (
     r"passe[rz]? outre(?: a| aux?)?|ne tiens? (?:pas|plus) compte d[eu]s?|disregard|forget|"
     r"override|bypass|disable|turn off|switch off|skip)\b"
 )
-_BYPASS_YOU = r"(?<!\bvous )\b(?:ignorez|oubliez|negligez|contournez|desactivez|passez outre)\b"
+_BYPASS_YOU = (
+    r"(?<!\bvous )\b(?:ignorez|oubliez|negligez|contournez|desactivez|passez outre|relevez|"
+    r"augmentez|haussez|doublez|elargissez|assouplissez|supprimez|retirez|rearmez|reactivez)\b"
+)
 _GUARD = (
     r"\b(?:porte de risque|risk gate|garde[- ]fous?|guardrails?|safeguards?|kill[- ]?switch|"
     r"coupe[- ]circuits?|controles|controls|(?:risk|safety) checks?|politique de risque|"
     r"limites? de (?:risque|perte|position|levier)s?|"
     r"(?:tes|vos|les|des) limites(?! d(?:e |es |u |'))|"  # not "les limites de la croissance"
-    r"(?:risk|loss|position) limits?|(?:your|the) limits)\b"
+    r"(?:risk|loss|position) limits?|(?:your|the) limits|fichiers? kill|kill file)\b"
+)
+# Loosening a safeguard is getting past it: raising a limit, rearming the kill switch, going live.
+_LOOSEN = (
+    rf"(?:relev{_VERB}|augment{_VERB}|hauss{_VERB}|rehauss{_VERB}|doubl{_VERB}|elarg{_VERB}|"
+    r"elargi[rs]?|elargissez|assoupli[rs]?|assouplissez|"
+    rf"supprim{_VERB}|retir{_VERB}|rearm{_VERB}|reactiv{_VERB}|reinitialis{_VERB}|"
+    r"raise|increase|lift|loosen|relax|remove|delete|reset)\b"
+)
+_LIVE = (
+    rf"(?:activ{_VERB}|pass(?:e|ez|er) en|bascul{_VERB} en|enable|turn on|switch to|go) "
+    r"(?:le |the )?(?:mode (?:live|reel)|live (?:mode|trading)|trading reel|live)\b"
 )
 
 _SIGNALS: dict[str, re.Pattern[str]] = {
@@ -111,7 +125,8 @@ _SIGNALS: dict[str, re.Pattern[str]] = {
             rf"override|bypass|ne tiens? (?:pas|plus) compte)\b{_NEAR}"
             r"\b(?:instructions?|consignes?|regles?|directives?|previous|prior|above|"
             r"precedent\w*|ci-dessus|systeme|system)\b|"
-            rf"{_OPENS}{_MUST}{_MAY}{_BYPASS}{_NEAR}{_GUARD}|{_BYPASS_YOU}{_NEAR}{_GUARD}"
+            rf"{_OPENS}{_MUST}{_MAY}(?:{_BYPASS}|{_LOOSEN}){_NEAR}{_GUARD}|"
+            rf"{_BYPASS_YOU}{_NEAR}{_GUARD}|{_OPENS}{_MUST}{_MAY}{_LIVE}"
         ),
         "fuite_prompt": (
             r"\b(?:system prompt|prompt (?:systeme|initial)|"
