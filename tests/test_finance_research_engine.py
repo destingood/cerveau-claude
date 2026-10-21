@@ -527,12 +527,15 @@ def test_the_book_always_adds_up(
         assert 0 <= result.exposure.iloc[k] <= 1 + 1e-12
     assert (result.cash >= 0).all() and (result.positions >= 0).all().all()
     assert all(isinstance(q, int) for q in result.positions.to_numpy().ravel().tolist())
+    if costs.rounding == "cent":  # a broker holds cents: no float drift piles up
+        assert all(c == round(c, 2) for c in result.cash.tolist())
+        assert result.initial_cash == round(cash, 2)
     for trade in result.trades:
         assert trade.fill.quantity != 0 and trade.executed > trade.decided
         assert trade.fill.slippage >= 0 and trade.fill.commission >= costs.minimum - 0.005
     paid = math.fsum(c.amount for c in result.credits if c.credited is not None)
     flows = math.fsum(t.fill.cash for t in result.trades)
-    assert result.cash.iloc[-1] == pytest.approx(cash + flows + paid, abs=1e-6)
+    assert result.cash.iloc[-1] == pytest.approx(result.initial_cash + flows + paid, abs=1e-6)
 
 
 # Measures and the research dataset ------------------------------------------------------------

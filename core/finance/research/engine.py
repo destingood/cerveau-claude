@@ -229,7 +229,13 @@ def run(
     def cents(amount: float) -> float:
         return round(amount, 2) if costs.rounding == "cent" else amount
 
-    cash = float(initial_cash)
+    # A broker holds cents: in cent mode the cash starts on a whole cent and every step lands on
+    # one, else a float balance that rose to 438 608 EUR and fell back to 112 EUR carries 3e-11 EUR
+    # of drift, enough to cut a buy that fits to the cent.
+    cash = cents(float(initial_cash))
+    if cash <= 0:
+        raise BacktestError("le cash initial doit être positif")
+    cash_start = cash
     held = dict.fromkeys(instruments, 0)
     pending: list[Order] = []
     trades: list[Trade] = []
@@ -248,7 +254,7 @@ def run(
                 if abs(shares - whole) > SPLIT_TOLERANCE:
                     whole = math.floor(shares)
                     amount = cents((shares - whole) * float(closes[k, column]))
-                    cash += amount
+                    cash = cents(cash + amount)
                     credits.append(
                         Credit(
                             instrument_id,
@@ -274,7 +280,7 @@ def run(
         # 3. Yesterday's orders, filled at today's close.
         if pending:
             done = schedule(pending, cash, prices, costs)
-            cash = done.cash
+            cash = cents(done.cash)
             for fill in done.fills:
                 held[fill.instrument_id] += fill.quantity
                 trades.append(Trade(sessions[k - 1], day, fill))
@@ -284,7 +290,7 @@ def run(
         for dividend in dividends:
             if dividend.payable == k and dividend.quantity:
                 amount = cents(dividend.quantity * dividend.per_share)
-                cash += amount
+                cash = cents(cash + amount)
                 credits.append(
                     Credit(
                         dividend.instrument_id,
@@ -336,7 +342,7 @@ def run(
         strategy=strategy.name,
         params=dict(params),
         costs=costs,
-        initial_cash=float(initial_cash),
+        initial_cash=cash_start,
         values=pd.Series(values, index=index, name="valeur"),
         cash=pd.Series(cash_line, index=index, name="liquidites"),
         positions=pd.DataFrame(positions, index=index, columns=list(instruments)),
