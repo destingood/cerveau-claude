@@ -58,3 +58,39 @@ Option 3 ; IBKR paper au backlog.
   à la clôture ; un modèle natif y différerait de c × montant × s (suite de B154 au backlog).
 - **Tests** : exécution partielle, limite non atteinte, ordre annulé en fin de séance, refus au-delà
   de `MONEY_MAX`, recoupement au centime, écart forcé ⇒ blocage.
+
+## Mise en œuvre de la boucle paper (21/10/2026)
+
+`core/execution/loop.py` (`run_day`) et `core/execution/market.py`. Écarts et précisions par
+rapport au plan de phase 4 (§10) :
+
+- **Pas de `--date`** : la journée traitée est la dernière dont l'heure limite (21:00 UTC) est
+  passée (`decision_day`). Une date choisie à la main permettrait de décider sur une séance dont
+  la suite est déjà connue (R10). Une journée déjà close ne refait rien (`deja_traitee`).
+- **Ordre des étapes** : kill switch, clôtures de séance (exécutions et réconciliation), puis
+  fraîcheur des données, valorisation et limites de perte, puis intentions. Les exécutions passent
+  avant la fraîcheur : elles ne dépendent que de la clôture de la séance, déjà exigée.
+- **Lectures strictes** : seuls les enregistrements ingérés à l'instant du traitement sont lus,
+  pour le simulateur (`StoreMarket`) comme pour la Porte (`market_facts`).
+- **Arrondis prudents** : une clôture au-delà de six décimales compte comme absente, jamais
+  arrondie ; le taux BCE inversé est arrondi vers le haut, le volume moyen et la valorisation vers
+  le bas.
+- **Âges** : celui d'un cours en séances de sa place closes depuis ; celui d'un taux en jours
+  TARGET jusqu'au jour inclus (le taux du jour compte comme absent tant que le jour n'est pas fini).
+  `open_markets` = places dont le calendrier est connu.
+- **Compteurs de la Porte** : tout ordre allé au-delà de la proposition (états autres
+  qu'`INTENTION` et `REJETEE`) compte dans les limites par heure et par jour.
+- **Réduction** : une intention `REDUIT` garde son `intent_id`, quantité ramenée par la Porte.
+- **Envoi** : `VALIDEE`, `ENVOYEE`, puis appel à l'adaptateur ; un refus de l'adaptateur passe
+  l'ordre en `REJETEE`. À la reprise, un ordre resté `VALIDEE` (journée interrompue avant l'envoi)
+  est annulé ; un ordre que le simulateur ne travaille plus est annulé (« expiré en fin de séance »).
+- **Fenêtre de décision** : la `decision_date` d'une intention suit la date de Paris. Après minuit à
+  Paris, une intention viserait une séance trop tard : la journée se valorise, mais n'en rédige
+  aucune.
+- **Issues** : `terminee`, `deja_traitee`, `pas_de_seance`, `attente_donnees`, `arret`. Une donnée
+  périmée sur une position, une limite de perte franchie ou un incident d'exécution engagent le
+  kill switch : l'issue est `arret`. Seule `terminee` clôt la journée dans `var/paper/loop.db`
+  (insertion seule) ; les autres laissent la journée à reprendre. Le rapport
+  `var/paper/reports/AAAA-MM-JJ.md` cite pour chaque section l'outil qui a produit ses chiffres
+  (R1) ; une journée déjà close ne le réécrit pas.
+- **Non couvert** : écart paper/backtest et compteurs N2→N3 (B181).

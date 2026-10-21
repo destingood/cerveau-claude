@@ -170,6 +170,15 @@ reporté (phase 3 : décision D23 de `docs/plans/phase-3-plan.md`).
 | B173 | Étendre l'ACL de `protect-live.ps1` à `governance/kill_switch/` (suppression de `KILL` refusée au compte de Claude Code) et à `var/incidents/` ; les hooks ne sont qu'un confort | R4, ADR-034, ADR-003 | ? |
 | B174 | Catalyseur : faire d'un « agir » sans catalyseur une faute réparée (comme une invalidation manquante) plutôt qu'un blocage, une fois le golden `comite-agir-taille-inconnue` corrigé dans une PR dédiée que Lucas valide (R9) ; aujourd'hui la proposition est BLOQUER et aucune intention d'ordre n'en naît | `core/committee/rules.py`, ADR-029, `evals/behaviors/finance_comite.yaml` | ? |
 | B175 | Rédacteur d'intentions : (1) calibrer les tables horizon (92, 365, 3 650 jours) et confiance (0,17, 0,5, 0,83) du gestionnaire, conventions posées sans données ; (2) garder dans la séance du Comité la charge complète de `rebalance_proposal`, pour que le rédacteur la relise au lieu de la recalculer et de la comparer aux chiffres et aux textes lus | `core/execution/drafter.py`, `core/committee/engine.py`, ADR-029 | ? |
+| B176 | Boucle paper en N1 : les intentions restent `INTENTION` au carnet et s'accumulent sans échéance ; décider leur expiration ou leur relecture par Lucas | `core/execution/loop.py`, ADR-030 | ? |
+| B177 | Commande d'acquittement d'un écart de réconciliation (D14) : `ReconciliationLog` l'accepte, aucune commande CLI ne l'expose encore ; sans elle, un écart bloque la boucle sans issue | `core/execution/reconcile.py`, `interfaces/cli/`, ADR-033 | 4 |
+| B178 | Séances du Comité non persistées comme source d'intentions de la boucle : seule la source stratégie est branchée | `core/execution/loop.py`, `core/committee/`, ADR-029 | ? |
+| B179 | Point de grille d'une candidate : la source stratégie rejoue les paramètres approuvés, sans vérifier qu'ils restent sur la grille du protocole | `core/execution/sources.py`, ADR-027 | ? |
+| B180 | Simulateur à table de séances unique : plusieurs places aux calendriers différents demandent une table par place | `core/execution/paper.py`, ADR-033 | 5 |
+| B181 | Rapport quotidien : écart paper/backtest de la stratégie et compteurs N2→N3 (semaines, décisions, incidents) non calculés ; le rapport le dit (section « Non couvert ») | `core/execution/loop.py`, plan phase 4 §10 | 5 |
+| B182 | Une barre manquante (suspension de cotation) bloque la boucle en `attente_donnees` ou `perte_donnees` jusqu'à son arrivée ; lire le statut de séance de la source (voir B168) | `core/execution/loop.py`, ADR-033 | ? |
+| B183 | Une journée traitée après minuit à Paris se valorise mais ne rédige aucune intention : lancer la boucle entre 21:00 UTC et minuit à Paris (procédure du planificateur, D24) | `core/execution/loop.py`, ADR-033 | ? |
+| B184 | Coûts de trading `A_DEFINIR` dans `config/risk.yaml` : la boucle paper réelle ne peut pas démarrer (le simulateur refuse) tant que Lucas ne les fixe pas (D13) | `config/risk.yaml`, `core/execution/paper.py` | 4 |
 
 ## Évaluations
 | # | Élément | Origine | Phase |
