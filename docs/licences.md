@@ -1,7 +1,9 @@
 # Licences des composants — CERVEAU
 
-- Relevé du 2026-10-17 (phase 0), mis à jour le 2026-10-18 (phases 1 et 2) et le 2026-10-20
-  (phase 3) ; à jour à chaque nouvelle dépendance (R14)
+- Relevé du 2026-10-17 (phase 0), mis à jour le 2026-10-18 (phases 1 et 2), le 2026-10-20
+  (phase 3) et le 2026-10-21 (phase 4) ; à jour à chaque nouvelle dépendance (R14)
+- Phase 4 : aucune nouvelle dépendance directe ni transitive (plan de phase 4, section 13) ; seule
+  la transitive certifi passe en 2026.10.19 (PYSEC-2026-4320), licence MPL-2.0 inchangée
 - Phases 1 et 2 : licences lues dans les métadonnées des paquets installés (`*.dist-info/METADATA`)
   et sur PyPI ; phase 2 : chaque version retenue a au moins 7 jours au 2026-10-18
 - Sources : métadonnées PyPI et npm, fichiers `LICENSE` des dépôts, pages Docker Hub
