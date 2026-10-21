@@ -26,6 +26,10 @@ The day ends with its Markdown report and a line in ``runs``: a day already ther
 treated again, and a past day is never replayed (R10). Every figure of the report comes from the
 simulator, the book, the store or the Gate, named next to it (R1). The book must journal on
 behalf of ``policy``, the kill switch's automatic actor.
+
+:func:`send_approved` then sends the intents Lucas approved, the same evening: while the live is
+disabled, an approved intent is a paper order (D10). Each goes through the Gate and the policy
+again before its approval is consumed; the loop's log is not written.
 """
 
 from __future__ import annotations
@@ -46,7 +50,7 @@ from uuid import UUID
 
 import pandas as pd
 
-from core.approvals.store import ApprovalError, ApprovalStore
+from core.approvals.store import ApprovalError, ApprovalRequest, ApprovalState, ApprovalStore
 from core.config.loader import Config
 from core.execution.book import Journal, OrderBook, OrderBookError, slippage_bps
 from core.execution.broker import NETWORK_ERRORS, AccountStatement, BrokerOrder
@@ -328,6 +332,20 @@ class IntentOutcome:
     reasons: tuple[str, ...]
 
 
+@dataclass(frozen=True)
+class SendOutcome:
+    """One intent Lucas was asked to approve, as :func:`send_approved` left it."""
+
+    intent_id: UUID
+    approval_id: UUID
+    symbol: str
+    side: str
+    quantity: int
+    approval: ApprovalState
+    state: OrderState
+    reasons: tuple[str, ...]
+
+
 @dataclass
 class DayReport:
     day: date
@@ -341,6 +359,7 @@ class DayReport:
     account: Account | None = None
     breaches: tuple[tuple[Trigger, str], ...] = ()
     intents: list[IntentOutcome] = field(default_factory=list)
+    sent: list[SendOutcome] = field(default_factory=list)  # approved intents (send_approved)
     stop: Stop | None = None
     notes: list[str] = field(default_factory=list)  # what is missing or blocked, and why
 
@@ -378,6 +397,7 @@ def _engage(env: PaperDay, report: DayReport, trigger: Trigger, reason: str) -> 
         target_seconds=_target_seconds(env.config),
         adapter=env.simulator,
         book=env.book,
+        approvals=env.approvals,
         versions=_versions(env),
     )
     report.outcome = "arret"
@@ -621,27 +641,15 @@ def _treat(
 
     state = OrderState.INTENTION
     if effect == "paper" and gate.result != "REFUSE":
-        env.book.transition(
-            key, OrderState.VALIDEE, reason=f"Porte : {gate.result}, politique : paper", now=now
-        )
-        if kill_switch_engaged(env.root):
-            # R4: engaged since the policy read it; the order is cancelled, never sent.
-            why = "arrêt d'urgence engagé avant l'envoi : jamais envoyé"
-            env.book.transition(key, OrderState.ANNULEE, reason=why, now=now)
-            return outcome(OrderState.ANNULEE, (*reasons, why))
-        env.book.transition(key, OrderState.ENVOYEE, reason="envoyé au simulateur paper", now=now)
         try:
-            ack = env.simulator.submit(booked, now=now)
+            state, why = _send(env, booked, f"Porte : {gate.result}, politique : paper", now)
         except NETWORK_ERRORS:
             # Arrived or not, nobody knows: the order stays ENVOYEE and is never sent again;
             # the next run tells, the simulator working it or the book letting it go.
             report.intents.append(outcome(OrderState.ENVOYEE, (*reasons, "envoi sans réponse")))
             raise
-        state = OrderState.ENVOYEE
-        if not ack.accepted:
-            # The broker's text is external content: the book keeps our label (B197).
-            env.book.transition(key, OrderState.REJETEE, reason=ack.label, now=now)
-            state, reasons = OrderState.REJETEE, (*reasons, ack.label)
+        if why is not None:
+            reasons = (*reasons, why)
     elif effect == "approbation":
         # ADR-036: the intent stays INTENTION until Lucas grants, refuses or lets it expire.
         filed = _file_for_approval(env, booked, gate, now)
@@ -653,6 +661,27 @@ def _treat(
         env.book.transition(key, OrderState.REJETEE, reason=why, now=now)
         state = OrderState.REJETEE
     return outcome(state, reasons)
+
+
+def _send(
+    env: PaperDay, booked: OrderIntent, validated: str, now: datetime
+) -> tuple[OrderState, str | None]:
+    """Validate ``booked`` and send it to the simulator, once: where it ended, and why when it
+    was not accepted. A call without an answer propagates, the order ENVOYEE."""
+    key = booked.intent_id
+    env.book.transition(key, OrderState.VALIDEE, reason=validated, now=now)
+    if kill_switch_engaged(env.root):
+        # R4: engaged since the policy read it; the order is cancelled, never sent.
+        why = "arrêt d'urgence engagé avant l'envoi : jamais envoyé"
+        env.book.transition(key, OrderState.ANNULEE, reason=why, now=now)
+        return OrderState.ANNULEE, why
+    env.book.transition(key, OrderState.ENVOYEE, reason="envoyé au simulateur paper", now=now)
+    ack = env.simulator.submit(booked, now=now)
+    if ack.accepted:
+        return OrderState.ENVOYEE, None
+    # The broker's text is external content: the book keeps our label (B197).
+    env.book.transition(key, OrderState.REJETEE, reason=ack.label, now=now)
+    return OrderState.REJETEE, ack.label
 
 
 def _file_for_approval(
@@ -858,6 +887,206 @@ def finish_day(env: PaperDay, report: DayReport) -> str:
             report.day, completed_at=report.as_of, intents=len(report.intents), report=text
         )
     return text
+
+
+# Approved intents -------------------------------------------------------------------------------
+
+
+def send_approved(env: PaperDay, *, now: datetime) -> DayReport:
+    """Send to the simulator the intents Lucas approved (ADR-036): while the live is disabled,
+    an approved intent is a paper order (D10).
+
+    The kill switch is read first, as by :func:`run_day`. Then each intent still ``INTENTION``
+    whose request was answered: a request refused, expired or already consumed rejects it, never
+    sent; a granted one goes through the Gate again, against a snapshot rebuilt now, and through
+    the policy. A Gate result other than the one approved (a refusal, another quantity: D4), an
+    effect other than ``approbation`` (a lowered level, an engaged switch), or another decision
+    day than today's before midnight in Paris (R10) refuses the approval. Otherwise the approval
+    is consumed on the SHA-256 of the intent booked, then the order is sent once. A request still
+    waiting is left. The loop's log is not written: the day's valuation and run are
+    :func:`run_day`'s."""
+    day = decision_day(now, env.config.research.execution.decision_cutoff_utc)
+    report = DayReport(day=day, as_of=now, request_id=env.request_id)
+    if env.approvals is None:
+        report.notes.append("aucun registre des approbations : rien à envoyer")
+        return report
+    try:
+        return _send_approved(env, env.approvals, report)
+    except NETWORK_ERRORS as exc:  # the broker's text is not kept, only the kind of failure
+        report.outcome = "injoignable"
+        report.notes.append(f"adaptateur sans réponse ({type(exc).__name__})")
+        return report
+
+
+def _send_approved(env: PaperDay, approvals: ApprovalStore, report: DayReport) -> DayReport:
+    now, day = report.as_of, report.day
+    status = detect(env.root, journal=env.journal, request_id=env.request_id, now=now)
+    if status == "engaged":
+        report.outcome = "arret"
+        return report
+    if status == "new_file":
+        return _engage(env, report, "fichier", "fichier KILL trouvé avant l'envoi des approuvées")
+    approvals.expire_due(now=now)
+    granted: list[tuple[OrderIntent, ApprovalRequest]] = []
+    for order in env.book.orders({OrderState.INTENTION}):
+        intent = order.intent
+        request = approvals.for_intent(intent.intent_id, now=now)
+        if request is None or request.state is ApprovalState.DEMANDEE:
+            continue  # a proposal (N1, N2), or a request Lucas has not answered yet
+        if request.state is not ApprovalState.ACCORDEE:
+            why = f"approbation {request.state.value} : jamais envoyée"
+            env.book.transition(intent.intent_id, OrderState.REJETEE, reason=why, now=now)
+            report.sent.append(_sent(intent, request, request.state, OrderState.REJETEE, (why,)))
+        elif intent.decision_date != day or local_date(now) != day:
+            why = "approbation hors de sa journée de décision : jamais envoyée (R10)"
+            report.sent.append(_refused(env, approvals, intent, request, (), why, now))
+        else:
+            granted.append((intent, request))
+    if not granted:
+        return report
+
+    statement = env.simulator.account_snapshot()
+    exposed, read = _symbols(env, statement)
+    read |= {intent.instrument.symbol for intent, _ in granted}
+    volume_sessions = env.config.risk_limits_paper.avg_volume_sessions
+    facts = market_facts(env.store, read, as_of=now, volume_sessions=volume_sessions)
+    stale = _stale(env, facts, exposed)
+    if stale:
+        return _engage(env, report, "perte_donnees", "données absentes : " + ", ".join(stale))
+    report.valuation = _valuation(statement, facts, day)
+    account = report.account = _account(env, report.valuation, report)
+    if account is None:
+        return report  # the note says why; the approvals expire unspent
+    for intent, request in granted:  # each against the book as the previous one left it
+        snapshot = _snapshot(env, facts, account)
+        report.sent.append(_send_granted(env, approvals, intent, request, snapshot, report))
+    return report
+
+
+def _sent(
+    intent: OrderIntent,
+    request: ApprovalRequest,
+    approval: ApprovalState,
+    state: OrderState,
+    reasons: tuple[str, ...],
+) -> SendOutcome:
+    return SendOutcome(
+        intent_id=intent.intent_id,
+        approval_id=request.approval_id,
+        symbol=intent.instrument.symbol,
+        side=intent.side,
+        quantity=intent.quantity,
+        approval=approval,
+        state=state,
+        reasons=reasons,
+    )
+
+
+def _refused(
+    env: PaperDay,
+    approvals: ApprovalStore,
+    intent: OrderIntent,
+    request: ApprovalRequest,
+    reasons: tuple[str, ...],
+    why: str,
+    now: datetime,
+) -> SendOutcome:
+    """Refuse the approval on behalf of the policy and reject the intent: never sent."""
+    try:
+        state = approvals.refuse(request.approval_id, reason=why, actor="policy", now=now)
+    except ApprovalError:  # answered meanwhile from another interface: no longer open
+        state = approvals.get(request.approval_id, now=now).state
+    env.book.transition(intent.intent_id, OrderState.REJETEE, reason=why, now=now)
+    return _sent(intent, request, state, OrderState.REJETEE, (*reasons, why))
+
+
+def _send_granted(
+    env: PaperDay,
+    approvals: ApprovalStore,
+    intent: OrderIntent,
+    request: ApprovalRequest,
+    snapshot: GateSnapshot,
+    report: DayReport,
+) -> SendOutcome:
+    """Gate and decide a granted intent again; then consume its approval and send it."""
+    now, config = report.as_of, env.config
+    # Booked as an INTENTION when it was drafted: it is not a duplicate of itself.
+    snapshot = snapshot.model_copy(
+        update={"seen_intent_ids": snapshot.seen_intent_ids - {intent.intent_id}}
+    )
+    gate = evaluate(
+        intent,
+        snapshot,
+        config.risk_limits_paper,
+        config.risk.trading_costs,
+        config.compliance,
+        config.data_sources.quality,
+    )
+    ids = {
+        "intent_id": str(intent.intent_id),
+        "intent_sha256": intent.sha256(),
+        "approval_id": str(request.approval_id),
+    }
+    env.journal.append(
+        actor="risk_gate",
+        event="POLICY",
+        request_id=env.request_id,
+        versions=_versions(env),
+        payload={
+            **ids,
+            "requested_quantity": intent.quantity,
+            "quantity": gate.quantity,
+            **gate.policy_payload(),
+            "reasons": list(gate.reasons),
+        },
+        now=now,
+    )
+    decision = decide_order(
+        effective_autonomy(config.autonomy, env.root).autonomy,  # ADR-036: the signed ceiling
+        request_id=env.request_id,
+        kill_switch=kill_switch_engaged(env.root),
+        live_enabled=config.live.enabled,
+        risk_gate=gate,
+    )
+    env.journal.append(
+        actor="policy",
+        event="POLICY",
+        request_id=env.request_id,
+        versions=_versions(env),
+        payload={**ids, **decision.to_payload()},
+        now=now,
+    )
+    reasons = tuple(gate.reasons) + tuple(decision.reasons)
+    if gate.result == "REFUSE" or gate.quantity != intent.quantity:
+        why = (
+            f"Porte réévaluée : {gate.result}, {gate.quantity} au lieu des {intent.quantity} "
+            "approuvés : approbation refusée (D4)"
+        )
+        return _refused(env, approvals, intent, request, reasons, clip(why, 200), now)
+    if decision.effect != "approbation":
+        why = f"politique : {decision.effect} au lieu d'approbation : approbation refusée"
+        return _refused(env, approvals, intent, request, reasons, why, now)
+    try:
+        approvals.consume(request.approval_id, intent_sha256=intent.sha256(), now=now)
+    except ApprovalError as exc:
+        why = clip(f"approbation non consommée : {exc}", 200)
+        env.book.transition(intent.intent_id, OrderState.REJETEE, reason=why, now=now)
+        state = approvals.get(request.approval_id, now=now).state
+        return _sent(intent, request, state, OrderState.REJETEE, (*reasons, why))
+    validated = (
+        f"Porte : {gate.result}, approbation {str(request.approval_id)[:8]} consommée : paper (D10)"
+    )
+    try:
+        state, why_not = _send(env, intent, validated, now)
+    except NETWORK_ERRORS:
+        unanswered = (*reasons, "envoi sans réponse")
+        report.sent.append(
+            _sent(intent, request, ApprovalState.CONSOMMEE, OrderState.ENVOYEE, unanswered)
+        )
+        raise
+    if why_not is not None:
+        reasons = (*reasons, why_not)
+    return _sent(intent, request, ApprovalState.CONSOMMEE, state, reasons)
 
 
 # The report -------------------------------------------------------------------------------------

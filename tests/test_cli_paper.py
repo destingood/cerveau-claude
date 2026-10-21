@@ -10,11 +10,16 @@ from typing import Any
 import pytest
 from typer.testing import CliRunner
 
+from core.approvals.store import ApprovalError, ApprovalRules, ApprovalState
+from core.approvals.store import default_store_path as approvals_path
 from core.execution.book import OrderBook, Recorder, default_book_path
 from core.execution.broker import AccountStatement
-from core.execution.loop import DayReport, LoopError, Outcome
+from core.execution.kill_switch import Stop
+from core.execution.loop import DayReport, LoopError, Outcome, SendOutcome
 from core.execution.paper import PaperSettings
 from core.execution.reconcile import ReconciliationLog, default_log_path, reconcile
+from core.execution.states import OrderState
+from core.execution.uuid7 import uuid7
 from core.finance.store import FinanceStore, default_store_path
 from core.policy.engine import KILL_SWITCH_FILE
 from interfaces.cli import paper as paper_cli
@@ -149,6 +154,91 @@ def test_a_day_the_loop_cannot_go_on_with_stops(
     result = paper(config_dir, "run")
     assert result.exit_code == 1
     assert "Journée arrêtée : valorisation déjà enregistrée" in result.stderr
+
+
+def _no_rules(_: object) -> ApprovalRules:
+    raise ApprovalError("paramètres d'approbation à définir par Lucas (R7)")
+
+
+@pytest.mark.usefixtures("costs")
+def test_paper_send_with_nothing_approved(home: Path, config_dir: Path) -> None:
+    stored(home)
+    result = paper(config_dir, "envoyer")
+    assert result.exit_code == 0, result.output
+    assert result.stdout.splitlines() == [
+        "Intentions approuvées du 19/10/2026 : journée traitée.",
+        "Aucune intention approuvée à traiter.",
+    ]
+    assert approvals_path(home).is_file()
+
+
+@pytest.mark.usefixtures("costs")
+@pytest.mark.parametrize("command", ["run", "envoyer"])
+def test_without_approval_rules_the_store_stays_closed(
+    home: Path, config_dir: Path, monkeypatch: pytest.MonkeyPatch, command: str
+) -> None:
+    stored(home)
+    monkeypatch.setattr(ApprovalRules, "from_config", staticmethod(_no_rules))
+    result = paper(config_dir, command)
+    assert result.exit_code == 0, result.output
+    assert not approvals_path(home).exists()
+    if command == "envoyer":
+        assert "Remarque : aucun registre des approbations : rien à envoyer" in result.stdout
+        assert (
+            "Remarque : registre des approbations fermé : paramètres d'approbation à définir "
+            "par Lucas (R7)"
+        ) in result.stdout
+
+
+@pytest.mark.usefixtures("costs")
+def test_paper_send_lists_each_intent_in_our_words(
+    home: Path, config_dir: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    stored(home)
+    intent = make_intent(0)
+    sent = SendOutcome(
+        intent_id=intent.intent_id,
+        approval_id=uuid7(),
+        symbol=intent.instrument.symbol,
+        side=intent.side,
+        quantity=intent.quantity,
+        approval=ApprovalState.REFUSEE,
+        state=OrderState.REJETEE,
+        reasons=("politique : paper au lieu d'approbation : approbation refusée",),
+    )
+    stop = Stop(
+        trigger="fichier",
+        reason="fichier KILL trouvé avant l'envoi des approuvées",
+        engaged_at=MONDAY_RUN,
+        persisted=True,
+        broker_cancelled=(),
+        cancelled=(),
+        unconfirmed=(),
+        unknown=(),
+        errors=(),
+        elapsed_s=0.0,
+        target_s=None,
+    )
+    report = DayReport(
+        day=MONDAY,
+        as_of=MONDAY_RUN,
+        request_id="cli-test",
+        outcome="arret",
+        stop=stop,
+        sent=[sent],
+        notes=["une remarque"],
+    )
+    monkeypatch.setattr("interfaces.cli.paper.send_approved", lambda *_, **__: report)
+    result = paper(config_dir, "envoyer")
+    assert result.exit_code == 2
+    assert result.stdout.splitlines() == [
+        "Intentions approuvées du 19/10/2026 : kill switch engagé : la journée s'arrête.",
+        "Kill switch engagé (fichier) : fichier KILL trouvé avant l'envoi des approuvées",
+        f"{str(intent.intent_id)[:8]}… {intent.side} {intent.quantity} "
+        f"{intent.instrument.symbol} : approbation REFUSEE, ordre REJETEE",
+        "  - politique : paper au lieu d'approbation : approbation refusée",
+        "Remarque : une remarque",
+    ]
 
 
 def test_nothing_is_created_by_reading(home: Path) -> None:

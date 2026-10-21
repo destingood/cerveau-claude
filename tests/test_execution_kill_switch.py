@@ -20,6 +20,9 @@ import pytest
 from hypothesis import HealthCheck, given, settings
 from typer.testing import CliRunner
 
+from core.approvals.store import ApprovalError, ApprovalRules, ApprovalState, ApprovalStore, Trail
+from core.approvals.store import default_store_path as approvals_path
+from core.approvals.totp import totp
 from core.audit import AuditJournal
 from core.config import load_config
 from core.config.loader import PaperRiskLimits
@@ -51,6 +54,7 @@ from interfaces.cli.main import app
 from tests.conftest import REPO_ROOT
 from tests.execution_cases import DECISION_PRICE, MemoryJournal, make_intent
 from tests.risk_gate.cases import Case, base_world, cases
+from tests.test_approvals_store import KEY, RULES, ask
 from tests.test_execution_book import sent
 from tests.test_execution_paper import OPENED, SETTINGS, SUBMITTED, simulator, weekdays
 
@@ -208,6 +212,7 @@ def test_a_stop_cancels_every_open_order_and_reports_what_is_unconfirmed(tmp_pat
         "cancelled": 2,
         "unconfirmed": [str(lost)],
         "unknown": [],
+        "approvals_refused": 0,
         "errors": 0,
         "target_s": 5.0,
         "within_target": True,
@@ -226,7 +231,35 @@ def test_a_stop_cancels_every_open_order_and_reports_what_is_unconfirmed(tmp_pat
     assert "dans la cible de 5 s" in report
     assert "**Annulation non confirmée (alerte)** : 1\n  - `" + str(lost) in report
     assert "## Erreurs\n\n- Aucune." in report
+    assert "- Demandes ouvertes passées à REFUSEE : 0" in report
     assert not any(word in report for word in ("123,45", "123.45", "EUR", "€"))
+
+
+def test_a_stop_refuses_every_open_approval(tmp_path: Path) -> None:
+    journal = MemoryJournal()
+    with ApprovalStore.memory(RULES, Trail(journal, "kill-test")) as approvals:
+        waiting, granted, refused = (ask(approvals, now=NOW) for _ in range(3))
+        assert approvals.approve(granted, totp(KEY, NOW), key=KEY, now=NOW).accepted
+        approvals.refuse(refused, reason="non", actor="lucas", now=NOW)
+        stop = stopped(tmp_path, journal=journal, approvals=approvals)
+        states = {key: approvals.get(key, now=NOW).state for key in (waiting, granted, refused)}
+    assert sorted(stop.approvals_refused) == sorted((waiting, granted))
+    assert set(states.values()) == {ApprovalState.REFUSEE}
+    assert stop.clean and kills(journal)[-1]["approvals_refused"] == 2
+    assert stop.report is not None
+    assert "- Demandes ouvertes passées à REFUSEE : 2" in stop.report.read_text(encoding="utf-8")
+
+
+def test_an_approval_store_that_fails_never_holds_the_stop(tmp_path: Path) -> None:
+    class Broken:
+        def refuse_open(self, **_: Any) -> tuple[UUID, ...]:
+            raise sqlite3.OperationalError("database is locked")
+
+    stop = stopped(tmp_path, approvals=Broken())
+    assert stop.persisted and kill_switch_engaged(tmp_path) and stop.approvals_refused == ()
+    assert stop.errors == (
+        "approbations ouvertes non refusées : OperationalError (database is locked)",
+    )
 
 
 def test_a_project_without_paper_account_stops_cleanly(tmp_path: Path) -> None:
@@ -769,7 +802,9 @@ def test_cerveau_kill_without_paper_account(home: Path, config_dir: Path) -> Non
     assert "Kill switch engagé (commande) en " in result.stdout
     assert "dans la cible de 5 s." in result.stdout
     assert "Ordres : 0 passés à ANNULEE au carnet, 0 annulations confirmées" in result.stdout
+    assert "Approbations : 0 demande(s) ouverte(s) refusée(s)." in result.stdout
     assert kill_switch_engaged(home)
+    assert not approvals_path(home).exists()  # a stop creates no store
     report = recorded_stop(home)
     assert report is not None and report.report is not None and report.trigger == "commande"
     assert "Raison : essai à la main" in report.report.read_text(encoding="utf-8")
@@ -806,13 +841,40 @@ def test_cerveau_kill_cancels_at_the_simulator(
         assert book.order(order).state is S.ANNULEE
 
 
+def test_cerveau_kill_refuses_the_open_approvals(home: Path, config_dir: Path) -> None:
+    asked = datetime.now(UTC)
+    trail = Trail(MemoryJournal(), "setup")
+    with ApprovalStore.open(approvals_path(home), rules=RULES, trail=trail) as approvals:
+        waiting = ask(approvals, now=asked)
+    result = kill(config_dir)
+    assert result.exit_code == 0, result.output
+    assert "Approbations : 1 demande(s) ouverte(s) refusée(s)." in result.stdout
+    with ApprovalStore.open(approvals_path(home), rules=RULES, read_only=True) as approvals:
+        assert approvals.get(waiting, now=asked).state is ApprovalState.REFUSEE
+
+
+def _no_rules(_: object) -> ApprovalRules:
+    raise ApprovalError("paramètres d'approbation à définir par Lucas (R7)")
+
+
+def test_cerveau_kill_without_approval_rules_or_store(
+    home: Path, config_dir: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.setattr(ApprovalRules, "from_config", staticmethod(_no_rules))
+    result = kill(config_dir)
+    assert result.exit_code == 0, result.output  # nothing to refuse: not an error
+    assert "Approbations : 0 demande(s)" in result.stdout
+
+
 @pytest.mark.parametrize("settings_known", [True, False])
 def test_cerveau_kill_reports_what_it_cannot_open(
     home: Path, config_dir: Path, monkeypatch: pytest.MonkeyPatch, settings_known: bool
 ) -> None:
     if settings_known:
         monkeypatch.setattr(PaperSettings, "from_config", staticmethod(lambda *_: SETTINGS))
-    for path in (default_book_path(home), default_simulator_path(home)):
+    else:
+        monkeypatch.setattr(ApprovalRules, "from_config", staticmethod(_no_rules))
+    for path in (default_book_path(home), default_simulator_path(home), approvals_path(home)):
         path.parent.mkdir(parents=True, exist_ok=True)
         path.write_bytes(b"ceci n'est pas une base SQLite" * 100)
     result = kill(config_dir)
@@ -820,6 +882,8 @@ def test_cerveau_kill_reports_what_it_cannot_open(
     assert "ERREUR : carnet d'ordres non ouvert (DatabaseError)" in result.stderr
     expected = "(DatabaseError)" if settings_known else "(trading_costs : commission_pct"
     assert f"ERREUR : simulateur paper non ouvert {expected}" in result.stderr
+    expected = "(DatabaseError)" if settings_known else "(paramètres d'approbation à définir"
+    assert f"ERREUR : registre des approbations non ouvert {expected}" in result.stderr
     assert kill_switch_engaged(home)
 
 

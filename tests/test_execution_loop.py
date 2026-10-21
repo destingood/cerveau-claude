@@ -4,11 +4,13 @@ from __future__ import annotations
 
 import sqlite3
 from collections.abc import Iterator
+from contextlib import contextmanager
 from dataclasses import dataclass, replace
 from datetime import UTC, date, datetime, timedelta
 from decimal import Decimal
 from pathlib import Path
 from typing import Any
+from uuid import UUID
 
 import pytest
 
@@ -19,6 +21,7 @@ from core.approvals.store import (
     ApprovalStore,
     Trail,
 )
+from core.approvals.totp import totp
 from core.config.loader import AutonomyConfig, Config, load_config
 from core.execution.book import OrderBook, Recorder
 from core.execution.broker import AckCode, BrokerAck
@@ -34,6 +37,7 @@ from core.execution.loop import (
     default_reports_dir,
     finish_day,
     run_day,
+    send_approved,
     session_close,
 )
 from core.execution.paper import PaperSettings, PaperSimulator
@@ -46,6 +50,7 @@ from core.policy.engine import KILL_SWITCH_FILE, kill_switch_engaged
 from core.risk_gate.snapshot import GateSnapshot
 from tests.execution_cases import MemoryJournal, make_intent
 from tests.signing import sign
+from tests.test_approvals_store import KEY
 from tests.test_execution_intent import INJECTION
 from tests.test_execution_paper import costs_config
 
@@ -548,3 +553,243 @@ def test_a_session_close_is_known_only_for_a_session() -> None:
     assert close is not None and close.tzinfo is not None
     assert session_close("XPAR", date(2026, 10, 24)) is None
     assert session_close("ZZZZ", MONDAY) is None
+
+
+# Approved intents (ADR-036, D10) ---------------------------------------------------------------
+
+GRANTED = MONDAY_RUN + timedelta(minutes=2)
+SENDING = MONDAY_RUN + timedelta(minutes=3)
+
+
+@contextmanager
+def drafted_at_n3(tmp_path: Path, at: datetime = MONDAY_RUN) -> Iterator[tuple[World, UUID]]:
+    """A day at N3 whose intent waits for Lucas's approval."""
+    built = World(tmp_path, config("N3"))
+    built.env.approvals = ApprovalStore.memory(APPROVAL_RULES, Trail(built.journal, "loop-test"))
+    try:
+        [intent] = built.run(at).intents
+        yield built, intent.intent_id
+    finally:
+        built.env.approvals.close()
+        built.store.close()
+
+
+def approvals_of(built: World) -> ApprovalStore:
+    assert built.env.approvals is not None
+    return built.env.approvals
+
+
+def grant(built: World, intent_id: UUID, at: datetime = GRANTED) -> UUID:
+    """Lucas's right code, ``at``."""
+    request = approvals_of(built).for_intent(intent_id, now=at)
+    assert request is not None
+    code = totp(KEY, at)
+    assert approvals_of(built).approve(request.approval_id, code, key=KEY, now=at).accepted
+    return request.approval_id
+
+
+def test_an_approved_intent_is_sent_once_to_the_simulator(tmp_path: Path) -> None:
+    with drafted_at_n3(tmp_path) as (built, intent_id):
+        waiting = send_approved(built.env, now=SENDING)
+        assert (waiting.outcome, waiting.sent) == ("terminee", [])  # Lucas has not answered
+        assert built.book.order(intent_id).state == OrderState.INTENTION
+        approval_id = grant(built, intent_id)
+        report = send_approved(built.env, now=SENDING)
+        assert (report.day, report.outcome) == (MONDAY, "terminee")
+        [sent] = report.sent
+        assert (sent.intent_id, sent.approval_id, sent.symbol, sent.quantity) == (
+            intent_id,
+            approval_id,
+            SYMBOL,
+            4,
+        )
+        assert (sent.approval, sent.state) == (ApprovalState.CONSOMMEE, OrderState.ENVOYEE)
+        assert [order.intent_id for order in built.simulator.open_orders()] == [intent_id]
+        reasons = [
+            row["reason"] for row in built.book._conn.execute("SELECT reason FROM transitions")
+        ]
+        assert f"approbation {str(approval_id)[:8]} consommée : paper (D10)" in reasons[-2]
+        again = [
+            e
+            for e in built.journal.entries
+            if e["event"] == "POLICY" and e["payload"].get("approval_id") == str(approval_id)
+        ]
+        assert [e["actor"] for e in again] == ["risk_gate", "policy"]
+        assert again[0]["payload"]["intent_sha256"] == built.book.order(intent_id).intent.sha256()
+
+        later = send_approved(built.env, now=SENDING + timedelta(minutes=1))
+        assert later.sent == [] and len(built.simulator.open_orders()) == 1
+
+
+@pytest.mark.parametrize(
+    "answer", [ApprovalState.REFUSEE, ApprovalState.EXPIREE, ApprovalState.CONSOMMEE]
+)
+def test_an_answer_other_than_a_grant_rejects_the_intent(
+    tmp_path: Path, answer: ApprovalState
+) -> None:
+    with drafted_at_n3(tmp_path) as (built, intent_id):
+        approvals, now = approvals_of(built), SENDING
+        if answer is ApprovalState.REFUSEE:
+            request = approvals.for_intent(intent_id, now=GRANTED)
+            assert request is not None
+            approvals.refuse(request.approval_id, reason="non", actor="lucas", now=GRANTED)
+        elif answer is ApprovalState.EXPIREE:
+            now = MONDAY_RUN + timedelta(minutes=11)
+        else:  # consumed, yet the book still holds the intent: it is never sent twice
+            sha = built.book.order(intent_id).intent.sha256()
+            approvals.consume(grant(built, intent_id), intent_sha256=sha, now=GRANTED)
+        [sent] = send_approved(built.env, now=now).sent
+        why = f"approbation {answer.value} : jamais envoyée"
+        assert (sent.approval, sent.state, sent.reasons) == (answer, OrderState.REJETEE, (why,))
+        assert built.book.order(intent_id).state == OrderState.REJETEE
+        assert built.simulator.open_orders() == ()
+
+
+@pytest.mark.parametrize(
+    ("limits", "result"),
+    [({"universe": ["FICT-AUTRE"]}, "REFUSE"), ({"max_order_pct": 2}, "REDUIT")],
+)
+def test_a_gate_that_changed_its_mind_refuses_the_approval(
+    tmp_path: Path, limits: dict[str, Any], result: str
+) -> None:
+    """D4: the approval is for the order the Gate accepted, not for another."""
+    with drafted_at_n3(tmp_path) as (built, intent_id):
+        approval_id = grant(built, intent_id)
+        built.env.config = config("N3", **limits)
+        [sent] = send_approved(built.env, now=SENDING).sent
+        assert (sent.approval, sent.state) == (ApprovalState.REFUSEE, OrderState.REJETEE)
+        assert sent.reasons[-1].startswith(f"Porte réévaluée : {result}, ")
+        assert sent.reasons[-1].endswith(" au lieu des 4 approuvés : approbation refusée (D4)")
+        state = approvals_of(built).get(approval_id, now=SENDING).state
+        assert state is ApprovalState.REFUSEE
+        assert built.simulator.open_orders() == ()
+
+
+def test_a_lowered_level_refuses_the_approval(tmp_path: Path) -> None:
+    with drafted_at_n3(tmp_path) as (built, intent_id):
+        grant(built, intent_id)
+        built.env.config = config("N2")
+        [sent] = send_approved(built.env, now=SENDING).sent
+        assert (sent.approval, sent.state) == (ApprovalState.REFUSEE, OrderState.REJETEE)
+        assert sent.reasons[-1] == "politique : paper au lieu d'approbation : approbation refusée"
+        assert built.simulator.open_orders() == ()
+
+
+@pytest.mark.parametrize("answered_elsewhere", [False, True])
+def test_an_approval_is_never_sent_past_midnight_in_paris(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, answered_elsewhere: bool
+) -> None:
+    """R10: the decision belongs to its day; at 00:01 in Paris, it is no longer sent."""
+    late = datetime(2026, 10, 19, 21, 55, tzinfo=UTC)  # 23:55 in Paris
+    with drafted_at_n3(tmp_path, late) as (built, intent_id):
+        grant(built, intent_id, late + timedelta(minutes=2))
+        if answered_elsewhere:  # the refusal comes too late: the state is read back
+
+            def answered(*_: Any, **__: Any) -> None:
+                raise ApprovalError("approbation déjà traitée")
+
+            monkeypatch.setattr(approvals_of(built), "refuse", answered)
+        [sent] = send_approved(built.env, now=late + timedelta(minutes=6)).sent
+        assert sent.reasons == (
+            "approbation hors de sa journée de décision : jamais envoyée (R10)",
+        )
+        approval = ApprovalState.ACCORDEE if answered_elsewhere else ApprovalState.REFUSEE
+        assert (sent.approval, sent.state) == (approval, OrderState.REJETEE)
+        assert built.simulator.open_orders() == ()
+
+
+@pytest.mark.parametrize("trigger", ["fichier", "perte_donnees"])
+def test_a_stop_before_sending_refuses_every_approval(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, trigger: str
+) -> None:
+    with drafted_at_n3(tmp_path) as (built, intent_id):
+        approval_id = grant(built, intent_id)
+        if trigger == "fichier":
+            kill = tmp_path / KILL_SWITCH_FILE
+            kill.parent.mkdir(parents=True, exist_ok=True)
+            kill.write_text("arrêt manuel", encoding="utf-8")
+        else:
+            monkeypatch.setattr("core.execution.loop._stale", lambda *_: [f"{SYMBOL} : périmé"])
+        report = send_approved(built.env, now=SENDING)
+        assert report.outcome == "arret" and report.sent == []
+        assert report.stop is not None and report.stop.trigger == trigger
+        assert report.stop.approvals_refused == (approval_id,)
+        state = approvals_of(built).get(approval_id, now=SENDING).state
+        assert state is ApprovalState.REFUSEE
+        assert built.simulator.open_orders() == ()
+        again = send_approved(built.env, now=SENDING + timedelta(minutes=1))
+        assert (again.outcome, again.stop, again.sent) == ("arret", None, [])
+
+
+def test_a_kill_switch_engaged_after_the_policy_sends_nothing(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    def engaged_then_killed(root: Path) -> bool:
+        engaged = kill_switch_engaged(root)
+        kill = root / KILL_SWITCH_FILE
+        kill.parent.mkdir(parents=True, exist_ok=True)
+        kill.write_text("arrêt manuel", encoding="utf-8")
+        return engaged
+
+    with drafted_at_n3(tmp_path) as (built, intent_id):
+        grant(built, intent_id)
+        monkeypatch.setattr("core.execution.loop.kill_switch_engaged", engaged_then_killed)
+        [sent] = send_approved(built.env, now=SENDING).sent
+        assert (sent.approval, sent.state) == (ApprovalState.CONSOMMEE, OrderState.ANNULEE)
+        assert sent.reasons[-1] == "arrêt d'urgence engagé avant l'envoi : jamais envoyé"
+        assert built.simulator.open_orders() == ()
+
+
+def test_a_send_without_answer_is_reported_and_kept_sent(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    with drafted_at_n3(tmp_path) as (built, intent_id):
+        grant(built, intent_id)
+
+        def silent(intent: Any, *, now: datetime) -> BrokerAck:
+            raise TimeoutError(INJECTION)
+
+        monkeypatch.setattr(built.simulator, "submit", silent)
+        report = send_approved(built.env, now=SENDING)
+        assert report.outcome == "injoignable"
+        assert report.notes == ["adaptateur sans réponse (TimeoutError)"]
+        [sent] = report.sent
+        assert (sent.approval, sent.state) == (ApprovalState.CONSOMMEE, OrderState.ENVOYEE)
+        assert sent.reasons[-1] == "envoi sans réponse"
+        assert built.book.order(intent_id).state == OrderState.ENVOYEE
+        assert INJECTION not in str(report) + str(built.journal.entries)
+
+
+def test_an_approval_that_cannot_be_consumed_rejects_the_intent(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    with drafted_at_n3(tmp_path) as (built, intent_id):
+        grant(built, intent_id)
+
+        def mismatch(*_: Any, **__: Any) -> None:
+            raise ApprovalError("empreinte différente de l'intention approuvée")
+
+        monkeypatch.setattr(approvals_of(built), "consume", mismatch)
+        [sent] = send_approved(built.env, now=SENDING).sent
+        assert (sent.approval, sent.state) == (ApprovalState.ACCORDEE, OrderState.REJETEE)
+        assert sent.reasons[-1] == (
+            "approbation non consommée : empreinte différente de l'intention approuvée"
+        )
+        assert built.simulator.open_orders() == ()
+
+
+def test_without_an_account_an_approval_waits_unspent(tmp_path: Path) -> None:
+    with drafted_at_n3(tmp_path) as (built, intent_id):
+        approval_id = grant(built, intent_id)
+        built.env.config = config("N3", capital_reference_eur="A_DEFINIR")
+        report = send_approved(built.env, now=SENDING)
+        assert report.sent == [] and report.account is None
+        assert "capital de référence ou séances de perte glissante à définir (R7)" in report.notes
+        state = approvals_of(built).get(approval_id, now=SENDING).state
+        assert state is ApprovalState.ACCORDEE
+
+
+def test_without_an_approval_store_nothing_is_sent(world: World) -> None:
+    report = send_approved(world.env, now=SENDING)
+    assert (report.outcome, report.sent) == ("terminee", [])
+    assert report.notes == ["aucun registre des approbations : rien à envoyer"]

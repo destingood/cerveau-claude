@@ -1,8 +1,8 @@
 """`cerveau kill` and `cerveau rearm`: the kill switch by hand (R4, D12, ADR-034).
 
-``kill`` never refuses: a configuration, a book or a simulator that cannot be read is reported,
-and the stop goes on without it. ``rearm`` is Lucas's alone, at an interactive terminal; Claude
-Code's hooks refuse it (ADR-034).
+``kill`` never refuses: a configuration, a book, a simulator or an approval store that cannot be
+read is reported, and the stop goes on without it; every open approval request is refused.
+``rearm`` is Lucas's alone, at an interactive terminal; Claude Code's hooks refuse it (ADR-034).
 """
 
 from __future__ import annotations
@@ -15,6 +15,8 @@ from typing import Annotated
 
 import typer
 
+from core.approvals.store import ApprovalError, ApprovalRules, ApprovalStore, Trail
+from core.approvals.store import default_store_path as approvals_path
 from core.audit import AuditJournal, default_journal_path
 from core.config import ConfigError, load_config
 from core.execution.book import OrderBook, Recorder, default_book_path
@@ -48,14 +50,14 @@ ReasonOpt = Annotated[
 
 def _settings(
     root: Path, config_dir: Path, unavailable: list[str]
-) -> tuple[float | None, PaperSettings | None]:
-    """The target and the paper settings, None for what is unknown; a paper account that exists
-    but cannot be opened goes in ``unavailable``."""
+) -> tuple[float | None, PaperSettings | None, ApprovalRules | None]:
+    """The target, the paper settings and the approval rules, None for what is unknown; a paper
+    account or an approval store that exists but cannot be opened goes in ``unavailable``."""
     try:
         config = load_config(config_dir)
     except ConfigError:
-        unavailable.append("configuration invalide : cible et compte paper inconnus")
-        return None, None
+        unavailable.append("configuration invalide : cible, compte paper et approbations inconnus")
+        return None, None, None
     target = config.risk.kill_switch.target_seconds
     settings: PaperSettings | None = None
     try:
@@ -65,7 +67,13 @@ def _settings(
     except Exception as exc:  # a stop never waits for a setting
         if default_simulator_path(root).is_file():
             unavailable.append(f"simulateur paper non ouvert ({exc})")
-    return (None if isinstance(target, str) else float(target)), settings
+    rules: ApprovalRules | None = None
+    try:
+        rules = ApprovalRules.from_config(config.autonomy.approval)
+    except ApprovalError as exc:
+        if approvals_path(root).is_file():
+            unavailable.append(f"registre des approbations non ouvert ({exc})")
+    return (None if isinstance(target, str) else float(target)), settings, rules
 
 
 def _seconds(value: float, spec: str) -> str:
@@ -84,6 +92,7 @@ def _summary(stop: Stop) -> None:
         f"Ordres : {len(stop.cancelled)} passés à ANNULEE au carnet, "
         f"{len(stop.broker_cancelled)} annulations confirmées par le courtier."
     )
+    typer.echo(f"Approbations : {len(stop.approvals_refused)} demande(s) ouverte(s) refusée(s).")
     if stop.report is not None:
         typer.echo(f"Rapport : {stop.report}")
     for key in stop.unconfirmed:
@@ -122,7 +131,7 @@ def kill_command(
     request_id = f"kill-{uuid.uuid4().hex[:12]}"
     audit = AuditJournal(_kill_journal(root, journal, outside))
     unavailable: list[str] = []
-    target, settings = _settings(root, config_dir or root / "config", unavailable)
+    target, settings, rules = _settings(root, config_dir or root / "config", unavailable)
     with ExitStack() as stack:
         book: OrderBook | None = None
         if default_book_path(root).is_file():
@@ -142,6 +151,16 @@ def kill_command(
                 )
             except Exception as exc:
                 unavailable.append(f"simulateur paper non ouvert ({type(exc).__name__})")
+        approvals: ApprovalStore | None = None
+        if rules is not None and approvals_path(root).is_file():
+            try:
+                approvals = stack.enter_context(
+                    ApprovalStore.open(
+                        approvals_path(root), rules=rules, trail=Trail(audit, request_id)
+                    )
+                )
+            except Exception as exc:
+                unavailable.append(f"registre des approbations non ouvert ({type(exc).__name__})")
         stop = engage(
             root,
             trigger="commande",
@@ -153,6 +172,7 @@ def kill_command(
             target_seconds=target,
             adapter=adapter,
             book=book,
+            approvals=approvals,
             unavailable=unavailable,
         )
     _summary(stop)

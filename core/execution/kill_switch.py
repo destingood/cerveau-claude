@@ -4,9 +4,10 @@ Engaged means that ``governance/kill_switch/KILL`` exists: the policy engine the
 action at N0 (:func:`core.policy.engine.decide`), and so does every reader of the file.
 :func:`engage` creates it first, so that nothing after it can prevent the stop, then does the rest
 at best and reports it: a ``KILL`` audit entry, the cancellation of every open order at the
-adapter with retries bounded by the target, the book's moves to ANNULEE in one transaction, a
-state file, a second ``KILL`` entry with the measured duration, and an incident report in French
-in ``var/incidents/``. A step that fails goes to the report, never stops the rest: R4 comes first.
+adapter with retries bounded by the target, the book's moves to ANNULEE in one transaction, the
+refusal of every open approval request (ADR-035), a state file, a second ``KILL`` entry with the
+measured duration, and an incident report in French in ``var/incidents/``. A step that fails goes
+to the report, never stops the rest: R4 comes first.
 An order whose cancellation is not confirmed stays open in the book, marked as such in the
 journal, the state and the report, until a reconciliation settles it.
 
@@ -29,6 +30,7 @@ from pathlib import Path
 from typing import Literal, get_args
 from uuid import UUID
 
+from core.approvals.store import ApprovalStore
 from core.config.loader import PaperRiskLimits
 from core.execution.book import Journal, OrderBook
 from core.execution.broker import BrokerAdapter
@@ -78,6 +80,7 @@ class Stop:
     elapsed_s: float  # from the trigger to the state written
     target_s: float | None  # None while kill_switch.target_seconds is A_DEFINIR
     report: Path | None = field(default=None)
+    approvals_refused: tuple[UUID, ...] = ()  # open approval requests moved to REFUSEE
 
     @property
     def within_target(self) -> bool | None:
@@ -264,6 +267,7 @@ def engage(
     target_seconds: float | None,
     adapter: BrokerAdapter | None = None,
     book: OrderBook | None = None,
+    approvals: ApprovalStore | None = None,
     versions: Mapping[str, str] | None = None,
     unavailable: Sequence[str] = (),
     clock: Callable[[], float] = time.monotonic,
@@ -271,12 +275,13 @@ def engage(
 ) -> Stop:
     """Stop everything (R4, ADR-034) and return what was done; never raises for a failed step.
 
-    ``adapter`` and ``book`` are None when there is no paper account or book yet: nothing to
-    cancel there. What the caller could not open goes in ``unavailable``, reported as errors.
-    The book must journal on behalf of ``actor``: ``lucas`` for ``cerveau kill``, ``policy``
-    for an automatic trigger. An order is moved to ANNULEE when the adapter confirms its
-    cancellation, or when it was VALIDEE and the reachable adapter does not work it (it was
-    never sent); any other open order stays open, and its cancellation is unconfirmed.
+    ``adapter``, ``book`` and ``approvals`` are None when there is no paper account, book or
+    approval store yet: nothing to cancel or refuse there. What the caller could not open goes in
+    ``unavailable``, reported as errors. The book must journal on behalf of ``actor``: ``lucas``
+    for ``cerveau kill``, ``policy`` for an automatic trigger. An order is moved to ANNULEE when
+    the adapter confirms its cancellation, or when it was VALIDEE and the reachable adapter does
+    not work it (it was never sent); any other open order stays open, and its cancellation is
+    unconfirmed. Every open approval request is refused: none outlives the stop (ADR-035).
     """
     start = clock()
     deadline = None if target_seconds is None else start + target_seconds
@@ -329,6 +334,17 @@ def engage(
                 errors.append(_failure("carnet d'ordres, passage à ANNULEE", exc))
                 unconfirmed = set(booked)
 
+    refused: tuple[UUID, ...] = ()
+    if approvals is not None:
+        try:
+            refused = approvals.refuse_open(
+                reason=f"kill switch ({trigger})",
+                actor="lucas" if actor == "lucas" else "policy",
+                now=now,
+            )
+        except Exception as exc:  # still open, but never sent while the stop lasts (R4)
+            errors.append(_failure("approbations ouvertes non refusées", exc))
+
     report: Path | None = None
     try:
         report = _reserve_report(incidents_dir(project_root), trigger, now)
@@ -360,6 +376,7 @@ def engage(
         elapsed_s=clock() - start,
         target_s=target_seconds,
         report=report,
+        approvals_refused=refused,
     )
     entries.write_at_best(_stop_payload(stop), errors)
     stop = replace(stop, errors=tuple(errors))
@@ -381,6 +398,7 @@ def _stop_payload(stop: Stop) -> dict[str, object]:
         "cancelled": len(stop.cancelled),
         "unconfirmed": [str(key) for key in stop.unconfirmed],
         "unknown": [str(key) for key in stop.unknown],
+        "approvals_refused": len(stop.approvals_refused),
         "errors": len(stop.errors),
         "elapsed_ms": round(stop.elapsed_s * 1000),
         "target_s": stop.target_s,
@@ -427,6 +445,10 @@ def render_report(stop: Stop) -> str:
         f"- **Annulés chez le courtier, absents des ordres ouverts du carnet (alerte)** : "
         f"{len(stop.unknown)}",
         *_ids(stop.unknown),
+        "",
+        "## Approbations",
+        "",
+        f"- Demandes ouvertes passées à REFUSEE : {len(stop.approvals_refused)}",
         "",
         "## Erreurs",
         "",
