@@ -1,6 +1,7 @@
 domains:
   generaliste: { level: N1, max_level: N1 }
   finance:     { level: N0, max_level: N4 }   # le niveau courant ne change que par promotion signée
+  recherche:   { level: N0, max_level: N1 }   # D3 (ADR-043) : un nouveau domaine entre à N0
 matrix:
   LECTURE:               { N0: auto,  N1: auto,        N2: auto,      N3: auto,        N4: auto }
   CALCUL:                { N0: auto,  N1: auto,        N2: auto,      N3: auto,        N4: auto }

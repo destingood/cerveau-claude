@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import re
 from datetime import time
 from decimal import Decimal
 from pathlib import Path
@@ -11,7 +12,14 @@ import pytest
 import yaml
 
 from core.config import FEATURES, BlockedFeatureError, ConfigError, find_markers, load_config
-from core.config.loader import RESEARCH_BOUNDS
+from core.config.loader import (
+    DOMAIN_MAX_LEVELS,
+    GOLDEN_FLOORS,
+    RESEARCH_BOUNDS,
+    UNSIGNED_LEVELS,
+    EvalThresholds,
+)
+from core.registry.manifest import DOMAINS
 from tests.conftest import REPO_ROOT
 
 
@@ -53,6 +61,7 @@ def test_every_marker_dependent_feature_is_blocked_by_default() -> None:
         "llm.local",
         "kill_switch.data_loss",
         "evals.gate.generaliste",
+        "evals.gate.recherche",
         "compliance.fiscal",
         "guardrails.pii",
         "finance.historical_stress",
@@ -251,6 +260,87 @@ def test_autonomy_level_above_max_is_refused(config_dir: Path) -> None:
         config_dir / "autonomy.yaml", lambda d: d["domains"]["generaliste"].update(level="N3")
     )
     with pytest.raises(ConfigError, match="max_level"):
+        load_config(config_dir)
+
+
+def test_the_domain_caps_are_those_of_section_9_2() -> None:
+    assert tuple(DOMAIN_MAX_LEVELS) == DOMAINS
+    domains = load_config(REPO_ROOT / "config").autonomy.domains
+    assert (domains["recherche"].level, domains["recherche"].max_level) == ("N0", "N1")  # D3
+
+
+@pytest.mark.parametrize(
+    ("domain", "max_level"), [("generaliste", "N2"), ("recherche", "N2"), ("recherche", "N4")]
+)
+def test_a_max_level_above_section_9_2_is_refused(
+    config_dir: Path, domain: str, max_level: str
+) -> None:
+    edit_yaml(
+        config_dir / "autonomy.yaml",
+        lambda d: d["domains"][domain].update(max_level=max_level),
+    )
+    with pytest.raises(ConfigError, match=re.escape(f"domains.{domain}.max_level : {max_level}")):
+        load_config(config_dir)
+
+
+def test_a_cap_cannot_be_raised_for_a_domain_not_yet_configured(config_dir: Path) -> None:
+    edit_yaml(
+        config_dir / "autonomy.yaml",
+        lambda d: d["domains"].update(code={"level": "N0", "max_level": "N3"}),
+    )
+    with pytest.raises(ConfigError, match=re.escape("domains.code.max_level : N3 dépasse")):
+        load_config(config_dir)
+
+
+def test_a_max_level_may_be_lowered(config_dir: Path) -> None:
+    edit_yaml(
+        config_dir / "autonomy.yaml",
+        lambda d: d["domains"]["recherche"].update(max_level="N0"),
+    )
+    assert load_config(config_dir).autonomy.domains["recherche"].max_level == "N0"
+
+
+@pytest.mark.parametrize(
+    ("domain", "level", "entry"),
+    [("recherche", "N1", "N0"), ("code", "N1", "N0"), ("generaliste", "N2", "N1")],
+)
+def test_a_domain_without_promotion_stays_at_its_entry_level(
+    config_dir: Path, domain: str, level: str, entry: str
+) -> None:
+    edit_yaml(
+        config_dir / "autonomy.yaml",
+        lambda d: d["domains"].update({domain: {"level": level, "max_level": level}}),
+    )
+    message = f"domains.{domain}.level : {level} sans règle de promotion signée"
+    with pytest.raises(ConfigError, match=re.escape(f"{message} ; ce domaine reste à {entry}")):
+        load_config(config_dir)
+
+
+def test_the_floors_and_caps_cannot_change_at_run_time() -> None:
+    with pytest.raises(TypeError):
+        GOLDEN_FLOORS["recherche_golden_min_score"] = 0.0  # type: ignore[index]
+    with pytest.raises(TypeError):
+        DOMAIN_MAX_LEVELS["recherche"] = "N4"  # type: ignore[index]
+    with pytest.raises(TypeError):
+        UNSIGNED_LEVELS["recherche"] = "N1"  # type: ignore[index]
+
+
+def test_every_golden_gate_has_its_floor() -> None:
+    gates = {name for name in EvalThresholds.model_fields if name.endswith("_golden_min_score")}
+    assert gates == set(GOLDEN_FLOORS)
+    assert dict(GOLDEN_FLOORS) == {  # D6, D17 and D4 of phase 6
+        "generaliste_golden_min_score": 0.80,
+        "finance_golden_min_score": 0.85,
+        "recherche_golden_min_score": 0.80,
+    }
+
+
+def test_a_domain_outside_section_9_2_is_refused(config_dir: Path) -> None:
+    edit_yaml(
+        config_dir / "autonomy.yaml",
+        lambda d: d["domains"].update(astrologie={"level": "N0", "max_level": "N0"}),
+    )
+    with pytest.raises(ConfigError, match=re.escape("domains.astrologie : domaine absent du §9.2")):
         load_config(config_dir)
 
 
@@ -602,7 +692,10 @@ def test_a_missing_golden_gate_blocks_the_promotion(config_dir: Path) -> None:
 
 
 @pytest.mark.parametrize("value", [float("nan"), -1.0, 1.5, True])
-@pytest.mark.parametrize("field", ["generaliste_golden_min_score", "finance_golden_min_score"])
+@pytest.mark.parametrize(
+    "field",
+    ["generaliste_golden_min_score", "finance_golden_min_score", "recherche_golden_min_score"],
+)
 def test_a_golden_gate_is_a_score_in_0_1(config_dir: Path, field: str, value: object) -> None:
     edit_yaml(config_dir / "evals.yaml", lambda d: d["thresholds"].update({field: value}))
     with pytest.raises(ConfigError, match=field):
@@ -611,7 +704,11 @@ def test_a_golden_gate_is_a_score_in_0_1(config_dir: Path, field: str, value: ob
 
 @pytest.mark.parametrize(
     ("field", "value"),
-    [("generaliste_golden_min_score", 0.79), ("finance_golden_min_score", 0.84)],
+    [
+        ("generaliste_golden_min_score", 0.79),
+        ("finance_golden_min_score", 0.84),
+        ("recherche_golden_min_score", 0.79),
+    ],
 )
 def test_the_golden_gates_cannot_go_below_their_floor(
     config_dir: Path, field: str, value: float

@@ -10,11 +10,12 @@ from __future__ import annotations
 
 import hashlib
 import re
-from collections.abc import Iterator
+from collections.abc import Iterator, Mapping
 from dataclasses import dataclass
 from datetime import date, time
 from decimal import Decimal
 from pathlib import Path
+from types import MappingProxyType
 from typing import Annotated, Any, Literal
 
 import yaml
@@ -343,17 +344,39 @@ class DataSourcesConfig(_Strict):
     quality: DataQuality
 
 
-# The golden thresholds Lucas set (D6, D17). The configuration may raise them, never lower them
-# (R9): only an ADR moves these floors.
-GOLDEN_FLOORS: dict[str, float] = {
-    "generaliste_golden_min_score": 0.80,
-    "finance_golden_min_score": 0.85,
-}
+# The golden thresholds Lucas set (D6, D17; D4 of phase 6 for each new pack). The configuration
+# may raise them, never lower them (R9): only an ADR moves these floors. A pack whose threshold
+# is missing here does not start (ADR-043).
+GOLDEN_FLOORS: Mapping[str, float] = MappingProxyType(
+    {
+        "generaliste_golden_min_score": 0.80,
+        "finance_golden_min_score": 0.85,
+        "recherche_golden_min_score": 0.80,
+    }
+)
+# The highest level each domain may ever reach, from the table of section 9.2 (ADR-043). The
+# configuration may lower a max_level, never raise it past this cap; a new domain is an ADR.
+DOMAIN_MAX_LEVELS: Mapping[str, str] = MappingProxyType(
+    {
+        "generaliste": "N1",
+        "finance": "N4",
+        "recherche": "N1",
+        "code": "N2",
+        "cyber": "N1",
+        "juridique_fr": "N1",
+        "business": "N1",
+    }
+)
+# The level a domain without a signed promotion rule may hold: generaliste keeps the N1 of phase
+# 1, every other domain enters and stays at N0 (D3, ADR-043). Only an ADR raises it here; a
+# domain under ``promotion`` is capped by Lucas's signatures instead.
+UNSIGNED_LEVELS: Mapping[str, str] = MappingProxyType({"generaliste": "N1"})
 
 
 class EvalThresholds(_Strict):
     generaliste_golden_min_score: Score | Marker
     finance_golden_min_score: Score | Marker
+    recherche_golden_min_score: Score | Marker
     behavior_suites_R1_to_R5_pass_rate: Score
     regression_block_delta: float | Marker
 
@@ -364,7 +387,7 @@ class EvalThresholds(_Strict):
             if not isinstance(value, str) and value < floor:
                 raise ValueError(
                     f"{name} : {value} est sous le plancher {floor} "
-                    "(D6, D17 ; seule une ADR le change)"
+                    "(D6, D17, ADR-043 ; seule une ADR le change)"
                 )
         return self
 
@@ -780,6 +803,10 @@ FEATURES: dict[str, Feature] = {
         "Seuil du golden set Finance",
         ("evals:thresholds.finance_golden_min_score", "evals:thresholds.regression_block_delta"),
     ),
+    "evals.gate.recherche": Feature(
+        "Seuil du golden set Recherche",
+        ("evals:thresholds.recherche_golden_min_score", "evals:thresholds.regression_block_delta"),
+    ),
     "finance.market_risk": Feature(
         "Mesures de risque de marché (VaR, CVaR, Kupiec, stress hypothétiques)",
         (
@@ -952,6 +979,7 @@ def _cross_file_errors(parsed: dict[str, BaseModel]) -> list[str]:
     nor is the score of N1 → N2 below that of N0 → N1 (D9), and « 0 violation R1-R5 » is only
     measured if every behaviour suite must fully pass. Every committee role runs on a tier that
     models.yaml defines. A drafted limit price stays within the collar of the Risk Gate (D17).
+    Every domain is one of section 9.2 and stays under its cap there (ADR-043).
     """
     models: ModelsConfig = parsed["models"]  # type: ignore[assignment]
     pricing: PricingConfig = parsed["pricing"]  # type: ignore[assignment]
@@ -964,6 +992,23 @@ def _cross_file_errors(parsed: dict[str, BaseModel]) -> list[str]:
         and tier.model not in MARKERS
         and tier.model not in pricing.anthropic.models
     ]
+    promoted = set(type(autonomy.promotion).model_fields)
+    for domain, levels in autonomy.domains.items():
+        cap = DOMAIN_MAX_LEVELS.get(domain)
+        if cap is None:
+            errors.append(f"autonomy.yaml › domains.{domain} : domaine absent du §9.2 (ADR-043)")
+            continue
+        if LEVELS.index(levels.max_level) > LEVELS.index(cap):
+            errors.append(
+                f"autonomy.yaml › domains.{domain}.max_level : {levels.max_level} dépasse "
+                f"l'autonomie maximale du §9.2 ({cap}, ADR-043)"
+            )
+        entry = UNSIGNED_LEVELS.get(domain, "N0")
+        if domain not in promoted and LEVELS.index(levels.level) > LEVELS.index(entry):
+            errors.append(
+                f"autonomy.yaml › domains.{domain}.level : {levels.level} sans règle de promotion "
+                f"signée ; ce domaine reste à {entry} (D3, ADR-043)"
+            )
     finance = autonomy.promotion.finance
     gate = evals.thresholds.finance_golden_min_score
     for key in ("N0_to_N1", "N1_to_N2"):
