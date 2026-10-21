@@ -1,7 +1,7 @@
 """Le coffre Obsidian du wiki, réglé pour servir le cerveau sans token : tableau de bord (Bases), propriétés typées,
 rétroliens en bas de page, modèles (Alt+T), signets, couleurs du graphe et mode d'emploi ; page « Cerveau » (état du
-cerveau) et carte des thèmes (Canvas), réécrites en fin de session ; note du jour (Alt+J) dont les lignes « À retenir »
-deviennent des souvenirs au démarrage de la session suivante.
+cerveau) et carte des thèmes (Canvas), réécrites par la veille automatique et en fin de session ; note du jour (Alt+J)
+dont les lignes « À retenir » deviennent des souvenirs à la passe suivante de la veille ou au démarrage d'une session.
 
 Tout reste local : aucun module tiers ni module d'IA n'est installé (Omnisearch et New 3D Graph sont conseillés dans le
 mode d'emploi, à installer soi-même). Rien n'écrase un réglage de l'utilisateur : un fichier absent est créé, un fichier
@@ -20,11 +20,11 @@ from pathlib import Path
 from . import wikistore as ws
 from .common import STATE_DIR, VIZ_FILE, fmt_date, fold, log, now_iso, path_within, short, write_text
 
-VERSION = 3
+VERSION = 4
 STAMP = ".obsidian/cerveau.json"
 TEMPLATES_DIR = f"{ws.PAGES}/_modeles"  # « _ » : le cerveau ne le lit pas (wikistore.scan)
 DASHBOARD, GUIDE = "Tableau de bord.base", "Mode d'emploi Obsidian.md"
-STATUS, CARD = "Cerveau.md", "Carte du cerveau.canvas"  # générés en fin de session (hors wiki/ : jamais relus)
+STATUS, CARD = "Cerveau.md", "Carte du cerveau.canvas"  # veille automatique et fin de session (hors wiki/ : jamais relus)
 DAYS_DIR, DAY_TEMPLATE, CAPTURE_HEAD = "Notes du jour", "Jour", "À retenir"
 DAILY = {"folder": DAYS_DIR, "format": "YYYY-MM-DD", "template": f"{TEMPLATES_DIR}/{DAY_TEMPLATE}"}
 
@@ -70,7 +70,7 @@ TEMPLATES = {"À faire": ("todo", 3, True, ""), "Règle": ("feedback", 4, False,
 PREFIXES = {"regle": "feedback", "preference": "feedback", "decision": "decision", "a faire": "todo", "tache": "todo",
             "todo": "todo", "apprentissage": "learning", "astuce": "learning", "piege": "learning",
             "reference": "reference", "ref": "reference", "lien": "reference", "fait": "fact", "info": "fact"}
-CAPTURE_QUIET = 600  # s : une note modifiée il y a moins de 10 min attend la session d'après (en cours d'écriture ?)
+CAPTURE_QUIET = 600  # s : une note modifiée il y a moins de 10 min attend la passe d'après (en cours d'écriture ?)
 CAPTURE_DAYS = 60  # jours : au-delà, une note du jour n'est plus relue
 
 DAY_TEXT = f"""# {{{{date:dddd D MMMM YYYY}}}}
@@ -207,14 +207,15 @@ views:
 
 GUIDE_HEAD = "# Mode d'emploi : Obsidian et le cerveau"
 LIVE_HEAD = "## Le cerveau dans Obsidian"
-# ajoutée telle quelle au mode d'emploi d'avant la 8.8 (s'il est encore celui du cerveau : son titre est là)
-GUIDE_LIVE = f"""{LIVE_HEAD}
+LIVE_TABLE = f"""{LIVE_HEAD}
 | Quoi | Où |
 |---|---|
 | État du cerveau : échéances, à-faire, dernières sessions, santé du wiki, cerveau commun | Signet « Cerveau » (page `{STATUS}`) |
 | Les grands thèmes de la mémoire, en cartes cliquables | Signet « Carte du cerveau » (Canvas) |
 | Noter un souvenir sans ouvrir Claude | **Alt+J** (note du jour) → une ligne sous « {CAPTURE_HEAD} » |
-
+"""
+# section des versions 8.8 à 8.8.x : remplacée telle quelle par la suivante (si personne ne l'a retouchée)
+GUIDE_LIVE_V3 = LIVE_TABLE + f"""
 - La page Cerveau et la carte sont réécrites à chaque fin de session de Claude : ne les modifie pas (pour garder une
   disposition de la carte, duplique le fichier). Elles restent hors de git : chaque PC a les siennes.
 - Note du jour : une ligne par souvenir sous « {CAPTURE_HEAD} », avec un préfixe facultatif (« règle : », « décision : »,
@@ -223,6 +224,21 @@ GUIDE_LIVE = f"""{LIVE_HEAD}
   ligne « ✓ … → [[page]] ». Une note modifiée il y a moins de 10 minutes attend la session d'après. Ces souvenirs
   restent privés (jamais envoyés au cerveau commun). Les notes vont dans `{DAYS_DIR}/`, hors de `wiki/` : Claude ne
   les lit pas.
+"""
+# ajoutée telle quelle au mode d'emploi d'avant la 8.8 (s'il est encore celui du cerveau : son titre est là)
+GUIDE_LIVE = LIVE_TABLE + f"""
+- La page Cerveau et la carte sont réécrites toutes les 30 min par la veille automatique du cerveau (sans Claude,
+  zéro token ; `brain auto --etat` dit si elle est posée) et à chaque fin de session de Claude : ne les modifie pas
+  (pour garder une disposition de la carte, duplique le fichier). Elles restent hors de git : chaque PC a les siennes.
+- Note du jour : une ligne par souvenir sous « {CAPTURE_HEAD} », avec un préfixe facultatif (« règle : », « décision : »,
+  « à faire : … le 25/10 », « apprentissage : », « référence : » ; sans préfixe : un fait). À la passe suivante de la
+  veille (30 min au plus) ou au début de la session suivante de Claude, le cerveau les mémorise en tâche de fond, sans
+  rien ajouter à la discussion, et marque chaque ligne « ✓ … → [[page]] ». Une note modifiée il y a moins de
+  10 minutes attend la passe d'après. Ces souvenirs restent privés (jamais envoyés au cerveau commun). Les notes vont
+  dans `{DAYS_DIR}/`, hors de `wiki/` : Claude ne les lit pas.
+- La veille fait aussi, sans Claude : synchro du wiki avec GitHub (commit, pull, push) quand aucune session n'est
+  ouverte, entretien et sauvegarde du jour, cerveau commun, vue 3D. Seule l'ingestion d'une source de `raw/` attend
+  Claude : il faut un modèle pour la lire.
 """
 
 GUIDE_TEXT = f"""{GUIDE_HEAD}
@@ -370,8 +386,13 @@ def _setdefaults(values):
 
 
 def _add_live(text):
-    """Mode d'emploi d'avant la 8.8, encore celui du cerveau : la section « Le cerveau dans Obsidian » en tête."""
-    if not text.startswith(GUIDE_HEAD) or LIVE_HEAD in text:
+    """Mode d'emploi d'avant la 8.8, encore celui du cerveau : la section « Le cerveau dans Obsidian » en tête ; celui
+    des 8.8.x : sa section remplacée par celle de la veille automatique."""
+    if not text.startswith(GUIDE_HEAD):
+        return None
+    if GUIDE_LIVE_V3 in text:
+        return text.replace(GUIDE_LIVE_V3, GUIDE_LIVE)
+    if LIVE_HEAD in text:
         return None
     i = text.find("\n## ")
     return text + "\n" + GUIDE_LIVE if i < 0 else text[:i + 1] + GUIDE_LIVE + text[i:]
@@ -412,12 +433,15 @@ STATUS_STAMP = "_Réécrite par le cerveau"
 def status_text(brain, root, today=None) -> str:
     """Page « Cerveau » : ce que Claude répondrait sur l'état du cerveau, lu dans Obsidian sans lui (zéro token)."""
     import datetime as _dt
-    from . import __version__, dates, journal, wiki
+    from . import __version__, auto, dates, journal, wiki
     from .privacy import mask
     from .store import TYPES
     today = today or _dt.date.today()
     names, mine = _names(brain), _mine(brain)
-    out = ["# 🧠 Cerveau", "", f"{STATUS_STAMP} à chaque fin de session de Claude : ne pas modifier. État du "
+    veille = auto.planned()
+    quand = "toutes les 30 min (veille automatique) et à chaque fin de session de Claude" if veille \
+        else "à chaque fin de session de Claude"
+    out = ["# 🧠 Cerveau", "", f"{STATUS_STAMP} {quand} : ne pas modifier. État du "
                                 f"{today:%d/%m/%Y}, cerveau {__version__}._", ""]
     dated = sorted(((d, n) for n in mine for d in [dates.due_of(n, today)]
                     if d and dates.days_until(d, today) is not None and dates.days_until(d, today) <= 14),
@@ -465,8 +489,10 @@ def status_text(brain, root, today=None) -> str:
     if conso:
         out += ["", "## 🔥 Consommation", ""] + conso
     out += ["", "## 📝 Noter sans Claude", "",
-            f"**Alt+J** ouvre la note du jour : une ligne sous « {CAPTURE_HEAD} » devient un souvenir au début de la "
-            "session suivante (préfixes : règle, décision, à faire, apprentissage, référence)."]
+            f"**Alt+J** ouvre la note du jour : une ligne sous « {CAPTURE_HEAD} » devient un souvenir "
+            + ("à la passe suivante de la veille (30 min au plus) ou au début de la session suivante" if veille
+               else "au début de la session suivante")
+            + " (préfixes : règle, décision, à faire, apprentissage, référence)."]
     return mask("\n".join(out) + "\n")[0]
 
 

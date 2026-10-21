@@ -75,6 +75,10 @@ décisions et de ce qu'il a appris, d'une session à l'autre.
   souvenir dans une page Markdown d'un dossier que tu ouvres dans Obsidian (idéalement un dépôt GitHub privé). Tu y
   déposes des sources (articles, PDF, transcriptions, notes) ; Claude les lit et tient à jour des pages de synthèse
   (sources résumées, entités, concepts, sujets, analyses), liées entre elles. Rien ne change tant que tu ne le lances pas.
+- **Nouveau — la veille automatique** : `brain auto --installer` pose une tâche planifiée (Windows ; ailleurs, une
+  ligne cron à ajouter) qui tient le cerveau à jour toutes les 30 min sans ouvrir Claude, et sans fenêtre : notes du
+  jour d'Obsidian mémorisées, wiki synchronisé avec GitHub, page Cerveau et carte réécrites, entretien et sauvegarde du
+  jour. Zéro token. `brain auto --etat` pour voir la dernière passe, `brain auto --retirer` pour l'enlever.
 
 - **Nouveau — le cerveau commun** : si tu le veux, ce que tu apprends (recherches, savoir, projets que tu déclares
   communs) nourrit aussi le cerveau de tes amis, et le leur nourrit le tien, presque en temps réel. Claude te le

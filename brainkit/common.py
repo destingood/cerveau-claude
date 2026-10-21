@@ -109,14 +109,20 @@ def setup_io() -> None:
 
 
 def read_json(path, default=None):
-    try:
-        with open(path, encoding="utf-8") as fh:
-            return json.load(fh)
-    except FileNotFoundError:
-        return default
-    except Exception as exc:  # fichier corrompu : ne jamais casser une session
-        log(f"read_json {path}: {exc!r}")
-        return default
+    for attempt in range(8):
+        try:
+            with open(path, encoding="utf-8") as fh:
+                return json.load(fh)
+        except FileNotFoundError:
+            return default
+        except PermissionError as exc:  # Windows : fichier en cours de remplacement par une tâche de fond
+            if attempt == 7:
+                log(f"read_json {path}: {exc!r}")
+                return default
+            time.sleep(0.05 * (attempt + 1))
+        except Exception as exc:  # fichier corrompu : ne jamais casser une session
+            log(f"read_json {path}: {exc!r}")
+            return default
 
 
 def _atomic_write(path: Path, payload: str) -> None:

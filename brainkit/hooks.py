@@ -178,14 +178,40 @@ def wiki_start(brain, cfg) -> str:
     return text
 
 
-def journal_catchup(cfg, sid) -> bool:
+def journal_catchup(cfg, sid, launch=spawn_background) -> bool:
     """Rattrapage du journal, au plus une fois par jour : des sessions de Claude Code des 7 derniers jours que les hooks
     n'ont pas vues (`python` introuvable, plugin tout neuf…) → import en arrière-plan, jamais dans le délai du hook."""
     jc = cfg.get("journal") or {}
     if not jc.get("enabled", True) or days_since(jc.get("rattrapage_le")) < 1:
         return False
     set_config("journal.rattrapage_le", now_iso())  # jour réservé : une autre session qui démarre n'en lance pas une 2e
-    return bool(journal.missing(exclude=(sid,), limit=1)) and spawn_background(["journal", "--backfill"])
+    return bool(journal.missing(exclude=(sid,), limit=1)) and launch(["journal", "--backfill"])
+
+
+def garde_due(cfg) -> bool:
+    """Garde de consommation due (toutes les 2 h au plus) ? Si oui, le créneau est réservé : une autre session qui
+    démarre, ou la veille automatique, n'en lance pas une deuxième."""
+    garde = cfg.get("garde") if isinstance(cfg.get("garde"), dict) else {}
+    if min(days_since(garde.get("le")), days_since(garde.get("lance_le"))) * 24 < 2:
+        return False
+    set_config("garde.lance_le", now_iso())
+    return True
+
+
+def daily_due(cfg) -> list:
+    """Entretien et sauvegarde automatiques, une fois par jour : arguments de brain.py des tâches dues (marqueur posé)."""
+    out = []
+    for name, args, enabled in (("last_consolidate", ["consolidate", "--auto"], True),
+                                ("last_backup", ["backup", "--auto"], cfg.get("backup", {}).get("enabled", True))):
+        marker = BRAIN_DIR / "state" / name
+        try:
+            if enabled and (not marker.exists() or time.time() - marker.stat().st_mtime > 86400):
+                marker.parent.mkdir(parents=True, exist_ok=True)
+                marker.write_text(now_iso(), encoding="utf-8")
+                out.append(args)
+        except OSError as exc:
+            log(f"{name} : {exc!r}")
+    return out
 
 
 # ------------------------------------------------------------------------------------------ SessionStart
@@ -287,13 +313,11 @@ def on_session_start(data, cfg):
             spawn_background(["eco", "--plugins-auto"])
         except Exception as exc:
             log(f"éco (veille des plugins) : {exc!r}")
-    garde = cfg.get("garde") if isinstance(cfg.get("garde"), dict) else {}
-    if min(days_since(garde.get("le")), days_since(garde.get("lance_le"))) * 24 >= 2:
-        try:  # garde de consommation : sessions qui mangent la journée (toutes les 2 h au plus, en arrière-plan)
-            set_config("garde.lance_le", now_iso())
+    try:  # garde de consommation : sessions qui mangent la journée (toutes les 2 h au plus, en arrière-plan)
+        if garde_due(cfg):
             spawn_background(["tokens", "--garde"])
-        except Exception as exc:
-            log(f"garde de consommation : {exc!r}")
+    except Exception as exc:
+        log(f"garde de consommation : {exc!r}")
     try:  # sessions que les hooks ont manquées (une fois par jour) : importées au journal en arrière-plan
         journal_catchup(cfg, sid)
     except Exception as exc:
@@ -982,17 +1006,8 @@ def on_session_end(data, cfg, event="session-end"):
     if event == "session-end" and path and tx.get("edits") and cfg["auto_map"]["enabled"]:
         spawn_background(["map", path, "-p", proj["id"], "--quiet"])
     if event == "session-end":  # entretien et sauvegarde automatiques, une fois par jour (en arrière-plan)
-        daily = [("last_consolidate", ["consolidate", "--auto"], True)]
-        daily.append(("last_backup", ["backup", "--auto"], cfg.get("backup", {}).get("enabled", True)))
-        for name, args, enabled in daily:
-            marker = BRAIN_DIR / "state" / name
-            try:
-                if enabled and (not marker.exists() or time.time() - marker.stat().st_mtime > 86400):
-                    marker.parent.mkdir(parents=True, exist_ok=True)
-                    marker.write_text(now_iso(), encoding="utf-8")
-                    spawn_background(args)
-            except OSError as exc:
-                log(f"{name} : {exc!r}")
+        for args in daily_due(cfg):
+            spawn_background(args)
     brain = Brain.load()
     idx.rebuild(brain, cfg)
     if event == "session-end" and (brain.data.get("wiki") or {}).get("root") and not brain.data["wiki"].get("missing"):

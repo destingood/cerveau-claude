@@ -1507,6 +1507,15 @@ def cmd_wiki(a):
             "capture")
 
 
+def cmd_auto(a):
+    """Veille automatique : une passe sans session de Claude, ou la tâche planifiée qui en lance une toutes les 30 min."""
+    from . import auto
+    lines = (auto.install(dry=a.dry_run) if a.installer else auto.uninstall() if a.retirer
+             else auto.state_lines() if a.etat else auto.main())
+    if lines:
+        print("\n".join(lines))
+
+
 def cmd_boutique(a):
     """Boutiques en ligne suivies par le cerveau : fiche, plan daté, indicateurs de la semaine, audits, bilan."""
     from . import boutique
@@ -1919,6 +1928,12 @@ def build_parser():
     s.add_argument("--no-push", action="store_true", help="init/sync : ne pas envoyer sur GitHub")
     s.add_argument("--no-pull", action="store_true", help="sync : ne pas récupérer")
     s.add_argument("--auto", action="store_true", help=argparse.SUPPRESS)
+    s = cmd("auto", cmd_auto, "veille automatique, zéro token : une passe (notes du jour, synchro du wiki, page Cerveau, "
+            "entretien du jour) — --installer pose la tâche planifiée qui en lance une toutes les 30 min", ["veille"])
+    s.add_argument("--installer", action="store_true", help="poser la tâche planifiée (Windows ; ailleurs : la ligne cron)")
+    s.add_argument("--retirer", action="store_true", help="retirer la tâche planifiée")
+    s.add_argument("--etat", action="store_true", help="tâche posée ? dernière passe et ses étapes")
+    s.add_argument("--dry-run", action="store_true", help="avec --installer : montrer la tâche sans la poser")
     s = cmd("boutique", cmd_boutique, "boutiques en ligne suivies (données privées) : liste · ajouter \"Nom\" · plan · "
             "kpi (semaine) · audit · bilan · regler", ["boutiques", "shop"])
     s.add_argument("action", nargs="?", help="liste (défaut), ajouter, plan, kpi, audit, bilan, regler")

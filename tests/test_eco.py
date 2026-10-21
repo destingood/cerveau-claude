@@ -64,8 +64,8 @@ class World:
         self.settings_file.write_text(json.dumps(data, indent=2), encoding="utf-8")
 
     def config(self, key=None):
-        cfg = json.loads((self.brain_dir / "config.json").read_text(encoding="utf-8")) \
-            if (self.brain_dir / "config.json").exists() else {}
+        from brainkit.common import read_json  # réessaie si une tâche de fond (garde) réécrit le fichier
+        cfg = read_json(self.brain_dir / "config.json", {}) or {}
         for part in (key or "").split("."):
             cfg = cfg.get(part) if part and isinstance(cfg, dict) else cfg
         return cfg

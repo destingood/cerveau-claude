@@ -491,6 +491,71 @@ check("session | hors projet" in page("log.md"), "fin de session : entrée « se
 check("Rappeler le torréfacteur de Shizuoka" in page("Cerveau.md"), "fin de session : page Cerveau à jour (nouvel à-faire)",
       page("Cerveau.md")[:800])
 
+# ------------------------------------------------------------------ 10 bis. veille automatique (brain auto), sans Claude
+from brainkit import auto  # noqa: E402
+from brainkit.common import set_config  # noqa: E402
+
+STATE = TMP / "brain" / "state"
+jour = WIKI / "Notes du jour" / "2026-09-12.md"
+jour.write_text("## À retenir\n- apprentissage : la veille mémorise sans Claude\n", encoding="utf-8")
+os.utime(jour, (time.time() - 3600, time.time() - 3600))
+with Brain.edit() as b2:
+    b2.add("todo", "Vérifier la veille du cerveau", "À faire créé hors session.")
+code, out = brain("auto")
+check(code == 0 and "✓ notes du jour" in out and "- ✓ " in jour.read_text(encoding="utf-8")
+      and any(n["title"] == "la veille mémorise sans Claude" for n in Brain.load().nodes.values()),
+      "veille : note du jour mémorisée sans session", out + "\n" + jour.read_text(encoding="utf-8"))
+check("Vérifier la veille du cerveau" in page("Cerveau.md"), "veille : page Cerveau à jour", out)
+check("synchro du wiki" not in out, "veille : pas de synchro git pendant une session de Claude", out)
+last = json.loads((STATE / "auto.json").read_text(encoding="utf-8"))
+code, out2 = brain("auto", "--etat")
+check(last.get("le") and any(r["etape"] == "notes du jour" for r in last["etapes"]) and "Dernière passe" in out2
+      and "✓ notes du jour" in out2, "veille : compte rendu gardé, lisible par --etat", out2)
+for f in (STATE / "sessions").glob("*.json"):
+    os.utime(f, (time.time() - 3600, time.time() - 3600))
+(WIKI / "wiki/Sujets/Thé japonais.md").write_text(page("wiki/Sujets/Thé japonais.md") + "\nAjout hors session.\n",
+                                                  encoding="utf-8")
+code, out = brain("auto")
+head = subprocess.run(["git", "-C", str(REMOTE), "show", "main:wiki/Sujets/Thé japonais.md"], capture_output=True)
+check("✓ synchro du wiki" in out and "Ajout hors session." in head.stdout.decode("utf-8", "replace"),
+      "veille : wiki synchronisé (commit + push) quand aucune session n'est ouverte", out)
+(STATE / "auto.lock").write_text("1", encoding="utf-8")
+code, out = brain("auto")
+(STATE / "auto.lock").unlink()
+check("déjà en cours" in out, "veille : jamais deux passes à la fois", out)
+before = (STATE / "auto.json").read_text(encoding="utf-8")
+os.environ["CLAUDE_CODE_REMOTE"] = "true"
+code, out = brain("auto")
+os.environ.pop("CLAUDE_CODE_REMOTE")
+check("session cloud" in out and (STATE / "auto.json").read_text(encoding="utf-8") == before,
+      "veille : aucune passe en session cloud", out)
+brain("config", "auto.enabled", "false")
+code, out = brain("auto")
+brain("config", "auto.enabled", "true")
+check("coupée" in out, "veille : coupée par la configuration", out)
+code, out = brain("auto", "--installer", "--dry-run")
+check(code == 0 and "rien n'est fait" in out and "<Interval>PT30M</Interval>" in out and "pythonw.exe" in out
+      and "InteractiveToken" in out and "LeastPrivilege" in out and "&quot; auto" not in out and '" auto</Arguments>' in out,
+      "veille : --installer --dry-run montre la tâche (30 min, pythonw, sans mot de passe, droits limités)", out[:900])
+# textes d'Obsidian : la veille n'est annoncée que si la tâche est posée ; mode d'emploi 8.8 mis à jour une fois
+check("toutes les 30 min" not in page("Cerveau.md"), "Obsidian : page Cerveau sans veille annoncée (tâche non posée)")
+set_config("auto.tache", "2026-09-12T10:00:00")
+obsidian.write_status(Brain.load(), WIKI)
+check("toutes les 30 min (veille automatique)" in page("Cerveau.md") and "passe suivante de la veille" in page("Cerveau.md"),
+      "Obsidian : page Cerveau annonce la veille quand la tâche est posée", page("Cerveau.md")[:300])
+set_config("auto.tache", None)
+v3 = f"{obsidian.GUIDE_HEAD}\n\nIntro.\n\n{obsidian.GUIDE_LIVE_V3}\n## Avant de demander à Claude\nTexte.\n"
+(WIKI / obsidian.GUIDE).write_text(v3, encoding="utf-8")
+made = obsidian.setup(WIKI, force=True)
+g = page(obsidian.GUIDE)
+check(made == [obsidian.GUIDE] and obsidian.GUIDE_LIVE in g and obsidian.GUIDE_LIVE_V3 not in g
+      and g.endswith("## Avant de demander à Claude\nTexte.\n") and obsidian.setup(WIKI, force=True) == [],
+      "Obsidian : mode d'emploi 8.8 passé à la veille automatique, une fois", g[:400])
+mine = v3.replace("ne les modifie pas", "ne les touche pas")
+(WIKI / obsidian.GUIDE).write_text(mine, encoding="utf-8")
+check(obsidian.setup(WIKI, force=True) == [] and page(obsidian.GUIDE) == mine,
+      "Obsidian : mode d'emploi retouché à la main jamais réécrit")
+
 # ------------------------------------------------------------------ 11. MCP
 req = "\n".join(json.dumps(x) for x in (
     {"jsonrpc": "2.0", "id": 1, "method": "initialize", "params": {"protocolVersion": "2024-11-05", "capabilities": {}}},
