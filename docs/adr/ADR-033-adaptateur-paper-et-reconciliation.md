@@ -45,7 +45,11 @@ Option 3 ; IBKR paper au backlog.
   par `core/finance/portfolio`, est comparé au relevé de l'adaptateur (positions exactes, cash au
   centime). Un écart donne une alerte, une entrée au journal et le blocage des nouvelles intentions.
   Il se lève après une réconciliation propre **et** un acquittement de Lucas en terminal
-  interactif. Un écart issu d'un incident d'exécution déclenche le kill switch.
+  interactif. Un écart issu d'un incident d'exécution déclenche le kill switch. Le journal de
+  réconciliation (`var/paper/reconciliation.db`, insertion seule) garde les écarts et leurs
+  montants ; le journal d'audit reçoit une entrée `DECISION` par réconciliation et une entrée
+  `APPROVAL` (acteur `lucas`) par acquittement, avec les actifs en écart, des nombres et des empreintes, sans montant
+  (`core/execution/reconcile.py`).
 
 ## Conséquences
 - Le paper ne tourne que sur le marché synthétique tant qu'aucune source de cours n'est choisie

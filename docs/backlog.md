@@ -163,6 +163,7 @@ reporté (phase 3 : décision D23 de `docs/plans/phase-3-plan.md`).
 | B166 | Simulateur paper en euros seulement : le `Fill` du carnet ne porte pas de taux de change ; ajouter un taux point-in-time et `fx_conversion_bps` au carnet et au simulateur avant tout instrument hors euro | `core/execution/paper.py`, ADR-033 | 5 |
 | B167 | Frais du compte paper non figés : des frais relevés entre l'envoi et la clôture font expirer un ordre (« cash insuffisant à l'exécution »), sans emprunt ; décider s'ils se figent à l'ouverture du compte, comme le capital (D16) | `core/execution/paper.py`, ADR-033 | ? |
 | B168 | Barre absente = ordre expiré : une suspension de cotation ne se distingue pas d'une donnée manquante ; lire le statut de séance de la source avant le live | `core/execution/paper.py`, ADR-033 | ? |
+| B169 | Réconciliation : exécutions et relevé lus en deux appels ; le simulateur paper est synchrone, un adaptateur live devra les fournir dans une même coupe cohérente (ou un curseur commun) pour qu'une exécution arrivée entre les deux ne crée pas un faux écart | `core/execution/reconcile.py`, ADR-033 | ? |
 
 ## Évaluations
 | # | Élément | Origine | Phase |
