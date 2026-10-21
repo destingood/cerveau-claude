@@ -93,4 +93,13 @@ rapport au plan de phase 4 (§10) :
   (insertion seule) ; les autres laissent la journée à reprendre. Le rapport
   `var/paper/reports/AAAA-MM-JJ.md` cite pour chaque section l'outil qui a produit ses chiffres
   (R1) ; une journée déjà close ne le réécrit pas.
+- **Sources stratégie** (`core/execution/sources.py`) : chaque fiche `candidate` repasse ses
+  contrôles de promotion chaque jour et rejoue le code de son backtest avec la configuration
+  retenue par le rapport approuvé (retrouvé par son empreinte), à condition qu'elle soit un point de
+  la grille (B179). Les ordres visent ses poids sur la valeur liquidative du compte paper ; les
+  positions hors de son univers sont ignorées. Une candidate refusée ne propose rien et la raison
+  figure dans les remarques du rapport.
+- **CLI** : `cerveau paper run` (codes de sortie 0, 1, 2 et 4), `paper status`, `paper orders`,
+  `paper report` (lecture seule, rien n'est créé), `paper acquitter` (Lucas seul, terminal
+  interactif, B177) et `cerveau status` (B54).
 - **Non couvert** : écart paper/backtest et compteurs N2→N3 (B181).

@@ -98,9 +98,10 @@ def ingest(store: FinanceStore, session: date, close: float) -> None:
     store.ingest([bar(session, close, published)], ingested_at=published)
 
 
-def market() -> FinanceStore:
-    """Fifty sessions at 100.00 € up to Monday 19 October 2026, as known on Monday evening."""
-    store = FinanceStore.memory()
+def market(store: FinanceStore | None = None) -> FinanceStore:
+    """Fifty sessions at 100.00 € up to Monday 19 October 2026, as known on Monday evening, in
+    ``store`` or a new one in memory."""
+    store = store or FinanceStore.memory()
     instrument = Instrument(
         instrument_id=SYMBOL,
         valid_from=date(2020, 1, 1),
