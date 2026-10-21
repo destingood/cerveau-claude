@@ -1,4 +1,4 @@
-"""The live adapter: a real broker behind six conditions checked at every submission (ADR-036).
+"""The live adapter: a real broker behind six conditions checked at every submission (ADR-039).
 
 No broker client exists in this phase (D8): :class:`LiveAdapter` wraps any
 :class:`BrokerClient` and refuses to submit an order unless, at that very call (D9):
