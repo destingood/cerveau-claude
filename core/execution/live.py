@@ -19,7 +19,8 @@ all six hold, the approval is spent, once, before the submission (D4).
 
 Cancelling and reading never add exposure: ``cancel``, ``cancel_all`` (the kill switch's move)
 and the reads stay allowed whatever the conditions. Every call to the client is bounded by a
-timeout shorter than the kill switch's target, and raises :class:`TimeoutError` past it (B171).
+timeout shorter than the kill switch's target, which must be known, and raises
+:class:`TimeoutError` past it (B171).
 """
 
 from __future__ import annotations
@@ -193,7 +194,10 @@ class LiveAdapter:
     ) -> None:
         if not math.isfinite(call_timeout_s) or call_timeout_s <= 0:
             raise ValueError("délai d'appel au courtier : nombre de secondes > 0 attendu")
-        if kill_target_s is not None and call_timeout_s >= kill_target_s:
+        if kill_target_s is None or not math.isfinite(kill_target_s):
+            # An unknown target cannot bound the calls: no live adapter until it is set.
+            raise ValueError("cible du kill switch inconnue ou invalide (A_DEFINIR refusé, R4, R7)")
+        if call_timeout_s >= kill_target_s:
             raise ValueError(
                 f"délai d'appel {call_timeout_s} s : il doit rester sous la cible du kill switch "
                 f"({kill_target_s} s, B171)"

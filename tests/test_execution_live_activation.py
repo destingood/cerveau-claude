@@ -59,7 +59,7 @@ def test_only_the_six_conditions_together_reach_the_broker(
             granted(store, intent)
         owned = want[Condition.ACL]
         check = ActivationCheck(root, store, owner=lambda _path: owned)
-        live = LiveAdapter(client, store, check, call_timeout_s=5, kill_target_s=None)
+        live = LiveAdapter(client, store, check, call_timeout_s=5, kill_target_s=10)
         failing = {condition for condition, held in want.items() if not held}
         if failing:
             with pytest.raises(LiveDisabled, match="aucun appel au courtier") as caught:
