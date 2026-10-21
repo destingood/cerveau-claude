@@ -73,10 +73,12 @@ def autonomy_view(config: Config, root: Path) -> dict[str, Any]:
 def approval_store(
     stack: ExitStack, root: Path, config: Config, journal: AuditJournal, request_id: str
 ) -> tuple[ApprovalStore | None, str | None]:
-    """The approval store if its file exists, or why it stays closed; None, None without file."""
+    """The approval store if its file exists, or why it stays closed (a marker in a setting of
+    the ``approvals`` feature, R7); None, None without file."""
     try:
+        config.require("approvals")
         rules = ApprovalRules.from_config(config.autonomy.approval)
-    except ApprovalError as exc:
+    except (BlockedFeatureError, ApprovalError) as exc:
         return None, f"registre des approbations fermé : {exc}"
     path = approvals_path(root)
     if not path.is_file():

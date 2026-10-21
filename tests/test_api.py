@@ -243,8 +243,8 @@ def test_an_invalid_configuration_answers_503_but_never_stops_a_kill(
 # --- status --------------------------------------------------------------------------------
 
 
-def test_status_reads_what_stands_and_creates_nothing(root: Path, config_dir: Path) -> None:
-    body = client(root, config_dir).get("/status").json()
+def test_status_reads_what_stands_and_creates_nothing(root: Path, defined: Path) -> None:
+    body = client(root, defined).get("/status").json()
     assert body["kill_switch"] == {"engaged": False, "trigger": None, "engaged_at": None}
     assert body["live"] == {"enabled": False}
     assert {d["domain"] for d in body["autonomy"]["domains"]} >= {"finance", "generaliste"}
@@ -269,19 +269,44 @@ def test_status_reads_what_stands_and_creates_nothing(root: Path, config_dir: Pa
 
 
 def test_status_counts_the_requests_and_says_why_the_store_is_closed(
-    root: Path, config_dir: Path, monkeypatch: pytest.MonkeyPatch
+    root: Path, defined: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    ask(root, config_dir)
-    approvals = client(root, config_dir).get("/status").json()["approvals"]
+    ask(root, defined)
+    approvals = client(root, defined).get("/status").json()["approvals"]
     assert approvals["pending"] == 1
 
     def closed(_: object) -> ApprovalRules:
         raise ApprovalError("paramètres d'approbation à définir par Lucas (R7)")
 
     monkeypatch.setattr(ApprovalRules, "from_config", staticmethod(closed))
-    approvals = client(root, config_dir).get("/status").json()["approvals"]
+    approvals = client(root, defined).get("/status").json()["approvals"]
     assert approvals["open"] is False
     assert approvals["reason"].startswith("registre des approbations fermé")
+
+
+def test_one_setting_of_the_approvals_feature_to_define_keeps_the_store_closed(
+    root: Path, defined: Path
+) -> None:
+    approval = ask(root, defined)
+    path = defined / "interfaces.yaml"
+    data = yaml.safe_load(path.read_text(encoding="utf-8"))
+    data["discord"]["owner_user_id"] = "A_DEFINIR"
+    path.write_text(yaml.safe_dump(data), encoding="utf-8")
+    opened = client(root, defined)
+    reason = opened.get("/status").json()["approvals"]["reason"]
+    assert reason.startswith("registre des approbations fermé : fonction bloquée « approvals »")
+    assert "discord.owner_user_id = A_DEFINIR" in reason
+    assert "api.port" not in reason
+    assert opened.get("/approvals/pending").json() == {
+        "open": False,
+        "reason": reason,
+        "locked": False,
+        "requests": [],
+    }
+    for action, payload in (("approve", {"code": code()}), ("refuse", None)):
+        shut = opened.post(f"/approvals/{approval}/{action}", json=payload)
+        assert (shut.status_code, shut.json()["detail"]) == (503, reason)
+    assert client(root, interfaces(defined)).get("/status").json()["approvals"]["pending"] == 1
 
 
 # --- kill ----------------------------------------------------------------------------------
@@ -325,16 +350,16 @@ def test_a_kill_reason_is_bounded(root: Path, config_dir: Path) -> None:
 # --- approvals -----------------------------------------------------------------------------
 
 
-def test_pending_requests_show_what_they_ask(root: Path, config_dir: Path) -> None:
-    opened = client(root, config_dir)
+def test_pending_requests_show_what_they_ask(root: Path, defined: Path) -> None:
+    opened = client(root, defined)
     assert opened.get("/approvals/pending").json() == {
         "open": True,
         "reason": None,
         "locked": False,
         "requests": [],
     }
-    first = ask(root, config_dir)
-    ask(root, config_dir, summary="Vente de 2 CW8")
+    first = ask(root, defined)
+    ask(root, defined, summary="Vente de 2 CW8")
     body = opened.get("/approvals/pending").json()
     assert body["locked"] is False
     request = body["requests"][0]
@@ -364,9 +389,9 @@ def test_the_right_code_grants_and_waits_for_the_paper_account(root: Path, defin
 
 
 def test_a_granted_intent_is_sent_at_once_without_amount(
-    root: Path, config_dir: Path, monkeypatch: pytest.MonkeyPatch
+    root: Path, defined: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    approval = ask(root, config_dir)
+    approval = ask(root, defined)
     env = SimpleNamespace(approvals=None)
     seen: list[object] = []
     intent_id = uuid7()
@@ -389,9 +414,7 @@ def test_a_granted_intent_is_sent_at_once_without_amount(
 
     monkeypatch.setattr("interfaces.api.app.open_paper_day", lambda *_, **__: env)
     monkeypatch.setattr("interfaces.api.app.send_approved", send)
-    response = client(root, config_dir).post(
-        f"/approvals/{approval}/approve", json={"code": code()}
-    )
+    response = client(root, defined).post(f"/approvals/{approval}/approve", json={"code": code()})
     sending = response.json()["sending"]
     assert sending == {
         "outcome": "terminee",
@@ -433,14 +456,14 @@ def test_wrong_codes_refuse_then_lock_with_one_alert(root: Path, defined: Path) 
 
 
 def test_approving_needs_a_store_a_request_and_a_secret(
-    root: Path, config_dir: Path, monkeypatch: pytest.MonkeyPatch
+    root: Path, defined: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    opened = client(root, config_dir)
+    opened = client(root, defined)
     unknown = opened.post(f"/approvals/{uuid7()}/approve", json={"code": code()})
     assert unknown.status_code == 404  # no store yet
-    approval = ask(root, config_dir)
+    approval = ask(root, defined)
     assert opened.post(f"/approvals/{uuid7()}/approve", json={"code": code()}).status_code == 404
-    no_secret = client(root, config_dir, environ={TOKEN_ENV: TOKEN})
+    no_secret = client(root, defined, environ={TOKEN_ENV: TOKEN})
     missing = no_secret.post(f"/approvals/{approval}/approve", json={"code": code()})
     assert missing.status_code == 503
     assert "secret TOTP absent" in missing.json()["detail"]
@@ -454,9 +477,9 @@ def test_approving_needs_a_store_a_request_and_a_secret(
     assert shut.json()["detail"].startswith("registre des approbations fermé")
 
 
-def test_refusing_from_the_api(root: Path, config_dir: Path) -> None:
-    approval = ask(root, config_dir)
-    opened = client(root, config_dir)
+def test_refusing_from_the_api(root: Path, defined: Path) -> None:
+    approval = ask(root, defined)
+    opened = client(root, defined)
     assert opened.post(f"/approvals/{approval}/refuse").json() == {"state": "REFUSEE"}
     assert opened.post(f"/approvals/{approval}/refuse").status_code == 409
     assert opened.get("/approvals/pending").json()["requests"] == []
@@ -466,7 +489,7 @@ def test_refusing_from_the_api(root: Path, config_dir: Path) -> None:
         if e["actor"] == "interface" and isinstance(e["payload"], dict)
     ]
     assert any("refusée depuis l'API interne" in json.dumps(p, ensure_ascii=False) for p in reasons)
-    other = ask(root, config_dir)
+    other = ask(root, defined)
     assert opened.post(f"/approvals/{other}/refuse", json={"reason": "x" * 201}).status_code == 422
     custom = opened.post(f"/approvals/{other}/refuse", json={"reason": "trop tard"})
     assert custom.json() == {"state": "REFUSEE"}
@@ -486,14 +509,14 @@ def valued(day: date, equity: str) -> Valuation:
     )
 
 
-def test_the_daily_report_names_no_amount(root: Path, config_dir: Path) -> None:
-    opened = client(root, config_dir)
+def test_the_daily_report_names_no_amount(root: Path, defined: Path) -> None:
+    opened = client(root, defined)
     assert opened.get("/reports/daily").status_code == 404
     with LoopLog.open(default_loop_path(root)) as log:
         log.record_valuation(valued(FRIDAY, "10000"))
         log.record_valuation(valued(MONDAY, "10150"))
         log.record_run(MONDAY, completed_at=NOW - timedelta(days=2), intents=2, report="r")
-    ask(root, config_dir)
+    ask(root, defined)
     response = opened.get("/reports/daily")
     body = response.json()
     assert body["day"] == "2026-10-19"

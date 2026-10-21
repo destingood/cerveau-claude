@@ -17,7 +17,7 @@ from pathlib import Path
 from core.approvals.store import ApprovalError, ApprovalRules, ApprovalStore, Trail
 from core.approvals.store import default_store_path as approvals_path
 from core.audit import AuditJournal
-from core.config.loader import Config
+from core.config.loader import BlockedFeatureError, Config
 from core.execution.book import OrderBook, Recorder, default_book_path
 from core.execution.broker import BrokerAdapter
 from core.execution.kill_switch import Stop, Trigger, engage
@@ -89,10 +89,12 @@ def open_paper_day(
 def open_approvals(
     stack: ExitStack, root: Path, config: Config, journal: AuditJournal, request_id: str
 ) -> tuple[ApprovalStore | None, str | None]:
-    """The approval store opened in ``stack``, or why it stays closed (R7)."""
+    """The approval store opened in ``stack``, or why it stays closed: a marker left in a setting
+    of the ``approvals`` feature, the approval rules or the bot and API it answers through (R7)."""
     try:
+        config.require("approvals")
         rules = ApprovalRules.from_config(config.autonomy.approval)
-    except ApprovalError as exc:
+    except (BlockedFeatureError, ApprovalError) as exc:
         return None, f"registre des approbations fermé : {exc}"
     trail = Trail(journal, request_id, {"config": config.digest})
     return stack.enter_context(

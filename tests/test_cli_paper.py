@@ -29,6 +29,7 @@ from tests.test_execution_book import sent
 from tests.test_execution_loop import MONDAY, MONDAY_RUN, market
 from tests.test_execution_paper import SETTINGS
 from tests.test_execution_sources import promoted
+from tests.test_notify import interfaces
 
 runner = CliRunner()
 
@@ -163,7 +164,7 @@ def _no_rules(_: object) -> ApprovalRules:
 @pytest.mark.usefixtures("costs")
 def test_paper_send_with_nothing_approved(home: Path, config_dir: Path) -> None:
     stored(home)
-    result = paper(config_dir, "envoyer")
+    result = paper(interfaces(config_dir), "envoyer")
     assert result.exit_code == 0, result.output
     assert result.stdout.splitlines() == [
         "Envoi paper des approbations du 19/10/2026 : journée traitée.",
@@ -179,7 +180,7 @@ def test_without_approval_rules_the_store_stays_closed(
 ) -> None:
     stored(home)
     monkeypatch.setattr(ApprovalRules, "from_config", staticmethod(_no_rules))
-    result = paper(config_dir, command)
+    result = paper(interfaces(config_dir), command)
     assert result.exit_code == 0, result.output
     assert not approvals_path(home).exists()
     if command == "envoyer":
@@ -187,6 +188,22 @@ def test_without_approval_rules_the_store_stays_closed(
         assert (
             "Remarque : registre des approbations fermé : paramètres d'approbation à définir "
             "par Lucas (R7)"
+        ) in result.stdout
+
+
+@pytest.mark.usefixtures("costs")
+@pytest.mark.parametrize("command", ["run", "envoyer"])
+def test_while_the_bot_or_the_api_is_to_define_the_store_stays_closed(
+    home: Path, config_dir: Path, command: str
+) -> None:
+    stored(home)
+    result = paper(config_dir, command)
+    assert result.exit_code == 0, result.output
+    assert not approvals_path(home).exists()
+    if command == "envoyer":
+        assert (
+            "Remarque : registre des approbations fermé : fonction bloquée « approvals » : "
+            "interfaces.yaml › discord.owner_user_id = A_DEFINIR"
         ) in result.stdout
 
 
@@ -229,7 +246,7 @@ def test_paper_send_lists_each_intent_in_our_words(
         notes=["une remarque"],
     )
     monkeypatch.setattr("interfaces.cli.paper.send_approved", lambda *_, **__: report)
-    result = paper(config_dir, "envoyer")
+    result = paper(interfaces(config_dir), "envoyer")
     assert result.exit_code == 2
     assert result.stdout.splitlines() == [
         "Envoi paper des approbations du 19/10/2026 : kill switch engagé : la journée s'arrête.",
