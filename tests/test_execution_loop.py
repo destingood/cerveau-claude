@@ -53,8 +53,8 @@ def run_at(day: date) -> datetime:
 
 
 def config(level: str = "N2", **limits: Any) -> Config:
-    """The repository's config, finance at ``level``, the test instrument in the universe and
-    the simulator's test costs (the real ones are still A_DEFINIR)."""
+    """The repository's config, finance at ``level``, the test instrument in the universe, no
+    personal exclusion and the simulator's test costs (the real ones are still A_DEFINIR)."""
     autonomy = BASE.autonomy.model_dump()
     autonomy["domains"]["finance"] = {"level": level, "max_level": "N4"}
     paper = BASE.risk_limits_paper.model_copy(update={"universe": [SYMBOL], **limits})
@@ -64,6 +64,7 @@ def config(level: str = "N2", **limits: Any) -> Config:
         autonomy=AutonomyConfig.model_validate(autonomy),
         risk_limits_paper=paper,
         risk=risk,
+        compliance=BASE.compliance.model_copy(update={"exclusions_personnelles": []}),
     )
 
 

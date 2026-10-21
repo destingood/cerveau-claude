@@ -80,6 +80,12 @@ def test_blocker_messages_name_file_and_path() -> None:
     assert "risk_limits.paper.yaml › universe = A_DEFINIR" in reasons
 
 
+def test_paper_trading_waits_for_the_personal_exclusions() -> None:
+    """A marker inside a list blocks too: an empty list would mean no exclusion at all."""
+    reasons = load_config(REPO_ROOT / "config").blockers("paper_trading")
+    assert "compliance.yaml › exclusions_personnelles[0] = A_DEFINIR" in reasons
+
+
 def test_live_stays_blocked_while_disabled_even_without_markers(config_dir: Path) -> None:
     edit_yaml(config_dir / "live.yaml", lambda d: d.update(broker="paper-broker-test"))
     reasons = load_config(config_dir).blockers("live_trading")
@@ -94,6 +100,7 @@ def test_filling_markers_unblocks_the_feature(config_dir: Path) -> None:
 
     edit_yaml(config_dir / "risk_limits.paper.yaml", fill)
     edit_yaml(config_dir / "risk.yaml", lambda d: fill(d["trading_costs"]))
+    edit_yaml(config_dir / "compliance.yaml", lambda d: d.update(exclusions_personnelles=[]))
     config = load_config(config_dir)
     config.require("paper_trading")  # no longer raises
     assert config.risk.trading_costs.commission_pct == 1
@@ -261,10 +268,15 @@ def test_unknown_matrix_decision_is_refused(config_dir: Path) -> None:
         load_config(config_dir)
 
 
-def test_comment_markers_are_reported_but_do_not_block() -> None:
-    config = load_config(REPO_ROOT / "config")
+def test_comment_markers_are_reported_but_do_not_block(config_dir: Path) -> None:
+    path = config_dir / "compliance.yaml"
+    path.write_text(
+        path.read_text(encoding="utf-8") + "# A_VERIFIER : note de relecture\n", encoding="utf-8"
+    )
+    config = load_config(config_dir)
     comments = [m for m in config.markers if m.in_comment]
-    assert any(m.file == "compliance" for m in comments)
+    assert [m.file for m in comments] == ["compliance"]
+    assert not any(str(comments[0]) in config.blockers(feature) for feature in FEATURES)
 
 
 def test_find_markers_walks_nested_lists_and_dicts() -> None:

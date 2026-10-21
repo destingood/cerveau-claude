@@ -700,7 +700,8 @@ FEATURES: dict[str, Feature] = {
     "promotion.finance.N3_to_N4": Feature(
         "Promotion finance N3 → N4", ("autonomy:promotion.finance.N3_to_N4",)
     ),
-    # The gate checks the cash with the fees (R10) and every order sits under the kill switch.
+    # The gate checks the cash with the fees (R10) and the personal exclusions, and every order
+    # sits under the kill switch.
     "paper_trading": Feature(
         "Porte de risque et exécution en paper trading",
         (
@@ -708,6 +709,7 @@ FEATURES: dict[str, Feature] = {
             "execution:",
             "risk:trading_costs",
             "risk:kill_switch.target_seconds",
+            "compliance:exclusions_personnelles",
         ),
     ),
     "live_trading": Feature("Exécution live (R3 : activée à la main par Lucas)", ("live:",)),
@@ -831,7 +833,7 @@ def find_markers(file_key: str, raw: Any, text: str = "") -> list[MarkerHit]:
 
 
 def _under(path: str, prefix: str) -> bool:
-    return prefix == "" or path == prefix or path.startswith(prefix + ".")
+    return prefix == "" or path == prefix or path.startswith((prefix + ".", prefix + "["))
 
 
 @dataclass(frozen=True)

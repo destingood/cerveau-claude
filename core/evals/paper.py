@@ -89,7 +89,8 @@ class CaseSource:
 
 
 def paper_config(base: Config, fixture: PaperFixture) -> Config:
-    """``base`` with the case's finance level, limits and costs (a copy, never the files)."""
+    """``base`` with the case's finance level, limits and costs, and no personal exclusion
+    (a copy, never the files)."""
     autonomy = base.autonomy.model_dump()
     autonomy["domains"]["finance"]["level"] = fixture.level
     limits = PaperRiskLimits.model_validate(
@@ -103,6 +104,7 @@ def paper_config(base: Config, fixture: PaperFixture) -> Config:
         autonomy=AutonomyConfig.model_validate(autonomy),
         risk_limits_paper=limits,
         risk=risk,
+        compliance=base.compliance.model_copy(update={"exclusions_personnelles": []}),
     )
 
 
