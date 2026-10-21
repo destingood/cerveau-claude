@@ -3,7 +3,9 @@
 Refuses at least: `rm -rf` (and its PowerShell / cmd equivalents), `git push` to main or
 forced, `--force`, hook bypasses (R6), any command that writes, moves or changes the
 permissions of a protected path (redirection, tee, sed -i, mv, cp, chmod, chown, icacls...)
-and any read of `.env` or `secrets/`.
+and any read of `.env` or `secrets/`. The kill switch (R4, ADR-034): `cerveau rearm`, and any
+command that removes, moves or rewrites governance/kill_switch/KILL or one of its folders, are
+refused; creating an absent KILL stays allowed, since it stops CERVEAU.
 
 The shell grammar is approximated on purpose: ambiguous constructs are refused rather than
 guessed. This is a convenience guard-rail; the effective protection of config/live.yaml
@@ -107,10 +109,18 @@ ICACLS_WRITE = (
     "/inheritance", "/restore", "/substitute",
 )  # fmt: skip
 NULL_SINKS = frozenset({"/dev/null", "nul", "nul:", "$null"})
-WRITE_PROTECTED_NAMES = ("live.yaml", "governance/approvals", "var/audit")
+WRITE_PROTECTED_NAMES = ("live.yaml", "governance/approvals", "var/audit", "var/incidents")
+KILL_NAMES = ("governance/kill_switch", "kill_switch/kill")
+# Commands that only create the file they name: allowed on KILL while it is absent (R4).
+KILL_CREATORS = frozenset(
+    {"touch", "new-item", "ni", "set-content", "sc", "add-content", "ac", "out-file"}
+)
 UNKNOWN_CWD_CANDIDATES = (
-    "config", "governance", "governance/approvals", "var", "var/audit", "infra", "secrets",
+    "config", "governance", "governance/approvals", "governance/kill_switch", "var",
+    "var/audit", "var/incidents", "infra", "secrets",
 )  # fmt: skip
+REARM_REFUSAL = "cerveau rearm est réservé à Lucas (R4, ADR-034) : Claude Code ne réarme jamais"
+GIT_STASH_UNTRACKED = ("--include-untracked", "--all")
 
 _ASSIGNMENT = re.compile(r"^[A-Za-z_][A-Za-z0-9_]*\+?=")
 _SHORT_CLUSTER = re.compile(r"^-[A-Za-z]+$")
@@ -121,6 +131,8 @@ _HOOK_BYPASS_ENV = re.compile(
     re.IGNORECASE,
 )
 _SED_WRITE_COMMAND = re.compile(r"(^|[/;}\s])[wW]\s+\S|(^|[/;}\s])e(\s|$)")
+_REARM = re.compile(r"(?<![\w-])rearm(?![\w-])", re.IGNORECASE)
+_CERVEAU_CODE = re.compile(r"cerveau|interfaces|kill_switch", re.IGNORECASE)
 
 
 # --- tokenizer ---------------------------------------------------------------------------------
@@ -643,9 +655,22 @@ def check_push(call: GitCall) -> str | None:
     return None
 
 
+def _stashes_untracked(args: list[str]) -> bool:
+    """Whether git stash also takes untracked files (-u, -a, or an abbreviated long option)."""
+    for arg in args:
+        low = arg.lower()
+        if len(low) > 2 and any(option.startswith(low) for option in GIT_STASH_UNTRACKED):
+            return True
+        if _SHORT_CLUSTER.match(arg) and set(arg[1:]) & {"u", "a"}:
+            return True
+    return False
+
+
 def check_git(call: GitCall) -> str | None:
     if call.sub == "push":
         return check_push(call)
+    if call.sub == "stash" and _stashes_untracked(call.args) and c.kill_file_present():
+        return "git stash -u / -a retirerait le fichier KILL : seul Lucas réarme (R4)"
     if call.sub == "reset" and any(a.lower() == "--hard" for a in call.args):
         return "git reset --hard interdit (perte de travail non commité)"
     if call.sub == "clean" and not any(
@@ -706,24 +731,30 @@ def check_protected_write(
         if target.lower() in NULL_SINKS:
             continue
         for path in ctx.resolve(target):
-            if reason := c.write_protection_reason(path):
+            if reason := c.write_protection_reason(path, creating=True):
                 return f"redirection vers un chemin protégé : {reason}"
         if ctx.glob_hit(target, c.GLOB_SAMPLES_WRITE + c.GLOB_SAMPLES_READ):
             return f"redirection vers un motif qui couvre un chemin protégé : {target}"
 
+    creating = cmd in KILL_CREATORS
+    names = WRITE_PROTECTED_NAMES
+    if not (creating and not c.kill_file_present()):
+        names += KILL_NAMES
     others = [t for i, t in enumerate(tokens) if i != cmd_index]
     folded = (seg.raw + "\n" + seg.heredoc).replace("\\", "/").lower()
-    detail = next((f"mentionne {name}" for name in WRITE_PROTECTED_NAMES if name in folded), None)
+    detail = next((f"mentionne {name}" for name in names if name in folded), None)
     for token in others:
         if detail:
             break
-        detail = next(filter(None, map(c.write_protection_reason, ctx.resolve(token))), None)
+        reasons = (c.write_protection_reason(p, creating=creating) for p in ctx.resolve(token))
+        detail = next(filter(None, reasons), None)
         if not detail and ctx.glob_hit(token, c.GLOB_SAMPLES_WRITE + c.GLOB_SAMPLES_READ):
             detail = f"le motif {token} couvre un chemin protégé"
     mutating = cmd in MUTATORS or (cmd in READ_ONLY and write_capable(cmd, others, git))
     if not detail and mutating:
+        locations = c.mutation_locations(creating)
         for token in others:
-            if any(c.is_ancestor_of(p) for p in ctx.resolve(token)) or ctx.glob_hit(
+            if any(c.is_ancestor_of(p, locations) for p in ctx.resolve(token)) or ctx.glob_hit(
                 token, c.GLOB_SAMPLES_WRITE + c.GLOB_SAMPLES_READ, ancestors=True
             ):
                 detail = f"{token} contient un chemin protégé"
@@ -909,6 +940,18 @@ def check_nested(seg: Segment, args: list[str], cmd: str, ctx: Context) -> str |
     return None
 
 
+def check_rearm(seg: Segment, args: list[str], cmd: str) -> str | None:
+    """`cerveau rearm` is Lucas's alone (R4, ADR-034), however it is launched."""
+    if cmd == "cerveau":
+        hit = any(a.lower() == "rearm" for a in args)
+    elif cmd in INTERPRETERS:
+        text = seg.raw + "\n" + seg.heredoc
+        hit = bool(_REARM.search(text) and _CERVEAU_CODE.search(text))
+    else:
+        return None
+    return REARM_REFUSAL if hit else None
+
+
 def update_cwd(cmd: str, args: list[str], ctx: Context) -> None:
     if cmd == "popd":
         ctx.cwd = None
@@ -942,6 +985,7 @@ def check_segment(seg: Segment, ctx: Context, segments: list[Segment]) -> str | 
     git = parse_git(args, ctx) if cmd == "git" else None
     checks = (
         lambda: check_nested(seg, args, cmd, ctx),
+        lambda: check_rearm(seg, args, cmd),
         lambda: check_recursive_delete(tokens, cmd, ctx.powershell),
         lambda: check_force_and_bypass(tokens, cmd, assignments),
         lambda: check_git(git) if git else None,

@@ -23,9 +23,12 @@ from typing import Any, NoReturn
 ROOT = Path(__file__).resolve().parents[2]
 IS_WINDOWS = os.name == "nt"
 
-# Write-protected: Claude Code never modifies these (R3, R11, governance).
+# Write-protected: Claude Code never modifies these (R3, R4, R11, governance).
 WRITE_PROTECTED_FILES = ("config/live.yaml",)
-WRITE_PROTECTED_DIRS = ("governance/approvals", "var/audit")
+WRITE_PROTECTED_DIRS = ("governance/approvals", "var/audit", "var/incidents")
+# Kill switch (R4, ADR-034): creating KILL stops CERVEAU and stays allowed; removing, moving or
+# rewriting it would rearm CERVEAU, which only Lucas does (`cerveau rearm`).
+KILL_FILE = "governance/kill_switch/KILL"
 # Read-protected: never read, never written (R6). `.env.example` is a template without secrets.
 ENV_EXAMPLE = ".env.example"
 SECRETS_DIR = "secrets"
@@ -33,13 +36,21 @@ SECRETS_DIR = "secrets"
 SENSITIVE_LOCATIONS = (
     "config/live.yaml",
     "governance/approvals",
+    KILL_FILE,
     "var/audit",
+    "var/incidents",
     ".env",
     "infra/.env",
     "secrets",
 )
 # Samples used to test whether a glob could match a protected path.
-GLOB_SAMPLES_WRITE = ("config/live.yaml", "governance/approvals/x", "var/audit/journal.jsonl")
+GLOB_SAMPLES_WRITE = (
+    "config/live.yaml",
+    "governance/approvals/x",
+    KILL_FILE,
+    "var/audit/journal.jsonl",
+    "var/incidents/x.md",
+)
 GLOB_SAMPLES_READ = (".env", ".env.local", "infra/.env", "secrets/key")
 
 _KEY_CHARS = r"[A-Za-z0-9+_=-]"
@@ -181,15 +192,50 @@ def _fold(text: str) -> str:
     return text.lower() if IS_WINDOWS else text
 
 
-def write_protection_reason(abs_norm: str) -> str | None:
+def path_exists(abs_norm: str) -> bool:
+    """Whether the path exists, a dangling symlink included (the tests replace it)."""
+    return os.path.lexists(abs_norm)
+
+
+def kill_file_present() -> bool:
+    return path_exists(f"{root_norm().rstrip('/')}/{_fold(KILL_FILE)}")
+
+
+def kill_switch_reason(abs_norm: str, *, creating: bool = False) -> str | None:
+    """Reason why writing this path would rearm the kill switch, or None (R4, ADR-034).
+
+    `creating` marks a write that only creates a file: it is allowed while KILL is absent.
+    Any checkout counts, like config/live.yaml below.
+    """
+    if not abs_norm.endswith("/" + _fold(KILL_FILE)):
+        return None
+    if creating and not path_exists(abs_norm):
+        return None
+    shown = relative_to_root(abs_norm) or abs_norm
+    return (
+        f"{shown} : supprimer, déplacer ou réécrire le fichier KILL réarmerait le kill switch ; "
+        "seul Lucas réarme, par cerveau rearm (R4)"
+    )
+
+
+def mutation_locations(creating: bool) -> tuple[str, ...]:
+    """Locations a mutating command must not name; creating an absent KILL stays allowed."""
+    if creating and not kill_file_present():
+        return tuple(location for location in SENSITIVE_LOCATIONS if location != KILL_FILE)
+    return SENSITIVE_LOCATIONS
+
+
+def write_protection_reason(abs_norm: str, *, creating: bool = False) -> str | None:
     """Reason why writing this (normalised, absolute) path is forbidden, or None."""
+    if reason := kill_switch_reason(abs_norm, creating=creating):
+        return reason
     rel = relative_to_root(abs_norm)
     if rel is not None:
         if rel in map(_fold, WRITE_PROTECTED_FILES):
             return f"{rel} est protégé (R3) : seul Lucas le modifie, à la main"
         for directory in map(_fold, WRITE_PROTECTED_DIRS):
             if rel == directory or rel.startswith(directory + "/"):
-                return f"{rel} est protégé (gouvernance / journal d'audit R11)"
+                return f"{rel} est protégé (gouvernance, journal d'audit R11, incidents R4)"
     # Same file names in another checkout or worktree (mega-prompt 16.5 pattern).
     if abs_norm.endswith("/config/live.yaml") or "/governance/approvals/" in abs_norm + "/":
         return f"{abs_norm} est protégé (R3)"

@@ -72,6 +72,17 @@ Option 2.
 - **Pertes** : `loss_breaches` reprend les trois contrôles de pertes de la Porte (ADR-030) ; une
   propriété Hypothesis vérifie qu'ils se déclenchent ensemble. Une valeur inconnue lève une erreur au
   lieu de passer pour « pas de perte ». Le branchement à la valorisation et aux incidents vient avec
-  la CLI paper ; les hooks, avec le commit suivant.
+  la CLI paper.
+- **Hooks Claude Code** : Claude Code peut arrêter CERVEAU, jamais le réarmer. `protect_paths`
+  refuse Edit et NotebookEdit sur `KILL`, et Write dès qu'il existe. `guard_shell` refuse
+  `cerveau rearm`, y compris par `uv run`, un interpréteur ou un shell imbriqué, et toute commande
+  qui supprime, déplace ou réécrit `KILL` ou l'un de ses dossiers ; `git stash -u` ou `-a` est
+  refusé quand `KILL` existe. Créer un `KILL` absent reste permis. Durcissement hors plan :
+  `var/incidents/` est protégé en écriture, comme `var/audit/`.
+- **Limites des hooks** : un script écrit puis lancé, ou un appel direct à `rearm()` dans du code
+  de test, leur échappe ; un interpréteur dont la ligne cite `rearm` et `kill_switch`, `interfaces`
+  ou `cerveau` est refusé (`python -m pytest tests/test_execution_kill_switch.py -k rearm` :
+  passer par `uv run pytest`). La protection effective reste l'ACL (ADR-003, B173) et la phrase
+  tapée dans un terminal interactif.
 - **Mesure** : le test des 1 000 ordres, sur disque, avec le vrai journal et un courtier qui répond
   en 0,5 s après un premier délai dépassé, reste sous 5 s.
