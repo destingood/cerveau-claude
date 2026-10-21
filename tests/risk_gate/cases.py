@@ -23,7 +23,7 @@ from core.execution.intent import OrderIntent
 from core.execution.uuid7 import uuid7_from_fields
 from core.finance.model import PARIS
 from core.risk_gate.snapshot import GateSnapshot
-from tests.risk_gate.oracle import size_bound
+from tests.risk_gate.oracle import cash_floor, size_bound
 
 World = dict[str, Any]
 AS_OF = datetime(2026, 10, 19, 15, 0, tzinfo=PARIS)  # a Monday, during the session
@@ -36,6 +36,7 @@ SECTORS = ("tech", "energie", "sante")
 COUNTRIES = ("FR", "US", "DE")
 CENT = Decimal("0.01")
 TINY = Decimal("0.000001")
+COMMITTEE = "comite-2026-10-19"
 
 
 @dataclass(frozen=True)
@@ -70,7 +71,10 @@ def base_world() -> World:
                 "call_id": "market_data#1",
                 "as_of": PRICE_AS_OF,
             },
-            "sizing_source": {"tool": "rebalance", "call_id": "rebalance#1"},
+            "sizing_source": {
+                "tool": "strategy.momentum_12_1",
+                "call_id": "strategy.momentum_12_1#1",
+            },
             "rationale": {
                 "thesis": "Le titre s'échange sous sa valeur estimée.",
                 "catalyst": "Résultats trimestriels du 24 octobre.",
@@ -341,6 +345,10 @@ def _draw_intent(draw: st.DrawFn, world: World) -> None:
     intent["limit_price"] = max(moved.quantize(CENT, ROUND_HALF_UP), CENT)
     if not draw(st.integers(0, 3)):
         intent["instrument"]["isin"] = None
+    if not draw(st.integers(0, 3)):  # a committee sitting, sized by its rebalance proposal
+        intent["origin"] = {"kind": "committee", "id": COMMITTEE}
+        intent["committee_record_id"] = COMMITTEE
+        intent["sizing_source"] = {"tool": "rebalance_proposal", "call_id": "rebalance_proposal#1"}
 
 
 # Each edge sets one limit exactly at what the world needs, or one unit beyond it.
@@ -430,6 +438,33 @@ def _edge_cash(draw: st.DrawFn, world: World) -> None:
         world["snapshot"]["account"]["cash_eur"] = cash - (TINY if draw(st.booleans()) else 0)
 
 
+def _edge_sale_cash(draw: st.DrawFn, world: World) -> None:
+    """A sale in euros worth less than its minimum commission, cash exactly what ``target``
+    shares lack to pay their fees, or one unit less (B188); and at times an order limit of a few
+    shares, so that the sale is reduced above or below the least quantity its cash allows."""
+    intent, snap = world["intent"], world["snapshot"]
+    snap["instruments"]["AAA"].update(currency="EUR", mic=MICS["EUR"])
+    intent["instrument"].update(currency="EUR", venue=MICS["EUR"])
+    intent["side"] = "SELL"
+    price = CENT * draw(st.integers(1, 20))
+    snap["quotes"]["AAA"]["price"] = price
+    intent["limit_price"] = price
+    snap["open_orders"] = ()
+    costs = {key: Fraction(value) for key, value in world["costs"].items()}
+    gross = draw(st.integers(1, 20)) * Fraction(price)
+    lack = (
+        max(gross * costs["commission_pct"] / 100, costs["min_commission_eur"])
+        + gross * costs["slippage_bps"] / 10_000
+        - gross
+    )
+    if lack > 0 and (lack * 10**6).denominator == 1:
+        cash = Decimal(lack.numerator) / Decimal(lack.denominator)
+        snap["account"]["cash_eur"] = cash - (TINY if cash >= TINY and draw(st.booleans()) else 0)
+    if draw(st.booleans()):
+        capital = Decimal(str(world["limits"]["capital_reference_eur"]))
+        world["limits"]["max_order_pct"] = float(draw(st.integers(1, 20)) * price * 100 / capital)
+
+
 EDGES: dict[str, Callable[[st.DrawFn, World], None]] = {
     "collar": _edge_collar,
     "daily_loss": _edge_daily_loss,
@@ -440,6 +475,7 @@ EDGES: dict[str, Callable[[st.DrawFn, World], None]] = {
     "freshness": _edge_freshness,
     "order_size": _edge_order_size,
     "cash": _edge_cash,
+    "sale_cash": _edge_sale_cash,
 }
 
 
@@ -508,6 +544,12 @@ def _fault(draw: st.DrawFn, world: World, name: str) -> None:
             *snap["open_orders"],
             {"symbol": other, "side": "BUY", "remaining": 40, "limit_price": Decimal("90")},
         )
+    elif name == "foreign_sizing":
+        origin = intent["origin"]
+        own = "rebalance_proposal" if origin["kind"] == "committee" else "strategy." + origin["id"]
+        tools = ("rebalance_proposal", "strategy.momentum_12_1", "strategy.croisement_mm", "sizer")
+        tool = draw(st.sampled_from([t for t in tools if t != own]))
+        intent["sizing_source"] = {"tool": tool, "call_id": f"{tool}#1"}
     elif name == "invalid_intent":
         intent["environment"] = "live"
 
@@ -540,9 +582,10 @@ FAULTS = (
     "reconciliation_gap",
     "short",
     "other_buys",
+    "foreign_sizing",
     "invalid_intent",
 )
-QUANTITY_AIMS = ("at", "below", "above", "far", "any")
+QUANTITY_AIMS = ("at", "below", "above", "far", "any", "floor")
 
 
 @st.composite
@@ -564,9 +607,12 @@ def cases(draw: st.DrawFn, max_faults: int = 3) -> Case:
             _fault(draw, world, name)
             labels.append(name)
     world["intent"]["quantity"] = 1
-    bound = size_bound(build(world).args)
+    args = build(world).args
+    bound, floor = size_bound(args), cash_floor(args)
     aim = draw(st.sampled_from(QUANTITY_AIMS))
-    if bound is None or bound < 1 or aim == "any":
+    if aim == "floor" and floor is not None:  # around the least quantity a sale's cash allows
+        quantity = max(1, floor + draw(st.integers(-1, 1)))
+    elif bound is None or bound < 1 or aim in ("any", "floor"):
         quantity = draw(st.integers(1, 2_000))
     else:
         quantity = {

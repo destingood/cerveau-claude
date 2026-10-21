@@ -33,7 +33,7 @@ from core.config.loader import (
     PaperRiskLimits,
     TradingCosts,
 )
-from core.execution.intent import OrderIntent
+from core.execution.intent import OrderIntent, sizing_tool
 from core.finance.model import local_date
 from core.risk_gate.snapshot import GateSnapshot, InstrumentFacts
 
@@ -335,9 +335,18 @@ def _short_selling(inputs: _Inputs) -> _Verdict:
 
 
 def _rationale(inputs: _Inputs) -> _Verdict:
-    sizing = inputs.intent.sizing_source.call_id
-    reason = "thèse, catalyseur, invalidation, horizon et source de la taille présents"
-    return _Verdict(True, sizing, "présents", reason)
+    """The schema checks the rationale's fields; here, that the size comes from the one tool
+    that sizes the intent's origin (B195). The Gate reads no journal: that the call is in it is
+    the loop's duty, checked by the journal's completeness test."""
+    tool = inputs.intent.sizing_source.tool
+    allowed = sizing_tool(inputs.intent.origin)
+    ok = tool == allowed
+    reason = (
+        "thèse, catalyseur, invalidation, horizon et source de la taille présents"
+        if ok
+        else f"taille calculée par {tool}, qui ne dimensionne pas cette origine"
+    )
+    return _Verdict(ok, tool, allowed, reason)
 
 
 def _compliance(inputs: _Inputs) -> _Verdict:
@@ -440,6 +449,16 @@ def _same_foreign_currency(inputs: _Inputs) -> Callable[[str], bool] | None:
     return lambda other: _facts(inputs, other).currency == currency
 
 
+def _per_euro(inputs: _Inputs, currency: str) -> Decimal:
+    """The fees charged on each euro of an order, beyond the minimum commission."""
+    costs = inputs.costs
+    rate = _known(costs.commission_pct, "commission_pct") / 100
+    rate += _known(costs.slippage_bps, "slippage_bps") / 10_000
+    if currency != "EUR":
+        rate += _known(costs.fx_conversion_bps, "fx_conversion_bps") / 10_000
+    return rate
+
+
 def _cash(inputs: _Inputs, quantity: int) -> _Verdict:
     committed = Decimal(0)
     for order in inputs.snapshot.open_orders:
@@ -447,10 +466,18 @@ def _cash(inputs: _Inputs, quantity: int) -> _Verdict:
         gross = order.remaining * order.limit_price * _rate(inputs, currency)
         committed += _fee(inputs, gross, currency) + (gross if order.side == "BUY" else 0)
     available = inputs.snapshot.account.cash_eur - committed
+    currency = inputs.intent.instrument.currency
     gross = quantity * _unit_eur(inputs)
-    need = _fee(inputs, gross, inputs.intent.instrument.currency)
+    fee = _fee(inputs, gross, currency)
     if inputs.intent.side == "BUY":
-        need += gross
+        need = fee + gross
+    else:
+        # A sale pays its fees out of what it brings in: only what they exceed is needed (B188,
+        # D24). That shrinks as the sale grows, which the size search relies on, as long as the
+        # fees on each euro stay under one euro.
+        if _per_euro(inputs, currency) >= 1:
+            raise _Unknown("frais d'au moins 100 % du montant : une vente ne les couvre jamais")
+        need = max(fee - gross, Decimal(0))
     ok = need <= available
     reason = "cash suffisant, frais compris" if ok else "cash insuffisant, frais compris"
     return _Verdict(ok, _num(need), _num(available), reason)
@@ -507,23 +534,33 @@ def _as_intent(intent: object) -> OrderIntent:
     return OrderIntent.model_validate(intent)
 
 
-def _fits(inputs: _Inputs, quantity: int) -> bool:
-    return all(_run(lambda c=check: c(inputs, quantity)).ok for _, check in SIZE_CHECKS)
+def _fits(inputs: _Inputs, quantity: int, *, growing_only: bool = False) -> bool:
+    """Whether every size check accepts ``quantity``; with ``growing_only``, all but a sale's
+    cash, the one check whose need shrinks as the quantity grows (B188)."""
+    sale = inputs.intent.side == "SELL"
+    return all(
+        _run(lambda c=check: c(inputs, quantity)).ok
+        for name, check in SIZE_CHECKS
+        if not (growing_only and sale and name == "cash")
+    )
 
 
 def _largest_fit(inputs: _Inputs, requested: int) -> int:
     """The largest whole quantity below ``requested`` that every size check accepts, or 0.
 
-    Each size check grows with the quantity, so the quantities that fit form ``[1, q]``.
+    Every size check but a sale's cash grows with the quantity, so the quantities they accept
+    form ``[1, q]``: the search finds ``q``. A sale's cash need shrinks as the sale grows
+    (B188), so it accepts ``[p, ∞[`` and is checked at ``q`` alone: if it fails there, it fails
+    at every smaller quantity too.
     """
     low, high, best = 1, requested - 1, 0
     while low <= high:
         middle = (low + high) // 2
-        if _fits(inputs, middle):
+        if _fits(inputs, middle, growing_only=True):
             best, low = middle, middle + 1
         else:
             high = middle - 1
-    return best
+    return best if best and _fits(inputs, best) else 0
 
 
 def _evaluate(inputs: _Inputs) -> RiskGateResult:

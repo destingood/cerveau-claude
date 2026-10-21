@@ -89,6 +89,15 @@ class IntentOrigin(_Strict):
     id: OriginId
 
 
+REBALANCE_TOOL = "rebalance_proposal"  # the committee's sizing tool (D8)
+
+
+def sizing_tool(origin: IntentOrigin) -> str:
+    """The one tool that may size an intent from ``origin`` (B195): a strategy's own, or the
+    committee's rebalance proposal."""
+    return f"strategy.{origin.id}" if origin.kind == "strategy" else REBALANCE_TOOL
+
+
 class OrderIntent(_Strict):
     intent_id: UUID7  # also the client order id (ADR-032)
     created_at: AwareDatetime

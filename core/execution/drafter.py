@@ -46,6 +46,7 @@ from core.config.loader import ExecutionConfig, PaperRiskLimits
 from core.execution.intent import (
     MAX_HORIZON_DAYS,
     RATIONALE_CHARS,
+    REBALANCE_TOOL,
     IntentOrigin,
     IntentRationale,
     OrderInstrument,
@@ -63,7 +64,6 @@ from core.risk_gate.snapshot import GateSnapshot
 from core.verification.trace import tool_output
 
 CENT = Decimal("0.01")
-REBALANCE_TOOL = "rebalance_proposal"
 ELLIPSIS = "…"
 # The manager's categories as numbers (ADR-029, hypotheses): the upper bound of each horizon
 # (``HORIZONS``: up to 3 months, 3 to 12 months, beyond), the centre of each third of [0, 1].

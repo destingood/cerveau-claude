@@ -32,7 +32,7 @@ from core.evals.cases import PAPER_SYMBOL, Case, ExpectPaper, PaperFixture
 from core.evals.checks import Check, _found
 from core.execution.book import BookedOrder, OrderBook, Recorder
 from core.execution.drafter import DraftError, TargetOrder, _first_error, limit_price
-from core.execution.intent import IntentRationale, SizingSource
+from core.execution.intent import IntentRationale, SizingSource, sizing_tool
 from core.execution.loop import (
     DayReport,
     LoopLog,
@@ -53,7 +53,6 @@ from core.policy.engine import KILL_SWITCH_FILE
 from core.risk_gate.snapshot import GateSnapshot
 
 MIC = "XPAR"
-SOURCE_TOOL = "eval_source"
 RUN_AT = time(21, 30, tzinfo=UTC)  # past the 21:00 UTC decision cut-off
 OPENED_AT = time(8, 0, tzinfo=UTC)
 OPENED_BEFORE = timedelta(days=18)  # the paper account opens before the first day
@@ -68,7 +67,11 @@ class CaseSource:
     """The case's source: its orders on its days, its rationale checked when it proposes."""
 
     fixture: PaperFixture
-    tool: str = SOURCE_TOOL
+
+    @property
+    def tool(self) -> str:
+        """The one tool the Gate lets size the case's origin (B195)."""
+        return sizing_tool(self.fixture.origin)
 
     def symbols(self) -> frozenset[str]:
         return frozenset({PAPER_SYMBOL})

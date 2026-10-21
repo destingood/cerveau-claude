@@ -53,7 +53,7 @@ from tests.risk_gate.cases import AS_OF, CLOSE_PUBLISHED, MICS, World, base_worl
 from tests.test_finance_research_registry import candidate
 
 ROOT = Path(__file__).resolve().parents[1]
-SIZING = SizingSource(tool="strategy_lab", call_id="strategy_lab#1")
+SIZING = SizingSource(tool="strategy.momentum_12_1", call_id="strategy.momentum_12_1#1")
 PRICE = {"price_tool": "market_data", "price_call": "market_data#1"}
 RATIONALE = IntentRationale(
     thesis="Le titre s'échange sous sa valeur estimée.",

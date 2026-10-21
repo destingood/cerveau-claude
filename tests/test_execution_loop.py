@@ -152,7 +152,7 @@ class Fixed:
 
     quantity: int = 4
     days: tuple[date, ...] = (MONDAY,)
-    tool: str = "test_source"
+    tool: str = "strategy.croisement_mm"
 
     def symbols(self) -> frozenset[str]:
         return frozenset({SYMBOL})
@@ -235,7 +235,7 @@ def test_a_day_drafts_gates_and_sends_the_order_once(world: World, tmp_path: Pat
     assert [e["actor"] for e in policy] == ["risk_gate", "policy"]
     assert {e["payload"]["intent_id"] for e in policy} == {str(intent.intent_id)}
     calls = [e["payload"]["call_id"] for e in world.journal.entries if e["event"] == "TOOL_CALL"]
-    assert calls == ["paper_market#1", "test_source#1"]
+    assert calls == ["paper_market#1", "strategy.croisement_mm#1"]
 
     again = world.run(MONDAY_RUN + timedelta(minutes=10))
     assert (again.outcome, again.intents) == ("deja_traitee", [])
@@ -258,7 +258,7 @@ def test_the_next_day_closes_the_session_settles_and_values(world: World) -> Non
     assert report.valuation.positions == {SYMBOL: 4}
     assert report.valuation.equity_eur == statement.cash_eur + 4 * Decimal("100.20")
     assert report.account.day_pnl_eur == report.valuation.equity_eur - Decimal("10000.00")
-    assert "test_source : aucun ordre proposé" in report.notes
+    assert "strategy.croisement_mm : aucun ordre proposé" in report.notes
 
 
 def test_the_losses_count_sessions_of_the_calendar_not_recorded_days(tmp_path: Path) -> None:

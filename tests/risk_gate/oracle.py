@@ -4,7 +4,9 @@ Written apart from ``core.risk_gate.gate``, from the plan's specification: exact
 instead of decimals, and the largest quantity in closed form instead of a search. Every
 reducible limit is linear in the quantity q once the fee's maximum is split in two, since
 ``max(a, b) + c <= x`` holds exactly when ``a + c <= x`` and ``b + c <= x``; the largest
-quantity is then the smallest floor of the bounds.
+quantity is then the smallest floor of the bounds. A sale's cash is the one exception
+(B188): what its fees exceed of its amount only shrinks as it grows, so it gives a lower
+bound, :meth:`World.least`, and the quantity retained must reach it.
 """
 
 from __future__ import annotations
@@ -215,7 +217,11 @@ class World:
         return self.intent.quantity + selling <= held
 
     def rationale(self) -> bool:
-        return True
+        """The size comes from the one tool that sizes the origin (B195): a strategy's own, the
+        committee's rebalance proposal."""
+        origin = self.intent.origin
+        own = "strategy." + origin.id if origin.kind == "strategy" else "rebalance_proposal"
+        return self.intent.sizing_source.tool == own
 
     def compliance(self) -> bool:
         exclusions = self.compliance_config_exclusions()
@@ -285,7 +291,8 @@ class World:
             self.limits.max_currency_pct, lambda: self.currency, lambda s: self.facts(s).currency
         )
 
-    def cash(self) -> int | None:
+    def cash_terms(self) -> tuple[Fraction, Fraction, Fraction, Fraction]:
+        """The commission rate, its minimum, the rate charged on top of both, the free cash."""
         costs = self.costs
         commission = exact(costs.commission_pct) / 100
         minimum = exact(costs.min_commission_eur)
@@ -301,14 +308,33 @@ class World:
             currency = self.facts(order.symbol).currency
             gross = order.remaining * Fraction(order.limit_price) * self.rate(currency)
             reserved += fee(gross, currency) + (gross if order.side == "BUY" else 0)
-        room = Fraction(self.snap.account.cash_eur) - reserved
-        base = 1 if self.intent.side == "BUY" else 0
         extra = slippage + (conversion if self.currency != "EUR" else 0)
+        return commission, minimum, extra, Fraction(self.snap.account.cash_eur) - reserved
+
+    def cash(self) -> int | None:
+        """A buy needs its amount and its fees. A sale needs what its fees exceed of its amount,
+        ``max(0, fee - gross)`` (B188): out of reach when the free cash is negative, otherwise
+        a lower bound on q, :meth:`least`, since that need only shrinks as the sale grows."""
+        commission, minimum, extra, room = self.cash_terms()
         unit = self.unit()
+        if self.intent.side == "SELL":
+            if commission + extra >= 1:
+                raise Missing("fees")  # a sale would never cover them
+            return None if room >= 0 else -1
         return tighter(
-            linear(unit * (base + commission + extra), room),
-            linear(unit * (base + extra), room - minimum),
+            linear(unit * (1 + commission + extra), room),
+            linear(unit * (1 + extra), room - minimum),
         )
+
+    def least(self) -> int:
+        """The smallest quantity a sale's cash allows, 1 for a buy. With ``g = q * unit``,
+        ``max(g c, m) + g extra - g <= room`` splits in two: ``g (c + extra - 1) <= room``,
+        true for every q once room >= 0 and c + extra < 1, and ``m + g (extra - 1) <= room``.
+        """
+        if self.intent.side == "BUY":
+            return 1
+        _, minimum, extra, room = self.cash_terms()
+        return max(1, math.ceil((minimum - room) / (self.unit() * (1 - extra))))
 
 
 def _intent(raw: object) -> OrderIntent:
@@ -349,6 +375,18 @@ def size_bound(args: tuple[object, ...]) -> int | None:
     return tighter(*(b for b in bounds.values() if not isinstance(b, Missing)))
 
 
+def cash_floor(args: tuple[object, ...]) -> int | None:
+    """The smallest quantity a sale's cash allows (B188), 1 for a buy; None if unknown."""
+    world = _world(args)
+    if world is None:
+        return None
+    try:
+        world.cash()
+        return world.least()
+    except Missing:
+        return None
+
+
 def expected(args: tuple[object, ...]) -> Expected:
     """What the gate must answer: the result, the quantity retained and the checks that fail."""
     world = _world(args)
@@ -371,12 +409,15 @@ def expected(args: tuple[object, ...]) -> Expected:
             failed.add(name)
         elif bound is not None and bound < requested:
             failed.add(name)
+    least = 1 if isinstance(bounds["cash"], Missing) else world.least()
+    if requested < least:
+        failed.add("cash")
     if unknown or failed & set(FIXED):
         return Expected("REFUSE", 0, frozenset(failed))
     best = tighter(requested, *(b for b in bounds.values() if not isinstance(b, Missing)))
     assert best is not None
+    if best < least:
+        return Expected("REFUSE", 0, frozenset(failed))
     if best >= requested:
         return Expected("ACCEPTE", requested, frozenset(failed))
-    if best >= 1:
-        return Expected("REDUIT", best, frozenset(failed))
-    return Expected("REFUSE", 0, frozenset(failed))
+    return Expected("REDUIT", best, frozenset(failed))

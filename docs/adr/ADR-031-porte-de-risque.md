@@ -51,3 +51,14 @@ Option 2.
   minimal de cas acceptés. Couverture lignes et branches de `core/risk_gate` à 100 % dans `make ci`.
 - Un frais `A_DEFINIR` bloque le contrôle du cash : un paper réel attend la décision D13 de la
   phase 2.
+
+## Amendement (phase 5, 21/10/2026)
+- **Cash d'une vente (B188, D24, décision de Lucas)** : une vente paie ses frais sur ce qu'elle
+  rapporte ; elle n'exige que `max(0, frais − brut)`. Ce besoin décroît quand la quantité croît :
+  la réduction cherche la plus grande quantité sur les autres contrôles de taille, puis vérifie le
+  cash à cette quantité, et refuse s'il manque. Des frais d'au moins 100 % du montant sont une
+  donnée inconnue (refus). Les ventes ouvertes réservent toujours leurs frais.
+- **Justification (B195)** : la taille doit venir de l'outil qui dimensionne l'origine,
+  `strategy.<id>` pour une stratégie, `rebalance_proposal` pour un comité ; tout autre outil est
+  refusé. La Porte ne lit pas le journal : que l'appel y figure relève de la boucle, et le test de
+  complétude du journal le vérifie.

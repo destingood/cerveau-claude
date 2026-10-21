@@ -192,6 +192,13 @@ REFUSALS: list[tuple[str, dict[str, Any], str, str]] = [
         "trop d'ordres",
     ),
     ("leverage", {"limits__allow__leverage": True}, "allow", "ne modélise pas : leverage"),
+    (
+        "short-selling",
+        {"limits__allow__short_selling": True},
+        "allow",
+        "ne modélise pas : short_selling",
+    ),
+    ("derivatives", {"limits__allow__derivatives": True}, "allow", "ne modélise pas : derivatives"),
     ("short", {"intent__side": "SELL"}, "short_selling", "au-delà de la position"),
     (
         "exclude-symbol",
@@ -233,6 +240,31 @@ def test_each_check_refuses_and_says_why(changes: dict[str, Any], name: str, fra
     assert not failed.ok
     assert fragment in failed.reason
     assert f"{name} : {failed.reason}" in got.reasons
+
+
+@pytest.mark.parametrize("tool", ["rebalance_proposal", "strategy.croisement_mm", "rebalance"])
+def test_a_size_from_another_tool_than_the_origins_is_refused(tool: str) -> None:
+    sizing = {"tool": tool, "call_id": f"{tool}#1"}
+    got = run(changed(base_world(), intent__sizing_source=sizing))
+    assert (got.result, got.quantity) == ("REFUSE", 0)
+    rationale = check(got, "rationale")
+    assert (rationale.value, rationale.limit) == (tool, "strategy.momentum_12_1")
+    reason = f"taille calculée par {tool}, qui ne dimensionne pas cette origine"
+    assert got.reasons == (f"rationale : {reason}",)
+
+
+def test_a_committee_intent_is_sized_by_the_rebalance_proposal_alone() -> None:
+    committee = changed(
+        base_world(),
+        intent__origin={"kind": "committee", "id": "comite-2026-10-19"},
+        intent__committee_record_id="comite-2026-10-19",
+        intent__sizing_source={"tool": "rebalance_proposal", "call_id": "rebalance_proposal#1"},
+    )
+    assert run(committee).result == "ACCEPTE"
+    sizing = {"tool": "strategy.momentum_12_1", "call_id": "strategy.momentum_12_1#1"}
+    got = run(changed(committee, intent__sizing_source=sizing))
+    assert got.result == "REFUSE"
+    assert check(got, "rationale").limit == "rebalance_proposal"
 
 
 def test_a_foreign_order_needs_a_fresh_rate() -> None:
@@ -319,7 +351,68 @@ def test_a_sale_adds_to_no_exposure_and_pays_its_fees() -> None:
     assert {check(got, name).value for name in SIZED if name.startswith("max_p")} == {"vente"}
     assert check(got, "max_currency_pct").value == "vente"
     assert (check(got, "short_selling").value, check(got, "short_selling").limit) == ("3", "3")
-    assert check(got, "cash").value == "1.1508"  # minimum commission and slippage, no amount
+    assert check(got, "cash").value == "0"  # 301.50 € cover 1.15 € of fees (B188)
+
+
+def test_a_fully_invested_account_can_still_sell() -> None:
+    world = changed(
+        base_world(),
+        intent__side="SELL",
+        snapshot__holdings__AAA=3,
+        snapshot__account__cash_eur=Decimal("0"),
+    )
+    got = run(world)
+    assert (got.result, got.quantity) == ("ACCEPTE", 3)
+    assert (check(got, "cash").value, check(got, "cash").limit) == ("0", "0")
+
+
+def penny_sale(quantity: int, cash: str, **changes: Any) -> World:
+    """A sale of AAA at 0.40 €, worth less than the minimum commission."""
+    world = changed(
+        base_world(),
+        intent__side="SELL",
+        intent__quantity=quantity,
+        intent__limit_price=Decimal("0.40"),
+        snapshot__quotes__AAA__price=Decimal("0.40"),
+        snapshot__holdings__AAA=quantity,
+        snapshot__account__cash_eur=Decimal(cash),
+    )
+    return changed(world, **changes)
+
+
+def test_a_sale_worth_less_than_its_fees_needs_only_the_difference() -> None:
+    # 2 x 0.40 = 0.80 € brings in less than 1 € of commission + 0.0004 € of slippage
+    got = run(penny_sale(2, "0.2004"))
+    assert (got.result, got.quantity) == ("ACCEPTE", 2)
+    assert (check(got, "cash").value, check(got, "cash").limit) == ("0.2004", "0.2004")
+    got = run(penny_sale(2, "0.2003"))
+    assert (got.result, got.quantity) == ("REFUSE", 0)
+    assert got.reasons == (
+        "cash : cash insuffisant, frais compris",
+        "aucune quantité entière ne respecte les limites de taille et de cash",
+    )
+
+
+def test_a_sale_is_not_reduced_below_what_its_cash_allows() -> None:
+    # 0.01 % of 10 000 € is 1 €: 2 shares at most, whose fees exceed what they bring in
+    got = run(penny_sale(3, "0", limits__max_order_pct=0.01))
+    assert (got.result, got.quantity) == ("REFUSE", 0)
+    assert [c.name for c in got.checks if not c.ok] == ["max_order_pct"]
+    assert got.reasons[-1] == "aucune quantité entière ne respecte les limites de taille et de cash"
+    got = run(penny_sale(3, "0.2004", limits__max_order_pct=0.01))
+    assert (got.result, got.quantity) == ("REDUIT", 2)
+
+
+def test_fees_of_a_whole_euro_per_euro_are_unknown_for_a_sale() -> None:
+    reason = "frais d'au moins 100 % du montant : une vente ne les couvre jamais"
+    sale = {"intent__side": "SELL", "snapshot__holdings__AAA": 3}
+    got = run(changed(base_world(), costs__commission_pct=Decimal("100"), **sale))
+    assert got.result == "REFUSE"
+    assert (check(got, "cash").value, check(got, "cash").reason) == (UNKNOWN, reason)
+    # 99.7 % + 5 bp of slippage stay under 100 % in euros, reach it with 25 bp of conversion
+    assert run(changed(base_world(), costs__commission_pct=Decimal("99.7"), **sale)).quantity
+    got = run(usd_world(intent__side="SELL", costs__commission_pct=Decimal("99.7")))
+    assert (got.result, check(got, "cash").reason) == ("REFUSE", reason)
 
 
 def test_open_sales_reserve_the_shares_they_sell() -> None:
