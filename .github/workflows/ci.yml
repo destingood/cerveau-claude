@@ -38,7 +38,8 @@ jobs:
       - run: uv sync --frozen
       - run: uv run ruff check .
       - run: uv run ruff format --check .
-      - run: uv run pytest
+      # Same as make test: full line and branch coverage of the Risk Gate (ADR-031).
+      - run: uv run pytest --cov=core/risk_gate --cov-branch --cov-fail-under=100 --cov-report=term-missing:skip-covered
       - run: uv run cerveau config check
 
   secrets:

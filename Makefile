@@ -3,6 +3,7 @@
 
 UV ?= uv
 COMPOSE ?= docker compose -f infra/docker-compose.yml
+GATE_COVERAGE := --cov=core/risk_gate --cov-branch --cov-fail-under=100 --cov-report=term-missing:skip-covered
 
 export PROMPTFOO_DISABLE_TELEMETRY := 1
 export PROMPTFOO_DISABLE_UPDATE := 1
@@ -16,8 +17,9 @@ help:
 sync:
 	$(UV) sync --frozen
 
+# The Risk Gate needs full line and branch coverage (ADR-031); the rest has no threshold.
 test:
-	$(UV) run pytest
+	$(UV) run pytest $(GATE_COVERAGE)
 
 lint:
 	$(UV) run ruff check .
