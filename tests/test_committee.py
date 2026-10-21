@@ -754,6 +754,48 @@ def test_the_kill_switch_between_roles_halts_the_session(rig: Rig) -> None:
     assert not {"defenseur", "contradicteur", "gestionnaire"} & set(rig.brain.members())
 
 
+def _interrupted(sitting: Any, member: str) -> Any:
+    [record] = [r for r in sitting.roles if r.member == member]
+    assert (record.valid, record.sha256, record.output) == (False, None, None)
+    return record
+
+
+def test_an_analyst_cancelled_by_a_failing_one_leaves_its_entry(rig: Rig) -> None:
+    rig.brain.scripts["analyste_portefeuille"] = ["pas du JSON", "pas du JSON"]
+    rig.brain.delay_s["analyste_technique"] = 0.5
+    sitting = rig.sit()
+    assert sitting.status == "echec"
+    record = _interrupted(sitting, "analyste_technique")
+    assert record.error == "interrompu (CancelledError)"
+    assert _interrupted(sitting, "analyste_portefeuille").attempts == 2
+
+
+def test_a_role_cut_by_the_budget_leaves_its_entry(tmp_path: Path, config_dir: Path) -> None:
+    rig = make_rig(tmp_path, _config(config_dir, max_tool_calls=1))
+    sitting = rig.sit()
+    cut = [r for r in sitting.roles if r.error == "interrompu (RequestBudgetExceeded)"]
+    assert len(cut) == 1 and not cut[0].valid
+
+
+def test_a_role_cut_by_the_kill_switch_leaves_its_entry(rig: Rig) -> None:
+    first = rig.brain.scripts["analyste_portefeuille"][0]
+
+    def engage_then_call() -> Reply:
+        rig.engage_kill_switch()
+        return first
+
+    rig.brain.scripts["analyste_portefeuille"][0] = engage_then_call
+    sitting = rig.sit()
+    assert (sitting.status, sitting.reason, sitting.halted) == ("incomplete", "kill_switch", True)
+    record = _interrupted(sitting, "analyste_portefeuille")
+    # The analysts run concurrently: those that check the switch raise, the others are
+    # cancelled, depending on timing.
+    causes = {"interrompu (KillSwitchEngaged)", "interrompu (CancelledError)"}
+    assert record.error in causes
+    cut = [r.error for r in sitting.roles if r.error and r.error.startswith("interrompu")]
+    assert set(cut) <= causes and "interrompu (KillSwitchEngaged)" in cut
+
+
 def test_a_member_without_a_tier_is_inactive(rig: Rig) -> None:
     with pytest.raises(ValueError, match="rôle inactif"):
         seat_for(rig.run.config, "finance", "analyste_fondamental")

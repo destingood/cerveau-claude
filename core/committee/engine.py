@@ -88,6 +88,7 @@ LAB = "strategy_lab"
 LAB_MODES = frozenset({"signaux"})
 LAB_MODE = "Erreur : au Comité, strategy_lab ne sert qu'en mode signaux."
 TOO_MANY_TURNS = f"aucune réponse valide en {MAX_ROLE_TURNS} appels"
+INTERRUPTED = "interrompu"
 
 # Order of the role records: stage, then debate round, then the member's place.
 _STAGES: dict[MemberKind, int] = {
@@ -353,28 +354,35 @@ class _Committee:
         messages: list[BaseMessage] = [SystemMessage(system), HumanMessage(task)]
         tools = self._tools(card) if session is not None else []
         errors: list[str] = []
-        for _turn in range(MAX_ROLE_TURNS):
-            reply: AIMessage = await self.run.invoke("committee", messages, tools=tools, seat=seat)
-            messages.append(reply)
-            if reply.tool_calls:
-                for call in reply.tool_calls:
-                    content = await self._tool(card, session, call)
-                    messages.append(ToolMessage(content=content, tool_call_id=call["id"]))
-                continue
-            record.attempts += 1
-            try:
-                output = parse_json(message_text(reply), schema)
-                errors = check(output)
-            except ValueError as exc:
-                errors = [short_error(exc)]
-            if not errors:
-                dumped = output.model_dump(mode="json")
-                record.valid, record.output, record.sha256 = True, dumped, digest(dumped)
-                return output, record
-            if record.attempts > 1:
-                break
-            shown = " ; ".join(errors[:MAX_ERRORS])
-            messages.append(HumanMessage(REPAIR.format(errors=shown)))
+        try:
+            for _turn in range(MAX_ROLE_TURNS):
+                reply: AIMessage = await self.run.invoke(
+                    "committee", messages, tools=tools, seat=seat
+                )
+                messages.append(reply)
+                if reply.tool_calls:
+                    for call in reply.tool_calls:
+                        content = await self._tool(card, session, call)
+                        messages.append(ToolMessage(content=content, tool_call_id=call["id"]))
+                    continue
+                record.attempts += 1
+                try:
+                    output = parse_json(message_text(reply), schema)
+                    errors = check(output)
+                except ValueError as exc:
+                    errors = [short_error(exc)]
+                if not errors:
+                    dumped = output.model_dump(mode="json")
+                    record.valid, record.output, record.sha256 = True, dumped, digest(dumped)
+                    return output, record
+                if record.attempts > 1:
+                    break
+                shown = " ; ".join(errors[:MAX_ERRORS])
+                messages.append(HumanMessage(REPAIR.format(errors=shown)))
+        except BaseException as exc:  # cancelled, budget, kill switch: the entry stays (R11)
+            record.error = f"{INTERRUPTED} ({type(exc).__name__})"
+            self.sitting.roles.append(record)
+            raise
         record.error = " ; ".join(errors[:MAX_ERRORS]) if errors else TOO_MANY_TURNS
         self.sitting.roles.append(record)
         raise RoleFailed(record)

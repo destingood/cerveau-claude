@@ -15,7 +15,7 @@ from typing import Annotated, Any
 
 import typer
 
-from core.audit import AuditJournal, default_journal_path
+from core.audit import AuditJournal, default_journal_path, verify
 from interfaces.cli.common import EXIT_ERROR, JournalOpt, project_root
 from interfaces.cli.common import fail as _fail
 
@@ -96,13 +96,20 @@ def show(
 ) -> None:
     """Relit une séance du Comité et vérifie son empreinte dans le journal d'audit (D19).
 
-    Codes de sortie : 0 séance intacte, 1 identifiant invalide, séance inconnue du journal,
-    fichier introuvable ou altéré.
+    La chaîne du journal est vérifiée d'abord : une chaîne rompue ne garantit aucune empreinte.
+    Codes de sortie : 0 séance intacte, 1 identifiant invalide, journal invalide, séance inconnue
+    du journal, fichier introuvable ou altéré.
     """
     if not RECORD_ID.fullmatch(record_id):
         _fail(f"Identifiant de séance invalide : {record_id[:60]!r}.", EXIT_ERROR)
     root = project_root()
     audit = AuditJournal(journal or default_journal_path(root))
+    if not verify(audit.path).ok:  # a broken chain vouches for no digest (R11)
+        _fail(
+            "Journal d'audit invalide (chaîne rompue) : lancer `cerveau audit verify`. "
+            "Ne pas se fier à la séance.",
+            EXIT_ERROR,
+        )
     pack, digests = journaled(audit, record_id)
     if pack is None or not digests or not PACK_ID.fullmatch(pack):
         _fail(f"Séance {record_id} inconnue du journal d'audit.", EXIT_ERROR)

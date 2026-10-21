@@ -424,6 +424,21 @@ def test_show_reports_an_altered_session(rig: Rig, monkeypatch: pytest.MonkeyPat
     assert "agir" not in result.stdout
 
 
+def test_show_refuses_a_broken_audit_chain(rig: Rig, monkeypatch: pytest.MonkeyPatch) -> None:
+    """B149: the session's digest is only as good as the chain that holds it."""
+    answer = rig.ask().answer
+    assert answer.comite is not None
+    lines = rig.journal.path.read_text(encoding="utf-8").splitlines()
+    first = json.loads(lines[0])
+    first["ts"] = "2000-01-01T00:00:00+00:00"
+    lines[0] = json.dumps(first, ensure_ascii=False)
+    rig.journal.path.write_text("\n".join(lines) + "\n", encoding="utf-8")
+    result = _show(rig, answer.comite.record_id, monkeypatch)
+    assert result.exit_code == 1
+    assert "Journal d'audit invalide (chaîne rompue)" in result.stderr
+    assert "Décision proposée" not in result.stdout
+
+
 def test_show_reports_a_missing_session(rig: Rig, monkeypatch: pytest.MonkeyPatch) -> None:
     answer = rig.ask().answer
     assert answer.comite is not None

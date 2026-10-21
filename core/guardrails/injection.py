@@ -86,6 +86,23 @@ _ORDER = (
 _NEAR_ORDER = r"[^.!?;\n]{0,40}?"
 ORDER_SIGNAL = "ordre"
 
+# B125: getting past a safeguard, ordered at a sentence opening or by a plural imperative without
+# its subject. "Le président a ignoré les garde-fous" reports, it orders nothing.
+_MAY = r"(?:(?:tu peux|vous pouvez|you can|you may|feel free to) )?"
+_BYPASS = (
+    rf"(?:ignor{_VERB}|oubli{_VERB}|neglig{_VERB}|contourn{_VERB}|desactiv{_VERB}|"
+    r"passe[rz]? outre(?: a| aux?)?|ne tiens? (?:pas|plus) compte d[eu]s?|disregard|forget|"
+    r"override|bypass|disable|turn off|switch off|skip)\b"
+)
+_BYPASS_YOU = r"(?<!\bvous )\b(?:ignorez|oubliez|negligez|contournez|desactivez|passez outre)\b"
+_GUARD = (
+    r"\b(?:porte de risque|risk gate|garde[- ]fous?|guardrails?|safeguards?|kill[- ]?switch|"
+    r"coupe[- ]circuits?|controles|controls|(?:risk|safety) checks?|politique de risque|"
+    r"limites? de (?:risque|perte|position|levier)s?|"
+    r"(?:tes|vos|les|des) limites(?! d(?:e |es |u |'))|"  # not "les limites de la croissance"
+    r"(?:risk|loss|position) limits?|(?:your|the) limits)\b"
+)
+
 _SIGNALS: dict[str, re.Pattern[str]] = {
     name: re.compile(pattern, re.MULTILINE)
     for name, pattern in {
@@ -93,7 +110,8 @@ _SIGNALS: dict[str, re.Pattern[str]] = {
             rf"\b(?:ignor{_VERB}|oubli{_VERB}|neglig{_VERB}|contourn{_VERB}|disregard|forget|"
             rf"override|bypass|ne tiens? (?:pas|plus) compte)\b{_NEAR}"
             r"\b(?:instructions?|consignes?|regles?|directives?|previous|prior|above|"
-            r"precedent\w*|ci-dessus|systeme|system)\b"
+            r"precedent\w*|ci-dessus|systeme|system)\b|"
+            rf"{_OPENS}{_MUST}{_MAY}{_BYPASS}{_NEAR}{_GUARD}|{_BYPASS_YOU}{_NEAR}{_GUARD}"
         ),
         "fuite_prompt": (
             r"\b(?:system prompt|prompt (?:systeme|initial)|"
