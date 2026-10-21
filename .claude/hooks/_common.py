@@ -25,8 +25,17 @@ IS_WINDOWS = os.name == "nt"
 
 # Write-protected: Claude Code never modifies these (R3, R4, R11, governance).
 WRITE_PROTECTED_FILES = ("config/live.yaml",)
-# var/approvals holds the approval store (D18): only CERVEAU, run by Lucas, writes there.
-WRITE_PROTECTED_DIRS = ("governance/approvals", "var/approvals", "var/audit", "var/incidents")
+# var/approvals holds the approval store (D18) and var/promotion the promotion reports a signature
+# cites (ADR-040, B226): only CERVEAU, run by Lucas, writes there.
+WRITE_PROTECTED_DIRS = (
+    "governance/approvals",
+    "var/approvals",
+    "var/audit",
+    "var/incidents",
+    "var/promotion",
+)
+# The bot's npm scripts run at every `make bot-test` (B229): only Lucas changes them.
+BOT_MANIFEST = "interfaces/discord_bot/package.json"
 # Kill switch (R4, ADR-034): creating KILL stops CERVEAU and stays allowed; removing, moving or
 # rewriting it would rearm CERVEAU, which only Lucas does (`cerveau rearm`).
 KILL_FILE = "governance/kill_switch/KILL"
@@ -41,6 +50,8 @@ SENSITIVE_LOCATIONS = (
     "var/approvals",
     "var/audit",
     "var/incidents",
+    "var/promotion",
+    BOT_MANIFEST,
     ".env",
     "infra/.env",
     "secrets",
@@ -53,6 +64,8 @@ GLOB_SAMPLES_WRITE = (
     "var/approvals/approvals.db",
     "var/audit/journal.jsonl",
     "var/incidents/x.md",
+    "var/promotion/finance-N3-2026-10-21.md",
+    BOT_MANIFEST,
 )
 GLOB_SAMPLES_READ = (".env", ".env.local", "infra/.env", "secrets/key")
 
@@ -236,11 +249,16 @@ def write_protection_reason(abs_norm: str, *, creating: bool = False) -> str | N
     if rel is not None:
         if rel in map(_fold, WRITE_PROTECTED_FILES):
             return f"{rel} est protégé (R3) : seul Lucas le modifie, à la main"
+        if rel == _fold(BOT_MANIFEST):
+            return (
+                f"{rel} est protégé (B229) : ses scripts npm s'exécutent à chaque make bot-test ; "
+                "seul Lucas le modifie"
+            )
         for directory in map(_fold, WRITE_PROTECTED_DIRS):
             if rel == directory or rel.startswith(directory + "/"):
                 return (
                     f"{rel} est protégé (gouvernance, approbations D18, journal d'audit R11, "
-                    "incidents R4)"
+                    "incidents R4, rapports de promotion ADR-040)"
                 )
     # Same file names in another checkout or worktree (mega-prompt 16.5 pattern).
     if abs_norm.endswith("/config/live.yaml") or "/governance/approvals/" in abs_norm + "/":

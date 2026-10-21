@@ -6,8 +6,10 @@ permissions of a protected path (redirection, tee, sed -i, mv, cp, chmod, chown,
 and any read of `.env` or `secrets/`. The kill switch (R4, ADR-034): `cerveau rearm`, and any
 command that removes, moves or rewrites governance/kill_switch/KILL or one of its folders, are
 refused; creating an absent KILL stays allowed, since it stops CERVEAU. Approvals (D2, D18,
-D22): `cerveau approvals enroll`, any write under var/approvals, and starting the Discord bot
-(anything but its tests, installation or inspection) are refused.
+D22): `cerveau approvals enroll`, any write under var/approvals or var/promotion, and starting
+the Discord bot (anything but its tests, installation or inspection) are refused. The bot's
+package.json, whose scripts `make bot-test` runs, is written by Lucas alone (B229): naming it in
+a writing command, or a package manager that would rewrite it, is refused.
 
 The shell grammar is approximated on purpose: ambiguous constructs are refused rather than
 guessed. This is a convenience guard-rail; the effective protection of config/live.yaml
@@ -108,6 +110,8 @@ PACKAGE_SAFE = frozenset(
     {"test", "t", "ci", "install", "i", "ls", "list", "audit", "view", "outdated", "why"}
 )
 PACKAGE_VALUE_OPTS = frozenset({"--prefix", "-C", "--cwd", "--dir", "--workspace", "-w"})
+# Followed by a package name or `fix`, these rewrite the bot's package.json (B229).
+PACKAGE_REWRITES = frozenset({"install", "i", "audit"})
 LINK_TYPES = ("symboliclink", "junction", "hardlink")
 SHELLS = frozenset({"bash", "sh", "zsh", "dash", "ksh", "fish"})
 PS_SHELLS = frozenset({"pwsh", "powershell"})
@@ -154,6 +158,8 @@ WRITE_PROTECTED_NAMES = (
     "var/approvals",
     "var/audit",
     "var/incidents",
+    "var/promotion",
+    "discord_bot/package.json",
 )
 KILL_NAMES = ("governance/kill_switch", "kill_switch/kill")
 # Commands that only create the file they name: allowed on KILL while it is absent (R4).
@@ -162,7 +168,8 @@ KILL_CREATORS = frozenset(
 )
 UNKNOWN_CWD_CANDIDATES = (
     "config", "governance", "governance/approvals", "governance/kill_switch", "var",
-    "var/approvals", "var/audit", "var/incidents", "infra", "secrets",
+    "var/approvals", "var/audit", "var/incidents", "var/promotion", "interfaces/discord_bot",
+    "infra", "secrets",
 )  # fmt: skip
 REARM_REFUSAL = "cerveau rearm est réservé à Lucas (R4, ADR-034) : Claude Code ne réarme jamais"
 ENROLL_REFUSAL = (
@@ -171,6 +178,10 @@ ENROLL_REFUSAL = (
 API_REFUSAL = "l'API interne n'est lancée que par Lucas (D22) : Claude Code ne la démarre jamais"
 RESERVED_REFUSALS = {"rearm": REARM_REFUSAL, "enroll": ENROLL_REFUSAL, "serve": API_REFUSAL}
 BOT_REFUSAL = "le bot Discord n'est lancé que par Lucas (D22) : Claude Code ne le démarre jamais"
+MANIFEST_REFUSAL = (
+    "le package.json du bot n'est modifié que par Lucas (B229) : ses scripts npm s'exécutent à "
+    "chaque make bot-test"
+)
 # ASGI servers that would start the internal API (D22), and the wrappers that launch them.
 API_SERVERS = frozenset({"uvicorn", "hypercorn", "gunicorn", "granian", "fastapi", "daphne"})
 API_WRAPPERS = RESERVED_LAUNCHERS - {"cerveau", "uv"}  # `uv add uvicorn` installs, never serves
@@ -1060,9 +1071,18 @@ def _bot_safe(cmd: str, args: list[str]) -> bool:
     return False
 
 
+def _rewrites_manifest(cmd: str, args: list[str]) -> bool:
+    """`npm install <paquet>` or `npm audit fix`: package.json rewritten (B229)."""
+    if cmd not in PACKAGE_MANAGERS:
+        return False
+    words = _package_words(args)
+    return len(words) > 1 and words[0] in PACKAGE_REWRITES
+
+
 def check_bot_launch(seg: Segment, tokens: list[str], cmd: str, ctx: Context) -> str | None:
     """The Discord bot is started by Lucas alone (D22): naming its folder, or standing in it
-    or in an unknown folder, with a launcher that does not merely test or install refuses."""
+    or in an unknown folder, with a launcher that does not merely test or install refuses. A
+    package manager that would rewrite its package.json refuses too (B229)."""
     names = {basename(w) for w in _words(tokens)}
     wrapped = (cmd in RESERVED_LAUNCHERS or is_dynamic(cmd)) and bool(names & BOT_LAUNCHERS)
     if cmd not in BOT_LAUNCHERS and not wrapped:
@@ -1073,6 +1093,8 @@ def check_bot_launch(seg: Segment, tokens: list[str], cmd: str, ctx: Context) ->
         return None
     cmd_index, _, _ = command_word(tokens)
     args = tokens[cmd_index + 1 :] if cmd_index is not None else []
+    if _rewrites_manifest(cmd, args):
+        return MANIFEST_REFUSAL
     return None if _bot_safe(cmd, args) else BOT_REFUSAL
 
 

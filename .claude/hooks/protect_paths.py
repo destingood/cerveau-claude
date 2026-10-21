@@ -1,9 +1,10 @@
 """PreToolUse hook for Edit|Write|NotebookEdit: refuse writes to protected paths.
 
 Protected (mega-prompt 16.5, R3, R4, R6, R11): config/live.yaml, governance/approvals/**,
-var/audit/**, var/incidents/**, .env / .env.* (except .env.example) and anything under a
-secrets/ directory. governance/kill_switch/KILL may be created with Write, never edited or
-overwritten (ADR-034).
+var/approvals/**, var/audit/**, var/incidents/**, var/promotion/** (ADR-040, B226), the Discord
+bot's package.json (B229), .env / .env.* (except .env.example) and anything under a secrets/
+directory. governance/kill_switch/KILL may be created with Write, never edited or overwritten
+(ADR-034).
 """
 
 from __future__ import annotations
