@@ -84,6 +84,11 @@ class Costs:
             rounding=rounding,
         )
 
+    def balance(self, cash: float) -> float:
+        """``cash`` as a broker holds it: to the cent in ``cent`` mode, so that no float drift
+        between two fills cuts a buy that fits to the cent; as computed otherwise."""
+        return round(cash, 2) + 0.0 if self.rounding == "cent" else cash  # + 0.0: never -0.0
+
     def stressed(self, multiplier: float) -> Costs:
         """Every cost multiplied: the cost-stress gate of the protocol."""
         if not math.isfinite(multiplier) or multiplier < 1:
@@ -169,7 +174,7 @@ def affordable(quantity: int, price: float, cash: float, costs: Costs) -> int:
         raise ValueError("un achat porte sur une quantité positive")
 
     def fits(shares: int) -> bool:
-        return cash + costs.fill("", shares, price).cash >= 0
+        return costs.balance(cash + costs.fill("", shares, price).cash) >= 0
 
     if fits(quantity):
         return quantity
@@ -197,12 +202,12 @@ def schedule(
         quantity = order.quantity
         if quantity > 0:
             quantity = affordable(quantity, price, cash, costs)
-        elif cash + costs.fill(order.instrument_id, quantity, price).cash < 0:
+        elif costs.balance(cash + costs.fill(order.instrument_id, quantity, price).cash) < 0:
             quantity = 0
         if quantity != order.quantity:
             cuts.append(Cut(order, quantity))
         if quantity:
             fill = costs.fill(order.instrument_id, quantity, price)
-            cash += fill.cash
+            cash = costs.balance(cash + fill.cash)
             fills.append(fill)
     return Schedule(fills, cuts, cash)

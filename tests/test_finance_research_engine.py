@@ -5,7 +5,7 @@ from __future__ import annotations
 import math
 import random
 from collections.abc import Iterator, Mapping, Sequence
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, replace
 from datetime import UTC, date, datetime, time, timedelta
 from decimal import Decimal
 from pathlib import Path
@@ -593,3 +593,17 @@ def test_a_ten_year_backtest_on_the_research_dataset(research: MarketHistory) ->
     assert found.fees > 0 and found.trades > 100 and 0.85 < found.mean_exposure <= 0.9
     assert all(math.isfinite(v) for v in (found.total_return, found.volatility, found.turnover))
     assert isinstance(result.trades[0], Trade) and result.trades[0].decided == date(2016, 1, 4)
+
+
+def test_the_cash_stays_on_the_cent_between_two_fills() -> None:
+    # 0.70 + 0.10 is 0.7999999999999999 in floats: off the cent, the buy at 0.80 is cut.
+    orders = [Order("A", -1, -0.7), Order("B", -1, -0.1), Order("C", 1, 0.8)]
+    prices = {"A": 0.7, "B": 0.1, "C": 0.8}
+    done = schedule(orders, 0.0, prices, FREE)
+    assert [(f.instrument_id, f.quantity) for f in done.fills] == [("A", -1), ("B", -1), ("C", 1)]
+    assert (done.cuts, done.cash) == ([], 0.0)
+    raw = schedule(orders, 0.0, prices, replace(FREE, rounding="none"))
+    assert raw.cuts == [Cut(Order("C", 1, 0.8), 0)]
+    # 3 × 0.10 is 0.30000000000000004: the cash of 0.30 still covers the three shares.
+    done = schedule([Order("A", 3, 0.3)], 0.3, {"A": 0.1}, FREE)
+    assert ([f.quantity for f in done.fills], done.cuts, str(done.cash)) == ([3], [], "0.0")
