@@ -533,6 +533,27 @@ def _treat(
         config.compliance,
         config.data_sources.quality,
     )
+    booked = intent
+    if gate.result == "REDUIT":  # the same client order id, at the quantity the Gate kept
+        booked = intent.model_copy(update={"quantity": gate.quantity})
+    # ADR-031: the Gate's own POLICY entry, with the quantities the C.4 block leaves out, so
+    # that a reduced order is traced from the intent drafted to the order booked.
+    env.journal.append(
+        actor="risk_gate",
+        event="POLICY",
+        request_id=env.request_id,
+        versions=_versions(env),
+        payload={
+            "intent_id": str(intent.intent_id),
+            "intent_sha256": intent.sha256(),
+            "requested_quantity": intent.quantity,
+            "quantity": gate.quantity,
+            "booked_intent_sha256": None if gate.result == "REFUSE" else booked.sha256(),
+            **gate.policy_payload(),
+            "reasons": list(gate.reasons),
+        },
+        now=now,
+    )
     decision = decide_order(
         config.autonomy,
         request_id=env.request_id,
@@ -553,9 +574,6 @@ def _treat(
         now=now,
     )
     effect = decision.effect
-    booked = intent
-    if gate.result == "REDUIT":  # the same client order id, at the quantity the Gate kept
-        booked = intent.model_copy(update={"quantity": gate.quantity})
     quote = snapshot.quotes[intent.instrument.symbol]
     env.book.record_intent(
         booked, decision_price=quote.price, reason=f"rédigée ({intent.origin.id})", now=now

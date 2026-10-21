@@ -213,8 +213,8 @@ def test_a_day_drafts_gates_and_sends_the_order_once(world: World, tmp_path: Pat
     assert "Valeur liquidative : 10 000,00 €" in text
     assert "Source : Porte de risque" in text
     policy = [e for e in world.journal.entries if e["event"] == "POLICY"]
-    assert [e["actor"] for e in policy] == ["policy"]
-    assert policy[0]["payload"]["intent_id"] == str(intent.intent_id)
+    assert [e["actor"] for e in policy] == ["risk_gate", "policy"]
+    assert {e["payload"]["intent_id"] for e in policy} == {str(intent.intent_id)}
     calls = [e["payload"]["call_id"] for e in world.journal.entries if e["event"] == "TOOL_CALL"]
     assert calls == ["paper_market#1", "test_source#1"]
 
@@ -314,7 +314,17 @@ def test_the_gate_reduces_an_order_beyond_the_order_limit(tmp_path: Path) -> Non
     assert intent.gate == "REDUIT" and 0 < intent.quantity < 50
     [order] = built.simulator.open_orders()
     assert order.remaining == intent.quantity
-    assert built.book.order(intent.intent_id).intent.quantity == intent.quantity
+    booked = built.book.order(intent.intent_id).intent
+    assert booked.quantity == intent.quantity
+    # ADR-031: the Gate's entry ties the intent drafted to the order booked.
+    [gate] = [e["payload"] for e in built.journal.entries if e["actor"] == "risk_gate"]
+    assert (gate["result"], gate["requested_quantity"], gate["quantity"]) == (
+        "REDUIT",
+        50,
+        intent.quantity,
+    )
+    assert gate["booked_intent_sha256"] == booked.sha256() != gate["intent_sha256"]
+    assert gate["reasons"] and gate["checks"]
     built.store.close()
 
 
@@ -346,6 +356,8 @@ def test_an_unknown_universe_drafts_nothing(tmp_path: Path) -> None:
     [intent] = report.intents
     assert (intent.gate, intent.state) == ("REFUSE", OrderState.REJETEE)
     assert built.simulator.open_orders() == ()
+    [gate] = [e["payload"] for e in built.journal.entries if e["actor"] == "risk_gate"]
+    assert (gate["quantity"], gate["booked_intent_sha256"]) == (0, None)
     built.store.close()
 
 
