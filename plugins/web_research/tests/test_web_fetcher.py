@@ -10,9 +10,9 @@ from datetime import timedelta
 import httpx
 import pytest
 
+from core.net.guard import FetchError
 from plugins.web_research import fetcher
 from plugins.web_research.fetcher import USER_AGENT, WebReader
-from plugins.web_research.guard import FetchError
 from plugins.web_research.models import PageText
 from plugins.web_research.tests.support import (
     ARTICLE,

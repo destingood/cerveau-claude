@@ -10,15 +10,16 @@ import pytest
 from hypothesis import given
 from hypothesis import strategies as st
 
-from plugins.web_research.guard import (
+from core.net.guard import (
     FetchError,
     check_url,
     is_public_address,
     pin,
     pinned_request,
     shown,
+    system_resolver,
 )
-from plugins.web_research.tests.support import OTHER_V4, PUBLIC_V4, FakeDns
+from tests.net_doubles import OTHER_V4, PUBLIC_V4, FakeDns
 
 NOT_PUBLIC = [
     "127.0.0.1",
@@ -236,3 +237,14 @@ def test_pinned_request_keeps_a_non_default_port_and_brackets_ipv6() -> None:
     assert str(request.url).startswith("http://[2606:4700:4700::1111]:8080/")
     assert request.headers["host"] == "example.org:8080"
     asyncio.run(client.aclose())
+
+
+@pytest.mark.parametrize("raw", ["http://[::1", "http://exa\x00mple/"])
+def test_an_unparsable_url_is_refused(raw: str) -> None:
+    with pytest.raises(FetchError, match="adresse invalide"):
+        check_url(raw)
+
+
+def test_the_system_resolver_returns_the_addresses_of_a_literal() -> None:
+    # A numeric host: getaddrinfo answers without any DNS query.
+    assert asyncio.run(system_resolver("127.0.0.1", 80)) == ["127.0.0.1"]

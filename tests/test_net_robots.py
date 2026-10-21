@@ -6,7 +6,7 @@ import pytest
 from hypothesis import given
 from hypothesis import strategies as st
 
-from plugins.web_research.robots import RobotsPolicy, normalise, parse_robots
+from core.net.robots import RobotsPolicy, normalise, parse_robots
 
 
 def test_longest_match_wins() -> None:
@@ -110,3 +110,9 @@ def test_encoded_and_plain_forms_match_each_other() -> None:
 @given(st.text(max_size=300), st.text(max_size=80))
 def test_matching_never_raises(text: str, path: str) -> None:
     assert isinstance(parse_robots(text).allows("/" + path), bool)
+
+
+def test_a_shorter_match_after_a_longer_one_does_not_win() -> None:
+    policy = parse_robots("User-agent: *\nDisallow: /docs/private\nAllow: /docs\n")
+    assert not policy.allows("/docs/private/a")
+    assert policy.allows("/docs/a")

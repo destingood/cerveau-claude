@@ -16,9 +16,9 @@ from mcp.server.mcpserver.exceptions import ToolError
 from mcp.types import ToolAnnotations
 from pydantic import Field
 
+from core.net.guard import FetchError
 from plugins.web_research import __version__
 from plugins.web_research.fetcher import WebReader
-from plugins.web_research.guard import FetchError
 from plugins.web_research.models import MAX_RESULTS, PageText, SearchHit, SearchResults
 from plugins.web_research.search import BraveSearchProvider, SearchError, SearchProvider
 

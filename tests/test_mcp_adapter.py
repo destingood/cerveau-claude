@@ -32,10 +32,10 @@ from core.mcp.adapter import (
     server_environment,
 )
 from core.models import CostCalculator, Meter
+from core.net.guard import FetchError
 from core.orchestrator.runtime import LazyPlugin, _Holder
 from core.policy.engine import KILL_SWITCH_FILE
 from plugins.finance_risk.server import build_server as build_risk_server
-from plugins.web_research.guard import FetchError
 from plugins.web_research.models import PageText, SearchResults
 from plugins.web_research.search import Hit
 from plugins.web_research.server import ANNOTATIONS, DESCRIPTIONS, build_server

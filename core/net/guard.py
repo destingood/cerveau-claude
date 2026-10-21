@@ -1,4 +1,4 @@
-"""Network guard of ``web_read``: URL checks and pinning to public addresses (ADR-006).
+"""Network guard of the reader plugins: URL checks and pinning to public addresses (ADR-006).
 
 A URL is accepted only with an ``http`` or ``https`` scheme, a host, no credentials and port 80
 or 443: another port of a public address may still reach the administration of the box through

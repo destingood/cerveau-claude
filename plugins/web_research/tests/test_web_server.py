@@ -14,10 +14,10 @@ import yaml
 from mcp import Client
 from mcp.types import CallToolResult
 
+from core.net.guard import FetchError
 from core.registry.manifest import validate_plugin
 from plugins.web_research import server as server_module
 from plugins.web_research.fetcher import WebReader
-from plugins.web_research.guard import FetchError
 from plugins.web_research.models import PageText
 from plugins.web_research.search import Hit, SearchError
 from plugins.web_research.server import build_server

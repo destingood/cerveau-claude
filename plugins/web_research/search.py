@@ -14,7 +14,7 @@ from typing import Any, Protocol
 
 import httpx
 
-from plugins.web_research.guard import ALLOWED_SCHEMES
+from core.net.guard import ALLOWED_SCHEMES
 
 # Documented on api-dashboard.search.brave.com (web search, "get started"), read 2026-10-18.
 BRAVE_ENDPOINT = "https://api.search.brave.com/res/v1/web/search"

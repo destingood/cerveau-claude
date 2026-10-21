@@ -17,7 +17,6 @@ from __future__ import annotations
 
 import asyncio
 import codecs
-import zlib
 from collections.abc import Callable
 from dataclasses import dataclass, field
 from datetime import UTC, datetime, timedelta
@@ -25,8 +24,8 @@ from datetime import UTC, datetime, timedelta
 import httpx
 from trafilatura import bare_extraction
 
-from plugins.web_research import __version__
-from plugins.web_research.guard import (
+from core.net.body import read_body
+from core.net.guard import (
     FetchError,
     Resolver,
     check_url,
@@ -36,8 +35,9 @@ from plugins.web_research.guard import (
     shown,
     system_resolver,
 )
+from core.net.robots import ROBOTS_AGENT, RobotsPolicy, parse_robots
+from plugins.web_research import __version__
 from plugins.web_research.models import PageText
-from plugins.web_research.robots import ROBOTS_AGENT, RobotsPolicy, parse_robots
 
 TIMEOUT_S = 15.0
 MAX_BYTES = 2_000_000
@@ -76,34 +76,6 @@ def _decode(body: bytes, charset: str | None) -> str:
     except LookupError:
         codec = "utf-8"
     return body.decode(codec, errors="replace")
-
-
-async def _read_body(response: httpx.Response, limit: int, *, cut: bool) -> bytes:
-    """Body of at most ``limit`` bytes; beyond it, ``cut`` truncates, otherwise it refuses."""
-    encoding = response.headers.get("content-encoding", "identity").strip().lower() or "identity"
-    if encoding not in ("identity", "gzip"):
-        raise FetchError(f"encodage « {shown(encoding)} » non pris en charge")
-    too_big = FetchError(f"page trop volumineuse (plus de {limit / 1_000_000:g} Mo)")
-    declared = response.headers.get("content-length", "")
-    if not cut and declared.isdigit() and int(declared) > limit:
-        raise too_big
-    inflater = zlib.decompressobj(16 + zlib.MAX_WBITS) if encoding == "gzip" else None
-    body = bytearray()
-    received = 0
-    async for chunk in response.aiter_raw():
-        received += len(chunk)
-        try:
-            # max_length is never 0 (0 would mean "no limit"): len(body) <= limit here.
-            data = inflater.decompress(chunk, limit + 1 - len(body)) if inflater else chunk
-        except zlib.error:
-            raise FetchError("contenu compressé illisible") from None
-        body += data
-        over = received > limit or len(body) > limit or bool(inflater and inflater.unconsumed_tail)
-        if over:
-            if not cut:
-                raise too_big
-            return bytes(body[:limit])
-    return bytes(body)
 
 
 Extracted = tuple[str | None, str | None, str]
@@ -182,7 +154,7 @@ class WebReader:
                 if media not in PAGE_TYPES:
                     kind = shown(media) if media else "absent"
                     raise FetchError(f"type « {kind} » non pris en charge")
-                body = await _read_body(response, self.max_bytes, cut=False)
+                body = await read_body(response, self.max_bytes, cut=False)
             finally:
                 await response.aclose()
         return final, media, charset, body
@@ -254,7 +226,7 @@ class WebReader:
         try:
             status = response.status_code
             if 200 <= status < 300:
-                body = await _read_body(response, ROBOTS_MAX_BYTES, cut=True)
+                body = await read_body(response, ROBOTS_MAX_BYTES, cut=True)
                 return parse_robots(body.decode("utf-8", errors="replace")), True
             if 400 <= status < 500 and status != 429:
                 return RobotsPolicy.allow_everything(), True

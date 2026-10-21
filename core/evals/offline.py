@@ -71,6 +71,7 @@ from core.finance.sync import import_instruments
 from core.guardrails.pii import PiiAnalyzer, Pseudonymiser
 from core.mcp.adapter import McpPlugin, RequestScope
 from core.models.router import ModelRequest, ModelRouter
+from core.net.guard import FetchError
 from core.orchestrator.planner import FORMAT_REPAIR
 from core.orchestrator.runtime import McpToolbox, Toolbox, ToolboxOpener
 from core.orchestrator.structured import REPAIR
@@ -82,7 +83,6 @@ from plugins.finance_portfolio.server import build_server as finance_portfolio_s
 from plugins.finance_report.server import build_server as finance_report_server
 from plugins.finance_research.server import build_server as finance_research_server
 from plugins.finance_risk.server import build_server as finance_risk_server
-from plugins.web_research.guard import FetchError
 from plugins.web_research.models import PageText
 from plugins.web_research.search import Hit
 from plugins.web_research.server import build_server
