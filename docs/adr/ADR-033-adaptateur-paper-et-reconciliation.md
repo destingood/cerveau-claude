@@ -13,8 +13,10 @@ Faits relevés le 20/10/2026 dans NautilusTrader 1.231.0 (code installé) :
 - `SandboxExecutionClient` enveloppe un `SimulatedExchange` dans un client d'exécution live et
   reçoit ses prix d'un client de données live : il exige un flux de données, donc un compte.
 - `MakerTakerFeeModel.get_commission` vaut `notional_value(fill_qty, fill_px) × taker_fee` (ou
-  `maker_fee` selon `liquidity_side`), en devise de cotation, sans minimum. `Money` arrondit au
-  centime, demi vers le haut. `MONEY_MAX` vaut 9 223 372 036.
+  `maker_fee` selon `liquidity_side`), en devise de cotation, sans minimum. `Money` arrondit
+  `float(valeur) × 100` à l'entier le plus proche : une demi-cent décimale exacte peut y perdre un
+  centime (1,005 € → 1,00 €, mais 5,025 € → 5,03 € ; mesuré le 21/10/2026 sur 200 000 valeurs,
+  version 1.231.0). `MONEY_MAX` vaut 9 223 372 036.
 
 ## Options
 1. `sandbox` NautilusTrader : flux live obligatoire.
@@ -36,7 +38,9 @@ Option 3 ; IBKR paper au backlog.
   - Frais de `trading_costs` ; montant hors de `MONEY_MAX` refusé explicitement (B122).
 - **Recoupement (B154)** : chaque exécution est rejouée dans NautilusTrader (une barre au prix
   d'exécution, un ordre au marché) avec `MakerTakerFeeModel`, le minimum de commission ajouté par
-  une enveloppe. Cash et positions finaux doivent être égaux au centime.
+  une enveloppe. Prix et positions doivent être égaux ; commissions et cash, égaux au centime à
+  l'écart près que `Money` crée sur une demi-cent exacte, prédit exécution par exécution et jamais
+  toléré en bloc (`tests/test_execution_nautilus.py`).
 - **Réconciliation (D14, D15)** : après chaque exécution et chaque jour, le livre de CERVEAU, rejoué
   par `core/finance/portfolio`, est comparé au relevé de l'adaptateur (positions exactes, cash au
   centime). Un écart donne une alerte, une entrée au journal et le blocage des nouvelles intentions.
