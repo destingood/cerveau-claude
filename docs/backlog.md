@@ -160,6 +160,9 @@ reporté (phase 3 : décision D23 de `docs/plans/phase-3-plan.md`).
 | B161 | Promotion d'une stratégie sans base locale : seules l'approbation et les empreintes sont vérifiées, pas le verdict du protocole ; refuser la promotion sans rapport lisible | `core/finance/research/registry.py`, ADR-027, revue quantitative de phase 3 (m7) | 4 |
 | B162 | `cerveau strategy … --journal` : un autre journal que celui par défaut fait disparaître les essais du Copilot de N à l'affichage et dans le verdict local (la promotion exige le journal par défaut) ; refuser un autre journal ou marquer le rapport « non promouvable » | `interfaces/cli/strategy.py`, ADR-026, revue quantitative de phase 3 (m8) | 4 |
 | B163 | Stratégie de démonstration : elle rééquilibre chaque jour, soit environ 2 225 ordres en dix ans pour 5/50, chacun au minimum de 2 € fictifs ; à réévaluer avec les frais réels (D13) | ADR-027, revue quantitative de phase 3 (info) | ? |
+| B166 | Simulateur paper en euros seulement : le `Fill` du carnet ne porte pas de taux de change ; ajouter un taux point-in-time et `fx_conversion_bps` au carnet et au simulateur avant tout instrument hors euro | `core/execution/paper.py`, ADR-033 | 5 |
+| B167 | Frais du compte paper non figés : des frais relevés entre l'envoi et la clôture font expirer un ordre (« cash insuffisant à l'exécution »), sans emprunt ; décider s'ils se figent à l'ouverture du compte, comme le capital (D16) | `core/execution/paper.py`, ADR-033 | ? |
+| B168 | Barre absente = ordre expiré : une suspension de cotation ne se distingue pas d'une donnée manquante ; lire le statut de séance de la source avant le live | `core/execution/paper.py`, ADR-033 | ? |
 
 ## Évaluations
 | # | Élément | Origine | Phase |
