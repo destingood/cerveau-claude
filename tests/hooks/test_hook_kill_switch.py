@@ -44,6 +44,17 @@ ALWAYS_BLOCKED_BASH = [
     "uv run python -m interfaces.cli.main rearm",
     "python -c 'from core.execution.kill_switch import rearm'",
     "echo REARMER | uv run cerveau rearm",
+    # the bypasses found by the phase 4 security review
+    "uv run --color never cerveau rearm",
+    "uv run --env-file x pytest cerveau rearm",
+    "uv run -m interfaces.cli.main rearm",
+    "uv run --with-editable . cerveau rearm",
+    "c=cerveau; $c rearm",
+    "winpty cerveau rearm",
+    "uv run --quiet some-tool rearm",
+    # links made before KILL would let a later write through
+    "ln -s ../governance/kill_switch var/x",
+    "cmd /c mklink /J var\\x governance\\kill_switch",
     # incident reports (R4)
     "rm var/incidents/x.md",
     "echo x > var/incidents/x.md",
@@ -67,6 +78,13 @@ ALWAYS_BLOCKED_POWERSHELL = [
     "cerveau rearm",
     "& .venv\\Scripts\\cerveau.exe rearm",
     "cmd /c cerveau rearm",
+    "Start-Process cerveau -ArgumentList rearm",
+    "Start-Process -FilePath uv -ArgumentList 'run','cerveau','rearm'",
+    "$c = 'cerveau'; & $c rearm",
+    "& (Get-Command cerveau) rearm",
+    "New-Item -ItemType SymbolicLink -Path var\\x -Target governance\\kill_switch",
+    "New-Item -ItemType Junction -Path var\\x -Value governance\\kill_switch",
+    "ni -ItemType:HardLink -Path var\\k -Target governance\\kill_switch\\KILL",
 ]
 # Creating KILL stops CERVEAU: allowed while it is absent, refused once it exists.
 CREATION_BASH = [
@@ -93,7 +111,9 @@ ALLOWED_BASH = [
     "ls var/incidents",
     "uv run cerveau kill --raison test",
     "uv run pytest tests/test_execution_kill_switch.py -k rearm",
+    "uv run --frozen ruff check --select rearm",
     "git commit -m 'feat: rearm guard'",
+    "grep -n rearm interfaces/cli/kill_switch.py",
     "git add governance/kill_switch/.gitkeep",
     "git status",
     "git stash",

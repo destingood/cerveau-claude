@@ -67,9 +67,30 @@ WRAPPERS = frozenset(
 )  # fmt: skip
 WRAPPER_VALUE_OPTS = frozenset({"-I", "-n", "-P", "-L", "-s", "-u", "-d", "-E", "-C", "-p"})
 KEYWORDS = frozenset({"do", "then", "else", "elif", "if", "while", "until", "!", "{", "}"})
+# Options of `uv run` and `uv tool run` that take a value (uv 0.13.1 `--help`).
 UV_VALUE_OPTS = frozenset(
-    {"--with", "--project", "--directory", "--python", "-p", "--package", "--group", "--extra"}
+    {
+        "--extra", "--no-extra", "--group", "--no-group", "--only-group",
+        "--no-editable-package", "--env-file", "-w", "--with", "--with-editable",
+        "--with-requirements", "--package", "--python-platform", "--index", "--default-index",
+        "-i", "--index-url", "--extra-index-url", "-f", "--find-links", "--index-strategy",
+        "--keyring-provider", "-P", "--upgrade-package", "--upgrade-group", "--resolution",
+        "--prerelease", "--prerelease-package", "--fork-strategy", "--exclude-newer",
+        "--exclude-newer-package", "--no-sources-package", "--reinstall-package", "--link-mode",
+        "-C", "--config-setting", "--config-settings-package", "--no-build-isolation-package",
+        "--no-build-package", "--no-binary-package", "--cache-dir", "--refresh-package", "-p",
+        "--python", "--color", "--allow-insecure-host", "--directory", "--project",
+        "--config-file", "--from", "-c", "--constraints", "-b", "--build-constraints",
+        "--overrides", "--torch-backend",
+    }
+)  # fmt: skip
+# A segment that names `rearm` and launches one of these, or a dynamic command, is refused.
+REARM_LAUNCHERS = frozenset(
+    {"cerveau", "uv", "uvx", "winpty", "start-process", "saps", "start", "start-job"}
 )
+# Tools that `uv run` may launch with `rearm` as a mere argument (`pytest -k rearm`).
+REARM_SAFE = frozenset({"pytest", "ruff", "mypy", "coverage", "pre-commit", "pip-audit"})
+LINK_TYPES = ("symboliclink", "junction", "hardlink")
 SHELLS = frozenset({"bash", "sh", "zsh", "dash", "ksh", "fish"})
 PS_SHELLS = frozenset({"pwsh", "powershell"})
 INTERPRETERS = frozenset({"python", "python3", "py", "node", "perl", "ruby", "php"})
@@ -736,11 +757,15 @@ def check_protected_write(
         if ctx.glob_hit(target, c.GLOB_SAMPLES_WRITE + c.GLOB_SAMPLES_READ):
             return f"redirection vers un motif qui couvre un chemin protégé : {target}"
 
-    creating = cmd in KILL_CREATORS
+    others = [t for i, t in enumerate(tokens) if i != cmd_index]
+    # A link created before KILL would let a later write reach a protected path: never allowed.
+    link = cmd in ("new-item", "ni") and any(
+        kind in w for w in _words(others) for kind in LINK_TYPES
+    )
+    creating = cmd in KILL_CREATORS and not link
     names = WRITE_PROTECTED_NAMES
     if not (creating and not c.kill_file_present()):
         names += KILL_NAMES
-    others = [t for i, t in enumerate(tokens) if i != cmd_index]
     folded = (seg.raw + "\n" + seg.heredoc).replace("\\", "/").lower()
     detail = next((f"mentionne {name}" for name in names if name in folded), None)
     for token in others:
@@ -940,16 +965,33 @@ def check_nested(seg: Segment, args: list[str], cmd: str, ctx: Context) -> str |
     return None
 
 
-def check_rearm(seg: Segment, args: list[str], cmd: str) -> str | None:
-    """`cerveau rearm` is Lucas's alone (R4, ADR-034), however it is launched."""
-    if cmd == "cerveau":
-        hit = any(a.lower() == "rearm" for a in args)
-    elif cmd in INTERPRETERS:
+def _words(tokens: list[str]) -> set[str]:
+    """Bare words of the tokens: quotes, brackets and list separators removed, lower case."""
+    words = (w.strip("'\"()@{}[] ") for t in tokens for w in re.split(r"[,;]", t))
+    return {w.lower() for w in words if w}
+
+
+def check_rearm(seg: Segment, tokens: list[str], cmd: str) -> str | None:
+    """`cerveau rearm` is Lucas's alone (R4, ADR-034), however it is launched: through uv and
+    its options, winpty, Start-Process, a variable or the module path all count."""
+    if cmd in INTERPRETERS:
         text = seg.raw + "\n" + seg.heredoc
         hit = bool(_REARM.search(text) and _CERVEAU_CODE.search(text))
-    else:
+        return REARM_REFUSAL if hit else None
+    words = _words(tokens)
+    if "rearm" not in words:
         return None
-    return REARM_REFUSAL if hit else None
+    names = {basename(w) for w in words}
+    launched = (
+        cmd in REARM_LAUNCHERS
+        or cmd == "rearm"  # `& (Get-Command cerveau) rearm` splits at the parentheses
+        or is_dynamic(cmd)
+        or bool(_CERVEAU_CODE.search(cmd))
+        or "cerveau" in names
+        or any(is_dynamic(name) or "interfaces.cli" in name for name in names)
+        or (bool(names & REARM_LAUNCHERS) and cmd not in REARM_SAFE)
+    )
+    return REARM_REFUSAL if launched else None
 
 
 def update_cwd(cmd: str, args: list[str], ctx: Context) -> None:
@@ -985,7 +1027,7 @@ def check_segment(seg: Segment, ctx: Context, segments: list[Segment]) -> str | 
     git = parse_git(args, ctx) if cmd == "git" else None
     checks = (
         lambda: check_nested(seg, args, cmd, ctx),
-        lambda: check_rearm(seg, args, cmd),
+        lambda: check_rearm(seg, tokens, cmd),
         lambda: check_recursive_delete(tokens, cmd, ctx.powershell),
         lambda: check_force_and_bypass(tokens, cmd, assignments),
         lambda: check_git(git) if git else None,
