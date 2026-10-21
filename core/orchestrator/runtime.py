@@ -10,6 +10,7 @@ of the finance pack's seven plugins starts two processes, not seven.
 from __future__ import annotations
 
 import asyncio
+import dataclasses
 from collections.abc import AsyncIterator, Callable, Mapping, Sequence
 from contextlib import AbstractAsyncContextManager, asynccontextmanager
 from dataclasses import dataclass, field
@@ -25,6 +26,7 @@ from langchain_core.tools import BaseTool, ToolException
 from core.audit import AuditJournal
 from core.budget.gate import RequestBudget, RequestBudgetExceeded
 from core.config.loader import Config
+from core.governance.signatures import effective_autonomy
 from core.mcp.adapter import McpAdapterError, McpPlugin, RequestScope
 from core.models.meter import Meter
 from core.models.router import ModelRouter, Role, Seat
@@ -258,6 +260,12 @@ class Run:
     committee_for: Callable[[str], CommitteeSpec | None] | None = field(default=None, repr=False)
     budget_clock: Callable[[], float] | None = field(default=None, repr=False)
     _holders: list[_Holder] = field(default_factory=list, repr=False)
+
+    def __post_init__(self) -> None:
+        # ADR-036: every node, the intake and the plugins' scope see the effective level, never
+        # a written level above what Lucas signed.
+        capped = effective_autonomy(self.config.autonomy, self.project_root).autonomy
+        self.config = dataclasses.replace(self.config, autonomy=capped)
 
     def _time_exceeded(self) -> RequestBudgetExceeded:
         maximum = self.budget.max_seconds  # the request's, or the committee session's

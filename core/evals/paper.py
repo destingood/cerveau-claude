@@ -15,6 +15,7 @@ says « paper », and that the journal's chain holds (R11).
 
 from __future__ import annotations
 
+import hashlib
 import tempfile
 import time as clock
 from dataclasses import dataclass, field, replace
@@ -26,7 +27,7 @@ from pydantic import ValidationError
 
 from core.audit.chain import AuditJournal, verify
 from core.config import load_config
-from core.config.loader import AutonomyConfig, Config, PaperRiskLimits
+from core.config.loader import AutonomyConfig, Config, Level, PaperRiskLimits
 from core.evals.cases import PAPER_SYMBOL, Case, ExpectPaper, PaperFixture
 from core.evals.checks import Check, _found
 from core.execution.book import BookedOrder, OrderBook, Recorder
@@ -47,6 +48,7 @@ from core.execution.states import OrderState
 from core.finance.calendars import exchange_calendar
 from core.finance.model import Instrument, PriceRow
 from core.finance.store import FinanceStore
+from core.governance.signatures import SIGNATURES_DIR, signature_text
 from core.policy.engine import KILL_SWITCH_FILE
 from core.risk_gate.snapshot import GateSnapshot
 
@@ -185,6 +187,20 @@ def _paper(case: Case) -> tuple[PaperFixture, ExpectPaper]:
     return case.paper, case.expect.paper
 
 
+def _sign(home: Path, level: Level, day: date) -> None:
+    """The case's level, signed in its temporary home (ADR-036): the case runs at that level.
+
+    A case goes no higher than N2, below the level whose signature must cite an existing report.
+    """
+    if level == "N0":
+        return
+    folder = home / SIGNATURES_DIR
+    folder.mkdir(parents=True)
+    report = hashlib.sha256(f"cas d'éval, {level}".encode()).hexdigest()
+    text = signature_text("finance", level, day, report)
+    (folder / f"{day.isoformat()}-finance-{level}.md").write_text(text, encoding="utf-8")
+
+
 def _run(case: Case, root: Path, home: Path) -> PaperRun:
     fixture, _ = _paper(case)
     config = paper_config(load_config(root / "config"), fixture)
@@ -202,6 +218,7 @@ def _run(case: Case, root: Path, home: Path) -> PaperRun:
     journal = AuditJournal(home / JOURNAL)
     request_id = f"eval-{case.id}"
     first = fixture.days[0].day
+    _sign(home, fixture.level, first)
     store = market(fixture)
     book = OrderBook.memory(Recorder(journal, "policy", request_id))
     simulator = PaperSimulator.memory(

@@ -44,6 +44,7 @@ from core.finance.store import FinanceStore
 from core.policy.engine import KILL_SWITCH_FILE, kill_switch_engaged
 from core.risk_gate.snapshot import GateSnapshot
 from tests.execution_cases import MemoryJournal, make_intent
+from tests.signing import sign
 from tests.test_execution_paper import costs_config
 
 REPO = Path(__file__).resolve().parents[1]
@@ -165,6 +166,9 @@ class World:
     def __init__(self, root: Path, cfg: Config | None = None, source: Fixed | None = None) -> None:
         self.cfg = cfg or config()
         self.journal = MemoryJournal()
+        level = self.cfg.autonomy.domains["finance"].level
+        if level != "N0":
+            sign(root, "finance", level)  # ADR-036: the level the test sets is the one signed
         settings = PaperSettings.from_config(
             self.cfg.risk_limits_paper, self.cfg.execution, self.cfg.risk.trading_costs
         )

@@ -70,6 +70,7 @@ from core.finance.model import canonical_json, local_date, utc_text
 from core.finance.research.copilot import decision_day
 from core.finance.schema import migrate
 from core.finance.store import FinanceStore
+from core.governance.signatures import effective_autonomy
 from core.policy.engine import decide_order, kill_switch_engaged
 from core.risk_gate.gate import Result, RiskGateResult, evaluate
 from core.risk_gate.snapshot import Account, GateSnapshot
@@ -579,7 +580,7 @@ def _treat(
         now=now,
     )
     decision = decide_order(
-        config.autonomy,
+        effective_autonomy(config.autonomy, env.root).autonomy,  # ADR-036: the signed ceiling
         request_id=env.request_id,
         kill_switch=kill_switch_engaged(env.root),
         live_enabled=config.live.enabled,

@@ -20,6 +20,7 @@ from core.audit import AuditError, AuditJournal, default_journal_path, verify
 from core.budget.gate import BudgetExceededError, BudgetGate
 from core.config import FEATURES, BlockedFeatureError, ConfigError, load_config
 from core.finance.research.registry import RegistryError
+from core.governance.signatures import effective_autonomy, promoted_domains
 from core.learning import FeedbackError, default_feedback_path, give_feedback
 from core.learning.feedback import NotePseudonymiser
 from core.observability import build_tracer
@@ -445,6 +446,14 @@ def config_check(
         typer.echo("\nMarqueurs en commentaire (décisions à prendre, non bloquants) :")
         for marker in comments:
             typer.echo(f"  · {marker}")
+    effective = effective_autonomy(config.autonomy, project_root())
+    typer.echo("\nNiveaux effectifs (ADR-036 : min(niveau écrit, plus haut niveau signé)) :")
+    for domain, spec in sorted(config.autonomy.domains.items()):
+        level = effective.autonomy.domains[domain].level
+        signed = " (signature requise)" if domain in promoted_domains(config.autonomy) else ""
+        typer.echo(f"  · {domain} : écrit {spec.level}, effectif {level}{signed}")
+    for problem in effective.problems:
+        typer.echo(f"  ⚠ signature ignorée : {problem}")
     try:
         count, refusals = registry_errors(project_root())
     except RegistryError as exc:
