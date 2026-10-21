@@ -12,6 +12,7 @@ from core.config.loader import LEVELS, AutonomyConfig, load_config
 from core.governance.signatures import (
     MAX_BYTES,
     PROMOTION_DIR,
+    REPORT_PASSED,
     SIGNATURES_DIR,
     SignedLevels,
     effective_autonomy,
@@ -20,7 +21,7 @@ from core.governance.signatures import (
     read_signatures,
     signature_text,
 )
-from tests.signing import sign
+from tests.signing import report_text, sign
 
 ROOT = Path(__file__).resolve().parents[1]
 AUTONOMY = load_config(ROOT / "config").autonomy
@@ -93,6 +94,51 @@ def test_a_report_with_another_digest_does_not_count(tmp_path: Path) -> None:
     (tmp_path / PROMOTION_DIR).mkdir(parents=True)
     (tmp_path / PROMOTION_DIR / "rapport.md").write_text("autre rapport", encoding="utf-8")
     assert effective_level(_at("N3"), tmp_path, "finance") == "N0"
+
+
+@pytest.mark.parametrize("statut", ["promotion_impossible", "non_evaluable", "possible"])
+def test_a_report_refusing_the_promotion_carries_no_signature(tmp_path: Path, statut: str) -> None:
+    sign(tmp_path, "finance", "N3", DAY, statut=statut)
+    signed = read_signatures(tmp_path)
+    assert signed.signatures == ()
+    (problem,) = signed.problems
+    assert f"conclut « {statut} », pas « {REPORT_PASSED} »" in problem
+    assert effective_level(_at("N3"), tmp_path, "finance") == "N0"
+
+
+def _cite(root: Path, report: bytes) -> str:
+    """Sign finance N3 citing ``report``; the one problem the signature raises."""
+    (root / PROMOTION_DIR).mkdir(parents=True, exist_ok=True)
+    (root / PROMOTION_DIR / "rapport.md").write_bytes(report)
+    digest = hashlib.sha256(report).hexdigest()
+    _write(root, f"{DAY.isoformat()}-finance-N3.md", signature_text("finance", "N3", DAY, digest))
+    (problem,) = read_signatures(root).problems
+    return problem
+
+
+@pytest.mark.parametrize(
+    ("report", "expected"),
+    [
+        (report_text("finance", "N4", DAY), "le rapport cité porte sur finance N4"),
+        (report_text("recherche", "N3", DAY), "le rapport cité porte sur recherche N3"),
+        (b"# Rapport sans en-tete\n", "n'a pas l'en-tête d'un rapport de promotion"),
+        (
+            b"---\nrapport: autre\ndomain: finance\nlevel: N3\nstatut: promotion_possible\n---\n",
+            "n'a pas l'en-tête",
+        ),
+        (
+            b"---\nrapport: promotion\nlevel: N3\nstatut: promotion_possible\n---\n",
+            "n'a pas l'en-tête",
+        ),
+        (b"---\n\xff\n---\n", "n'a pas l'en-tête"),
+        (b"---\n[: :\n---\n", "n'a pas l'en-tête"),
+    ],
+)
+def test_the_cited_report_must_be_a_promotion_report_for_that_level(
+    tmp_path: Path, report: bytes, expected: str
+) -> None:
+    assert expected in _cite(tmp_path, report)
+    assert effective_level(_at("N4"), tmp_path, "finance") == "N0"
 
 
 def test_the_highest_valid_signature_wins(tmp_path: Path) -> None:

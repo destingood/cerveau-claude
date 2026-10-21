@@ -16,19 +16,22 @@ A signature is ``governance/approvals/AAAA-MM-JJ-<domaine>-N<k>.md``, opening wi
     ---
 
 It counts when its name, its header and its date agree and, from N3 on, when the promotion report
-it cites exists under ``var/promotion/`` with that digest. Anything else is ignored and reported,
-never repaired. This module reads; it never writes a signature (R3, D18).
+it cites exists under ``var/promotion/`` with that digest, opens with the header that
+``cerveau promotion report`` writes (ADR-040) for the same domain and level, and concludes
+``promotion_possible``: a signature cannot promote on a report that refuses the promotion.
+Anything else is ignored and reported, never repaired. This module reads; it never writes a
+signature (R3, D18).
 """
 
 from __future__ import annotations
 
 import hashlib
 import re
-from collections.abc import Iterable
+from collections.abc import Iterable, Mapping
 from dataclasses import dataclass
 from datetime import date
 from pathlib import Path
-from typing import Literal
+from typing import Final, Literal
 
 import yaml
 from pydantic import BaseModel, ConfigDict, Field, ValidationError
@@ -38,6 +41,8 @@ from core.config.loader import LEVELS, AutonomyConfig, Level
 SIGNATURES_DIR = Path("governance") / "approvals"
 PROMOTION_DIR = Path("var") / "promotion"
 REPORT_FROM = "N3"  # from this level on, the cited promotion report must exist (D7)
+REPORT_KIND: Final = "promotion"  # the header ``rapport`` of a promotion report
+REPORT_PASSED: Final = "promotion_possible"  # the only ``statut`` a signature may rest on
 MAX_BYTES = 64 * 1024  # a signature is a short header and a few lines
 _NAME = re.compile(r"^(\d{4}-\d{2}-\d{2})-([a-z][a-z0-9_]*)-(N[0-4])\.md$")
 _HEADER = re.compile(r"\A---\r?\n(.*?)\r?\n---\r?\n", re.DOTALL)
@@ -51,6 +56,17 @@ class _Header(BaseModel):
     date: date
     promotion_report_sha256: str = Field(pattern=r"^[0-9a-f]{64}$")
     signed_by: Literal["lucas"]
+
+
+class _ReportHeader(BaseModel):
+    """What a signature needs from the report it cites; the other keys are for Lucas."""
+
+    model_config = ConfigDict(extra="ignore", frozen=True, strict=True)
+
+    rapport: Literal["promotion"]
+    domain: str
+    level: Level
+    statut: str
 
 
 @dataclass(frozen=True)
@@ -75,22 +91,48 @@ class SignedLevels:
         return max(levels, key=LEVELS.index, default="N0")
 
 
-def _reports(root: Path) -> frozenset[str] | str:
-    """The SHA-256 of each regular file under ``var/promotion/``, or why they cannot be read."""
+Reports = Mapping[str, _ReportHeader | None]  # SHA-256 → the report's header, None if absent
+
+
+def _report_header(raw: bytes) -> _ReportHeader | None:
+    try:
+        block = _HEADER.match(raw.decode("utf-8"))
+        if block is None:
+            return None
+        return _ReportHeader.model_validate(yaml.safe_load(block.group(1)))
+    except (UnicodeDecodeError, yaml.YAMLError, ValidationError):
+        return None
+
+
+def _reports(root: Path) -> Reports | str:
+    """Each regular file under ``var/promotion/`` by its SHA-256, with its header, or why they
+    cannot be read."""
     folder = root / PROMOTION_DIR
     try:
         if not folder.is_dir():
-            return frozenset()
-        return frozenset(
-            hashlib.sha256(path.read_bytes()).hexdigest()
-            for path in sorted(folder.iterdir())
-            if path.is_file() and not path.is_symlink()
-        )
+            return {}
+        reports: dict[str, _ReportHeader | None] = {}
+        for path in sorted(folder.iterdir()):
+            if path.is_file() and not path.is_symlink():
+                raw = path.read_bytes()
+                reports[hashlib.sha256(raw).hexdigest()] = _report_header(raw)
+        return reports
     except OSError as exc:
         return f"{PROMOTION_DIR.as_posix()} illisible ({type(exc).__name__})"
 
 
-def _read(path: Path, reports: frozenset[str] | str) -> Signature | str:
+def _report_problem(header: _Header, cited: _ReportHeader | None) -> str | None:
+    """Why the cited report cannot carry this signature, if it cannot."""
+    if cited is None:
+        return "le rapport cité n'a pas l'en-tête d'un rapport de promotion (ADR-040)"
+    if (cited.domain, cited.level) != (header.domain, header.level):
+        return f"le rapport cité porte sur {cited.domain} {cited.level}"
+    if cited.statut != REPORT_PASSED:
+        return f"le rapport cité conclut « {cited.statut} », pas « {REPORT_PASSED} »"
+    return None
+
+
+def _read(path: Path, reports: Reports | str) -> Signature | str:
     """The signature in ``path``, or why it does not count."""
     name = path.name
     match = _NAME.match(name)
@@ -127,6 +169,9 @@ def _read(path: Path, reports: frozenset[str] | str) -> Signature | str:
                 f"{name} : aucun rapport de promotion d'empreinte "
                 f"{header.promotion_report_sha256[:12]}… sous {PROMOTION_DIR.as_posix()}"
             )
+        problem = _report_problem(header, reports[header.promotion_report_sha256])
+        if problem is not None:
+            return f"{name} : {problem}"
     return Signature(
         path=path,
         domain=header.domain,

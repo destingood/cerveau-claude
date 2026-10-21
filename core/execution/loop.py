@@ -1294,7 +1294,8 @@ def render_report(report: DayReport, env: PaperDay) -> str:
         "",
         "## Non couvert",
         "",
-        "- Écart paper/backtest de la stratégie et compteurs N2→N3 : B181.",
+        "- Compteurs N2 → N3 et écart paper/backtest de la stratégie : "
+        "`cerveau promotion report finance --to N3` (ADR-040).",
         "",
     ]
     if report.notes:
