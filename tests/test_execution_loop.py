@@ -27,6 +27,7 @@ from core.execution.book import Journal, OrderBook, Recorder
 from core.execution.broker import AckCode, BrokerAck
 from core.execution.drafter import TargetOrder
 from core.execution.intent import IntentOrigin, IntentRationale, SizingSource
+from core.execution.kill_switch import state_path
 from core.execution.loop import (
     LoopError,
     LoopLog,
@@ -845,6 +846,101 @@ def test_a_kill_switch_engaged_after_the_policy_sends_nothing(
         [sent] = send_approved(built.env, now=SENDING).sent
         assert (sent.approval, sent.state) == (ApprovalState.CONSOMMEE, OrderState.ANNULEE)
         assert sent.reasons[-1] == "arrêt d'urgence engagé avant l'envoi : jamais envoyé"
+        assert built.simulator.open_orders() == ()
+
+
+def engaged_earlier(root: Path) -> None:
+    """A stop engaged by an earlier run and still in force: KILL and its recorded state."""
+    for path in (root / KILL_SWITCH_FILE, state_path(root)):
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_text("{}", encoding="utf-8")
+
+
+@pytest.mark.parametrize("granted", [False, True])
+def test_a_request_opened_since_the_stop_is_refused_by_the_next_send(
+    tmp_path: Path, granted: bool
+) -> None:
+    """B238: the stop refused the requests open when it was engaged; one opened since is refused
+    by the next run, which does nothing else."""
+    with drafted_at_n3(tmp_path) as (built, intent_id):
+        if granted:
+            grant(built, intent_id)
+        request = approvals_of(built).for_intent(intent_id, now=GRANTED)
+        assert request is not None
+        engaged_earlier(tmp_path)
+        report = send_approved(built.env, now=SENDING)
+        assert (report.outcome, report.stop, report.sent) == ("arret", None, [])
+        assert report.notes == [
+            "1 demande(s) d'approbation ouverte(s) refusée(s) : kill switch engagé"
+        ]
+        state = approvals_of(built).get(request.approval_id, now=SENDING).state
+        assert state is ApprovalState.REFUSEE
+        assert built.book.order(intent_id).state == OrderState.INTENTION
+        assert built.simulator.open_orders() == ()
+        again = send_approved(built.env, now=SENDING + timedelta(minutes=1))
+        assert (again.outcome, again.notes) == ("arret", [])
+
+
+def test_a_request_opened_since_the_stop_is_refused_by_the_next_day(world: World) -> None:
+    approvals = ApprovalStore.memory(APPROVAL_RULES, Trail(world.journal, "loop-test"))
+    world.env.approvals = approvals
+    try:
+        request = approvals.request(
+            intent_id=UUID(int=7),
+            intent_sha256="a" * 64,
+            environment="paper",
+            gate={"quantity": 4, "reasons": []},
+            summary="achat",
+            now=MONDAY_RUN,
+        )
+        engaged_earlier(world.env.root)
+        report = run_day(world.env, now=MONDAY_RUN + timedelta(minutes=1))
+        assert (report.outcome, report.intents) == ("arret", [])
+        assert report.notes == [
+            "1 demande(s) d'approbation ouverte(s) refusée(s) : kill switch engagé"
+        ]
+        state = approvals.get(request.approval_id, now=SENDING).state
+        assert state is ApprovalState.REFUSEE
+    finally:
+        approvals.close()
+
+
+def test_a_refusal_that_fails_at_a_stop_is_reported(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    def broken(**_: Any) -> tuple[UUID, ...]:
+        raise RuntimeError("base verrouillée")
+
+    with drafted_at_n3(tmp_path) as (built, intent_id):
+        grant(built, intent_id)
+        engaged_earlier(tmp_path)
+        monkeypatch.setattr(approvals_of(built), "refuse_open", broken)
+        report = send_approved(built.env, now=SENDING)
+        assert (report.outcome, report.sent) == ("arret", [])
+        assert report.notes == ["approbations ouvertes non refusées (RuntimeError)"]
+        assert built.simulator.open_orders() == ()
+
+
+def test_a_grant_for_the_live_is_never_sent_to_the_paper(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """B236: a request asked for one environment is not consumed in another."""
+    original = ApprovalStore.request
+
+    def for_the_live(self: ApprovalStore, **kwargs: Any) -> Any:
+        return original(self, **{**kwargs, "environment": "live"})
+
+    monkeypatch.setattr(ApprovalStore, "request", for_the_live)
+    with drafted_at_n3(tmp_path) as (built, intent_id):
+        approval_id = grant(built, intent_id)
+        [sent] = send_approved(built.env, now=SENDING).sent
+        assert sent.reasons == (
+            "demande accordée pour « live », pas pour le paper : jamais envoyée",
+        )
+        assert (sent.approval, sent.state) == (ApprovalState.REFUSEE, OrderState.REJETEE)
+        state = approvals_of(built).get(approval_id, now=SENDING).state
+        assert state is ApprovalState.REFUSEE
+        assert built.book.order(intent_id).state == OrderState.REJETEE
         assert built.simulator.open_orders() == ()
 
 

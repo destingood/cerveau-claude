@@ -951,6 +951,11 @@ def test_invalid_approval_parameters_are_refused(config_dir: Path, mutate, where
         (lambda d: d.update(max_paper_drawdown_pct=0), "max_paper_drawdown_pct"),
         (lambda d: d.update(max_paper_drawdown_pct=101), "max_paper_drawdown_pct"),
         (lambda d: d.update(max_paper_drawdown_pct=float("nan")), "max_paper_drawdown_pct"),
+        (lambda d: d.update(execution_incidents_max=1), "execution_incidents_max"),  # B237
+        (lambda d: d.update(execution_incidents_max=10**9), "execution_incidents_max"),
+        (lambda d: d.update(execution_incidents_max=-1), "execution_incidents_max"),
+        (lambda d: d.update(execution_incidents_max=False), "execution_incidents_max"),
+        (lambda d: d.update(execution_incidents_max="A_DEFINIR"), "execution_incidents_max"),
     ],
 )
 def test_invalid_n2_to_n3_thresholds_are_refused(config_dir: Path, mutate, where: str) -> None:

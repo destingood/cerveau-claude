@@ -132,7 +132,7 @@ class PromotionN2N3(_Strict):
     paper_weeks_min: Annotated[int, Field(strict=True, ge=1)] | Marker
     decisions_min: Annotated[int, Field(strict=True, ge=1)] | Marker
     max_paper_drawdown_pct: Annotated[float, Field(gt=0, le=100, allow_inf_nan=False)] | Marker
-    execution_incidents_max: int
+    execution_incidents_max: Annotated[int, Field(strict=True, ge=0, le=0)]  # B237
     manual_signature: Literal["required"]
 
 

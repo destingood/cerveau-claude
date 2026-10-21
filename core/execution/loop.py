@@ -930,12 +930,31 @@ def _drafted_today(env: PaperDay, day: date) -> bool:
     return any(order.intent.decision_date == day for order in env.book.orders())
 
 
+def _stopped(env: PaperDay, report: DayReport) -> DayReport:
+    """The kill switch was engaged before this run: nothing is done, and a request opened since
+    the stop refused the others is refused in turn (B238), as at every stop (ADR-035)."""
+    report.outcome = "arret"
+    if env.approvals is None:
+        return report
+    try:
+        refused = env.approvals.refuse_open(
+            reason="kill switch engagé", actor="policy", now=report.as_of
+        )
+    except Exception as exc:  # still open, but never sent while the stop lasts (R4)
+        report.notes.append(f"approbations ouvertes non refusées ({type(exc).__name__})")
+        return report
+    if refused:
+        report.notes.append(
+            f"{len(refused)} demande(s) d'approbation ouverte(s) refusée(s) : kill switch engagé"
+        )
+    return report
+
+
 def _run(env: PaperDay, report: DayReport) -> DayReport:
     config, day, now = env.config, report.day, report.as_of
     status = detect(env.root, journal=env.journal, request_id=env.request_id, now=now)
     if status == "engaged":
-        report.outcome = "arret"
-        return report
+        return _stopped(env, report)
     if status == "new_file":
         return _engage(env, report, "fichier", "fichier KILL trouvé au démarrage de la boucle")
 
@@ -1061,8 +1080,7 @@ def _send_approved(env: PaperDay, approvals: ApprovalStore, report: DayReport) -
     now, day = report.as_of, report.day
     status = detect(env.root, journal=env.journal, request_id=env.request_id, now=now)
     if status == "engaged":
-        report.outcome = "arret"
-        return report
+        return _stopped(env, report)
     if status == "new_file":
         return _engage(env, report, "fichier", "fichier KILL trouvé avant l'envoi des approuvées")
     approvals.expire_due(now=now)
@@ -1076,6 +1094,12 @@ def _send_approved(env: PaperDay, approvals: ApprovalStore, report: DayReport) -
             why = NOT_SENT[request.state]
             env.book.transition(intent.intent_id, OrderState.REJETEE, reason=why, now=now)
             report.sent.append(_sent(intent, request, request.state, OrderState.REJETEE, (why,)))
+        elif request.environment != "paper":  # B236: a grant is for one environment only
+            why = (
+                f"demande accordée pour « {request.environment} », pas pour le paper : "
+                "jamais envoyée"
+            )
+            report.sent.append(_refused(env, approvals, intent, request, (), why, now))
         elif intent.decision_date != day or local_date(now) != day:
             why = "approbation hors de sa journée de décision : jamais envoyée (R10)"
             report.sent.append(_refused(env, approvals, intent, request, (), why, now))
