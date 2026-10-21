@@ -161,24 +161,36 @@ def create_app(
 
     @api.get("/status")
     def status() -> dict[str, Any]:
-        """Kill switch, live, levels, approvals, orders, reconciliation, loop, budget (D1)."""
+        """Kill switch, live, levels, approvals, orders, reconciliation, loop, budget (D1). It
+        only reads: no store is created, locked or migrated (B215, B232), and one that cannot be
+        read so answers 503 rather than a count nobody read."""
         now, request_id, audit, loaded = clock(), _request_id(), journal(), config()
         with ExitStack() as stack:
-            opened, closed = views.approval_store(stack, root, loaded, audit, request_id)
+            opened, closed = views.approval_store(
+                stack, root, loaded, audit, request_id, read_only=True
+            )
+            try:
+                orders = views.orders_view(stack, root)
+                reconciliation = views.reconciliation_view(stack, root, audit)
+                loop = views.loop_view(views.loop_log(stack, root))
+            except views.READ_ERRORS as exc:
+                raise HTTPException(503, f"registre illisible : {exc}") from exc
             return {
                 "kill_switch": views.kill_view(root),
                 "live": {"enabled": loaded.live.enabled},
                 "autonomy": views.autonomy_view(loaded, root),
                 "approvals": views.approvals_view(opened, closed, now),
-                "orders": views.orders_view(stack, root, audit),
-                "reconciliation": views.reconciliation_view(stack, root, audit),
-                "loop": views.loop_view(views.loop_log(stack, root)),
+                "orders": orders,
+                "reconciliation": reconciliation,
+                "loop": loop,
                 "budget": views.budget_view(loaded, audit, now),
             }
 
     @api.post("/kill")
     def kill(body: Annotated[KillBody | None, Body()] = None) -> dict[str, Any]:
-        """Stop everything, without a code (D11); timed from reception to the stop's return."""
+        """Stop everything, without a code (D11). ``elapsed_s`` is the kill switch's own
+        measure, up to the stop's state written, as the CLI and the bot show it; the alerts
+        come after it and only count in ``response_s``, from reception to the answer (B209)."""
         started = monotonic()
         now, request_id = clock(), _request_id()
         try:
@@ -195,14 +207,16 @@ def create_app(
             request_id=request_id,
             now=now,
             alerts=alerts(loaded),
+            clock=monotonic,
         )
-        elapsed = monotonic() - started
+        answered = monotonic() - started
         return {
             "request_id": request_id,
             "trigger": stop.trigger,
-            "elapsed_s": round(elapsed, 3),
+            "elapsed_s": round(stop.elapsed_s, 3),
             "target_s": stop.target_s,
-            "within_target": None if stop.target_s is None else elapsed <= stop.target_s,
+            "within_target": stop.within_target,
+            "response_s": round(answered, 3),
             "cancelled": len(stop.cancelled),
             "broker_cancelled": len(stop.broker_cancelled),
             "unconfirmed": len(stop.unconfirmed),
@@ -324,14 +338,18 @@ def create_app(
         """The report of ``day``, or of the last day the loop treated (D12, D13)."""
         now, request_id, audit, loaded = clock(), _request_id(), journal(), config()
         with ExitStack() as stack:
-            log = views.loop_log(stack, root)
-            run = None if log is None else log.run(day)
-            if log is None or run is None:
-                raise HTTPException(
-                    404,
-                    "aucune journée traitée" + ("" if day is None else f" le {day.isoformat()}"),
-                )
-            return views.daily_report(stack, root, loaded, audit, request_id, now, run, log)
+            try:
+                log = views.loop_log(stack, root)
+                run = None if log is None else log.run(day)
+                if log is None or run is None:
+                    raise HTTPException(
+                        404,
+                        "aucune journée traitée"
+                        + ("" if day is None else f" le {day.isoformat()}"),
+                    )
+                return views.daily_report(stack, root, loaded, audit, request_id, now, run, log)
+            except views.READ_ERRORS as exc:  # read only (B215)
+                raise HTTPException(503, f"registre illisible : {exc}") from exc
 
     @api.get("/alerts")
     def outbox(

@@ -16,7 +16,6 @@ import base64
 import binascii
 import json
 import secrets
-import sqlite3
 from collections.abc import Callable
 from contextlib import ExitStack
 from datetime import UTC, date, datetime
@@ -28,17 +27,16 @@ from fastapi import APIRouter, Depends, Header, HTTPException
 from fastapi.responses import HTMLResponse
 from jinja2 import Environment, FileSystemLoader, StrictUndefined
 
-from core.approvals.store import ApprovalError, ApprovalRules, ApprovalState, ApprovalStore
+from core.approvals.store import ApprovalRules, ApprovalState, ApprovalStore
 from core.approvals.store import default_store_path as approvals_path
 from core.audit import AuditError, AuditJournal, default_journal_path, verify
 from core.config import BlockedFeatureError, ConfigError, load_config
 from core.config.loader import Config
 from core.evals.promotion import PromotionError, load_report
-from core.execution.book import BookedOrder, OrderBook, OrderBookError, default_book_path
+from core.execution.book import BookedOrder, OrderBook, default_book_path
 from core.execution.loop import Valuation
 from core.execution.states import OPEN
 from core.finance.risk_report import RiskReport, risk_report
-from core.finance.schema import SchemaError
 from core.finance.store import default_store_path as finance_path
 from core.finance.views import ViewError, read_store
 from core.registry.manifest import validate_all
@@ -72,7 +70,7 @@ VALUATIONS_SHOWN = 10
 ERRORS_SHOWN = 10
 ERROR_CHARS = 200
 INVALID_CONFIG = "configuration invalide : voir `cerveau config check`"
-READ_ERRORS = (ApprovalError, OrderBookError, SchemaError, sqlite3.Error)
+READ_ERRORS = views.READ_ERRORS
 
 
 def _password(authorization: str | None) -> bytes | None:
@@ -276,11 +274,11 @@ def dashboard_router(
         reconciliation: dict[str, Any] | None = None
         with ExitStack() as stack:
             try:
-                loop = views.loop_view(views.loop_log(stack, root, read_only=True))
+                loop = views.loop_view(views.loop_log(stack, root))
             except READ_ERRORS as exc:
                 problems.append(f"boucle paper illisible : {exc}")
             try:
-                reconciliation = views.reconciliation_view(stack, root, journal, read_only=True)
+                reconciliation = views.reconciliation_view(stack, root, journal)
             except READ_ERRORS as exc:
                 problems.append(f"journal de réconciliation illisible : {exc}")
         return page(
@@ -306,7 +304,7 @@ def dashboard_router(
         valuations: list[Valuation] = []
         with ExitStack() as stack:
             try:
-                log = views.loop_log(stack, root, read_only=True)
+                log = views.loop_log(stack, root)
                 valuations = [] if log is None else log.valuations()
             except READ_ERRORS as exc:
                 problem = f"boucle paper illisible : {exc}"

@@ -511,5 +511,15 @@ def registry_validate(
         raise typer.Exit(1)
 
 
-if __name__ == "__main__":
+def run() -> None:
+    """The ``cerveau`` command. Its output is UTF-8 even through a pipe, where Windows would
+    write cp1252 and fail on « → » (B227)."""
+    for stream in (sys.stdout, sys.stderr):
+        reconfigure = getattr(stream, "reconfigure", None)
+        if reconfigure is not None:
+            reconfigure(encoding="utf-8")
     app()
+
+
+if __name__ == "__main__":
+    run()

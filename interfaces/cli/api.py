@@ -7,6 +7,7 @@ Code's hooks refuse to start it (D22). Without a long enough token the API does 
 from __future__ import annotations
 
 import os
+from typing import cast
 
 import typer
 
@@ -29,17 +30,16 @@ def serve_command(config_dir: ConfigDirOpt = None) -> None:
     except BlockedFeatureError as exc:
         blocked(exc)
     settings = config.interfaces.api
-    if not isinstance(settings.port, int):  # require() refuses a marker; kept for the types
-        fail("Port de l'API à définir (R7).", EXIT_BLOCKED)
+    port = cast(int, settings.port)  # require() above refused a marker (B210)
     try:
         app = create_app(root, environ=os.environ, config_dir=config_dir)
     except ApiError as exc:
         fail(f"API non démarrée : {exc}.", EXIT_BLOCKED)
-    typer.echo(f"API interne sur http://{settings.host}:{settings.port} (Ctrl+C pour arrêter).")
+    typer.echo(f"API interne sur http://{settings.host}:{port} (Ctrl+C pour arrêter).")
     uvicorn.run(
         app,
         host=settings.host,
-        port=settings.port,
+        port=port,
         log_level="warning",
         server_header=False,
         proxy_headers=False,

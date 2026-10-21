@@ -1,11 +1,14 @@
 """What the API shows: states, counts and percentages read from CERVEAU's files (D12, ADR-037).
 
-A store is opened only if its file exists, so a read never creates one, and nothing here writes.
+A store is opened only if its file exists, so a read never creates one, and nothing here writes:
+a reader opens it read only, so it neither locks nor migrates it (B215, B232); only the approval
+routes open the approval store for writing.
 The one exception to D12 is the summary of an approval request, which names what is asked.
 """
 
 from __future__ import annotations
 
+import sqlite3
 from collections.abc import Mapping
 from contextlib import ExitStack
 from datetime import date, datetime
@@ -26,16 +29,18 @@ from core.audit import AuditJournal, default_journal_path, verify
 from core.budget.gate import BudgetGate
 from core.config import BlockedFeatureError
 from core.config.loader import Config
-from core.execution.book import OrderBook, Recorder, default_book_path
+from core.execution.book import OrderBook, OrderBookError, Recorder, default_book_path
 from core.execution.kill_switch import recorded_stop
 from core.execution.loop import LoopLog, Run, Valuation, default_loop_path
 from core.execution.reconcile import ReconciliationLog, default_log_path
 from core.execution.states import OPEN
+from core.finance.schema import SchemaError
 from core.governance.signatures import effective_autonomy
 from core.policy.engine import kill_switch_engaged
 
 READER = "interface"  # opening a book or a log journals nothing; the recorder is never used
 CENT = Decimal("0.01")
+READ_ERRORS = (ApprovalError, OrderBookError, SchemaError, sqlite3.Error)  # opened read only
 
 
 def _iso(value: datetime | date | None) -> str | None:
@@ -71,10 +76,17 @@ def autonomy_view(config: Config, root: Path) -> dict[str, Any]:
 
 
 def approval_store(
-    stack: ExitStack, root: Path, config: Config, journal: AuditJournal, request_id: str
+    stack: ExitStack,
+    root: Path,
+    config: Config,
+    journal: AuditJournal,
+    request_id: str,
+    *,
+    read_only: bool = False,
 ) -> tuple[ApprovalStore | None, str | None]:
     """The approval store if its file exists, or why it stays closed (a marker in a setting of
-    the ``approvals`` feature, R7); None, None without file."""
+    the ``approvals`` feature, R7); None, None without file. ``read_only`` neither locks nor
+    migrates it, and a store that cannot be read so stays closed (B232)."""
     try:
         config.require("approvals")
         rules = ApprovalRules.from_config(config.autonomy.approval)
@@ -83,6 +95,11 @@ def approval_store(
     path = approvals_path(root)
     if not path.is_file():
         return None, None
+    if read_only:
+        try:
+            return stack.enter_context(ApprovalStore.open(path, rules=rules, read_only=True)), None
+        except READ_ERRORS as exc:
+            return None, f"registre des approbations illisible : {exc}"
     trail = Trail(journal, request_id, {"config": config.digest})
     return stack.enter_context(ApprovalStore.open(path, rules=rules, trail=trail)), None
 
@@ -130,22 +147,20 @@ def pending_item(request: ApprovalRequest, rules: ApprovalRules) -> dict[str, An
     }
 
 
-def orders_view(stack: ExitStack, root: Path, journal: AuditJournal) -> dict[str, int]:
+def orders_view(stack: ExitStack, root: Path) -> dict[str, int]:
     path = default_book_path(root)
     if not path.is_file():
         return {"open": 0, "total": 0}
-    book = stack.enter_context(OrderBook.open(path, recorder=Recorder(journal, READER, "api")))
+    book = stack.enter_context(OrderBook.open(path, read_only=True))
     return {"open": len(book.orders(OPEN)), "total": len(book.orders())}
 
 
-def reconciliation_view(
-    stack: ExitStack, root: Path, journal: AuditJournal, *, read_only: bool = False
-) -> dict[str, Any]:
+def reconciliation_view(stack: ExitStack, root: Path, journal: AuditJournal) -> dict[str, Any]:
     path = default_log_path(root)
     if not path.is_file():
         return {"last_at": None, "open_gaps": 0, "awaiting_acknowledgement": False}
     recorder = Recorder(journal, READER, "api")
-    log = stack.enter_context(ReconciliationLog.open(path, recorder, read_only=read_only))
+    log = stack.enter_context(ReconciliationLog.open(path, recorder, read_only=True))
     return {
         "last_at": _iso(log.last_reconciled_at()),
         "open_gaps": log.open_gaps(),
@@ -153,11 +168,11 @@ def reconciliation_view(
     }
 
 
-def loop_log(stack: ExitStack, root: Path, *, read_only: bool = False) -> LoopLog | None:
+def loop_log(stack: ExitStack, root: Path) -> LoopLog | None:
     path = default_loop_path(root)
     if not path.is_file():
         return None
-    return stack.enter_context(LoopLog.open(path, read_only=read_only))
+    return stack.enter_context(LoopLog.open(path, read_only=True))
 
 
 def loop_view(log: LoopLog | None) -> dict[str, Any]:
@@ -202,8 +217,7 @@ def change_pct(valuations: list[Valuation], day: date) -> Decimal | None:
 
 
 def _signed(value: Decimal) -> str:
-    text = f"{value:+}".replace(".", ",")
-    return text
+    return f"{value:+}".replace(".", ",")
 
 
 def daily_report(
@@ -219,9 +233,9 @@ def daily_report(
     """The day's report for Lucas's private message: no amount, no position (D12), and the head
     of the audit chain as an external, timestamped anchor (D13, B8)."""
     change = change_pct(log.valuations(), run.day)
-    store, closed = approval_store(stack, root, config, journal, request_id)
+    store, closed = approval_store(stack, root, config, journal, request_id, read_only=True)
     counts = dict.fromkeys(ApprovalState, 0) if store is None else store.counts(now=now)
-    orders = orders_view(stack, root, journal)
+    orders = orders_view(stack, root)
     reconciliation = reconciliation_view(stack, root, journal)
     kill = kill_view(root)
     chain = verify(default_journal_path(root))

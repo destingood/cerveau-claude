@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import io
 import json
 import os
 import subprocess
@@ -13,7 +14,7 @@ import pytest
 from typer.testing import CliRunner
 
 from core.audit import AuditJournal
-from interfaces.cli.main import app
+from interfaces.cli.main import app, run
 from tests.conftest import REPO_ROOT
 
 runner = CliRunner()
@@ -117,3 +118,17 @@ def test_registry_validate_on_empty_directory(tmp_path: Path) -> None:
     result = runner.invoke(app, ["registry", "validate", str(tmp_path)])
     assert result.exit_code == 0
     assert "Aucun plugin" in result.output
+
+
+def test_the_help_is_written_in_utf8_through_a_pipe(monkeypatch: pytest.MonkeyPatch) -> None:
+    """B227: a pipe under Windows is cp1252, which has no « → »."""
+    out, err = io.BytesIO(), io.BytesIO()
+    stdout, stderr = io.TextIOWrapper(out, encoding="cp1252"), io.TextIOWrapper(err, "cp1252")
+    monkeypatch.setattr(sys, "stdout", stdout)
+    monkeypatch.setattr(sys, "stderr", stderr)
+    monkeypatch.setattr(sys, "argv", ["cerveau", "--help"])  # app() alone raises here
+    with pytest.raises(SystemExit) as stop:
+        run()
+    stdout.flush()
+    assert stop.value.code == 0
+    assert "promotion N2 → N3" in out.getvalue().decode("utf-8")

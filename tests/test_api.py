@@ -31,6 +31,7 @@ from core.execution.loop import (
     Valuation,
     default_loop_path,
 )
+from core.execution.reconcile import default_log_path
 from core.execution.states import OrderState
 from core.execution.uuid7 import uuid7
 from core.notify import default_outbox_path
@@ -268,6 +269,32 @@ def test_status_reads_what_stands_and_creates_nothing(root: Path, defined: Path)
         assert not path.exists()
 
 
+@pytest.mark.parametrize("store", ["approvals", "orders", "loop", "reconciliation"])
+def test_status_neither_creates_nor_migrates_a_store(root: Path, defined: Path, store: str) -> None:
+    """B215, B232: an empty file is a store at schema 0, which a writer would migrate; /status
+    and the daily report open it read only and say it cannot be read."""
+    path = {
+        "approvals": approvals_path(root),
+        "orders": default_book_path(root),
+        "loop": default_loop_path(root),
+        "reconciliation": default_log_path(root),
+    }[store]
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_bytes(b"")
+    opened = client(root, defined)
+    status = opened.get("/status")
+    if store == "approvals":
+        approvals = status.json()["approvals"]
+        assert approvals["open"] is False
+        assert approvals["reason"].startswith("registre des approbations illisible")
+    else:
+        assert status.status_code == 503
+        assert status.json()["detail"].startswith("registre illisible")
+    if store == "loop":
+        assert opened.get("/reports/daily").status_code == 503
+    assert path.read_bytes() == b""
+
+
 def test_status_counts_the_requests_and_says_why_the_store_is_closed(
     root: Path, defined: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
@@ -312,14 +339,16 @@ def test_one_setting_of_the_approvals_feature_to_define_keeps_the_store_closed(
 # --- kill ----------------------------------------------------------------------------------
 
 
-def test_kill_stops_without_a_code_and_is_timed_by_the_api(root: Path, defined: Path) -> None:
-    ticks = iter([100.0, 101.25])
+def test_kill_stops_without_a_code_and_is_timed_by_the_kill_switch(
+    root: Path, defined: Path
+) -> None:
+    """B209: the duration is the stop's, not the alerts' sent after it."""
+    ticks = iter([100.0, 100.25, 101.5, 103.0])  # reception, stop, state written, answer
     opened = client(root, defined, monotonic=lambda: next(ticks))
     body = opened.post("/kill", json={"reason": "essai depuis le bot"}).json()
     assert body["trigger"] == "commande"
-    assert body["elapsed_s"] == 1.25
-    assert body["target_s"] == 5
-    assert body["within_target"] is True
+    assert (body["elapsed_s"], body["target_s"], body["within_target"]) == (1.25, 5, True)
+    assert body["response_s"] == 3.0
     assert body["alerts_failed"] == 0
     assert kill_switch_engaged(root)
     status = opened.get("/status").json()["kill_switch"]
@@ -334,7 +363,7 @@ def test_kill_stops_without_a_code_and_is_timed_by_the_api(root: Path, defined: 
 
 
 def test_a_kill_beyond_the_target_says_so(root: Path, config_dir: Path) -> None:
-    ticks = iter([0.0, 6.0])
+    ticks = iter([0.0, 0.0, 6.0, 6.5])
     body = client(root, config_dir, monotonic=lambda: next(ticks)).post("/kill").json()
     assert body["elapsed_s"] == 6.0
     assert body["within_target"] is False
@@ -593,6 +622,24 @@ def test_serving_needs_the_interfaces_defined(
     result = runner.invoke(cli, ["api", "serve", "--config-dir", str(config_dir)])
     assert result.exit_code == 2
     assert "interfaces.api" in result.output or "A_DEFINIR" in result.output
+
+
+def test_a_port_to_define_alone_keeps_the_api_down(
+    root: Path, defined: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """B210: require() refuses the port's marker, so serving never reads it as a number."""
+    monkeypatch.setenv("CERVEAU_HOME", str(root))
+    monkeypatch.setenv(TOKEN_ENV, TOKEN)
+    path = defined / "interfaces.yaml"
+    data = yaml.safe_load(path.read_text(encoding="utf-8"))
+    data["api"]["port"] = "A_DEFINIR"
+    path.write_text(yaml.safe_dump(data), encoding="utf-8")
+    calls: list[dict[str, Any]] = []
+    monkeypatch.setattr(uvicorn, "run", lambda app, **kwargs: calls.append(kwargs))
+    result = runner.invoke(cli, ["api", "serve", "--config-dir", str(defined)])
+    assert result.exit_code == 2
+    assert "api.port = A_DEFINIR" in result.output
+    assert calls == []
 
 
 def test_serving_needs_the_token(
