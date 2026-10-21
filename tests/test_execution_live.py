@@ -242,9 +242,48 @@ def test_a_file_the_current_account_owns_refuses(tmp_path: Path, approvals: Appr
     with pytest.raises(LiveDisabled) as caught:
         live.submit(intent, now=NOW)
     assert caught.value.failures == (
-        (Condition.ACL, "propriétaire non protégé : governance/approvals (protect-live.ps1)"),
+        (Condition.ACL, "accès non protégé : governance/approvals (protect-live.ps1)"),
     )
-    assert seen == [root / LIVE_FILE, root / SIGNATURES_DIR]
+    signature = root / SIGNATURES_DIR / "2026-10-21-finance-N3.md"
+    assert seen == [root / LIVE_FILE, root / SIGNATURES_DIR, signature]
+
+
+def test_a_signature_file_left_writable_is_named(tmp_path: Path, approvals: ApprovalStore) -> None:
+    intent = make_intent(0)
+    granted(approvals, intent)
+    root = project(tmp_path)
+    signature = root / SIGNATURES_DIR / "2026-10-21-finance-N3.md"
+    check = ActivationCheck(root, approvals, owner=lambda path: path != signature)
+    live = LiveAdapter(Client(), approvals, check, call_timeout_s=5, kill_target_s=10)
+    with pytest.raises(LiveDisabled) as caught:
+        live.submit(intent, now=NOW)
+    assert caught.value.failures == (
+        (
+            Condition.ACL,
+            "accès non protégé : governance/approvals/2026-10-21-finance-N3.md (protect-live.ps1)",
+        ),
+    )
+
+
+def test_an_unreadable_signatures_folder_refuses(
+    tmp_path: Path, approvals: ApprovalStore, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    intent = make_intent(0)
+    granted(approvals, intent)
+    root = project(tmp_path)
+    rglob = Path.rglob
+
+    def denied(path: Path, pattern: str) -> Iterator[Path]:
+        if path == root / SIGNATURES_DIR:
+            raise PermissionError("refusé")
+        return rglob(path, pattern)
+
+    monkeypatch.setattr(Path, "rglob", denied)
+    with pytest.raises(LiveDisabled) as caught:
+        adapter(root, approvals, Client()).submit(intent, now=NOW)
+    assert caught.value.failures == (
+        (Condition.ACL, "contenu de governance/approvals illisible (PermissionError)"),
+    )
 
 
 def test_no_owner_at_all_names_both_paths(tmp_path: Path, approvals: ApprovalStore) -> None:

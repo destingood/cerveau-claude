@@ -5,8 +5,9 @@ No broker client exists in this phase (D8): :class:`LiveAdapter` wraps any
 
 1. ``config/live.yaml`` is complete: ``enabled``, a broker named, every limit above 0 and a
    non-empty whitelist (R3, R7);
-2. ``config/live.yaml`` and ``governance/approvals/`` belong to the Administrators group, or to
-   root, as ``protect-live.ps1`` leaves them (B1, B2, ADR-003);
+2. ``config/live.yaml``, ``governance/approvals/`` and every file in it belong to the
+   Administrators group, which alone with SYSTEM may write them, or to root, as
+   ``protect-live.ps1`` leaves them (B1, B2, ADR-003);
 3. Lucas signed N3 or above for finance, citing a promotion report that exists (ADR-036, D7);
 4. the effective finance level, min(written, signed), is N3 or above (D6);
 5. the kill switch is not engaged (R4);
@@ -38,7 +39,7 @@ from core.approvals.store import ApprovalError, ApprovalState, ApprovalStore
 from core.config.loader import LEVELS, MARKERS, Config, ConfigError, LiveConfig, load_config
 from core.execution.broker import AccountStatement, BrokerAck, BrokerOrder, FillBatch
 from core.execution.intent import OrderIntent
-from core.execution.ownership import protected_owner
+from core.execution.ownership import protected
 from core.governance.signatures import SIGNATURES_DIR, effective_autonomy, read_signatures
 from core.policy.engine import kill_switch_engaged
 
@@ -114,7 +115,7 @@ class ActivationCheck:
         root: Path,
         approvals: ApprovalStore,
         *,
-        owner: Callable[[Path], bool] = protected_owner,
+        owner: Callable[[Path], bool] = protected,
         load: Callable[[Path], Config] = load_config,
     ) -> None:
         self.root = root
@@ -158,13 +159,18 @@ class ActivationCheck:
         return verdict
 
     def _acl(self) -> str | None:
-        loose = [
-            path.as_posix()
-            for path in (LIVE_FILE, SIGNATURES_DIR)
-            if not self.owner(self.root / path)
-        ]
+        """Why the live file, the signatures folder or a file in it is not out of reach, or
+        None: a signature left writable could be replaced by one Lucas never wrote."""
+        folder = self.root / SIGNATURES_DIR
+        paths = [self.root / LIVE_FILE, folder]
+        try:
+            if folder.is_dir():
+                paths += sorted(folder.rglob("*"))
+        except OSError as exc:
+            return f"contenu de {SIGNATURES_DIR.as_posix()} illisible ({type(exc).__name__})"
+        loose = [p.relative_to(self.root).as_posix() for p in paths if not self.owner(p)]
         if loose:
-            return f"propriétaire non protégé : {', '.join(loose)} (protect-live.ps1)"
+            return f"accès non protégé : {', '.join(loose)} (protect-live.ps1)"
         return None
 
     def _approval(self, intent: OrderIntent, now: datetime) -> str | None:
