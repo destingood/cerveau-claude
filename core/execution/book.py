@@ -581,6 +581,16 @@ class OrderBook:
             UUID(row["intent_id"]) for row in self._conn.execute("SELECT intent_id FROM intents")
         )
 
+    def validated_times(self) -> list[datetime]:
+        """When each order was validated for sending, whatever became of it afterwards (sent,
+        rejected by the broker or cancelled): the Risk Gate's rate limits count these."""
+        return [
+            from_utc_text(row["recorded_at"])
+            for row in self._conn.execute(
+                "SELECT recorded_at FROM transitions WHERE state = ?", (OrderState.VALIDEE.value,)
+            )
+        ]
+
 
 def _decision_price(value: Decimal) -> Decimal:
     """The Risk Gate's quote price, under the same bounds as :class:`Quote` (ADR-031)."""

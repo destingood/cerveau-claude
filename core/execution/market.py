@@ -22,7 +22,6 @@ from pydantic import ValidationError
 from core.execution.book import OrderBook
 from core.execution.broker import AccountStatement
 from core.execution.paper import EURO, SessionBar, SimulatorError, next_exchange_session
-from core.execution.states import OrderState
 from core.finance.calendars import exchange_calendar, is_target_day
 from core.finance.model import PriceRow, local_date
 from core.finance.store import FinanceStore
@@ -37,8 +36,6 @@ from core.risk_gate.snapshot import (
 )
 
 PLACES = Decimal("0.000001")  # the six decimals of the snapshot's amounts
-# The orders the rate limits count: every booked intent that went past a proposal.
-SENT = frozenset(OrderState) - {OrderState.INTENTION, OrderState.REJETEE}
 
 
 class MarketError(Exception):
@@ -216,10 +213,11 @@ def gate_snapshot(
     open_gaps: int,
 ) -> GateSnapshot:
     """The Gate's snapshot: the market facts, the account, the broker's holdings and what the
-    book commits and has seen. Rate limits count every order that went past a proposal."""
+    book commits and has seen. Rate limits count every order validated for sending, at the time
+    it was validated, a broker's rejection included."""
     as_of = facts.as_of
     day = local_date(as_of)
-    sent = [order.intent.created_at for order in book.orders(SENT)]
+    sent = book.validated_times()
     return GateSnapshot(
         as_of=as_of,
         instruments=facts.instruments,

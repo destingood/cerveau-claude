@@ -165,7 +165,38 @@ def test_the_snapshot_counts_what_the_book_committed(store: FinanceStore) -> Non
     snapshot = gate_snapshot(facts, account=ACCOUNT, statement=statement, book=book, open_gaps=2)
     assert snapshot.holdings == {}
     assert [order.remaining for order in snapshot.open_orders] == [sent.quantity]
-    # Both were created on 17 October: neither counts today, the proposal never counts.
-    assert (snapshot.orders_today, snapshot.orders_last_hour) == (0, 0)
+    # Created on 17 October, validated on Monday at 20:00 UTC: it counts today, not in the hour
+    # before 21:30; the proposal never counts.
+    assert (snapshot.orders_today, snapshot.orders_last_hour) == (1, 0)
     assert snapshot.seen_intent_ids == {sent.intent_id, proposed.intent_id}
     assert snapshot.open_reconciliation_gaps == 2
+
+
+def test_the_rate_limits_count_validations_not_drafts(store: FinanceStore) -> None:
+    """An order counts when it is validated for sending, a broker's rejection included;
+    a draft or an order the Gate or the policy refused never counts."""
+    facts = market_facts(store, [SYMBOL], as_of=MONDAY_RUN, volume_sessions=20)
+    book = OrderBook.memory(Recorder(MemoryJournal(), "policy", "market-test"))
+    hour = timedelta(hours=1)
+    validated = {
+        0: MONDAY_RUN,  # the bound itself counts in the hour
+        1: MONDAY_RUN - hour / 2,  # sent, then rejected by the broker: still counts
+        2: MONDAY_RUN - hour,  # an hour before: today only
+        3: MONDAY_RUN - 2 * hour,  # Monday evening: today only
+        4: MONDAY_RUN - 24 * hour,  # Sunday: neither
+    }
+    for n, at in validated.items():
+        intent = make_intent(n)
+        book.record_intent(intent, decision_price=Decimal("100"), reason="rédigée", now=at)
+        book.transition(intent.intent_id, OrderState.VALIDEE, reason="validée", now=at)
+        if n == 1:
+            book.transition(intent.intent_id, OrderState.ENVOYEE, reason="envoyée", now=at)
+            book.transition(intent.intent_id, OrderState.REJETEE, reason="refus", now=at)
+    refused, drafted = make_intent(5), make_intent(6)
+    for intent in (refused, drafted):
+        book.record_intent(intent, decision_price=Decimal("100"), reason="rédigée", now=MONDAY_RUN)
+    book.transition(refused.intent_id, OrderState.REJETEE, reason="Porte : REFUSE", now=MONDAY_RUN)
+    statement = AccountStatement(cash_eur=Decimal("10000"), positions={}, cursor=0)
+    snapshot = gate_snapshot(facts, account=ACCOUNT, statement=statement, book=book, open_gaps=0)
+    assert (snapshot.orders_today, snapshot.orders_last_hour) == (4, 2)
+    assert sorted(book.validated_times()) == sorted(validated.values())
