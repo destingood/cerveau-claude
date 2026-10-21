@@ -28,8 +28,8 @@ Option 3.
     attempt »).
   - `store.py` : demandes et transitions dans `var/approvals/approvals.db`, SQLite en ajout seul
     (déclencheurs « ni UPDATE ni DELETE », comme le carnet, ADR-032).
-- **États** : DEMANDEE → ACCORDEE, REFUSEE ou EXPIREE ; ACCORDEE → CONSOMMEE (une seule fois) ou
-  EXPIREE. L'échéance se constate à la lecture, avec une horloge injectée : aucune minuterie.
+- **États** : DEMANDEE → ACCORDEE, REFUSEE ou EXPIREE ; ACCORDEE → CONSOMMEE (une seule fois),
+  REFUSEE (Porte réévaluée qui refuse, autre intention, kill switch) ou EXPIREE. L'échéance se constate à la lecture, avec une horloge injectée : aucune minuterie.
   Expirée vaut refus, sans retour possible.
 - **Lien à l'intention (D4)** : une demande porte `intent_id`, l'empreinte SHA-256 de l'intention
   et le résultat de la Porte (quantité retenue, raisons). À l'exécution, la Porte est réévaluée
@@ -39,9 +39,11 @@ Option 3.
 - **Secret** : variable d'environnement `CERVEAU_TOTP_SECRET` (base32), posée par Lucas. Absente ou
   invalide ⇒ tout code est refusé. `cerveau approvals enroll` génère le secret et l'URI
   `otpauth://` dans le terminal de Lucas seulement.
-- **Journal** : une entrée `APPROVAL` par transition (`approval_id`, `intent_id`, état, raison).
-  Acteur `interface` pour une demande ou un refus venu d'une interface, `lucas` pour un accord
-  vérifié par code, `policy` pour une expiration ou un refus de la Porte réévaluée.
+- **Journal** : une entrée `APPROVAL` par transition et par essai de code (`approval_id`,
+  `intent_id`, état, raison ; jamais le code). Acteur `policy` pour la demande, une expiration, un
+  refus de la Porte réévaluée ou le dernier code faux ; `interface` pour un refus ou un code faux
+  venus d'une interface ; `lucas` pour un accord vérifié par code (seul acteur admis par la base
+  pour ACCORDEE). Le kill switch et les expirations groupées écrivent une seule entrée.
 - **Kill switch** : toute demande ouverte passe à REFUSEE.
 - **Compteurs N3 → N4** : approbations, refus et expirations comptés dès maintenant.
 
