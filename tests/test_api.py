@@ -55,6 +55,7 @@ ROUTES = [
     ("GET", "/reports/daily"),
     ("GET", "/alerts"),
     ("POST", "/events/ignored"),
+    ("GET", "/bot/settings"),
 ]
 runner = CliRunner()
 
@@ -172,6 +173,7 @@ def test_no_documentation_no_schema_and_no_rearm(root: Path, config_dir: Path) -
         "/reports/daily",
         "/alerts",
         "/events/ignored",
+        "/bot/settings",
     }
     assert not any("rearm" in path or "arm" in path for path in paths)
 
@@ -525,6 +527,16 @@ def test_an_ignored_message_is_journaled_without_identifier_or_content(
     content = opened.post("/events/ignored", json={"kind": "salon", "content": "bonjour"})
     assert content.status_code == 422
     assert len(entries(root)) == 1
+
+
+def test_the_bot_learns_whom_it_answers_only_once_defined(root: Path, config_dir: Path) -> None:
+    blocked = client(root, config_dir).get("/bot/settings")
+    assert blocked.status_code == 503
+    assert "owner_user_id" in blocked.json()["detail"]
+    interfaces(config_dir)
+    defined = client(root, config_dir).get("/bot/settings")
+    assert defined.json() == {"owner_user_id": "123456789012345678"}
+    assert not default_journal_path(root).exists()
 
 
 # --- the command line ----------------------------------------------------------------------

@@ -3,16 +3,17 @@
 
 UV ?= uv
 COMPOSE ?= docker compose -f infra/docker-compose.yml
+BOT := interfaces/discord_bot
 GATE_COVERAGE := --cov=core/risk_gate --cov=core/approvals --cov=core/governance --cov=core.execution.live --cov-branch --cov-fail-under=100 --cov-report=term-missing:skip-covered
 
 export PROMPTFOO_DISABLE_TELEMETRY := 1
 export PROMPTFOO_DISABLE_UPDATE := 1
 
 .DEFAULT_GOAL := help
-.PHONY: help sync test lint format eval eval-live audit-verify secrets-scan audit-deps compose-config hooks ci
+.PHONY: help sync test bot-test lint format eval eval-live audit-verify secrets-scan audit-deps compose-config hooks ci
 
 help:
-	@echo Targets: sync test lint format eval eval-live audit-verify secrets-scan audit-deps compose-config hooks ci
+	@echo Targets: sync test bot-test lint format eval eval-live audit-verify secrets-scan audit-deps compose-config hooks ci
 
 sync:
 	$(UV) sync --frozen
@@ -20,6 +21,11 @@ sync:
 # The Risk Gate needs full line and branch coverage (ADR-031); the rest has no threshold.
 test:
 	$(UV) run pytest $(GATE_COVERAGE)
+
+# The Discord bot's tests: no network, no Discord (ADR-037). Install scripts never run.
+bot-test:
+	npm --prefix $(BOT) ci --ignore-scripts --no-audit --no-fund
+	npm --prefix $(BOT) test
 
 lint:
 	$(UV) run ruff check .
@@ -44,6 +50,7 @@ secrets-scan:
 
 audit-deps:
 	$(UV) run pip-audit --skip-editable
+	npm --prefix $(BOT) audit --omit=dev
 
 # Needs infra/.env (uv run python infra/scripts/generate_secrets.py); fails while it is missing.
 compose-config:
@@ -52,4 +59,4 @@ compose-config:
 hooks:
 	$(UV) run pre-commit install
 
-ci: lint test eval audit-verify secrets-scan audit-deps
+ci: lint test bot-test eval audit-verify secrets-scan audit-deps

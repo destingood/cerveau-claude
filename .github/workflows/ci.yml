@@ -1,5 +1,6 @@
 # CERVEAU continuous integration (phase 0): lint, tests, secret scan, dependency audit,
-# promptfoo witness eval and compose validation. No job holds a secret or a write permission.
+# promptfoo witness eval, compose validation and the Discord bot's tests and npm audit (phase 5).
+# No job holds a secret or a write permission.
 # Actions are pinned to a major tag checked on 2026-10-17; pinning by commit SHA is in the backlog.
 name: CI
 
@@ -98,3 +99,20 @@ jobs:
           python3 infra/scripts/generate_secrets.py --output "$RUNNER_TEMP/ci.env"
           docker compose --env-file "$RUNNER_TEMP/ci.env" -f infra/docker-compose.yml \
             --profile core --profile observability config --quiet
+
+  discord-bot:
+    name: Discord bot tests and npm audit
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: interfaces/discord_bot
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@v7
+        with:
+          node-version: "24"
+      - run: npm ci --ignore-scripts --no-audit --no-fund
+      - run: npm test
+      - run: npm audit --omit=dev

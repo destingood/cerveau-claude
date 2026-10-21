@@ -3,7 +3,8 @@
 - Relevé du 2026-10-17 (phase 0), mis à jour le 2026-10-18 (phases 1 et 2), le 2026-10-20
   (phase 3) et le 2026-10-21 (phases 4 et 5) ; à jour à chaque nouvelle dépendance (R14)
 - Phase 5 : licences lues dans les métadonnées des paquets installés (`License-Expression`) ;
-  `pip-audit` sans vulnérabilité connue au 2026-10-21
+  `pip-audit` sans vulnérabilité connue au 2026-10-21 ; bot Discord : licences lues dans
+  `interfaces/discord_bot/package-lock.json`, `npm audit` sans vulnérabilité au 2026-10-21
 - Phase 4 : aucune nouvelle dépendance directe ni transitive (plan de phase 4, section 13) ; seule
   la transitive certifi passe en 2026.10.19 (PYSEC-2026-4320), licence MPL-2.0 inchangée
 - Phases 1 et 2 : licences lues dans les métadonnées des paquets installés (`*.dist-info/METADATA`)
@@ -56,7 +57,21 @@
 | gitleaks | 8.30.1 | MIT | détection de secrets |
 | uv | 0.13.1 | Apache-2.0 ou MIT (au choix, selon son README) | Python et dépendances |
 | GNU make | 4.4.1 | GPL-3.0 | outil local seulement, rien n'est lié |
-| Node.js | v26 local, v24 LTS en CI | MIT | exécution de promptfoo |
+| Node.js | v26 local, v24 LTS en CI | MIT | exécution de promptfoo et du bot Discord |
+
+## Bot Discord (`interfaces/discord_bot/`, npm)
+| Composant | Version | Licence | Usage |
+|---|---|---|---|
+| discord.js | 14.27.0 | Apache-2.0 | bot Discord mince : commandes, boutons, fenêtre du code (phase 5, ADR-037) ; seule dépendance directe, version exacte |
+
+Transitives figées par `package-lock.json` (25 paquets avec discord.js, aucun copyleft) :
+- Apache-2.0 : @discordjs/builders 1.14.1, @discordjs/collection 1.5.3 et 2.1.1 (deux copies),
+  @discordjs/formatters 0.6.2, @discordjs/rest 2.6.3, @discordjs/util 1.2.0, @discordjs/ws 1.2.3 ;
+- MIT : @sapphire/async-queue 1.5.5, @sapphire/shapeshift 4.0.0, @sapphire/snowflake 3.5.5,
+  @types/node 26.6.5, @types/ws 8.18.2, @vladfrangu/async_event_emitter 2.4.7, discord-api-types
+  0.38.57, fast-deep-equal 3.1.3, lodash 4.18.1, lodash.snakecase 4.1.1, magic-bytes.js 1.13.1,
+  ts-mixer 6.0.4, undici 6.29.1, undici-types 8.9.0, ws 8.22.0 ;
+- 0BSD : tslib 2.8.1.
 
 Les dépendances transitives ne sont pas toutes listées ici ; `uv.lock` les fige, et leur relevé
 automatique (par exemple `pip-licenses` en CI) est au backlog. Exception notable :

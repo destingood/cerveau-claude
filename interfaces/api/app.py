@@ -372,4 +372,14 @@ def create_app(
         )
         return {"request_id": request_id}
 
+    @app.get("/bot/settings")
+    def bot_settings() -> dict[str, Any]:
+        """Whom the Discord bot answers; 503 while ``interfaces.yaml`` leaves it to Lucas, so the
+        bot refuses to start rather than answer anyone (R7, ADR-037)."""
+        loaded = config()
+        blockers = loaded.blockers("interfaces.discord")
+        if blockers:
+            raise HTTPException(503, "bot Discord bloqué : " + " ; ".join(blockers))
+        return {"owner_user_id": loaded.interfaces.discord.owner_user_id}
+
     return app
