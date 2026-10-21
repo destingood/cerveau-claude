@@ -5,13 +5,15 @@ Each session d of the window, in this order:
 1. splits effective at d (first session on or after their ex-date) change the quantities: the
    new quantity is rounded down to a whole share and the fraction is paid in cash at the close
    of d; the orders waiting for d are scaled the same way, toward zero;
-2. a dividend entitles the quantity held at the start of its effective session; it is credited
-   then if it was announced by the decision cut-off of that session, else at the first session
-   whose cut-off follows the announcement (its last revision's amount, ADR-024);
+2. a dividend entitles the quantity held at the start of its effective session;
 3. the orders decided at the previous session are filled at the close of d (``schedule``);
-4. the book is valued at the closes of d: V = cash + Σ q·P;
-5. except at the last session, the strategy decides at d on its PointInTimeView, and the
-   weights become orders sized at the prices known then.
+4. a dividend is credited at its effective session if it was announced by the decision cut-off
+   of that session, else at the first session whose cut-off follows the announcement (its last
+   revision's amount, ADR-024): after the fills, so that it never funds them (B158);
+5. the book is valued at the closes of d: V = cash + Σ q·P;
+6. except at the last session, the strategy decides at d on its PointInTimeView, and the
+   weights become orders sized at the prices known then, split-adjusted with the splits that
+   view knows (B157).
 
 Fills and values use each session's last revision (``MarketHistory.final_closes``): what the
 market did. Decisions see only their view. Every instrument must trade in EUR on the same
@@ -141,28 +143,23 @@ def common_calendar(
     return sessions, np.column_stack([c.to_numpy() for c in columns])
 
 
-def split_ratios(history: MarketHistory, instrument_id: str) -> list[tuple[date, float]]:
-    """The (ex-date, ratio) of each split of the instrument, in the order of its events."""
-    return [
-        (event.action.ex_date, float(event.action.value))
-        for event in history.events(instrument_id)
-        if event.action.kind == "split"
-    ]
-
-
-def known_close(
-    view: PointInTimeView, instrument_id: str, splits: Sequence[tuple[date, float]]
-) -> float | None:
+def known_close(view: PointInTimeView, instrument_id: str) -> float | None:
     """The last close the view knows, in shares of its day; None before the first one.
 
     A close older than a split effective by then is divided by its ratio, so that target
-    quantities are counted in the shares the order will trade (ADR-024).
+    quantities are counted in the shares the order will trade (ADR-024). Only the splits the
+    view knows count, each in its revision known then: a later announcement or correction
+    cannot reach the sizing (B157, R10).
     """
     last = view.last_close(instrument_id)
     if last is None:
         return None
     session, close = last
-    return close / math.prod(ratio for ex_date, ratio in splits if session < ex_date <= view.day)
+    return close / math.prod(
+        float(action.value)
+        for action in view.corporate_actions(instrument_id)
+        if action.kind == "split" and session < action.ex_date <= view.day
+    )
 
 
 def known_closes(history: MarketHistory, sessions: Sequence[date], cutoff: time) -> np.ndarray:
@@ -172,12 +169,11 @@ def known_closes(history: MarketHistory, sessions: Sequence[date], cutoff: time)
     orders exactly as the reference does (ADR-025).
     """
     instruments = history.instruments
-    splits = {i: split_ratios(history, i) for i in instruments}
     known = np.full((len(sessions), len(instruments)), np.nan)
     for row, day in enumerate(sessions):
         view = history.view(day, cutoff)
         for column, instrument_id in enumerate(instruments):
-            close = known_close(view, instrument_id, splits[instrument_id])
+            close = known_close(view, instrument_id)
             if close is not None:
                 known[row, column] = close
     return known
@@ -210,7 +206,6 @@ def run(
     count = len(sessions)
     days = np.array(sessions, dtype="datetime64[D]")
     splits: dict[str, list[_Split]] = {}
-    ratios = {i: split_ratios(history, i) for i in instruments}
     dividends: list[_Dividend] = []
     for instrument_id in instruments:
         splits[instrument_id] = []
@@ -272,10 +267,21 @@ def run(
                     for o in pending
                 ]
                 pending = [o for o in pending if o.quantity]
-        # 2. Dividends: entitlement at the start of the effective session, then credits due.
+        # 2. Dividends: entitlement at the start of the effective session.
         for dividend in dividends:
             if dividend.session == k:
                 dividend.quantity = held[dividend.instrument_id]
+        # 3. Yesterday's orders, filled at today's close.
+        if pending:
+            done = schedule(pending, cash, prices, costs)
+            cash = done.cash
+            for fill in done.fills:
+                held[fill.instrument_id] += fill.quantity
+                trades.append(Trade(sessions[k - 1], day, fill))
+            cuts.extend(CutOrder(sessions[k - 1], day, cut) for cut in done.cuts)
+            pending = []
+        # 4. Dividends due today, after the fills: they never fund them (B158).
+        for dividend in dividends:
             if dividend.payable == k and dividend.quantity:
                 amount = cents(dividend.quantity * dividend.per_share)
                 cash += amount
@@ -289,21 +295,12 @@ def run(
                         day,
                     )
                 )
-        # 3. Yesterday's orders, filled at today's close.
-        if pending:
-            done = schedule(pending, cash, prices, costs)
-            cash = done.cash
-            for fill in done.fills:
-                held[fill.instrument_id] += fill.quantity
-                trades.append(Trade(sessions[k - 1], day, fill))
-            cuts.extend(CutOrder(sessions[k - 1], day, cut) for cut in done.cuts)
-            pending = []
-        # 4. The book at today's close.
+        # 5. The book at today's close.
         invested = math.fsum(held[i] * prices[i] for i in instruments)
         values[k], cash_line[k] = cash + invested, cash
         exposure[k] = invested / values[k]
         positions[k] = [held[i] for i in instruments]
-        # 5. Today's decision, filled tomorrow.
+        # 6. Today's decision, filled tomorrow.
         if k < count - 1:
             view = history.view(day, cutoff)
             weights = checked_weights(strategy.decide(view, params), instruments, day)
@@ -311,7 +308,7 @@ def run(
             for instrument_id in instruments:
                 if not weights.get(instrument_id) and not held[instrument_id]:
                     continue
-                close = known_close(view, instrument_id, ratios[instrument_id])
+                close = known_close(view, instrument_id)
                 if close is None:
                     raise StrategyError(
                         f"décision du {day} : poids sur {instrument_id} sans aucun cours connu"

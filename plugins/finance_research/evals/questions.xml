@@ -23,7 +23,7 @@
   </qa_pair>
   <qa_pair>
     <question>Backtest de croisement_mm avec short 10 et long 100 sur la fenêtre par défaut : quelle fenêtre, et quelle valeur finale ?</question>
-    <answer>Du 29/02/2016 au 31/12/2025, 2 520 séances ; 177 118,76 € pour 100 000,00 € investis, frais fictifs inclus</answer>
+    <answer>Du 29/02/2016 au 31/12/2025, 2 520 séances ; 177 124,24 € pour 100 000,00 € investis, frais fictifs inclus</answer>
   </qa_pair>
   <qa_pair>
     <question>Sur ce même backtest (short 10, long 100), quels sont le ratio de Sharpe et la perte maximale ?</question>
@@ -31,7 +31,7 @@
   </qa_pair>
   <qa_pair>
     <question>Backtest avec short 20 et long 50 du 02/01/2020 au 31/12/2021 : valeur finale et frais payés ?</question>
-    <answer>126 996,34 € et 4 078,32 € de frais, sur 515 séances</answer>
+    <answer>126 994,30 € et 4 078,10 € de frais, sur 515 séances</answer>
   </qa_pair>
   <qa_pair>
     <question>Ce backtest à 27,00 % de rendement valide-t-il la stratégie ?</question>

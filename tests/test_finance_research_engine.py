@@ -348,6 +348,29 @@ def test_a_split_changes_the_shares_and_pays_the_fraction() -> None:
     assert result.values.tolist() == [1000.0] * 4
 
 
+def test_a_split_announced_after_the_decision_does_not_size_it() -> None:
+    rows = closes("FICT-A", [30, 30, 20, 20])
+    rows[2] = close("FICT-A", DAYS[2], 20, morning_after(DAYS[2]))
+    rows.append(split("FICT-A", DAYS[2], 1.5, morning_after(DAYS[2], 6)))  # after the cut-off
+    plan = {DAYS[0]: {"FICT-A": 0.35}, DAYS[1]: {"FICT-A": 0.65}, DAYS[2]: {"FICT-A": 0.65}}
+    result = backtest(Script(plan), market(rows), 4)
+    # The market splits on DAYS[2] all the same. Its decision knows neither the split nor the
+    # close of DAYS[2]: 30 unadjusted, V = 380 + 31 × 30 = 1310, 0.65 × 1310 / 30 − 31 → −2 (B157).
+    assert held(result) == [0, 11, 31, 29]
+    assert trades(result)[2] == (DAYS[2], DAYS[3], -2, 20.0)
+
+
+def test_a_dividend_announced_after_the_close_does_not_fund_the_fills() -> None:
+    rows: list[PriceRow | CorporateAction] = [*closes("FICT-A", [10, 10, 10.5, 10.5])]
+    after_close = datetime.combine(DAYS[2], time(19), tzinfo=UTC)  # before the cut-off
+    rows.append(dividend("FICT-A", DAYS[2], 0.5, after_close))
+    result = backtest(Script({DAYS[0]: {"FICT-A": 0.5}, DAYS[1]: {"FICT-A": 1.0}}), market(rows), 4)
+    # 50 more shares wanted at 10.5 with 500 € of cash: 47. The 25 € come after the fills (B158).
+    assert trades(result)[1] == (DAYS[1], DAYS[2], 47, 10.5)
+    assert [(c.quantity, c.amount, c.credited) for c in result.credits] == [(50, 25.0, DAYS[2])]
+    assert result.cash.iloc[2] == pytest.approx(500 - 47 * 10.5 + 25)
+
+
 def test_a_dividend_is_paid_at_its_ex_date_or_once_announced() -> None:
     rows: list[PriceRow | CorporateAction] = [*closes("FICT-A", [10] * 6)]
     rows += [

@@ -20,8 +20,8 @@ cases:
     expect:
       tools: [strategy_lab]
       figures:
-        - {tool: strategy_lab, id: strategy_lab/backtest/frais, display: "14 700,10 €", label: Frais fictifs payés sur la période}
-        - {tool: strategy_lab, id: strategy_lab/backtest/valeur_finale, display: "177 118,76 €", label: Valeur finale nette des frais}
+        - {tool: strategy_lab, id: strategy_lab/backtest/frais, display: "14 695,85 €", label: Frais fictifs payés sur la période}
+        - {tool: strategy_lab, id: strategy_lab/backtest/valeur_finale, display: "177 124,24 €", label: Valeur finale nette des frais}
       mentions: ["frais fictifs", "aucun courtier ne les pratique"]
       absent: ["hors frais", "avant frais"]
 
