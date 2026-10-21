@@ -62,7 +62,11 @@ paper_app = typer.Typer(
     help="Compte paper : journée, ordres, rapports, acquittement (ADR-033).", no_args_is_help=True
 )
 
-EXIT_CODES = {"attente_donnees": EXIT_GAP, "arret": EXIT_BLOCKED}  # the others exit 0
+EXIT_CODES = {  # the others exit 0
+    "attente_donnees": EXIT_GAP,
+    "injoignable": EXIT_ERROR,
+    "arret": EXIT_BLOCKED,
+}
 
 
 def _now() -> datetime:
@@ -78,7 +82,8 @@ def run(journal: JournalOpt = None, config_dir: ConfigDirOpt = None) -> None:
     """Traite une fois la journée de décision de maintenant et écrit son rapport (ADR-033).
 
     Pas de --date : une date choisie à la main déciderait sur une séance dont la suite est
-    connue (R10). Codes de sortie : 0 journée traitée, déjà traitée ou sans séance ; 1 erreur ;
+    connue (R10). Codes de sortie : 0 journée traitée, déjà traitée ou sans séance ; 1 erreur
+    ou adaptateur sans réponse ;
     2 kill switch engagé ou paramètre à définir (R7) ; 4 clôture attendue absente de la base.
     """
     config = load(config_dir)

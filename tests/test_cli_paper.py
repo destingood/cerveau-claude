@@ -110,7 +110,9 @@ def test_a_refused_strategy_is_noted_in_the_report(home: Path, config_dir: Path)
 
 
 @pytest.mark.usefixtures("costs")
-@pytest.mark.parametrize(("outcome", "code"), [("attente_donnees", 4), ("arret", 2)])
+@pytest.mark.parametrize(
+    ("outcome", "code"), [("attente_donnees", 4), ("injoignable", 1), ("arret", 2)]
+)
 def test_an_unfinished_day_exits_with_its_code(
     home: Path, config_dir: Path, monkeypatch: pytest.MonkeyPatch, outcome: Outcome, code: int
 ) -> None:

@@ -83,11 +83,19 @@ rapport au plan de phase 4 (§10) :
 - **Réduction** : une intention `REDUIT` garde son `intent_id`, quantité ramenée par la Porte.
 - **Envoi** : `VALIDEE`, `ENVOYEE`, puis appel à l'adaptateur ; un refus de l'adaptateur passe
   l'ordre en `REJETEE`. À la reprise, un ordre resté `VALIDEE` (journée interrompue avant l'envoi)
-  est annulé ; un ordre que le simulateur ne travaille plus est annulé (« expiré en fin de séance »).
+  est annulé ; un ordre que le simulateur ne travaille plus est annulé (« expiré en fin de séance
+  ou jamais reçu »).
+- **Coupure réseau** : un appel à l'adaptateur sans réponse (`TimeoutError`, `ConnectionError`)
+  arrête la journée là où elle en est (issue `injoignable`) ; rien n'est renvoyé. Un ordre dont
+  l'envoi n'a pas eu de réponse reste `ENVOYEE` : à la relance, la réconciliation passe d'abord, et
+  l'ordre reste ouvert si le simulateur le travaille, sinon il est annulé. Les exécutions se
+  relisent depuis le début, donc une lecture coupée ne perd rien et n'enregistre rien deux fois.
+- **Reprise** : une journée qui a déjà rédigé des intentions, interrompue puis relancée, n'en
+  rédige aucune autre (note « reprise »).
 - **Fenêtre de décision** : la `decision_date` d'une intention suit la date de Paris. Après minuit à
   Paris, une intention viserait une séance trop tard : la journée se valorise, mais n'en rédige
   aucune.
-- **Issues** : `terminee`, `deja_traitee`, `pas_de_seance`, `attente_donnees`, `arret`. Une donnée
+- **Issues** : `terminee`, `deja_traitee`, `pas_de_seance`, `attente_donnees`, `injoignable`, `arret`. Une donnée
   périmée sur une position, une limite de perte franchie ou un incident d'exécution engagent le
   kill switch : l'issue est `arret`. Seule `terminee` clôt la journée dans `var/paper/loop.db`
   (insertion seule) ; les autres laissent la journée à reprendre. Le rapport

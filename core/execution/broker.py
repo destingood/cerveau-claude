@@ -58,8 +58,15 @@ class FillBatch:
     cursor: int  # the cursor of the next call: the fills after these
 
 
+# What a call the broker does not answer raises: whether it arrived is unknown (§12, chaos).
+NETWORK_ERRORS: tuple[type[OSError], ...] = (TimeoutError, ConnectionError)
+
+
 @runtime_checkable
 class BrokerAdapter(Protocol):
+    """A call the broker does not answer raises one of :data:`NETWORK_ERRORS`; it is never
+    retried without the ``intent_id`` that makes it idempotent."""
+
     def submit(self, intent: OrderIntent, *, now: datetime) -> BrokerAck: ...
 
     def cancel(self, intent_id: UUID, *, reason: str, now: datetime) -> bool: ...

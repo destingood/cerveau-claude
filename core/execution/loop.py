@@ -17,7 +17,8 @@ gate and send the day's intents.
    (``limite``, ``drawdown``);
 6. each intent source's orders, drafted (:mod:`core.execution.drafter`), gated
    (:func:`core.risk_gate.gate.evaluate`), decided (:func:`core.policy.engine.decide_order`) and,
-   for ``paper``, sent to the simulator, one at a time against a snapshot rebuilt from the book.
+   for ``paper``, sent to the simulator, one at a time against a snapshot rebuilt from the book;
+   a day that already drafted, stopped and run again, drafts nothing more.
 
 The day ends with its Markdown report and a line in ``runs``: a day already there is never
 treated again, and a past day is never replayed (R10). Every figure of the report comes from the
@@ -45,7 +46,7 @@ import pandas as pd
 
 from core.config.loader import Config
 from core.execution.book import Journal, OrderBook, OrderBookError, slippage_bps
-from core.execution.broker import AccountStatement, BrokerOrder
+from core.execution.broker import NETWORK_ERRORS, AccountStatement, BrokerOrder
 from core.execution.drafter import DraftError, IntentDrafter, TargetOrder, clip
 from core.execution.intent import IntentOrigin, IntentRationale, OrderIntent, SizingSource
 from core.execution.kill_switch import Stop, Trigger, detect, engage, loss_breaches
@@ -68,12 +69,16 @@ PRICE_CALL = f"{PRICE_TOOL}#1"
 BOOK_ACTOR = "policy"  # engage() needs the book to journal as the automatic actor
 LOOP_ACTOR = "scheduler"
 
-Outcome = Literal["terminee", "deja_traitee", "pas_de_seance", "attente_donnees", "arret"]
+Outcome = Literal[
+    "terminee", "deja_traitee", "pas_de_seance", "attente_donnees", "injoignable", "arret"
+]
 OUTCOMES: Mapping[Outcome, str] = {
     "terminee": "journée traitée",
     "deja_traitee": "journée déjà traitée : rien n'est refait",
     "pas_de_seance": "aucune séance ce jour sur les places en jeu",
     "attente_donnees": "clôture attendue absente de la base : relancer après l'ingestion",
+    "injoignable": "adaptateur sans réponse : rien n'est renvoyé ; relancer, la réconciliation "
+    "tranchera",
     "arret": "kill switch engagé : la journée s'arrête",
 }
 
@@ -412,7 +417,10 @@ def _follow_simulator(env: PaperDay, report: DayReport) -> None:
         intent_id = order.intent.intent_id
         if intent_id not in working:
             env.book.transition(
-                intent_id, OrderState.ANNULEE, reason="ordre expiré en fin de séance", now=now
+                intent_id,
+                OrderState.ANNULEE,
+                reason="plus travaillé par le simulateur : expiré en fin de séance ou jamais reçu",
+                now=now,
             )
             report.expired_in_book.append(intent_id)
     for order in env.book.orders({OrderState.VALIDEE}):
@@ -553,13 +561,34 @@ def _treat(
         booked, decision_price=quote.price, reason=f"rédigée ({intent.origin.id})", now=now
     )
     key, reasons = intent.intent_id, tuple(gate.reasons) + tuple(decision.reasons)
+
+    def outcome(state: OrderState, why: tuple[str, ...]) -> IntentOutcome:
+        return IntentOutcome(
+            intent_id=key,
+            origin=intent.origin.id,
+            symbol=intent.instrument.symbol,
+            side=intent.side,
+            requested=intent.quantity,
+            quantity=booked.quantity if gate.result != "REFUSE" else 0,
+            gate=gate.result,
+            effect=effect,
+            state=state,
+            reasons=why,
+        )
+
     state = OrderState.INTENTION
     if effect == "paper" and gate.result != "REFUSE":
         env.book.transition(
             key, OrderState.VALIDEE, reason=f"Porte : {gate.result}, politique : paper", now=now
         )
         env.book.transition(key, OrderState.ENVOYEE, reason="envoyé au simulateur paper", now=now)
-        ack = env.simulator.submit(booked, now=now)
+        try:
+            ack = env.simulator.submit(booked, now=now)
+        except NETWORK_ERRORS:
+            # Arrived or not, nobody knows: the order stays ENVOYEE and is never sent again;
+            # the next run tells, the simulator working it or the book letting it go.
+            report.intents.append(outcome(OrderState.ENVOYEE, (*reasons, "envoi sans réponse")))
+            raise
         state = OrderState.ENVOYEE
         if not ack.accepted:
             env.book.transition(key, OrderState.REJETEE, reason=clip(ack.reason, 200), now=now)
@@ -568,18 +597,7 @@ def _treat(
         why = clip(f"Porte : {gate.result}, politique : {effect}", 200)
         env.book.transition(key, OrderState.REJETEE, reason=why, now=now)
         state = OrderState.REJETEE
-    return IntentOutcome(
-        intent_id=key,
-        origin=intent.origin.id,
-        symbol=intent.instrument.symbol,
-        side=intent.side,
-        requested=intent.quantity,
-        quantity=booked.quantity if gate.result != "REFUSE" else 0,
-        gate=gate.result,
-        effect=effect,
-        state=state,
-        reasons=reasons,
-    )
+    return outcome(state, reasons)
 
 
 def _intents(env: PaperDay, facts: MarketFacts, account: Account, report: DayReport) -> None:
@@ -644,14 +662,29 @@ def _is_session(mics: set[str], day: date) -> bool:
 
 
 def run_day(env: PaperDay, *, now: datetime) -> DayReport:
-    """Treat the decision day of ``now`` once (module docstring). Never a past day (R10)."""
-    config = env.config
-    day = decision_day(now, config.research.execution.decision_cutoff_utc)
+    """Treat the decision day of ``now`` once (module docstring). Never a past day (R10).
+
+    A call the adapter does not answer stops the day where it is (``injoignable``): what was
+    booked stays booked, nothing is sent again, and the next run reconciles first."""
+    day = decision_day(now, env.config.research.execution.decision_cutoff_utc)
     report = DayReport(day=day, as_of=now, request_id=env.request_id)
     if env.log.done(day):
         report.outcome = "deja_traitee"
         return report
+    try:
+        return _run(env, report)
+    except NETWORK_ERRORS as exc:  # the broker's text is not kept, only the kind of failure
+        report.outcome = "injoignable"
+        report.notes.append(f"adaptateur sans réponse ({type(exc).__name__})")
+        return report
 
+
+def _drafted_today(env: PaperDay, day: date) -> bool:
+    return any(order.intent.decision_date == day for order in env.book.orders())
+
+
+def _run(env: PaperDay, report: DayReport) -> DayReport:
+    config, day, now = env.config, report.day, report.as_of
     status = detect(env.root, journal=env.journal, request_id=env.request_id, now=now)
     if status == "engaged":
         report.outcome = "arret"
@@ -706,6 +739,12 @@ def run_day(env: PaperDay, *, now: datetime) -> DayReport:
         report.notes.append(
             "fenêtre de décision passée (minuit à Paris) : aucune intention, elle viserait "
             "une séance trop tard"
+        )
+        blocked = True
+    if env.sources and not blocked and _drafted_today(env, day):
+        # A day stopped after drafting and run again: its intents are in the book already.
+        report.notes.append(
+            "intentions déjà rédigées pour cette journée (reprise) : aucune nouvelle rédaction"
         )
         blocked = True
     if report.account is not None and not blocked:
