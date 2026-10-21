@@ -3,6 +3,7 @@
 Lancement : python tests/test_wiki.py   (sortie : « N vérifications OK, M échec(s) »)"""
 import json
 import os
+import re
 import shutil
 import subprocess
 import sys
@@ -241,10 +242,19 @@ check('file.inFolder("wiki/_modeles")' in page("Tableau de bord.base") and "Alt+
       "Obsidian : tableau de bord (modèles exclus) et mode d'emploi")
 tpl = sorted(p.stem for p in (WIKI / "wiki/_modeles").glob("*.md"))
 paths = [v.get("path", "") for v in Brain.load().data["wiki"]["files"].values()]
-check(len(tpl) == 5 and "echeance: {{date:YYYY-MM-DD}}" in page("wiki/_modeles/À faire.md")
-      and not any("_modeles" in p for p in paths), "Obsidian : 5 modèles, que le cerveau ne prend pas pour des pages", str(tpl))
+check(len(tpl) == 6 and "echeance: {{date:YYYY-MM-DD}}" in page("wiki/_modeles/À faire.md")
+      and "## À retenir" in page("wiki/_modeles/Jour.md") and not any("_modeles" in p for p in paths),
+      "Obsidian : 6 modèles (dont la note du jour), que le cerveau ne prend pas pour des pages", str(tpl))
 check(".obsidian/plugins/*/main.js" in page(".gitignore"), "Obsidian : code des modules tiers hors git")
-check(page(".ignore").splitlines() == [".obsidian/", ".trash/"], "Obsidian : réglages et corbeille hors des recherches de Claude")
+check(page(".ignore").splitlines() == [".obsidian/", ".trash/", "/Cerveau.md", "/Carte du cerveau.canvas"],
+      "Obsidian : réglages, corbeille, page Cerveau et carte hors des recherches de Claude")
+dn = obs("daily-notes.json")
+check(dn == obsidian.DAILY and cfg["core-plugins.json"].get("daily-notes") and cfg["core-plugins.json"].get("canvas")
+      and cfg["hotkeys.json"].get("daily-notes") == [{"modifiers": ["Alt"], "key": "J"}] and (WIKI / "Notes du jour").is_dir()
+      and {"/Cerveau.md", "/Carte du cerveau.canvas"} <= set(page(".gitignore").splitlines()),
+      "Obsidian : note du jour (Alt+J, modèle Jour, dossier créé), page Cerveau et carte hors git", str(dn))
+check(obsidian.LIVE_HEAD in page("Mode d'emploi Obsidian.md") and "Alt+J" in page("Mode d'emploi Obsidian.md"),
+      "Obsidian : mode d'emploi avec la page Cerveau, la carte et la note du jour")
 check(not (OB / "plugins").exists(), "Obsidian : réglages d'Omnisearch jamais créés s'il n'est pas installé")
 check(obsidian.setup(WIKI) == [], "Obsidian : réglé une seule fois par version")
 # réglages changés par l'utilisateur : rien d'écrasé, seul le manquant revient
@@ -262,7 +272,8 @@ check(obsidian.setup(WIKI) == [], "Obsidian : réglé une seule fois par version
 made = obsidian.setup(WIKI, force=True)
 hk, app, ty, bm = obs("hotkeys.json"), obs("app.json"), obs("types.json"), obs("bookmarks.json")
 om = obs("plugins/omnisearch/data.json")
-check(page(".ignore").splitlines() == ["perso/", ".trash/", ".obsidian/"], "Obsidian : .ignore complété, lignes gardées")
+check(page(".ignore").splitlines() == ["perso/", ".trash/", ".obsidian/", "/Cerveau.md", "/Carte du cerveau.canvas"],
+      "Obsidian : .ignore complété, lignes gardées")
 check(om == {"weightBasename": 9, "weightCustomProperties": [{"name": "cles", "weight": 8}, {"name": "resume", "weight": 4}]},
       "Obsidian : Omnisearch, poids du résumé ajouté, choix de l'utilisateur gardés", str(om))
 check("templates:insert-template" not in hk and "editor:toggle-bold" in hk and "omnisearch:show-modal" in hk,
@@ -272,8 +283,67 @@ check(app["newFileFolderPath"] == "Boîte" and app["userIgnoreFilters"] == ["per
 check(ty["types"]["importance"] == "text" and ty["types"]["echeance"] == "date", "Obsidian : type choisi par l'utilisateur gardé")
 check(page("Mode d'emploi Obsidian.md") == "à moi\n", "Obsidian : fichier existant jamais écrasé")
 check(sum(1 for b in json.dumps(bm).split('"index.md"')) == 2 and bm["items"][0]["title"] == "Mon index"
-      and len(bm["items"][1]["items"]) == 3, "Obsidian : signets complétés sans doublon", str(bm))
+      and len(bm["items"][1]["items"]) == 5, "Obsidian : signets complétés sans doublon", str(bm))
 check(obsidian.setup(WIKI, force=True) == [], "Obsidian : deuxième passage, rien à faire", str(made))
+old = f"{obsidian.GUIDE_HEAD}\n\nIntro.\n\n## Avant de demander à Claude\nTexte.\n"
+(WIKI / obsidian.GUIDE).write_text(old, encoding="utf-8")
+made = obsidian.setup(WIKI, force=True)
+g = page(obsidian.GUIDE)
+check(made == [obsidian.GUIDE] and g.startswith(f"{obsidian.GUIDE_HEAD}\n\nIntro.\n\n{obsidian.LIVE_HEAD}")
+      and g.endswith("## Avant de demander à Claude\nTexte.\n") and obsidian.setup(WIKI, force=True) == [],
+      "Obsidian : mode d'emploi d'avant complété une fois (section en tête, rien d'autre touché)", g[:300])
+# page Cerveau et carte des thèmes (réécrites en fin de session, seulement si quelque chose a changé)
+b0 = Brain.load()
+check(obsidian.write_status(b0, WIKI) and not obsidian.write_status(b0, WIKI)
+      and all(h in page("Cerveau.md") for h in ("# 🧠 Cerveau", "## ⏰ Échéances", "## 📚 Mémoire", "## 🩺 Santé du wiki",
+                                                "## 🤝 Cerveau commun", "Alt+J")),
+      "Obsidian : page Cerveau écrite, pas réécrite sans changement", page("Cerveau.md")[:600])
+cv = json.loads(page("Carte du cerveau.canvas")) if obsidian.write_canvas(b0, WIKI) else {}
+ids = {n["id"] for n in cv.get("nodes", [])}
+check(cv and not obsidian.write_canvas(b0, WIKI) and len(ids) == len(cv["nodes"])
+      and all(e["fromNode"] in ids and e["toNode"] in ids for e in cv["edges"])
+      and all(re.fullmatch(r"#[0-9A-F]{6}", n["color"]) for n in cv["nodes"] if "color" in n)
+      and all({"x", "y", "width", "height", "type"} <= set(n) for n in cv["nodes"]),
+      "Obsidian : carte du cerveau en JSON Canvas valide (ids uniques, liens entre cartes, couleurs #RRGGBB)",
+      json.dumps(cv, ensure_ascii=False)[:600])
+(WIKI / "Cerveau.md").unlink()
+os.environ["CLAUDE_CODE_REMOTE"] = "true"
+check(not obsidian.write_status(b0, WIKI) and not (WIKI / "Cerveau.md").exists(), "Obsidian : page Cerveau jamais écrite en session cloud")
+os.environ.pop("CLAUDE_CODE_REMOTE")
+# note du jour → souvenirs
+check(obsidian.kind_of("Décision : on garde Shopify") == ("decision", "on garde Shopify")
+      and obsidian.kind_of("à faire : appeler X", False)[0] == "todo" and obsidian.kind_of("rappeler", True)[0] == "todo"
+      and obsidian.kind_of("Note : ceci est un fait") == ("fact", "Note : ceci est un fait"),
+      "note du jour : préfixes lus (sinon un fait, une case à cocher = un à-faire)")
+note = WIKI / "Notes du jour" / "2026-09-10.md"
+note.write_text(page("wiki/_modeles/Jour.md").replace("{{date:dddd D MMMM YYYY}}", "jeudi 10 septembre 2026").replace(
+    "\n- \n", "\n- règle : toujours tutoyer les clients\n- [ ] rappeler le grossiste demain\n- Le thé d'Uji pousse près de Kyoto\n"
+    "- à faire : commander les sachets le 25/09\n- [x] déjà fait\n- ✓ déjà mémorisé → [[index]]\n"), encoding="utf-8")
+os.utime(note, (time.time() - 3600, time.time() - 3600))
+fresh = WIKI / "Notes du jour" / "2026-09-11.md"
+fresh.write_text("## À retenir\n- note en cours d'écriture\n", encoding="utf-8")
+check([c["text"] for c in obsidian.captures(WIKI)] == ["règle : toujours tutoyer les clients", "rappeler le grossiste demain",
+                                                       "Le thé d'Uji pousse près de Kyoto",
+                                                       "à faire : commander les sachets le 25/09"],
+      "note du jour : 4 lignes en attente (ni cochée, ni déjà faite, ni note en cours d'écriture)",
+      str(obsidian.captures(WIKI)))
+code, out = brain("wiki", "capture")
+txt, b1 = note.read_text(encoding="utf-8"), Brain.load()
+got = {n["title"]: n for n in b1.nodes.values() if n.get("source") == "utilisateur"}
+rule = got.get("toujours tutoyer les clients") or {}
+todo = next((n for t, n in got.items() if t.startswith("rappeler le grossiste")), {})
+check(code == 0 and out.count("✓") == 4 and txt.count("- ✓ ") == 5 and txt.count(" → [[") == 5
+      and "- [x] déjà fait" in txt and "note en cours d'écriture" in fresh.read_text(encoding="utf-8")
+      and f"[[{obsidian._names(b1).get(rule.get('id'))}]]" in txt,
+      "note du jour : lignes mémorisées puis marquées ✓ → [[page]]", out + "\n" + txt)
+check(rule.get("type") == "feedback" and rule.get("importance") == 4 and not rule.get("project")
+      and (rule.get("meta") or {}).get("prive") and todo.get("type") == "todo" and "11/09/2026" in todo.get("title", "")
+      and todo["meta"].get("due") == "2026-09-11"
+      and (got.get("commander les sachets le 25/09") or {"meta": {}})["meta"].get("due") == "2026-09-25"
+      and got.get("Le thé d'Uji pousse près de Kyoto", {}).get("type") == "fact",
+      "note du jour : bon type, globale, privée, échéance (« demain », « le 25/09 ») comptée depuis le jour de la note", json.dumps(got, ensure_ascii=False)[:800])
+code, out = brain("wiki", "capture")
+check("rien à mémoriser" in out and note.read_text(encoding="utf-8") == txt, "note du jour : deuxième passage, rien de refait", out)
 (WIKI / obsidian.STAMP).unlink()  # installation d'avant la 8.7 : réglée au prochain démarrage (section 10)
 (WIKI / "wiki/_modeles/Référence.md").unlink()
 
@@ -413,8 +483,13 @@ o = hook("session-start", {"session_id": "s2", "cwd": str(WIKI)})
 check("wiki" not in [n["id"] for n in Brain.load().projects()], "le dossier du wiki n'est pas cartographié comme projet")
 with Brain.edit() as b2:
     b2.add("learning", "Astuce de fin de session", "Une page créée pendant la session.")
+    b2.add("todo", "Rappeler le torréfacteur de Shizuoka", "À faire créé pendant la session.")
+check((WIKI / "Cerveau.md").is_file() and (WIKI / "Carte du cerveau.canvas").is_file()
+      and "Rappeler le torréfacteur" not in page("Cerveau.md"), "démarrage : page Cerveau et carte écrites au réglage du coffre")
 hook("session-end", {"session_id": "s1", "cwd": str(WORK)})
 check("session | hors projet" in page("log.md"), "fin de session : entrée « session » au journal", page("log.md")[-400:])
+check("Rappeler le torréfacteur de Shizuoka" in page("Cerveau.md"), "fin de session : page Cerveau à jour (nouvel à-faire)",
+      page("Cerveau.md")[:800])
 
 # ------------------------------------------------------------------ 11. MCP
 req = "\n".join(json.dumps(x) for x in (

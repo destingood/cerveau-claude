@@ -387,7 +387,7 @@ def weigh(hours=168.0) -> dict:
             ev, title = _events(f, seen, sub)
         except OSError:
             continue
-        s = sessions.setdefault(sid, [0.0, None])
+        s = sessions.setdefault(sid, [0.0, None, 0, 0, 0.0])  # poids, titre, requêtes, compactions, dernière requête
         s[1] = s[1] or (None if sub else title)
         prev, pending, seg = None, None, None  # requête principale précédente (heure, contexte en cache, contexte) ;
         for e in ev:  # compaction en attente ; segment en cours [contexte au début, requêtes depuis]
@@ -396,6 +396,8 @@ def weigh(hours=168.0) -> dict:
                 if not e[1] or e[1] >= cut:
                     acc["hidden"] += pending
                     acc["compactions"] += 1
+                    s[0] += pending
+                    s[3] += 1
                     if seg and seg[1] and e[2] > seg[0]:  # pente réelle d'un segment qui finit en compaction
                         slopes.append((e[2] - seg[0], seg[1]))
                 seg = None
@@ -408,6 +410,8 @@ def weigh(hours=168.0) -> dict:
                 for k in WEIGHTS:
                     parts[k] += r[k] * WEIGHTS[k]
                 s[0] += cost
+                s[2] += 1
+                s[4] = max(s[4], r["t"])
                 acc["main" if r["main"] else "sub"] += cost
             if not r["main"]:
                 continue
@@ -452,10 +456,67 @@ def weigh(hours=168.0) -> dict:
         calc = {"base": round(b), "croissance": round(g), "cout": round(k), "segments": len(slopes)}
     regime = ("1h" if acc["w1h"] > acc["w5"] else "5m") if acc["w1h"] + acc["w5"] else None
     top = sorted(((v[0], v[1] or sid[:8]) for sid, v in sessions.items() if v[0] > 0), reverse=True)[:3]
+    detail = [{"id": sid, "titre": v[1] or sid[:8], "poids": v[0], "requetes": v[2], "compactions": v[3],
+               "derniere": v[4]} for sid, v in sorted(sessions.items(), key=lambda x: -x[1][0]) if v[0] > 0][:10]
     return {"hours": hours, "files": len(files), "reqs": acc["reqs"], "total": sum(parts.values()) + acc["hidden"],
             "parts": parts, "hidden": acc["hidden"], "compactions": acc["compactions"], "main": acc["main"],
             "sub": acc["sub"], "causes": causes, "gaps": gaps, "ttl": {**sim, "reqs": acc["sim"], "regime": regime},
-            "fenetre": fen, "fenetre_calc": calc, "sessions": top}
+            "fenetre": fen, "fenetre_calc": calc, "sessions": top, "detail": detail}
+
+
+# Garde de consommation : une session qui mange la journée (souvent une session autonome qui tourne et se résume en
+# boucle) est signalée au démarrage des autres sessions et sur la page Cerveau d'Obsidian. Calcul en arrière-plan.
+GUARD_HOURS = 24
+GUARD_SHARE, GUARD_MIN = 0.4, 20_000_000  # alerte : plus de 40 % du poids des 24 h ET plus de 20 M (prix relatifs)…
+GUARD_ACTIVE = 2 * 3600  # … pour une session qui a encore tourné dans les 2 dernières heures
+GUARD_EVERY = 2  # heures entre deux calculs
+
+
+def guard(hours=GUARD_HOURS, now=None) -> dict:
+    """Les sessions les plus lourdes des `hours` dernières heures → {le, heures, total, sessions [3 plus lourdes : id,
+    titre, poids, part, requetes, compactions, derniere], alertes [ids]}, gardé dans la configuration (« garde »)."""
+    from .common import now_iso, set_config
+    b, now = weigh(hours), now or time.time()
+    total = b["total"]
+    rows = [{**r, "part": r["poids"] / total if total else 0.0} for r in b["detail"][:3]]
+    alerts = [r["id"] for r in rows if r["poids"] >= GUARD_MIN and r["part"] >= GUARD_SHARE
+              and 0 <= now - r["derniere"] <= GUARD_ACTIVE]
+    out = {"le": now_iso(), "heures": hours, "total": total, "sessions": rows, "alertes": alerts}
+    set_config("garde", out)
+    return out
+
+
+def _guard_row(r) -> str:
+    return (f"« {str(r.get('titre'))[:60]} » {round(100 * (r.get('part') or 0))} % des tokens "
+            f"(≈ {_m(r.get('poids') or 0)}, {r.get('requetes', 0)} requêtes, {r.get('compactions', 0)} résumés)")
+
+
+def guard_notice(cfg=None, session_id=None) -> str:
+    """La ligne d'alerte du démarrage (session lourde encore active, sauf celle qui démarre), ou ''."""
+    g = (cfg or load_config()).get("garde")
+    if not isinstance(g, dict) or not g.get("alertes"):
+        return ""
+    rows = [r for r in g.get("sessions") or () if isinstance(r, dict) and r.get("id") in g["alertes"]
+            and r.get("id") != session_id]
+    if not rows:
+        return ""
+    return ("🔥 Consommation : " + " · ".join(_guard_row(r) for r in rows) + f" sur les {g.get('heures', GUARD_HOURS):g} "
+            "dernières heures, et elle tourne encore. → Le dire à l'utilisateur ; sur son accord : l'arrêter ou baisser "
+            "son effort (outils de l'app stop_session, set_session_effort).")
+
+
+def guard_lines(cfg=None) -> list:
+    """Section « Consommation » de la page Cerveau d'Obsidian (dernier calcul de la garde), ou []."""
+    g = (cfg or load_config()).get("garde")
+    if not isinstance(g, dict) or not g.get("sessions"):
+        return []
+    out = [f"Sessions les plus lourdes des {g.get('heures', GUARD_HOURS):g} dernières heures (calcul du "
+           f"{str(g.get('le'))[8:10]}/{str(g.get('le'))[5:7]} à {str(g.get('le'))[11:16]}) :", ""]
+    out += [f"- {'🔥 ' if r.get('id') in (g.get('alertes') or ()) else ''}{_guard_row(r)}"
+            for r in g["sessions"] if isinstance(r, dict)]
+    if g.get("alertes"):
+        out += ["", "_🔥 = session encore active qui mange la journée : l'arrêter ou baisser son effort dans l'app._"]
+    return out
 
 
 def _pc(x, total) -> str:

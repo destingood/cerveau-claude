@@ -19,8 +19,10 @@ réversibles (`brain eco --annuler`) :
   si l'utilisateur active la veille (`--plugins-auto`) : avec les skills claude.ai (`syncClaudeAiSkills`) si aucune n'a servi.
 
 Sur accord de l'utilisateur seulement (`--poser ID…`, gains estimés dans `brain eco`, retour : `--retirer ID…`) : outils
-intégrés et connecteurs jamais utilisés en 30 jours (règles `permissions.deny` : l'outil sort du contexte), consignes git,
-plafond d'effort, lecture de fichier plafonnée, sous-agents sur Sonnet.
+intégrés et serveurs MCP jamais utilisés en 30 jours (règles `permissions.deny` : l'outil sort du contexte), consignes git,
+plafond d'effort, lecture de fichier plafonnée, sous-agents sur Sonnet ; un outil précis choisi par l'utilisateur
+(`--refuser NOM…`, retour : `--rendre NOM…`). Pas les connecteurs claude.ai : une règle de refus bloque leurs appels sans
+les sortir du contexte (on les coupe dans l'app).
 
 Ces réglages vivent dans les réglages UTILISATEUR (`~/.claude/settings.json`) : le settings.json d'un plugin ne peut pas
 les poser. Le cerveau n'écrase jamais une valeur posée par l'utilisateur (sans `--forcer`), garde une copie du fichier
@@ -562,6 +564,77 @@ def withdraw(ids) -> tuple:
     return 0, "\n".join(lignes)
 
 
+def _forget_rules(names):
+    """Ôte ces règles des propositions retenues (eco.propositions.*) ; une proposition vidée disparaît."""
+    def change(cfg):
+        known = (cfg.get("eco") or {}).get("propositions")
+        for pid, rules in list(known.items()) if isinstance(known, dict) else ():
+            if isinstance(rules, list) and set(rules) & names:
+                left = [r for r in rules if r not in names]
+                if left:
+                    known[pid] = left
+                else:
+                    del known[pid]
+    update_config(change)
+
+
+def refuse(names) -> tuple:
+    """`--refuser NOM…` : outils choisis par l'utilisateur (même déjà utilisés) retirés du contexte par une règle de
+    refus, retenus avec la proposition « outils » ; retour : `--rendre NOM…`. Jamais un outil de KEEP_TOOLS ou d'un
+    serveur gardé, ni un connecteur claude.ai (la règle le bloquerait sans le retirer). → (code, texte)."""
+    names = list(dict.fromkeys(names))
+    bad = [n for n in names if not _TOOL_NAME.fullmatch(n)]
+    if bad:
+        return 1, f"✗ nom d'outil invalide : {', '.join(bad)} (exemples : Artifact, PowerShell, mcp__serveur)"
+    kept = [n for n in names if n in KEEP_TOOLS or n.startswith(tuple(f"mcp__{s}" for s in KEEP_SERVERS))]
+    if kept:
+        return 1, f"✗ {', '.join(kept)} : outil indispensable au travail ou au cerveau, jamais refusé"
+    app = [n for n in names if _app_connector(n)]
+    if app:
+        return 1, (f"✗ {', '.join(_server(n[5:]) for n in app)} : connecteur claude.ai — une règle de refus bloque ses "
+                   "appels sans le retirer du contexte ; le couper dans l'app (bouton + → Connecteurs)")
+    ok, posees, lignes = commit([("refus", n, True) for n in names])
+    if posees:
+        old = ((load_config().get("eco") or {}).get("propositions") or {}).get("outils")
+        old = old if isinstance(old, list) else []
+        set_config("eco.propositions.outils", sorted(set(old) | set(posees)))
+        lignes.append(f"→ pris en compte au prochain démarrage de Claude Code · retour : "
+                      f"`{CMD} eco --rendre {' '.join(sorted(posees))}`")
+    return (0 if ok else 1), "\n".join(lignes)
+
+
+def give_back(names) -> tuple:
+    """`--rendre NOM…` : retire ces règles de refus posées par le cerveau (outil de nouveau disponible). → (code, texte)."""
+    names = set(names)
+    mine = set(_section(load_config(), "avant")["refus"]) & names
+    lignes = [f"✓ {n} : pas refusé par le cerveau (règle de refus à toi, ou absente) — rien à faire"
+              for n in sorted(names - mine)]
+    if mine:
+        ok, more = _restore(only=mine)
+        if not ok:
+            return 1, "\n".join(lignes + more)
+        _forget_rules(mine)
+        lignes += more + ["→ pris en compte au prochain démarrage de Claude Code"]
+    return 0, "\n".join(lignes)
+
+
+def fix_app_connectors() -> str:
+    """Correctif de la 8.8.0 : les règles de refus posées par la proposition « connecteurs » sur des connecteurs
+    claude.ai ne les retiraient pas du contexte et bloquaient leurs appels → retirées une fois (état d'avant). → l'annonce
+    (une ligne), ou ''."""
+    known = (load_config().get("eco") or {}).get("propositions")
+    rules = known.get("connecteurs") if isinstance(known, dict) else None
+    bad = {r for r in rules if isinstance(r, str) and _app_connector(r)} if isinstance(rules, list) else set()
+    if not bad:
+        return ""
+    ok, _ = _restore(only=bad)
+    if not ok:
+        return ""
+    _forget_rules(bad)
+    return (f"⚡ Mode éco : {len(bad)} règle(s) de refus sur des connecteurs claude.ai retirée(s) — elles bloquaient "
+            "leurs appels sans les sortir du contexte ; pour les retirer vraiment : bouton + → Connecteurs dans l'app")
+
+
 # ------------------------------------------------------------------------------------------ plugins inutilisés
 def installed_plugins() -> dict:
     """{« nom@marketplace » : [entrées]} d'après plugins/installed_plugins.json de Claude Code (vide s'il manque)."""
@@ -813,7 +886,7 @@ def take_annonce(cfg=None) -> str:
 
 def start(cfg=None) -> str:
     """Les lignes du mode éco pour le démarrage d'une session : réglages posés une fois + annonce de la veille."""
-    return "\n".join(x for x in (auto_start(cfg), take_annonce(cfg)) if x)
+    return "\n".join(x for x in (auto_start(cfg), fix_app_connectors(), take_annonce(cfg)) if x)
 
 
 def watch_plugins(mode) -> tuple:
@@ -833,22 +906,45 @@ def watch_plugins(mode) -> tuple:
 # ------------------------------------------------------------------------------------------ sur accord : propositions
 PROPOSALS = {
     "outils": "outils intégrés jamais utilisés depuis 30 j retirés du contexte (règles de refus)",
-    "connecteurs": "connecteurs (serveurs MCP) jamais utilisés depuis 30 j retirés du contexte (règles de refus)",
+    "connecteurs": "serveurs MCP (plugins, les tiens ; pas les connecteurs claude.ai) jamais utilisés depuis 30 j retirés "
+                   "du contexte (règles de refus)",
     "git": "consignes git et instantané git status retirés du contexte (includeGitInstructions false)",
     "effort": "effort plafonné à « high » (maxEffortLevel) : moins de tokens de sortie, les plus chers",
     "lecture": "lecture de fichier plafonnée à 12 000 tokens (au-delà : Read avec offset/limit)",
     "sous-agents": "sous-agents sur Sonnet (CLAUDE_CODE_SUBAGENT_MODEL) : ménage le quota, pas le contexte",
 }
 # outils chargés d'emblée qu'une règle de refus retire du contexte → tokens de leur description (estimés)
-TOOL_WEIGHTS = {"Workflow": 1300, "ScheduleWakeup": 1000, "ReportFindings": 550, "SuggestPluginInstall": 500,
-                "SearchPlugins": 400, "SuggestSkills": 350, "mcp__visualize": 700}
+TOOL_WEIGHTS = {"Artifact": 5500, "PowerShell": 1600, "Workflow": 1300, "ScheduleWakeup": 1000, "ReportFindings": 550,
+                "SuggestPluginInstall": 500, "SearchPlugins": 400, "SuggestSkills": 350, "mcp__visualize": 700}
 KEEP_SERVERS = ("ccd_", "plugin_cerveau", "Claude_Browser", "terminal", "visualize")  # jamais proposés
+KEEP_TOOLS = ("Bash", "Read", "Edit", "Write", "Grep", "Glob", "ToolSearch", "Skill")  # jamais refusés (`--refuser`)
 GIT_TOKENS = 800  # consignes git + instantané git status (0,8 à 1,5 k selon le dépôt)
-_UUID = re.compile(r"[0-9a-f]{8}-[0-9a-f]{4}-")
+_UUID = re.compile(r"[0-9a-f]{8}-[0-9a-f]{4}-")  # connecteur claude.ai : une règle de refus bloque ses appels, mais il
+_TOOL_NAME = re.compile(r"[A-Za-z][A-Za-z0-9_-]*")  # reste dans le contexte (mesuré le 21/10/2026) → jamais proposé
 
 
 def _server(s) -> str:
     return s[:8] if _UUID.match(s) else s
+
+
+def _app_connector(rule) -> bool:
+    return rule.startswith("mcp__") and bool(_UUID.match(rule[5:]))
+
+
+def _idle_servers(scan, deny) -> dict:
+    """Serveurs MCP différés jamais appelés → {serveur: [outils]} (ni ceux de KEEP_SERVERS, ni ceux déjà refusés)."""
+    servers = {}
+    for name in scan["deferred"]:
+        server = name[5:].partition("__")[0] if name.startswith("mcp__") else ""
+        if server and not server.startswith(KEEP_SERVERS) and f"mcp__{server}" not in deny:
+            servers.setdefault(server, []).append(name)
+    return {s: v for s, v in servers.items() if not any(t.startswith(f"mcp__{s}__") for t in scan["tools"])}
+
+
+def _servers_detail(servers) -> tuple:
+    """→ (tokens de leurs noms différés, « serveur (n outils), … »)."""
+    tok = sum(len(n) + 1 for v in servers.values() for n in v) / CHARS_PER_TOKEN
+    return tok, ", ".join(f"{_server(s)} ({len(v)} outils)" for s, v in sorted(servers.items(), key=lambda x: (-len(x[1]), x[0])))
 
 
 def proposals(settings=None, days=UNUSED_DAYS) -> list:
@@ -867,16 +963,9 @@ def proposals(settings=None, days=UNUSED_DAYS) -> list:
     if rules:
         out.append(("outils", [("refus", r, True) for r in rules], sum(TOOL_WEIGHTS[r] for r in rules),
                     ", ".join(rules)))
-    servers = {}
-    for name in scan["deferred"]:
-        server = name[5:].partition("__")[0] if name.startswith("mcp__") else ""
-        if server and not server.startswith(KEEP_SERVERS) and f"mcp__{server}" not in deny:
-            servers.setdefault(server, []).append(name)
-    servers = {s: v for s, v in servers.items() if not any(t.startswith(f"mcp__{s}__") for t in used)}
+    servers = {s: v for s, v in _idle_servers(scan, deny).items() if not _UUID.match(s)}
     if servers:
-        tok = sum(len(n) + 1 for v in servers.values() for n in v) / CHARS_PER_TOKEN
-        detail = ", ".join(f"{_server(s)} ({len(v)} outils)"
-                           for s, v in sorted(servers.items(), key=lambda x: (-len(x[1]), x[0])))
+        tok, detail = _servers_detail(servers)
         out.append(("connecteurs", [("refus", f"mcp__{s}", True) for s in sorted(servers)], tok, detail))
     for pid, key, value, gain in (("git", "includeGitInstructions", False, GIT_TOKENS),
                                   ("effort", "maxEffortLevel", "high", None),
@@ -1093,13 +1182,23 @@ def status(cfg=None) -> str:
         if props:
             L.append(f"→ `{CMD} eco --poser {' '.join(p[0] for p in props)}` (demande d'abord à l'utilisateur ; "
                      f"retour : `--retirer ID…`)")
+    deny = _get(settings, DENY)
+    app = {s: v for s, v in _idle_servers(_scan_all(UNUSED_DAYS), deny if isinstance(deny, list) else []).items()
+           if _UUID.match(s)}
+    if app:
+        tok, detail = _servers_detail(app)
+        L.append(f"Connecteurs claude.ai jamais utilisés depuis {UNUSED_DAYS} j (≈ {_tok(tok)} tokens par requête) : "
+                 f"{detail} — une règle de refus ne les retire pas du contexte : les couper dans l'app (bouton + → "
+                 "Connecteurs), sur accord de l'utilisateur")
+    L.append(f"  outil précis à retirer du contexte (choix de l'utilisateur) : `{CMD} eco --refuser NOM…` · retour : "
+             "`--rendre NOM…`")
     L.append(f"→ `{CMD} eco --annuler` pour revenir" if eco.get("applique_le")
              else f"→ `{CMD} eco --appliquer` pour l'activer (sauvegarde + retour possible)")
     return "\n".join(L)
 
 
 def run(appliquer=False, annuler=False, forcer=False, sortie=None, fenetre=None, desactiver=None, plugins_auto=None,
-        poser=None, retirer=None, cache=None) -> tuple:
+        poser=None, retirer=None, cache=None, refuser=None, rendre=None) -> tuple:
     """Point d'entrée de `brain eco` → (code de sortie, texte)."""
     if appliquer and annuler:
         return 1, "✗ --appliquer et --annuler ensemble : choisis l'un des deux"
@@ -1120,7 +1219,7 @@ def run(appliquer=False, annuler=False, forcer=False, sortie=None, fenetre=None,
             if posees:
                 L.append(f"→ pris en compte au plus tard au prochain démarrage de Claude Code · retour : `{CMD} eco --annuler`")
     for given, fn in ((desactiver, disable), (plugins_auto, watch_plugins), (poser, pose_proposals),
-                      (retirer, withdraw), (cache, set_cache)):
+                      (retirer, withdraw), (cache, set_cache), (refuser, refuse), (rendre, give_back)):
         if given:
             c, text = fn(given)
             L.append(text)

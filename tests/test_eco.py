@@ -663,6 +663,51 @@ W.run("eco", "--poser", "outils", "git")
 c, out = W.run("eco", "--annuler")
 check(c == 0 and W.settings() == orig, "--annuler retire aussi les réglages posés sur accord", W.settings())
 
+# outils choisis par l'utilisateur (--refuser / --rendre) ; connecteurs claude.ai : jamais de règle de refus (mesuré le
+# 21/10/2026 : elle bloque leurs appels sans les sortir du contexte)
+APP = "mcp__0cf6aea5-9f89-4b04-93c1-92b003711eba"
+W = World("refuser")
+write_transcript(W.home / "projects" / "-x" / "s.jsonl", [
+    att("deferred_tools_delta", "outils différés", addedNames=[f"{APP}__get_x", "mcp__monserveur__outil1"]),
+    prompt("bonjour"), asst("m1", 5000, ("PowerShell", {}))])
+W.write_settings(orig)
+c, out = W.run("eco")
+check(c == 0 and "Connecteurs claude.ai jamais utilisés depuis 30 j" in out and "0cf6aea5 (1 outils) — une règle" in out
+      and "connecteurs — ≈" in out and "monserveur (1 outils)" in out and "eco --refuser NOM" in out,
+      "eco : connecteur claude.ai à couper dans l'app, pas en règle de refus ; serveur MCP proposé", out)
+c, out = W.run("eco", "--poser", "connecteurs")
+check(c == 0 and W.settings()["permissions"]["deny"] == ["mcp__monserveur"],
+      "--poser connecteurs : jamais de règle sur un connecteur claude.ai", W.settings())
+c, out = W.run("eco", "--refuser", "Artifact", "PowerShell")
+check(c == 0 and W.settings()["permissions"]["deny"] == ["mcp__monserveur", "Artifact", "PowerShell"]
+      and W.config("eco.propositions.outils") == ["Artifact", "PowerShell"] and "eco --rendre Artifact PowerShell" in out,
+      "--refuser : outils choisis retirés (même un outil déjà utilisé), retour indiqué", out)
+for bad, why in (("Bash", "indispensable"), ("mcp__plugin_cerveau_cerveau", "indispensable"), (APP, "connecteur claude.ai"),
+                 ("Bash(rm:*)", "nom d'outil invalide")):
+    c, out = W.run("eco", "--refuser", bad)
+    check(c != 0 and why in out and bad not in W.settings()["permissions"]["deny"], f"--refuser {bad} : refusé ({why})", out)
+c, out = W.run("eco", "--rendre", "PowerShell", "Inconnu")
+check(c == 0 and W.settings()["permissions"]["deny"] == ["mcp__monserveur", "Artifact"]
+      and W.config("eco.propositions.outils") == ["Artifact"] and "Inconnu : pas refusé par le cerveau" in out,
+      "--rendre : outil rendu ; un nom que le cerveau n'a pas refusé, dit tel quel", out)
+W.run("eco", "--rendre", "Artifact")
+W.run("eco", "--retirer", "connecteurs")
+check(W.settings() == orig and not W.config("eco.propositions"), "--rendre et --retirer : réglages exactement comme avant",
+      (W.settings(), W.config("eco")))
+# correctif : les règles qu'une version d'avant avait posées sur des connecteurs claude.ai sont retirées une fois
+W.run("eco", "--poser", "connecteurs")
+W.run("eco", "--refuser", "mcp__autre")
+for f in (W.settings_file, W.brain_dir / "config.json"):
+    f.write_text(f.read_text(encoding="utf-8").replace("mcp__autre", APP), encoding="utf-8")
+W.run("config", "eco.propositions", json.dumps({"connecteurs": ["mcp__monserveur", APP]}))
+c, msg, out = W.hook("session-start", "r1")
+check(c == 0 and "1 règle(s) de refus sur des connecteurs claude.ai retirée(s)" in context_of(msg)
+      and W.settings()["permissions"]["deny"] == ["mcp__monserveur"]
+      and W.config("eco.propositions") == {"connecteurs": ["mcp__monserveur"]} and APP not in json.dumps(W.config("eco")),
+      "démarrage : règle sur un connecteur claude.ai retirée (état d'avant), le reste gardé, annoncé", out[-600:])
+c, msg, out = W.hook("session-start", "r2")
+check("connecteurs claude.ai retirée" not in context_of(msg), "correctif fait une seule fois", out[-300:])
+
 
 # ------------------------------------------------------------------ 14. cache adaptatif (promptCacheTtl)
 def ts_ago(sec):
@@ -781,7 +826,7 @@ check(near(b["ttl"]["5m"], 491300) and near(b["ttl"]["1h"], 702750) and b["ttl"]
       "weigh : cache de 5 min et de 1 h simulés sur les vraies pauses", b["ttl"])
 check(b["fenetre"] == 140000 and b["fenetre_calc"] == {"base": 20000, "croissance": 10000, "cout": 69000, "segments": 5},
       "weigh : fenêtre de résumé la moins chère d'après les compactions", (b["fenetre"], b["fenetre_calc"]))
-check([(round(w), n) for w, n in b["sessions"]] == [(519000, "Compactions en série"), (280250, "Refonte du site"), (4800, "sc")],
+check([(round(w), n) for w, n in b["sessions"]] == [(664000, "Compactions en série"), (280250, "Refonte du site"), (4800, "sc")],
       "weigh : sessions les plus lourdes, avec leur titre (sous-agents comptés avec leur session)", b["sessions"])
 lines = "\n".join(tokens._weigh_lines(b))
 for want in ("949 k sur 26 requête(s)",
@@ -790,10 +835,42 @@ for want in ("949 k sur 26 requête(s)",
              "début 2 (10,5 %) · compaction 5 (21,1 %) · pause > 1 h 1 (7,0 %) · pause > 5 min 1 (6,7 %) · invalidation 1 (5,3 %)",
              "< 1 min 19 · 1-5 min 0 · 5-60 min 1 · > 1 h 1",
              "5 min ferait gagner 22,3 % (en service : 1 h)",
-             "« Compactions en série » 54,7 % · « Refonte du site » 29,5 % · « sc » 0,5 %",
+             "« Compactions en série » 70,0 % · « Refonte du site » 29,5 % · « sc » 0,5 %",
              "≈ 140 k (en service 200 k) : `brain eco --fenetre 140000`",
-             "5 réglage(s) sur accord (outils, git, effort, lecture, sous-agents, ≈ 5.6 k tok de moins par requête)"):
+             "5 réglage(s) sur accord (outils, git, effort, lecture, sous-agents, ≈ 12.7 k tok de moins par requête)"):
     check(want in lines, f"brain tokens : « {want[:50]}… »", lines)
+
+# garde de consommation : seuil abaissé pour ces petits transcripts (en vrai : 20 M et 40 % des 24 h)
+GMIN, tokens.GUARD_MIN = tokens.GUARD_MIN, 0
+g = tokens.guard(168, now=T0 + 600)  # 90 s après la dernière requête de « Compactions en série »
+check(g["alertes"] == ["sb"] and [r["id"] for r in g["sessions"]] == ["sb", "sa", "sc"]
+      and [(r["requetes"], r["compactions"]) for r in g["sessions"]] == [(18, 5), (7, 0), (1, 0)]
+      and near(g["sessions"][0]["part"], 664000 / 949050) and eco.load_config()["garde"]["alertes"] == ["sb"],
+      "garde : la session lourde et encore active est en alerte, la Refonte (30 %) non ; calcul gardé", g)
+note = tokens.guard_notice()
+check(note.startswith("🔥 Consommation : « Compactions en série » 70 % des tokens (≈ ") and "18 requêtes, 5 résumés" in note
+      and "168 dernières heures" in note and "stop_session" in note and "Refonte" not in note,
+      "garde : alerte au démarrage (titre, part, requêtes, résumés, que faire)", note)
+check(tokens.guard_notice(session_id="sb") == "", "garde : la session en alerte n'est pas alertée sur elle-même")
+gl = "\n".join(tokens.guard_lines())
+check("- 🔥 « Compactions en série » 70 %" in gl and "- « Refonte du site » 30 %" in gl and "_🔥 = session" in gl,
+      "garde : section Consommation de la page Cerveau, 🔥 devant l'alerte", gl)
+g = tokens.guard(168)  # 26 h plus tard : plus active
+check(g["alertes"] == [] and tokens.guard_notice() == "" and "🔥" not in "\n".join(tokens.guard_lines()),
+      "garde : session arrêtée depuis plus de 2 h → plus d'alerte", g)
+tokens.GUARD_MIN = GMIN
+check(tokens.guard(168, now=T0 + 600)["alertes"] == [], "garde : sous 20 M, jamais d'alerte (bruit écarté)")
+eco.set_config("garde", None)
+W = World("garde")
+c, msg, out = W.hook("session-start", "g1")
+check(c == 0 and W.config("garde.lance_le"), "démarrage : garde lancée en arrière-plan, heure notée", out[-300:])
+check(wait_for(lambda: quiet(lambda: W.config("garde.le"))), "la tâche de fond (tokens --garde) garde son calcul",
+      quiet(lambda: W.config("garde")))
+lance = W.config("garde.le")
+W.hook("session-start", "g2")
+check(W.config("garde.le") == lance and not W.config("garde.lance_le"), "garde : pas relancée avant 2 h", W.config("garde"))
+c, out = W.run("tokens", "--garde")
+check(c == 0 and "✓ aucune session ne mange la journée" in out, "brain tokens --garde : à la main, résultat dit", out)
 
 # ------------------------------------------------------------------ 16. reprise après une pause qui a vidé le cache
 PT = TMP / "pause.jsonl"

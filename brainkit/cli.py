@@ -1165,6 +1165,17 @@ def cmd_neurone(a):
 
 def cmd_tokens(a):
     from . import tokens
+    if a.garde:  # garde de consommation (lancée en arrière-plan au démarrage d'une session) + page Cerveau d'Obsidian
+        g = tokens.guard()
+        try:
+            from . import obsidian
+            b = Brain.load()
+            obsidian.write_status(b, (b.data.get("wiki") or {}).get("root"))
+        except Exception as exc:
+            log(f"garde : page Cerveau : {exc!r}")
+        cfg = {"garde": g}
+        print("\n".join([tokens.guard_notice(cfg) or "✓ aucune session ne mange la journée", ""] + tokens.guard_lines(cfg)))
+        return
     print(tokens.report(a.hours))
 
 
@@ -1179,7 +1190,7 @@ def cmd_optimize(a):
 def cmd_eco(a):
     from . import eco
     code, text = eco.run(a.appliquer, a.annuler, a.forcer, a.sortie, a.fenetre, a.desactiver, a.plugins_auto,
-                         a.poser, a.retirer, a.cache)
+                         a.poser, a.retirer, a.cache, a.refuser, a.rendre)
     print(text)
     return code
 
@@ -1483,10 +1494,17 @@ def cmd_wiki(a):
     elif act == "obsidian":
         from . import obsidian
         made = obsidian.setup(root, force=True)
+        b = Brain.load()
+        made += [f for f, ok in ((obsidian.STATUS, obsidian.write_status(b, root)),
+                                 (obsidian.CARD, obsidian.write_canvas(b, root))) if ok]
         print("\n".join(f"✓ {m}" for m in made) + "\n→ redémarre Obsidian s'il est ouvert" if made
               else "✓ coffre Obsidian déjà réglé (rien ne manquait)")
+    elif act in ("capture", "capturer"):
+        from . import obsidian
+        print("\n".join(obsidian.capture(root)) or "· rien à mémoriser dans les notes du jour")
     else:
-        die(f"action inconnue : {a.action} — init, add, pending, lint, index, log, status, sync, schema, obsidian")
+        die(f"action inconnue : {a.action} — init, add, pending, lint, index, log, status, sync, schema, obsidian, "
+            "capture")
 
 
 def cmd_boutique(a):
@@ -1808,6 +1826,8 @@ def build_parser():
     s = cmd("tokens", cmd_tokens, "où partent les tokens : contexte relu, 1res requêtes, coût fixe au démarrage, relances du cerveau, "
             "habitudes coûteuses (transcripts)")
     s.add_argument("--hours", type=float, default=48, help="période mesurée (défaut 48 h)")
+    s.add_argument("--garde", action="store_true", help="garde de consommation : sessions qui mangent les dernières 24 h "
+                   "(fait tout seul en arrière-plan toutes les 2 h)")
     s = cmd("optimize", cmd_optimize, "optimiser le cerveau (tokens d'abord) : coût réel de l'injection/du rappel/du "
             "corpus + ce qu'on peut alléger — --apply applique le sûr et réversible", ["optimise", "opti"])
     s.add_argument("--apply", action="store_true", help="appliquer les actions sûres et réversibles (ménage du corpus, rappel d'habitude, mode éco)")
@@ -1830,6 +1850,9 @@ def build_parser():
     s.add_argument("--poser", nargs="+", metavar="ID",
                    help="poser ces propositions (outils, connecteurs, git, effort, lecture, sous-agents) — seulement après accord de l'utilisateur")
     s.add_argument("--retirer", nargs="+", metavar="ID", help="retirer ces propositions (état d'avant rétabli)")
+    s.add_argument("--refuser", nargs="+", metavar="OUTIL",
+                   help="retirer ces outils du contexte (règle de refus), même déjà utilisés — choix de l'utilisateur")
+    s.add_argument("--rendre", nargs="+", metavar="OUTIL", help="rendre ces outils (règle de refus du cerveau retirée)")
     s.add_argument("--cache", choices=["auto", "5m", "1h", "off"],
                    help="durée du cache de prompt : auto (choisie chaque jour d'après tes pauses), 5m, 1h, "
                         "off (le cerveau n'y touche plus)")

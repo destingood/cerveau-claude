@@ -1293,6 +1293,12 @@ def session_close(brain, project=None) -> str:
         write_journal(root)
     except Exception as exc:
         log(f"wiki : journal : {exc!r}")
+    try:  # coffre Obsidian : page « Cerveau » et carte des thèmes, lues sans Claude (≈ 0,15 s)
+        from . import obsidian
+        obsidian.write_status(brain, root)
+        obsidian.write_canvas(brain, root)
+    except Exception as exc:
+        log(f"wiki : obsidian : {exc!r}")
     if not is_repo(root):
         return ""
     rows = [p for _, p in _changes(root) if p.startswith((ws.PAGES + "/", ws.ARCHIVE + "/", ws.RAW + "/"))]

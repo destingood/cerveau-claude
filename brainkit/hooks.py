@@ -157,15 +157,24 @@ def wiki_start(brain, cfg) -> str:
         wiki.mark_pulled()
         spawn_background(["wiki", "sync", "--auto", "--no-push"])
     text = wiki.notice(brain)
-    try:  # une fois par version : coffre Obsidian réglé (rien d'écrasé)
-        made = obsidian.setup(ws.root())
+    root = ws.root()
+    try:  # une fois par version : coffre Obsidian réglé (rien d'écrasé), puis sa page Cerveau et sa carte
+        made = obsidian.setup(root)
+        if made:
+            obsidian.write_status(brain, root)
+            obsidian.write_canvas(brain, root)
     except Exception as exc:
         made = []
         log(f"obsidian (démarrage) : {exc!r}")
     if made:
-        text += (f"\n🟣 Coffre Obsidian réglé pour le cerveau ({len(made)} fichier(s) : tableau de bord, modèles Alt+T, "
-                 f"signets, mode d'emploi) — à dire à l'utilisateur : redémarrer Obsidian s'il est ouvert, puis signet "
-                 f"« Cerveau » → « {obsidian.GUIDE[:-3]} ».")
+        text += (f"\n🟣 Coffre Obsidian réglé pour le cerveau ({len(made)} fichier(s) : page Cerveau, carte du cerveau, "
+                 f"note du jour Alt+J, tableau de bord, modèles Alt+T, signets, mode d'emploi) — à dire à l'utilisateur : "
+                 f"redémarrer Obsidian s'il est ouvert, puis signet « Cerveau » → « {obsidian.GUIDE[:-3]} ».")
+    try:  # notes du jour : lignes « À retenir » → souvenirs, en arrière-plan (jamais dans le délai du hook)
+        if root and os.environ.get("CLAUDE_CODE_REMOTE") != "true" and obsidian.captures(root):
+            spawn_background(["wiki", "capture"])
+    except Exception as exc:
+        log(f"obsidian (notes du jour) : {exc!r}")
     return text
 
 
@@ -278,6 +287,13 @@ def on_session_start(data, cfg):
             spawn_background(["eco", "--plugins-auto"])
         except Exception as exc:
             log(f"éco (veille des plugins) : {exc!r}")
+    garde = cfg.get("garde") if isinstance(cfg.get("garde"), dict) else {}
+    if min(days_since(garde.get("le")), days_since(garde.get("lance_le"))) * 24 >= 2:
+        try:  # garde de consommation : sessions qui mangent la journée (toutes les 2 h au plus, en arrière-plan)
+            set_config("garde.lance_le", now_iso())
+            spawn_background(["tokens", "--garde"])
+        except Exception as exc:
+            log(f"garde de consommation : {exc!r}")
     try:  # sessions que les hooks ont manquées (une fois par jour) : importées au journal en arrière-plan
         journal_catchup(cfg, sid)
     except Exception as exc:
@@ -326,6 +342,13 @@ def on_session_start(data, cfg):
                 text = f"{text}\n\n{tip}"
         except Exception as exc:
             log(f"optimize (démarrage) : {exc!r}")
+        try:
+            from . import tokens
+            line = tokens.guard_notice(cfg, sid)
+            if line:
+                text = f"{text}\n\n{line}"
+        except Exception as exc:
+            log(f"garde de consommation (démarrage) : {exc!r}")
     if wiki_root:
         try:
             text = f"{text}\n\n{wiki_start(brain, cfg)}".rstrip()
