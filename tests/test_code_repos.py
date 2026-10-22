@@ -96,6 +96,21 @@ def repo(tmp_path: Path) -> Path:
         ".git-credentials",
         ".npmrc",
         ".aws/credentials",
+        "config/secrets.yaml",
+        "secret/token",
+        ".secrets",
+        "gcp/credentials.json",
+        ".pgpass",
+        "web/.htpasswd",
+        "infra/prod.tfvars",
+        "infra/prod.tfvars.json",
+        "terraform.tfstate",
+        "terraform.tfstate.backup",
+        "vault.kdbx",
+        "keys/private.asc",
+        "backup.gpg",
+        ".docker/config.json",
+        "home/.Docker/config.json",
     ],
 )
 def test_sensitive_paths(path: str) -> None:
@@ -104,7 +119,17 @@ def test_sensitive_paths(path: str) -> None:
 
 @pytest.mark.parametrize(
     "path",
-    [".env.example", "src/environment.py", "docs/secrets.md", "keys.py", "id_rsa.pub", "README.md"],
+    [
+        ".env.example",
+        "src/environment.py",
+        "docs/secrets.md",
+        "keys.py",
+        "id_rsa.pub",
+        "README.md",
+        "src/secret_scanner.py",
+        "docs/credentials.rst",
+        "docker/config.json",
+    ],
 )
 def test_ordinary_paths(path: str) -> None:
     assert not is_sensitive(path)

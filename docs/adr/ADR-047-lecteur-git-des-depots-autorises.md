@@ -41,8 +41,11 @@ Option 1, avec ces règles, toutes testées (`tests/test_code_*.py`, `plugins/co
   chaque appel.
 - **CERVEAU exclu**, dans la configuration et à l'exécution : refus d'un dossier égal, parent ou
   enfant de la racine CERVEAU, puis d'un dépôt dont le `git-dir`, le `common-dir` ou le dossier
-  `objects` recouvre CERVEAU (worktree ou clone de CERVEAU placé ailleurs) ; objets empruntés
-  (`objects/info/alternates`) refusés ; le dossier listé doit être la racine de son dépôt.
+  `objects` recouvre CERVEAU (worktree de CERVEAU placé ailleurs) ; objets empruntés
+  (`objects/info/alternates`, donc un clone partagé) refusés ; le dossier listé doit être la
+  racine de son dépôt. Un clone ordinaire de CERVEAU (`git clone`, ou `--local` avec liens
+  physiques) a ses propres objets : il n'est pas reconnu et reste lisible s'il est listé. La
+  comparaison des commits racines est prévue pour P3b (backlog, revue de sécurité de P3a).
 - **Objets seulement** : `rev-parse`, `log`, `diff` entre deux commits, `ls-tree`, `cat-file`.
   Jamais le dossier de travail, ni `checkout`, ni `archive`, ni `status` ; aucune commande lancée
   n'écrit dans le dépôt.
@@ -53,9 +56,13 @@ Option 1, avec ces règles, toutes testées (`tests/test_code_*.py`, `plugins/co
   chaque `diff` (`--numstat` puis `-p`) ; chemins littéraux (`GIT_LITERAL_PATHSPECS`, `:(exclude,literal)`) ;
   révisions filtrées puis passées après `--end-of-options` ; délai de 10 s ; sorties bornées en
   octets, coupure signalée.
-- **Sorties** : fichier sensible (`.env*` sauf `.env.example`, clés, fichiers d'identifiants,
-  dossier `secrets`) jamais lu, seulement nommé comme retenu ; secrets et blocs de clés privées
-  masqués et comptés ; caractères invisibles et bidirectionnels montrés `⟨U+XXXX⟩` ; tranches de
+- **Sorties** : fichier sensible (`.env*` sauf `.env.example`, clés et trousseaux, fichiers
+  d'identifiants, `secret`/`secrets`/`credentials` sans extension ou avec une extension de
+  données, `.docker/config.json`, état et variables Terraform) jamais lu, seulement nommé comme
+  retenu ; dans `repo_diff`, le patch n'est pas montré si un nom de fichier n'est pas en UTF-8 ou
+  si la liste des fichiers est tronquée, et toute section du patch dont le chemin est sensible ou
+  illisible est retirée (défense en profondeur derrière les exclusions) ; secrets et blocs de
+  clés privées (PEM, OpenSSH, OpenPGP) masqués et comptés ; caractères invisibles et bidirectionnels montrés `⟨U+XXXX⟩` ; tranches de
   200 lignes au plus ; tout le texte reste une donnée (R5).
 - **Version de git** : 2.45.0 au moins. Avec un git plus ancien, `--no-lazy-fetch` est inconnu,
   chaque appel échoue et l'outil refuse : l'échec est fermé.

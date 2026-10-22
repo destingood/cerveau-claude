@@ -50,7 +50,9 @@ _PASSED = (
     "DOCKER_CONFIG",
 )
 # Names Windows cannot create, with or without an extension.
-_RESERVED = re.compile(r"^(?:con|prn|aux|nul|com[0-9¹²³]|lpt[0-9¹²³])(?:\..*)?$", re.IGNORECASE)
+_RESERVED = re.compile(
+    r"^(?:con|prn|aux|nul|conin\$|conout\$|com[0-9¹²³]|lpt[0-9¹²³])(?:\..*)?$", re.IGNORECASE
+)
 _NOT_PORTABLE = frozenset('<>:"|?*')
 
 

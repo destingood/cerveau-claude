@@ -21,7 +21,7 @@ from core.registry.manifest import validate_plugin
 from plugins.code_repo import server as server_module
 from plugins.code_repo.server import MAX_ENTRIES, build_server
 from plugins.code_repo.tests.support import ENV_VALUE, LONG_LINES, TOKEN, example_repo
-from tests.code_support import commit, listed
+from tests.code_support import blob, commit, git, listed
 from tests.conftest import REPO_ROOT
 
 PLUGIN = Path(__file__).resolve().parents[1]
@@ -192,6 +192,103 @@ def test_too_many_sensitive_files_hide_the_patch(
     assert result["patch"] == ""
     assert "patch non montré (R6)" in result["note"]
     assert result["files"] == [{"path": "src/app.py", "added": 3, "deleted": 1}]
+
+
+def test_a_path_that_is_not_utf8_hides_the_patch(tmp_path: Path) -> None:
+    # A Latin-1 name, as an old tool writes it: an exclusion built from a decoded name would not
+    # match its bytes, so its content would reach the patch (security review of P3a).
+    repo = example_repo(tmp_path / "depot")
+    hidden = "MOT-DE-PASSE-LATIN1"
+    entry = b"100644 " + blob(repo, f"{hidden}\n".encode()).encode() + b"\tsecrets/cl\xe9.txt\0"
+    git(repo, "update-index", "-z", "--index-info", stdin=entry)
+    commit(repo, {"src/autre.py": "x = 1\n"}, "nom latin-1")
+    result = data(
+        call(server_for([listed("p", repo)]), "repo_diff", {"repo": "p", "base": "HEAD~1"})
+    )
+    assert result["patch"] == ""
+    assert "pas en UTF-8 : patch non montré (R6)" in result["note"]
+    assert result["withheld"] == ["secrets/cl�.txt"]
+    assert result["files"] == [{"path": "src/autre.py", "added": 1, "deleted": 0}]
+    assert hidden not in json.dumps(result, ensure_ascii=False)
+
+
+def test_a_cut_file_list_hides_the_patch(example: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setattr(server_module, "MAX_NUMSTAT_BYTES", 8)
+    result = data(
+        call(
+            server_for([listed("exemple", example)]),
+            "repo_diff",
+            {"repo": "exemple", "base": "HEAD~1"},
+        )
+    )
+    assert result["patch"] == ""
+    assert "tronquée : patch non montré (R6)" in result["note"]
+
+
+def test_a_sensitive_section_that_escaped_the_exclusions_is_dropped(
+    example: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    # Simulate an exclusion that does not match: the file list forgets ".env".
+    numstat = server_module._numstat
+
+    def forgetful(raw: bytes) -> tuple[list[tuple[str, int | None, int | None]], bool]:
+        changes, readable = numstat(raw)
+        return [change for change in changes if change[0] != ".env"], readable
+
+    monkeypatch.setattr(server_module, "_numstat", forgetful)
+    result = data(
+        call(
+            server_for([listed("exemple", example)]),
+            "repo_diff",
+            {"repo": "exemple", "base": "HEAD~1"},
+        )
+    )
+    assert result["withheld"] == []
+    assert result["note"] == "1 section(s) du patch retirée(s) : fichier sensible ou illisible (R6)"
+    assert result["patch"].startswith("diff --git a/src/app.py b/src/app.py")
+    assert ENV_VALUE not in json.dumps(result, ensure_ascii=False)
+
+
+def test_a_quoted_file_name_keeps_its_section(tmp_path: Path) -> None:
+    repo = example_repo(tmp_path / "depot")
+    commit(repo, {"src/données.py": "x = 1\n"}, "accent")
+    result = data(
+        call(server_for([listed("p", repo)]), "repo_diff", {"repo": "p", "base": "HEAD~1"})
+    )
+    assert result["note"] is None
+    assert result["patch"].startswith('diff --git "a/src/donn\\303\\251es.py"')
+    assert "+x = 1" in result["patch"]
+
+
+@pytest.mark.parametrize(
+    ("line", "path"),
+    [
+        (b"diff --git a/src/app.py b/src/app.py", "src/app.py"),
+        (b"diff --git a/x b/y b/x b/y", "x b/y"),
+        (b'diff --git "a/donn\\303\\251es.py" "b/donn\\303\\251es.py"', "données.py"),
+        (b'diff --git "a/tab\\there\\"\\\\" "b/tab\\there\\"\\\\"', 'tab\there"\\'),
+        (b"diff --git a/one b/two", None),
+        (b"diff --git a/", None),
+        (b'diff --git "c/odd" "b/odd"', None),
+        (b'diff --git "a/unterminated', None),
+        (b'diff --git "a/\\351t\\351" "b/\\351t\\351"', None),
+        (b"diff --git a/\xe9 b/\xe9", None),
+    ],
+)
+def test_the_path_of_a_section_header(line: bytes, path: str | None) -> None:
+    assert server_module._header_path(line) == path
+
+
+def test_sections_are_dropped_by_path() -> None:
+    raw = (
+        b"diff --git a/ok.py b/ok.py\n+ok\n"
+        b'diff --git "a/secrets/cl\\303\\251.txt" "b/secrets/cl\\303\\251.txt"\n+cach\xc3\xa9\n'
+        b"diff --git a/\xe9 b/\xe9\n+illisible\n"
+        b"diff --git a/fin.py b/fin.py\n+fin\n"
+    )
+    kept, dropped = server_module._drop_sensitive_sections(raw)
+    assert kept == b"diff --git a/ok.py b/ok.py\n+ok\ndiff --git a/fin.py b/fin.py\n+fin\n"
+    assert dropped == 2
 
 
 def test_a_long_diff_is_cut_and_says_so(example: Path, monkeypatch: pytest.MonkeyPatch) -> None:

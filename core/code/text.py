@@ -13,9 +13,11 @@ import unicodedata
 
 from core.guardrails.secrets import MASK, mask_secrets
 
-# mask_secrets does not cover a key block: its body is base64 split into short lines.
+# mask_secrets does not cover a key block: its body is base64 split into short lines. An OpenPGP
+# block ends its label with " BLOCK".
 PEM_BLOCK = re.compile(
-    r"-----BEGIN [A-Z0-9 ]*PRIVATE KEY-----.*?(?:-----END [A-Z0-9 ]*PRIVATE KEY-----|\Z)",
+    r"-----BEGIN [A-Z0-9 ]*PRIVATE KEY(?: BLOCK)?-----.*?"
+    r"(?:-----END [A-Z0-9 ]*PRIVATE KEY(?: BLOCK)?-----|\Z)",
     re.DOTALL,
 )
 _SHOWN = frozenset({"Cf", "Zl", "Zp"})

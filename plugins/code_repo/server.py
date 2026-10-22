@@ -9,6 +9,7 @@ No ``from __future__ import annotations`` here: the MCP SDK reads the tool signa
 """
 
 import os
+import re
 from collections.abc import Callable, Sequence
 from typing import Annotated
 
@@ -140,28 +141,82 @@ def _log(
     return commits[:max_count], len(commits) > max_count, masked
 
 
-def _numstat(raw: bytes) -> list[tuple[str, int | None, int | None]]:
+def _numstat(raw: bytes) -> tuple[list[tuple[str, int | None, int | None]], bool]:
+    """The changed files, and whether every path is UTF-8: an exclusion built from a path that
+    was decoded with replacement characters would not match the real bytes (R6)."""
     changes = []
+    readable = True
     for record in raw.split(b"\0"):
-        added, _, rest = record.decode("utf-8", errors="replace").partition("\t")
-        deleted, _, path = rest.partition("\t")
-        if path:
-            changes.append(
-                (
-                    path,
-                    int(added) if added.isdigit() else None,
-                    int(deleted) if deleted.isdigit() else None,
-                )
+        added, _, rest = record.partition(b"\t")
+        deleted, _, name = rest.partition(b"\t")
+        if not name:
+            continue
+        try:
+            path = name.decode("utf-8")
+        except UnicodeDecodeError:
+            path, readable = name.decode("utf-8", errors="replace"), False
+        changes.append(
+            (
+                path,
+                int(added) if added.isdigit() else None,
+                int(deleted) if deleted.isdigit() else None,
             )
-    return changes
+        )
+    return changes, readable
+
+
+_HEADER = b"diff --git "
+_SECTION = re.compile(rb"^(?=diff --git )", re.MULTILINE)
+# A path as git quotes it (core.quotePath): octal bytes and the escapes of C.
+_QUOTED = re.compile(rb'"((?:[^"\\]|\\(?:[0-7]{3}|[abtnvfr"\\]))*)"')
+_ESCAPE = re.compile(rb"\\([0-7]{3}|.)")
+_ESCAPES = {b"a": 7, b"b": 8, b"t": 9, b"n": 10, b"v": 11, b"f": 12, b"r": 13, b'"': 34, b"\\": 92}
+
+
+def _unescape(match: re.Match[bytes]) -> bytes:
+    code = match[1]
+    return bytes([int(code, 8) if len(code) == 3 else _ESCAPES[code]])
+
+
+def _header_path(line: bytes) -> str | None:
+    """The path of a ``diff --git a/P b/P`` header (no renames), or None when it is unsure."""
+    rest = line.removeprefix(_HEADER)
+    if rest.startswith(b'"'):
+        quoted = _QUOTED.match(rest)
+        name = _ESCAPE.sub(_unescape, quoted[1]) if quoted else b""
+        if not name.startswith(b"a/"):
+            return None
+        name = name[2:]
+    else:
+        name = rest[2 : 2 + (len(rest) - 5) // 2]
+        if rest != b"a/" + name + b" b/" + name:
+            return None
+    try:
+        return name.decode("utf-8")
+    except UnicodeDecodeError:
+        return None
+
+
+def _drop_sensitive_sections(raw: bytes) -> tuple[bytes, int]:
+    """Defence in depth behind the exclusions: a file section whose path is sensitive, or cannot
+    be read for sure, is dropped from the patch; the count of dropped sections is returned."""
+    kept, dropped = [], 0
+    for section in _SECTION.split(raw):
+        if section.startswith(_HEADER):
+            path = _header_path(section.partition(b"\n")[0])
+            if path is None or is_sensitive(path):
+                dropped += 1
+                continue
+        kept.append(section)
+    return b"".join(kept), dropped
 
 
 def _diff(reader: RepoReader, repo: Repository, base: str, head: str) -> DiffResult:
     base_sha, head_sha = reader.commit(repo, base), reader.commit(repo, head)
-    numstat, _ = reader.read(
+    numstat, listing_cut = reader.read(
         repo.root, ["diff", "--numstat", "-z", *DIFF_OPTIONS, base_sha, head_sha], MAX_NUMSTAT_BYTES
     )
-    changes = _numstat(numstat)
+    changes, readable = _numstat(numstat)
     withheld = [path for path, _, _ in changes if is_sensitive(path)]
     shown = [
         ChangedFile(path=visible(p), added=a, deleted=d)
@@ -171,6 +226,10 @@ def _diff(reader: RepoReader, repo: Repository, base: str, head: str) -> DiffRes
     patch, truncated, masked, note = "", False, 0, None
     if len(withheld) > MAX_WITHHELD:
         note = f"plus de {MAX_WITHHELD} fichiers sensibles modifiés : patch non montré (R6)"
+    elif listing_cut:
+        note = "liste des fichiers modifiés tronquée : patch non montré (R6)"
+    elif not readable:
+        note = "nom de fichier qui n'est pas en UTF-8 : patch non montré (R6)"
     elif shown:
         excluded = [f":(exclude,literal){path}" for path in withheld]
         raw, cut = reader.read(
@@ -179,6 +238,9 @@ def _diff(reader: RepoReader, repo: Repository, base: str, head: str) -> DiffRes
             MAX_PATCH_BYTES,
             literal_paths=False,
         )
+        raw, dropped = _drop_sensitive_sections(raw)
+        if dropped:
+            note = f"{dropped} section(s) du patch retirée(s) : fichier sensible ou illisible (R6)"
         text, masked = code_text(raw.decode("utf-8", errors="replace"))
         patch, clipped = clip(text, TEXT_CHARS)
         truncated = cut or clipped

@@ -52,6 +52,13 @@ def test_a_key_block_is_masked_line_for_line() -> None:
     assert "MIIEow" not in text
 
 
+def test_an_openpgp_key_block_is_masked() -> None:
+    key = armour(f"PGP {PRIVATE} BLOCK", "", "lQOYBGc/a+b=", "=AbCd")
+    text, masked = code_text(f"avant\n{key}\naprès\n")
+    assert text == "avant\n" + "\n".join([MASK] * 5) + "\naprès\n"
+    assert masked == 1
+
+
 def test_an_unterminated_key_block_is_masked_to_the_end() -> None:
     key = armour(f"OPENSSH {PRIVATE}", "b3BlbnNzaC1rZXk", "zz", end=False)
     text, masked = code_text(f"x\n{key}")

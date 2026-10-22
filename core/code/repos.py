@@ -41,14 +41,44 @@ MAX_TREE_BYTES = 8_000_000
 _BATCH_HEADER_BYTES = 100
 
 # Content never shown (R6). Compared without case, on every segment of the path.
-_SECRET_DIRS = frozenset({"secrets"})
 _KEY_NAMES = frozenset(
     {"id_rsa", "id_dsa", "id_ecdsa", "id_ed25519", "id_ecdsa_sk", "id_ed25519_sk"}
 )
 _CREDENTIAL_NAMES = frozenset(
-    {".netrc", "_netrc", ".git-credentials", ".pypirc", ".npmrc", ".dockercfg", "credentials"}
+    {
+        ".netrc",
+        "_netrc",
+        ".git-credentials",
+        ".pypirc",
+        ".npmrc",
+        ".dockercfg",
+        ".pgpass",
+        ".htpasswd",
+    }
 )
-_KEY_SUFFIXES = (".pem", ".key", ".p12", ".pfx", ".jks", ".keystore", ".ppk")
+# "secrets/", ".secrets", "secrets.yaml", "credentials.json": a secret or credential name with no
+# extension or a data one; "docs/secrets.md" stays readable.
+_SECRET_STEMS = frozenset({"secret", "secrets", "credential", "credentials"})
+_DATA_SUFFIXES = frozenset(
+    {"", "yaml", "yml", "json", "toml", "ini", "cfg", "conf", "txt", "xml", "properties", "env"}
+)
+_KEY_SUFFIXES = (
+    ".pem",
+    ".key",
+    ".p12",
+    ".pfx",
+    ".jks",
+    ".keystore",
+    ".ppk",
+    ".kdbx",
+    ".asc",
+    ".gpg",
+    ".tfvars",
+    ".tfvars.json",
+    ".tfstate",
+    ".tfstate.backup",
+)
+_DOCKER_CONFIG = ".docker/config.json"
 
 MODES = {
     "100644": "file",
@@ -101,9 +131,15 @@ def load_repositories(config_dir: Path) -> tuple[CodeRepository, ...]:
 
 
 def is_sensitive(path: str) -> bool:
-    """Environment files, ``secrets/``, private keys and credential files (R6)."""
-    for segment in path.lower().split("/"):
-        if segment in _SECRET_DIRS or segment in _KEY_NAMES or segment in _CREDENTIAL_NAMES:
+    """Environment files, ``secrets/``, private keys, credential and Terraform state files (R6)."""
+    lowered = path.lower()
+    if lowered == _DOCKER_CONFIG or lowered.endswith("/" + _DOCKER_CONFIG):
+        return True
+    for segment in lowered.split("/"):
+        if segment in _KEY_NAMES or segment in _CREDENTIAL_NAMES:
+            return True
+        stem, _, suffix = segment.lstrip(".").partition(".")
+        if stem in _SECRET_STEMS and suffix in _DATA_SUFFIXES:
             return True
         if (segment.startswith(".env") and segment != ".env.example") or segment.endswith(".env"):
             return True

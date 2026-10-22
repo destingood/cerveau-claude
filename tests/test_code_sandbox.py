@@ -233,6 +233,8 @@ def test_portable_paths(path: str) -> None:
         "com1",
         "LPT9.log",
         "COM¹",
+        "CONIN$",
+        "src/conout$.txt",
         "a/trailing.",
         "a/trailing ",
         "x<y",
