@@ -10,9 +10,12 @@ container is gone, CERVEAU compares the copy with the commit's blobs, writes the
 again on the changed copy: its counts are the only ones the answer cites (R1). Nothing is written
 in Lucas's repositories.
 
-The kill switch (R4) is checked before anything starts and while the agent works: once engaged,
-both containers are killed and nothing more runs. The proxy's counts give the spend the adapter
-charges; when they cannot be read, the adapter charges the task's ceiling (R7).
+The kill switch (R4) is checked before anything starts, while the agent works and while the
+checks run: once engaged, the containers are killed and nothing more runs. The size of the copy
+is watched too (F5). Should this process be gone, the proxy stops by itself at the kill switch
+and at the end of the call's time, and the agent's container at the end of its own. The proxy's
+counts give the spend the adapter charges; when they cannot be read, or when the containers
+were not seen stopped, the adapter charges the task's ceiling (R7).
 
 No ``from __future__ import annotations`` here: the MCP SDK reads the tool signatures at runtime.
 """
@@ -20,6 +23,7 @@ No ``from __future__ import annotations`` here: the MCP SDK reads the tool signa
 import contextlib
 import hashlib
 import json
+import math
 import os
 import shutil
 import stat
@@ -40,7 +44,7 @@ from pydantic import Field
 from core.code import agent
 from core.code.agent_runner import MAX_PROMPT_CHARS
 from core.code.git import GitRunner
-from core.code.patch import BaseFile, Patch, PatchError, compute_patch
+from core.code.patch import BaseFile, Patch, PatchError, compute_patch, sets_checks
 from core.code.process import Bounded
 from core.code.repos import REPO_ID, REVISION, RepoError, RepoReader, Repository
 from core.code.sandbox import (
@@ -66,7 +70,7 @@ from core.finance.views import home_location
 from core.guardrails.secrets import mask_secrets
 from core.mcp.time_limit import time_limit
 from core.net.text import clean_text, clip
-from core.policy.engine import kill_switch_engaged
+from core.policy.engine import KILL_SWITCH_FILE, kill_switch_engaged
 from plugins.code_agent import __version__
 from plugins.code_agent.models import (
     AgentResult,
@@ -91,6 +95,8 @@ RESERVE_S = 2 * KILL_TIMEOUT_S + 10.0
 AFTER_AGENT_S = 120.0
 # The agent is not started with less time left.
 MIN_AGENT_S = 60.0
+# The runner ends itself this long after the plugin's own limit, which comes first.
+ALARM_MARGIN_S = 30
 DOCKER_STEP_S = 20.0
 # The proxy writes its state file before it listens (core/code/llm_proxy.py).
 PROXY_START_S = 15.0
@@ -108,6 +114,9 @@ MAX_SCAN_ENTRIES = 20_000
 MAX_FILE_BYTES = 1_000_000
 MAX_READ_BYTES = 20_000_000
 MAX_PATCH_BYTES = 2_000_000
+# Bounds of the copy while the agent writes in it, .git and caches included (F5).
+MAX_WORK_ENTRIES = 50_000
+MAX_WORK_BYTES = 500_000_000
 PATH_CHARS = 300
 NOTE_CHARS = 300
 REMOVALS = (os.unlink, os.remove, os.rmdir)
@@ -116,7 +125,17 @@ REPORT_FILE = "rapport.json"
 KILLED = "kill switch engagé (R4) : aucune tâche lancée"
 STOPPED = "kill switch engagé (R4) : conteneurs arrêtés, rien d'autre lancé"
 NOT_RUN = "l'agent n'a pas fini seul : aucun patch calculé"
+NOT_STOPPED = "arrêt des conteneurs non confirmé : aucun patch calculé"
 UNWRITABLE = "fichiers de la tâche impossibles à écrire sous var/code/agent/"
+CHECKS_CHANGED = (
+    "le patch modifie des fichiers qui règlent ou lancent les contrôles (conftest.py, "
+    "pyproject.toml...) : leurs résultats ne prouvent rien"
+)
+LEFT_OUT = (
+    "des fichiers de la copie manquent au patch (binaires, trop gros, liens, sensibles) : les "
+    "contrôles ont vu une autre copie que celle que donne le patch"
+)
+MASKED = "secrets masqués dans le patch : il ne redonne pas la copie contrôlée"
 
 DESCRIPTION = (
     "Confie une tâche de code à Claude Code, dans un conteneur Linux isolé, sur une copie jetable "
@@ -232,32 +251,48 @@ def _wait_for(
     return True
 
 
-def _kill(docker: Runner, task: agent.Names) -> None:
+def _kill(docker: Runner, *containers: str) -> None:
     with contextlib.suppress(SandboxError):
         docker.run(
-            agent.kill(task.agent, task.proxy),
-            name=task.agent,
+            agent.kill(*containers),
+            name=containers[0],
             timeout_s=KILL_TIMEOUT_S,
             max_bytes=SMALL_BYTES,
         )
 
 
-def _remove_network(docker: Runner, task: agent.Names, sleep: Callable[[float], None]) -> bool:
-    """The network goes once both containers are gone, which ``--rm`` does a moment after."""
+def _until(
+    docker: Runner,
+    arguments: list[str],
+    name: str,
+    sleep: Callable[[float], None],
+    done: Callable[[Bounded], bool],
+) -> bool:
+    """Runs a Docker command again, a few times, until it succeeds with the awaited answer."""
     for _ in range(NETWORK_TRIES):
         try:
-            out = docker.run(
-                agent.network_remove(task.network),
-                name=task.proxy,
-                timeout_s=DOCKER_STEP_S,
-                max_bytes=SMALL_BYTES,
-            )
+            out = docker.run(arguments, name=name, timeout_s=DOCKER_STEP_S, max_bytes=SMALL_BYTES)
         except SandboxError:
             return False
-        if out.returncode == 0 and not out.timed_out:
+        if out.returncode == 0 and not out.timed_out and done(out):
             return True
         sleep(NETWORK_WAIT_S)
     return False
+
+
+def _remove_network(
+    docker: Runner, task: agent.Names, network: str, sleep: Callable[[float], None]
+) -> bool:
+    """A network goes once its containers are gone, which ``--rm`` does a moment after."""
+    return _until(docker, agent.network_remove(network), task.proxy, sleep, lambda _: True)
+
+
+def _gone(docker: Runner, task: agent.Names, sleep: Callable[[float], None]) -> bool:
+    """``docker ps`` lists neither container of the task any more: the copy and the proxy's
+    counts no longer change."""
+    return _until(
+        docker, agent.running(task), task.proxy, sleep, lambda out: not out.stdout.strip()
+    )
 
 
 def _unlocked(function: Callable[[str], object], path: str, error: BaseException) -> None:
@@ -276,30 +311,58 @@ def _remove(folder: Path) -> bool:
     return not folder.exists()
 
 
-def _run_agent(
+def _watched(
     docker: Runner,
-    arguments: list[str],
-    task: agent.Names,
-    seconds: float,
-    engaged: Callable[[], bool],
+    arguments: Sequence[str],
+    name: str,
+    timeout_s: float,
+    max_bytes: int,
+    reason: Callable[[], str | None],
+    halt: Callable[[], None],
     interval: float,
-) -> tuple[Bounded, bool]:
-    """The agent's container, the kill switch watched meanwhile; whether it stopped it."""
+) -> tuple[Bounded, str | None]:
+    """A container, ``reason`` asked meanwhile; why it was halted, if it was."""
     stop = threading.Event()
-    halted: list[bool] = []
+    stopped: list[str | None] = []
     watcher = threading.Thread(
-        target=lambda: halted.append(
-            agent.watch(stop, engaged, lambda: _kill(docker, task), interval)
-        ),
-        daemon=True,
+        target=lambda: stopped.append(agent.watch(stop, reason, halt, interval)), daemon=True
     )
     watcher.start()
     try:
-        out = docker.run(arguments, name=task.agent, timeout_s=seconds, max_bytes=MAX_OUTPUT_BYTES)
+        out = docker.run(arguments, name=name, timeout_s=timeout_s, max_bytes=max_bytes)
     finally:
         stop.set()
         watcher.join()
-    return out, halted == [True]
+    return out, next(iter(stopped), None)
+
+
+@dataclass(frozen=True)
+class _Watched:
+    """Runs the checks of the changed copy with the kill switch watched (R4): engaged, the
+    running container is killed and nothing more starts."""
+
+    docker: Runner
+    engaged: Callable[[], bool]
+    interval: float
+
+    def run(
+        self, arguments: Sequence[str], *, name: str, timeout_s: float, max_bytes: int
+    ) -> Bounded:
+        if self.engaged():
+            raise SandboxError(STOPPED)
+        out, reason = _watched(
+            self.docker,
+            arguments,
+            name,
+            timeout_s,
+            max_bytes,
+            lambda: STOPPED if self.engaged() else None,
+            lambda: _kill(self.docker, name),
+            self.interval,
+        )
+        if reason is not None:
+            raise SandboxError(reason)
+        return out
 
 
 @dataclass(frozen=True)
@@ -311,9 +374,11 @@ class _Outcome:
     ended: bool
 
 
-def _outcome(out: Bounded, halted: bool, seconds: float) -> _Outcome:
-    if halted:
+def _outcome(out: Bounded, reason: str | None, seconds: float) -> _Outcome:
+    if reason == STOPPED:
         return _Outcome("arrete", STOPPED, None, False)
+    if reason is not None:
+        return _Outcome("erreur", f"{reason} : conteneurs arrêtés", None, False)
     if out.timed_out:
         return _Outcome(
             "delai", f"délai de {seconds:.0f} s dépassé : conteneurs arrêtés", None, False
@@ -333,6 +398,17 @@ def _outcome(out: Bounded, halted: bool, seconds: float) -> _Outcome:
         return _Outcome("erreur", note, report, True)
     error = _text(report.error, NOTE_CHARS) if report.error else None
     return _Outcome(report.status, f"runner : {error}" if error else None, report, True)
+
+
+def _caveats(patch: Patch) -> list[str]:
+    """Why the checks prove nothing about the patch: it changes what they read or run, or the
+    copy they ran on is not the one the patch gives."""
+    found = (
+        (any(sets_checks(change.path) for change in patch.changes), CHECKS_CHANGED),
+        (bool(patch.binary or patch.too_big or patch.ignored or patch.sensitive), LEFT_OUT),
+        (patch.masked > 0, MASKED),
+    )
+    return [text for hit, text in found if hit]
 
 
 def _base(reader: RepoReader, repo: Repository, sha: str) -> tuple[dict[str, BaseFile], list[str]]:
@@ -437,6 +513,7 @@ def build_server(
         paths, task = _paths(folder, task_id), agent.names(task_id)
         settings_now = current.agent
         proxy = False
+        networks: list[str] = []
         try:
             copy = copy_tree(
                 reader, repo, sha, paths.work, max_files=MAX_COPY_FILES, max_bytes=MAX_COPY_BYTES
@@ -459,17 +536,32 @@ def build_server(
             _make_dir(paths.state)
             try:
                 # Removed in any case below: a create without answer may still have made it.
+                networks.append(task.network)
                 _step(docker, agent.network_create(task.network), task.proxy, "réseau de la tâche")
+                networks.append(task.outside)
+                _step(
+                    docker,
+                    agent.outside_create(task.outside),
+                    task.proxy,
+                    "réseau de sortie du proxy",
+                )
                 proxy = True  # a `run --detach` without answer may still have started it
                 _step(
                     proxy_docker,
-                    agent.proxy_command(task, settings_now.proxy_image, paths.config, paths.state),
+                    agent.proxy_command(
+                        task,
+                        settings_now.proxy_image,
+                        paths.config,
+                        paths.state,
+                        home / KILL_SWITCH_FILE,
+                        max(1, math.ceil(budget.left())),
+                    ),
                     task.proxy,
                     "démarrage du proxy",
                 )
                 _step(
                     docker,
-                    agent.network_connect(agent.OUTSIDE, task.proxy),
+                    agent.network_connect(task.outside, task.proxy),
                     task.proxy,
                     "sortie du proxy vers l'API",
                 )
@@ -484,24 +576,45 @@ def build_server(
                         f"(minimum {MIN_AGENT_S:.0f} s, plus {AFTER_AGENT_S:.0f} s de contrôles)"
                     )
                 limits = Limits(settings_now.cpus, settings_now.memory_mb, settings_now.pids)
-                out, halted = _run_agent(
+                out, stopped_by = _watched(
                     docker,
-                    agent.agent_command(task, settings_now.image, paths.work, paths.task, limits),
-                    task,
+                    agent.agent_command(
+                        task,
+                        settings_now.image,
+                        paths.work,
+                        paths.task,
+                        limits,
+                        math.ceil(seconds) + ALARM_MARGIN_S,
+                    ),
+                    task.agent,
                     seconds,
-                    engaged,
+                    MAX_OUTPUT_BYTES,
+                    lambda: (
+                        STOPPED
+                        if engaged()
+                        else agent.outgrown(paths.work, MAX_WORK_ENTRIES, MAX_WORK_BYTES)
+                    ),
+                    lambda: _kill(docker, task.agent, task.proxy),
                     watch_s,
                 )
             finally:
                 if proxy:
-                    _kill(docker, task)
-                network_removed = _remove_network(docker, task, sleep)
-            # Read once the proxy is gone: its counts are final.
-            state = _read_state(paths.state / agent.STATE_FILE, settings_now.model)
-            outcome = _outcome(out, halted or engaged(), seconds)
+                    _kill(docker, task.agent, task.proxy)
+                network_removed = all(
+                    [_remove_network(docker, task, network, sleep) for network in networks]
+                )
+            # Both containers seen gone: the copy and the proxy's counts are final. Otherwise the
+            # spend is unknown (the adapter charges the ceiling) and the copy is not compared.
+            gone = _gone(docker, task, sleep)
+            state = (
+                _read_state(paths.state / agent.STATE_FILE, settings_now.model) if gone else None
+            )
+            outcome = _outcome(out, STOPPED if engaged() else stopped_by, seconds)
             patch: Patch | None = None
             patch_note: str | None = NOT_RUN
-            if outcome.ended:
+            if outcome.ended and not gone:
+                patch_note = NOT_STOPPED
+            elif outcome.ended:
                 try:
                     base, reserved = _base(reader, repo, sha)
                     patch = compute_patch(
@@ -528,18 +641,21 @@ def build_server(
                 seconds_checks = max(min(float(current.checks.timeout_seconds), budget.left()), 0)
                 try:
                     ruff_check, ruff_format, pytest = run_on_copy(
-                        docker,
+                        _Watched(docker, engaged, watch_s),
                         Budget(seconds_checks, clock),
                         current.checks,
                         repo,
                         paths.work,
                         True,
                     )
+                    caveats = _caveats(patch)
                     checks = Checks(
                         ruff_check=ruff_check,
                         ruff_format=ruff_format,
                         pytest=pytest,
                         budget_seconds=seconds_checks,
+                        conclusive=not caveats,
+                        caveats=caveats,
                     )
                     checks_note = None
                 except SandboxError as exc:
@@ -591,7 +707,11 @@ def build_server(
             patch_note=patch_note,
             checks=checks,
             checks_note=checks_note,
-            cleanup=Cleanup(copy_removed=copy_removed, network_removed=network_removed),
+            cleanup=Cleanup(
+                copy_removed=copy_removed,
+                network_removed=network_removed,
+                containers_stopped=gone,
+            ),
         )
         with contextlib.suppress(OSError):
             paths.out.mkdir(parents=True, exist_ok=True)

@@ -9,7 +9,8 @@ import itertools
 import json
 import ssl
 import sys
-from collections.abc import Iterator
+import threading
+from collections.abc import Callable, Iterator
 from decimal import Decimal
 from pathlib import Path
 from typing import Any
@@ -40,6 +41,8 @@ from core.code.llm_proxy import (
     Usage,
     body_size,
     cost_usd,
+    engaged,
+    guard,
     handler_for,
     header_map,
     inspect,
@@ -890,6 +893,102 @@ def test_the_request_ceiling_stops_the_task(tmp_path: Path) -> None:
     assert state_of(state)["refusals"] == {"plafond_requetes": 1}
 
 
+# --- stopping by itself (R4) ----------------------------------------------------------------------
+
+
+def test_the_kill_switch_is_read_as_the_policy_engine_reads_it(tmp_path: Path) -> None:
+    switch = tmp_path / "KILL"  # a file of the test, never governance/kill_switch/KILL
+    assert not engaged(switch)
+    switch.write_text("", encoding="utf-8")
+    assert engaged(switch)
+
+
+def test_an_unreadable_kill_switch_is_engaged(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    def refused(self: Path) -> bool:
+        raise PermissionError(str(self))
+
+    monkeypatch.setattr(Path, "exists", refused)
+    assert engaged(tmp_path / "KILL")
+
+
+def stopping_proxy(
+    tmp_path: Path, clock: Callable[[], float] = lambda: 0.0, deadline: float = 10.0
+) -> tuple[Proxy, FakeUpstream]:
+    upstream = FakeUpstream(upstream_reply(), upstream_reply())
+    settings = load_settings(json.dumps(settings_payload()))
+    proxy = Proxy(
+        settings,
+        KEY,
+        upstream,
+        tmp_path / "state.json",
+        kill_switch=tmp_path / "KILL",
+        deadline=deadline,
+        clock=clock,
+    )
+    return proxy, upstream
+
+
+def test_the_kill_switch_stops_the_proxy(tmp_path: Path) -> None:
+    proxy, upstream = stopping_proxy(tmp_path)
+    assert call(proxy).status == 200 and not proxy.ended()
+    (tmp_path / "KILL").write_text("", encoding="utf-8")
+    assert proxy.ended()
+    reply = call(proxy)
+    assert reply.status == 403
+    assert reply.error()["message"] == "kill switch engagé (R4) : tâche arrêtée"
+    assert len(upstream.sent) == 1
+    counts = state_of(tmp_path / "state.json")
+    assert counts["stopped"] == "kill_switch" and counts["refusals"] == {"kill_switch": 1}
+
+
+def test_the_end_of_the_task_stops_the_proxy(tmp_path: Path) -> None:
+    now = [0.0]
+    proxy, upstream = stopping_proxy(tmp_path, lambda: now[0], deadline=10.0)
+    assert call(proxy).status == 200 and not proxy.ended()
+    now[0] = 10.0
+    assert proxy.ended()
+    assert call(proxy).error()["message"] == "durée de la tâche écoulée : tâche arrêtée"
+    assert len(upstream.sent) == 1
+    assert state_of(tmp_path / "state.json")["refusals"] == {"duree": 1}
+
+
+def test_without_a_kill_switch_nor_an_end_the_proxy_never_ends(tmp_path: Path) -> None:
+    proxy, _, _ = make_proxy(tmp_path)
+    assert not proxy.ended()
+
+
+class Listening:
+    def __init__(self) -> None:
+        self.shut = 0
+
+    def serve_forever(self) -> None:
+        pass
+
+    def shutdown(self) -> None:
+        self.shut += 1
+
+    def server_close(self) -> None:
+        pass
+
+
+def test_the_guard_closes_the_server_once_the_proxy_has_ended(tmp_path: Path) -> None:
+    proxy, _ = stopping_proxy(tmp_path, itertools.count().__next__, deadline=3)
+    listening = Listening()
+    guard(proxy, listening, threading.Event(), 0)
+    assert listening.shut == 1
+
+
+def test_the_guard_ends_with_the_server(tmp_path: Path) -> None:
+    proxy, _ = stopping_proxy(tmp_path, deadline=0)
+    done = threading.Event()
+    done.set()
+    listening = Listening()
+    guard(proxy, listening, done, 0)
+    assert listening.shut == 0
+
+
 @pytest.mark.parametrize(
     ("method", "target", "status", "code"),
     [
@@ -1052,10 +1151,17 @@ def server_class(interrupt: bool = False) -> tuple[type, dict[str, Any]]:
             if interrupt:
                 raise KeyboardInterrupt
 
+        def shutdown(self) -> None:
+            calls["shutdown"] = True
+
         def server_close(self) -> None:
             calls["closed"] = True
 
     return Server, calls
+
+
+def lifetime(tmp_path: Path, seconds: str = "900") -> list[str]:
+    return ["--kill-switch", str(tmp_path / "KILL"), "--max-seconds", seconds]
 
 
 def run_main(tmp_path: Path, environ: dict[str, str], **kwargs: Any) -> int:
@@ -1063,25 +1169,92 @@ def run_main(tmp_path: Path, environ: dict[str, str], **kwargs: Any) -> int:
     if not settings.exists():
         settings.write_text(json.dumps(settings_payload()), encoding="utf-8")
     argv = ["--settings", str(settings), "--state", str(tmp_path / "state.json")]
-    return main(argv + kwargs.pop("extra", []), environ=environ, **kwargs)
+    extra = kwargs.pop("extra", [])
+    return main(
+        [*argv, *lifetime(tmp_path, kwargs.pop("seconds", "900")), *extra],
+        environ=environ,
+        **kwargs,
+    )
 
 
 @pytest.mark.parametrize("interrupt", [False, True])
 def test_the_proxy_starts_with_its_settings_and_key(tmp_path: Path, interrupt: bool) -> None:
     server, calls = server_class(interrupt)
     timeouts: list[float] = []
+    now = [100.0]
 
     def upstream(timeout: float) -> FakeUpstream:
         timeouts.append(timeout)
         return FakeUpstream()
 
     code = run_main(
-        tmp_path, {KEY_ENV: KEY}, upstream=upstream, server=server, extra=["--port", "9000"]
+        tmp_path,
+        {KEY_ENV: KEY},
+        upstream=upstream,
+        server=server,
+        extra=["--port", "9000"],
+        seconds="30",
+        clock=lambda: now[0],
+        guard_s=3600,  # the guard never looks: the fake server returns at once
     )
     assert code == 0 and timeouts == [600.0]
     assert calls["address"] == (LISTEN_HOST, 9000) and calls["served"] and calls["closed"]
-    assert calls["handler"].proxy.max_body_bytes == 8 << 20
+    assert "shutdown" not in calls
+    proxy = calls["handler"].proxy
+    assert proxy.max_body_bytes == 8 << 20
     assert state_of(tmp_path / "state.json")["requests"] == 0
+    # The task's time runs from the start; the kill switch is the one named.
+    now[0] = 129.0
+    assert not proxy.ended()
+    now[0] = 130.0
+    assert proxy.ended()
+    now[0] = 0.0
+    (tmp_path / "KILL").write_text("", encoding="utf-8")
+    assert proxy.ended()
+
+
+def test_the_proxy_closes_its_server_once_ended(tmp_path: Path) -> None:
+    now = [0.0]
+    calls: dict[str, Any] = {}
+
+    class Server:
+        def __init__(self, address: tuple[str, int], handler: type) -> None:
+            self.stop = threading.Event()
+
+        def serve_forever(self) -> None:
+            now[0] = 60.0  # the task's time is over while serving
+            calls["stopped"] = self.stop.wait(10)
+
+        def shutdown(self) -> None:
+            self.stop.set()
+
+        def server_close(self) -> None:
+            calls["closed"] = True
+
+    code = run_main(
+        tmp_path,
+        {KEY_ENV: KEY},
+        upstream=lambda t: FakeUpstream(),
+        server=Server,
+        seconds="60",
+        clock=lambda: now[0],
+        guard_s=0,
+    )
+    assert code == 0 and calls == {"stopped": True, "closed": True}
+
+
+@pytest.mark.parametrize("seconds", ["0", "-5", "dix"])
+def test_the_proxy_needs_a_lifetime(tmp_path: Path, seconds: str) -> None:
+    server, calls = server_class()
+    with pytest.raises(SystemExit):
+        run_main(
+            tmp_path,
+            {KEY_ENV: KEY},
+            upstream=lambda t: FakeUpstream(),
+            server=server,
+            seconds=seconds,
+        )
+    assert not calls
 
 
 def test_the_default_port() -> None:
@@ -1108,7 +1281,13 @@ def test_the_proxy_does_not_start_with_wrong_settings(
     if problem == "invalid":
         settings.write_text("{}", encoding="utf-8")
     server, calls = server_class()
-    argv = ["--settings", str(settings), "--state", str(tmp_path / "absent" / "state.json")]
+    argv = [
+        "--settings",
+        str(settings),
+        "--state",
+        str(tmp_path / "absent" / "state.json"),
+        *lifetime(tmp_path),
+    ]
     if problem == "state":
         settings.write_text(json.dumps(settings_payload()), encoding="utf-8")
     code = main(argv, environ={KEY_ENV: KEY}, upstream=lambda t: FakeUpstream(), server=server)

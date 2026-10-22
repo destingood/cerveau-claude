@@ -35,11 +35,18 @@ Faits vérifiés le 22/10/2026 sur code.claude.com/docs/en/agent-sdk/python :
 Option 2 (`core/code/agent.py`, `core/code/agent_runner.py`, `core/code/patch.py`,
 `plugins/code_agent`, `infra/agent/agent.Dockerfile`).
 - Deux conteneurs par tâche sur un réseau Docker `--internal` créé pour elle : l'agent et le proxy
-  de l'API (ADR-053), seul à joindre aussi `bridge` et seul à recevoir la clé, par son nom.
+  de l'API (ADR-053), seul à recevoir la clé, par son nom, et seul à sortir, par un second réseau
+  propre à la tâche (`cerveau-agent-out-<id>`, ICC désactivé), jamais par le `bridge` partagé.
 - Conteneur de l'agent : la copie jetable d'un commit (fichiers lus dans les objets git, sans les
   fichiers sensibles) comme seul montage en écriture, `tmpfs` de 512 Mo, racine en lecture seule,
   utilisateur 65534, `--cap-drop ALL`, `no-new-privileges`, `--init`, 2 processeurs, 4096 Mo sans
-  swap, 512 processus (F5) ; image désignée par son identifiant `sha256`, `--pull never`.
+  swap, 512 processus, 100 Mio par fichier (`--ulimit fsize`) (F5) ; image désignée par son
+  identifiant `sha256`, `--pull never`. La copie est surveillée pendant le travail : au-delà de
+  50 000 entrées ou 500 Mo, les deux conteneurs sont arrêtés.
+- Durée de vie propre à chaque conteneur, même si CERVEAU meurt : le runner s'arrête seul
+  (`signal.alarm`) 30 s après la durée de l'agent ; le proxy s'arrête au reste du budget de
+  l'appel et dès que `governance/kill_switch/KILL` existe (dossier monté en lecture seule, R4).
+  Les deux portent l'étiquette `cerveau.code_agent=1`.
 - Runner : ni réglages, ni `CLAUDE.md`, ni mémoire, ni serveur MCP ; outils Read, Edit, Write,
   Glob, Grep et Bash (F4) ; `Agent`, `Task`, WebFetch, WebSearch et `mcp__*` refusés ; `dontAsk` ;
   `claude-sonnet-5-5` (F6), 30 tours ; clé factice et `ANTHROPIC_BASE_URL` vers le proxy, qui tient
@@ -50,10 +57,16 @@ Option 2 (`core/code/agent.py`, `core/code/agent_runner.py`, `core/code/patch.py
 - Patch : calculé par CERVEAU en comparant la copie aux blobs du commit, sans commande git sur le
   `.git` de la copie ; liens, jonctions et fichiers spéciaux listés et écartés, jamais suivis ;
   fichier sensible jamais lu (R6) ; chemins à risque (CI, hooks, `conftest.py`…) signalés ;
-  secrets masqués ; bornes de lecture et de taille. Écrit sous `var/code/agent/<id>/`, puis
-  `code_checks` relancé sur la copie modifiée : ses comptes sont les seuls cités (R1).
-- Dépense : l'état du proxy ; illisible, le plafond de la tâche est imputé (R7). N0 : Lucas
-  applique le patch lui-même (`git apply`) ; rien n'est écrit dans ses dépôts.
+  secrets masqués ; bornes de lecture et de taille. Calculé seulement après que `docker ps` (par
+  étiquette et nom) a montré les deux conteneurs arrêtés ; sinon, aucun patch. Écrit sous
+  `var/code/agent/<id>/`, puis `code_checks` relancé sur la copie modifiée, kill switch surveillé :
+  ses comptes sont les seuls cités (R1). Ils sont marqués non probants (`conclusive: false`) si
+  le patch touche un fichier qui règle les contrôles (`conftest.py`, `pyproject.toml`,
+  `ruff.toml`, `pytest.ini`, `setup.cfg`, `.coveragerc`, `sitecustomize.py`, `*.pth`…), écarte
+  des fichiers ou masque un secret : la copie contrôlée n'est alors pas ce que le patch redonne.
+- Dépense : l'état du proxy, lu une fois les conteneurs arrêtés ; illisible ou arrêt non
+  confirmé, le plafond de la tâche est imputé (R7). N0 : Lucas applique le patch lui-même
+  (`git apply`) ; rien n'est écrit dans ses dépôts.
 
 ## Conséquences
 - La clé n'entre jamais dans le conteneur de l'agent ; une sortie réseau, un réglage ou un outil
@@ -64,11 +77,16 @@ Option 2 (`core/code/agent.py`, `core/code/agent_runner.py`, `core/code/patch.py
 - Limites assumées : l'image n'a ni git ni les dépendances du dépôt (l'agent ne lance que ruff et
   le pytest de l'image) ; un changement de mode d'un fichier n'est pas vu ; après un délai ou un
   kill switch, aucun patch n'est calculé et le travail est perdu (B289) ; un échec précoce impute
-  le plafond. Le réseau de la tâche est toujours retiré, même après une création ratée.
+  le plafond. Les deux réseaux de la tâche sont toujours retirés, même après une création ratée.
+- L'alarme du runner n'est pas une frontière : un processus de l'agent, du même utilisateur, peut
+  la neutraliser (`ptrace`, signal). Restent la durée de vie et le plafond du proxy, l'arrêt par
+  CERVEAU et l'étiquette, qui retrouve les restes après un arrêt brutal (`infra/agent/README.md`).
 - `A_VERIFIER` au premier test réel (B287, avec B286) : réseau `--internal` sans sortie sous
-  Docker Desktop, ni résolution DNS externe ni accès à `host.docker.internal` ; clé factice acceptée et seul `POST /v1/messages` appelé par le CLI ; écriture
-  de 65534 dans la copie montée (hôte Linux) ; mémoire du CLI dans 4096 Mo ; démarrage du proxy en
-  15 s ; lien créé par l'agent sur un montage Windows, vu comme lien.
+  Docker Desktop, ni résolution DNS externe ni accès à `host.docker.internal` ; clé factice
+  acceptée et seul `POST /v1/messages` appelé par le CLI ; écriture de 65534 dans la copie montée
+  (hôte Linux) ; mémoire du CLI dans 4096 Mo ; démarrage du proxy en 15 s ; lien créé par l'agent
+  sur un montage Windows, vu comme lien ; `KILL` créé après le démarrage, visible dans le dossier
+  monté et lisible par 65534 (Docker Desktop) ; unité de `--ulimit fsize` (octets attendus).
 - Le mode `--restricted` du CLI (v2.1.248 ou plus) retire les outils qui lancent des commandes,
   donc Bash, contraire à F4 : à réévaluer pour une variante sans Bash (B288).
 - Une nouvelle version du SDK ou du CLI passe par une revue `security-reviewer` et les évals (R9).

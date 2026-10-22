@@ -90,4 +90,27 @@ Points à vérifier lors du premier essai (`A_VERIFIER`, ADR-054) :
   hôte Linux, droits du dossier `var/code/agent/<id>/`) ;
 - mémoire utile au CLI dans la limite de 4096 Mo ; durée de démarrage du proxy (15 s au plus) ;
 - un lien symbolique créé par l'agent dans la copie, vu depuis Windows : il est listé et écarté
-  du patch, jamais suivi.
+  du patch, jamais suivi ;
+- un fichier `governance/kill_switch/KILL` créé pendant une tâche apparaît dans le dossier monté
+  du proxy et l'utilisateur 65534 peut le lire : le proxy s'arrête de lui-même ;
+- `--ulimit fsize=104857600` borne un fichier à 100 Mio (valeur en octets) : depuis le conteneur,
+  `ulimit -f` doit afficher 102400 (blocs de 1024 octets).
+
+## 6. Après un arrêt brutal de CERVEAU
+
+Les conteneurs et réseaux de `code_agent` portent l'étiquette `cerveau.code_agent=1`. Le runner
+et le proxy s'arrêtent seuls à la fin de leur durée ; pour les retirer sans attendre :
+
+```bash
+docker ps --quiet --filter label=cerveau.code_agent=1
+```
+
+```bash
+docker kill <identifiants listés>
+```
+
+```bash
+docker network prune --force --filter label=cerveau.code_agent=1
+```
+
+La copie jetable reste sous `var/code/agent/runs/<id>/` (B283) : la supprimer à la main.

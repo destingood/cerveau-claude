@@ -6,6 +6,7 @@ import ast
 import asyncio
 import io
 import json
+import signal
 import sys
 from collections.abc import AsyncIterator
 from dataclasses import dataclass
@@ -290,14 +291,24 @@ def test_the_sdk_is_imported_when_the_runner_starts(monkeypatch: pytest.MonkeyPa
 # --- main -----------------------------------------------------------------------------------------
 
 
-def test_main_prints_one_json_line(tmp_path: Path) -> None:
+@pytest.fixture(autouse=True)
+def alarms(monkeypatch: pytest.MonkeyPatch) -> list[int]:
+    """``signal.alarm`` exists on Linux only, as in the image: recorded, never set."""
+    set_for: list[int] = []
+    monkeypatch.setattr(signal, "alarm", set_for.append, raising=False)
+    return set_for
+
+
+def test_main_prints_one_json_line(tmp_path: Path, alarms: list[int]) -> None:
     path = tmp_path / "task.json"
     path.write_text(task_text(prompt="Corrige main() — é"), encoding="utf-8")
     out = io.StringIO()
     sdk, seen = fake_sdk(ResultMessage("success", False, 1, "fait"))
-    assert main(["--task", str(path)], sdk=lambda: sdk, out=out) == 0
+    assert main(["--task", str(path), "--max-seconds", "930"], sdk=lambda: sdk, out=out) == 0
     assert out.getvalue() == json.dumps(report("termine", "success", 1, "fait")) + "\n"
     assert seen["prompt"].endswith("Corrige main() — é")
+    # The runner ends itself, should nobody stop its container (R4).
+    assert alarms == [930]
 
 
 @pytest.mark.parametrize(
@@ -315,12 +326,19 @@ def test_main_refuses_a_task_it_cannot_read(
     if content is not None:
         path.write_bytes(content)
     out = io.StringIO()
-    assert main(["--task", str(path)], sdk=lambda: pytest.fail("SDK chargé"), out=out) == 2
+    arguments = ["--task", str(path), "--max-seconds", "60"]
+    assert main(arguments, sdk=lambda: pytest.fail("SDK chargé"), out=out) == 2
     assert out.getvalue() == ""
     assert capsys.readouterr().err.startswith(message)
 
 
-def test_main_needs_a_task_file() -> None:
+@pytest.mark.parametrize(
+    "arguments",
+    [[], ["--task", "t.json"], ["--max-seconds", "60"]]
+    + [["--task", "t.json", "--max-seconds", value] for value in ("0", "-5", "x", "1.5")],
+)
+def test_main_needs_a_task_file_and_a_lifetime(arguments: list[str], alarms: list[int]) -> None:
     with pytest.raises(SystemExit) as stopped:
-        main([])
+        main(arguments, sdk=lambda: pytest.fail("SDK chargé"))
     assert stopped.value.code == 2
+    assert alarms == []

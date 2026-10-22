@@ -14,7 +14,10 @@ Docker network with no other way out; only the proxy reaches ``api.anthropic.com
   runs at a time, so a ceiling is exceeded by the cost of one request at most;
 - writes its counts, never a request's content, to a state file that the plugin reads. The file
   also says whether a request is on its way (``pending``): stopped then, the proxy may owe the API
-  a cost it never read, which the plugin charges as unknown (R7).
+  a cost it never read, which the plugin charges as unknown (R7);
+- stops by itself, should the plugin that started it be gone: at the kill switch, read in a
+  folder mounted read only (R4), and at the end of the task's time, it refuses every request and
+  closes its server, which ends its container.
 
 The file is copied alone into the ``cerveau-llm-proxy`` image: it imports the standard library
 only (a test checks it).
@@ -25,11 +28,13 @@ from __future__ import annotations
 import argparse
 import http.client
 import json
+import math
 import os
 import re
 import ssl
 import sys
 import threading
+import time
 from collections.abc import Callable, Iterable, Iterator, Mapping
 from dataclasses import dataclass, field, fields
 from decimal import ROUND_CEILING, Context, Decimal, InvalidOperation
@@ -47,6 +52,7 @@ KEY_ENV = "ANTHROPIC_API_KEY"
 LISTEN_HOST = "0.0.0.0"  # noqa: S104 - inside its container, on the agent's internal network only
 LISTEN_PORT = 8080
 CLIENT_TIMEOUT_S = 60.0  # a client that stops sending or reading is dropped
+GUARD_S = 1.0  # how often the kill switch and the end of the task are checked
 
 # Request fields let through (A_VERIFIER against the CLI's requests, B270); a field listed in
 # FIELD_VALUES only with one of those values: the other ones cost more (fast speed, US-only
@@ -604,14 +610,35 @@ class _ModelCount:
     usd: Decimal = Decimal(0)
 
 
+def engaged(kill_switch: Path) -> bool:
+    """As ``core/policy/engine.py`` reads it: present, or unreadable, it is engaged (R4)."""
+    try:
+        return kill_switch.exists() or kill_switch.is_symlink()
+    except OSError:
+        return True
+
+
 class Proxy:
     """Checks, forwards and counts the agent's requests, one at a time."""
 
-    def __init__(self, settings: Settings, key: str, upstream: Upstream, state: Path) -> None:
+    def __init__(
+        self,
+        settings: Settings,
+        key: str,
+        upstream: Upstream,
+        state: Path,
+        *,
+        kill_switch: Path | None = None,
+        deadline: float = math.inf,
+        clock: Callable[[], float] = time.monotonic,
+    ) -> None:
         self._settings = settings
         self._key = key
         self._upstream = upstream
         self._state = state
+        self._kill_switch = kill_switch
+        self._deadline = deadline
+        self._clock = clock
         self._lock = threading.Lock()
         self._requests = 0
         self._usd = Decimal(0)
@@ -624,7 +651,21 @@ class Proxy:
     def max_body_bytes(self) -> int:
         return self._settings.max_body_bytes
 
+    def _ended(self) -> Refusal | None:
+        if self._kill_switch is not None and engaged(self._kill_switch):
+            return Refusal(403, "kill_switch", "kill switch engagé (R4) : tâche arrêtée")
+        if self._clock() >= self._deadline:
+            return Refusal(403, "duree", "durée de la tâche écoulée : tâche arrêtée")
+        return None
+
+    def ended(self) -> bool:
+        """Kill switch engaged or task's time over: the server is to close."""
+        return self._ended() is not None
+
     def _stopped(self) -> Refusal | None:
+        ended = self._ended()
+        if ended is not None:
+            return ended
         if self._unknown:
             return Refusal(403, "cout_inconnu", "coût d'une réponse illisible : tâche arrêtée")
         if self._usd >= self._settings.max_usd:
@@ -821,7 +862,23 @@ class ProxyServer(ThreadingHTTPServer):
 
 class Serving(Protocol):
     def serve_forever(self) -> None: ...
+    def shutdown(self) -> None: ...
     def server_close(self) -> None: ...
+
+
+def _positive(text: str) -> int:
+    value = int(text)
+    if value <= 0:
+        raise ValueError(text)
+    return value
+
+
+def guard(proxy: Proxy, listening: Serving, done: threading.Event, interval: float) -> None:
+    """Until ``done`` is set, close the server once the proxy has ended (R4)."""
+    while not done.wait(interval):
+        if proxy.ended():
+            listening.shutdown()
+            return
 
 
 def main(
@@ -829,6 +886,8 @@ def main(
     environ: Mapping[str, str] = os.environ,
     upstream: Callable[[float], Upstream] = HttpsUpstream,
     server: Callable[[tuple[str, int], type[ProxyHandler]], Serving] = ProxyServer,
+    clock: Callable[[], float] = time.monotonic,
+    guard_s: float = GUARD_S,
 ) -> int:
     parser = argparse.ArgumentParser(
         prog="cerveau-llm-proxy", description="Proxy de l'API d'Anthropic pour code_agent."
@@ -836,6 +895,10 @@ def main(
     parser.add_argument("--settings", type=Path, required=True, help="réglages JSON du plugin")
     parser.add_argument("--state", type=Path, required=True, help="fichier d'état à écrire")
     parser.add_argument("--port", type=int, default=LISTEN_PORT)
+    parser.add_argument("--kill-switch", type=Path, required=True, help="fichier du kill switch")
+    parser.add_argument(
+        "--max-seconds", type=_positive, required=True, help="durée de vie de la tâche (s)"
+    )
     args = parser.parse_args(argv)
     key = environ.get(KEY_ENV, "")
     if not _KEY.fullmatch(key):
@@ -843,17 +906,30 @@ def main(
         return 2
     try:
         settings = load_settings(args.settings.read_text(encoding="utf-8"))
-        proxy = Proxy(settings, key, upstream(settings.upstream_timeout_s), args.state)
+        proxy = Proxy(
+            settings,
+            key,
+            upstream(settings.upstream_timeout_s),
+            args.state,
+            kill_switch=args.kill_switch,
+            deadline=clock() + args.max_seconds,
+            clock=clock,
+        )
         proxy.write_state()
     except (OSError, UnicodeDecodeError, SettingsError) as exc:
         print(f"cerveau-llm-proxy : {exc}", file=sys.stderr)
         return 2
     listening = server((LISTEN_HOST, args.port), handler_for(proxy))
+    done = threading.Event()
+    guarding = threading.Thread(target=guard, args=(proxy, listening, done, guard_s), daemon=True)
+    guarding.start()
     try:
         listening.serve_forever()
     except KeyboardInterrupt:
         pass
     finally:
+        done.set()
+        guarding.join()
         listening.server_close()
     return 0
 

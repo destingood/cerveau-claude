@@ -34,12 +34,17 @@ from core.registry.manifest import validate_plugin
 from plugins.code_agent import server as server_module
 from plugins.code_agent.server import (
     AFTER_AGENT_S,
+    ALARM_MARGIN_S,
     CALL_S,
+    CHECKS_CHANGED,
     KILLED,
+    LEFT_OUT,
+    MASKED,
     MAX_OUTPUT_BYTES,
     MAX_STATE_BYTES,
     NETWORK_TRIES,
     NOT_RUN,
+    NOT_STOPPED,
     PATCH_FILE,
     REPORT_FILE,
     RESERVE_S,
@@ -51,11 +56,14 @@ from plugins.code_agent.server import (
 from plugins.code_agent.tests.support import (
     AGENT_IMAGE,
     BIDI,
+    DAEMON_DOWN,
+    GONE,
     KEY,
     MODEL,
     OK,
     PROXY_IMAGE,
     SCENARIOS_AGENT,
+    STILL_THERE,
     TIMED_OUT,
     TOKENS,
     Call,
@@ -88,9 +96,12 @@ TASK = "Corrige main() et ajoute un test."
 # known points only (before the start, once the proxy runs, after the agent, before the checks).
 QUIET_S = 60.0
 AGENT_S = CALL_S - RESERVE_S - AFTER_AGENT_S
-STARTED = ["network", "proxy", "connect"]
-STOPPED_KINDS = ["kill", "remove"]
+STARTED = ["network", "outside", "proxy", "connect"]
+STOPPED_KINDS = ["kill", "remove", "remove"]
+# Once the agent ran: docker ps confirms both containers are gone.
+ENDED = [*STOPPED_KINDS, "running"]
 CHECKS = ["check", "format", "pytest"]
+CLEAN = {"copy_removed": True, "network_removed": True, "containers_stopped": True}
 
 
 @pytest.fixture(scope="module")
@@ -143,8 +154,11 @@ class Done:
         assert self.result.is_error
         return text(self.result)
 
+    def calls(self, kind: str) -> list[Call]:
+        return [call for call in self.docker.calls if call.kind == kind]
+
     def call(self, kind: str) -> Call:
-        (found,) = [call for call in self.docker.calls if call.kind == kind]
+        (found,) = self.calls(kind)
         return found
 
     def patch(self) -> bytes:
@@ -248,21 +262,31 @@ def test_a_task_runs_the_agent_and_returns_its_patch(example: Path, tmp_path: Pa
         40,
         MODEL,
     )
-    assert docker.kinds() == [*STARTED, "agent", *STOPPED_KINDS, *CHECKS]
+    assert docker.kinds() == [*STARTED, "agent", *ENDED, *CHECKS]
     # Only the proxy's `docker run` goes through the runner whose environment holds the key.
-    assert [call.via for call in docker.calls] == ["docker", "proxy", *["docker"] * 7]
+    assert [call.via for call in docker.calls] == ["docker", "docker", "proxy", *["docker"] * 9]
+    assert done.call("outside").arguments == agent.outside_create(task.outside)
     proxy = done.call("proxy").arguments
     assert proxy[proxy.index("--env") + 1] == agent.KEY_ENV
     assert proxy[proxy.index("--network") + 1] == task.network
     assert PROXY_IMAGE in proxy
-    assert done.call("connect").arguments == agent.network_connect(agent.OUTSIDE, task.proxy)
+    # The proxy stops by itself at the kill switch and once the call's time is over (R4).
+    assert mounted(proxy, "/kill_switch") == tmp_path / "governance" / "kill_switch"
+    assert proxy[proxy.index("--kill-switch") + 1] == "/kill_switch/KILL"
+    assert int(proxy[proxy.index("--max-seconds") + 1]) == CALL_S - RESERVE_S
+    assert done.call("connect").arguments == agent.network_connect(task.outside, task.proxy)
     run_agent = done.call("agent")
     assert run_agent.arguments[run_agent.arguments.index("--network") + 1] == task.network
     assert AGENT_IMAGE in run_agent.arguments
     assert agent.KEY_ENV not in " ".join(run_agent.arguments)
     assert (run_agent.timeout_s, run_agent.max_bytes) == (AGENT_S, MAX_OUTPUT_BYTES)
+    assert run_agent.arguments[-2:] == ["--max-seconds", str(int(AGENT_S) + ALARM_MARGIN_S)]
     assert done.call("kill").arguments == agent.kill(task.agent, task.proxy)
-    assert done.call("remove").arguments == agent.network_remove(task.network)
+    assert [call.arguments for call in done.calls("remove")] == [
+        agent.network_remove(task.network),
+        agent.network_remove(task.outside),
+    ]
+    assert done.call("running").arguments == agent.running(task)
     for call in docker.calls:
         assert KEY[agent.KEY_ENV] not in " ".join(call.arguments)
     # What the containers saw: the commit's files without the sensitive ones; the task; the
@@ -312,10 +336,11 @@ def test_a_task_runs_the_agent_and_returns_its_patch(example: Path, tmp_path: Pa
     assert data["checks"]["ruff_check"]["status"] == "ok"
     assert data["checks"]["pytest"]["status"] == "ok"
     assert data["checks"]["budget_seconds"] == 300
+    assert (data["checks"]["conclusive"], data["checks"]["caveats"]) == (True, [])
     assert (data["patch_note"], data["checks_note"]) == (None, None)
     assert data["source"]["withheld"] == [".env"]
     assert data["source"]["removed"] is True
-    assert data["cleanup"] == {"copy_removed": True, "network_removed": True}
+    assert data["cleanup"] == CLEAN
     report = json.loads((done.folder / data["task_id"] / REPORT_FILE).read_text(encoding="utf-8"))
     assert report == data
 
@@ -336,6 +361,23 @@ def test_files_that_run_code_on_lucass_machine_are_flagged(example: Path, tmp_pa
     patch = agent_task(example, tmp_path, "risque").data["patch"]
     assert patch["risky"] == [".github/workflows/ci.yml", "conftest.py"]
     assert all(f["risky"] for f in patch["files"])
+
+
+@pytest.mark.parametrize(
+    ("name", "caveats"),
+    [
+        ("corrige", []),
+        ("risque", [CHECKS_CHANGED]),
+        ("ecartes", [LEFT_OUT]),
+        ("secret", [MASKED]),
+    ],
+)
+def test_checks_that_prove_nothing_say_so(
+    name: str, caveats: list[str], example: Path, tmp_path: Path
+) -> None:
+    """The agent's conftest.py runs in the checks; a copy unlike the patch is not the patch."""
+    checks = agent_task(example, tmp_path, name).data["checks"]
+    assert (checks["conclusive"], checks["caveats"]) == (not caveats, caveats)
 
 
 def test_what_the_patch_leaves_out_is_listed(example: Path, tmp_path: Path) -> None:
@@ -365,7 +407,7 @@ def test_no_change_runs_no_check(example: Path, tmp_path: Path) -> None:
     data = done.data
     assert (data["patch"]["files"], data["patch"]["bytes"], data["checks"]) == ([], 0, None)
     assert data["checks_note"] == "l'agent n'a changé aucun fichier : contrôles non lancés"
-    assert done.docker.kinds() == [*STARTED, "agent", *STOPPED_KINDS]
+    assert done.docker.kinds() == [*STARTED, "agent", *ENDED]
 
 
 def test_the_agents_words_are_data(example: Path, tmp_path: Path) -> None:
@@ -405,9 +447,9 @@ def test_how_the_agent_ended(
     if not patched:
         assert data["patch_note"] == NOT_RUN
         assert data["checks_note"] == "aucun patch : contrôles non lancés"
-        assert done.docker.kinds() == [*STARTED, "agent", *STOPPED_KINDS]
+        assert done.docker.kinds() == [*STARTED, "agent", *ENDED]
     assert data["depense"] == {"modeles": {MODEL: TOKENS}, "cout_inconnu": False}
-    assert data["cleanup"] == {"copy_removed": True, "network_removed": True}
+    assert data["cleanup"] == CLEAN
 
 
 def test_the_runners_report_is_kept_when_it_disagrees_with_the_exit_code(
@@ -487,13 +529,86 @@ def test_the_kill_switch_stops_both_containers_while_the_agent_works(
     data = done.data
     task = agent.names(data["task_id"])
     # The watcher's kill is recorded before the agent's run, which it ends.
-    assert done.docker.kinds() == [*STARTED, "kill", "agent", *STOPPED_KINDS]
-    assert done.docker.calls[3].arguments == agent.kill(task.agent, task.proxy)
+    assert done.docker.kinds() == [*STARTED, "kill", "agent", *ENDED]
+    assert done.docker.calls[4].arguments == agent.kill(task.agent, task.proxy)
     assert (data["agent"]["status"], data["agent"]["note"]) == ("arrete", STOPPED)
     assert (data["agent"]["turns"], data["agent"]["summary"]) == (None, None)
     assert (data["patch"], data["patch_note"], data["checks"]) == (None, NOT_RUN, None)
     assert data["depense"] == {"modeles": {MODEL: TOKENS}, "cout_inconnu": False}
-    assert data["cleanup"] == {"copy_removed": True, "network_removed": True}
+    assert data["cleanup"] == CLEAN
+
+
+def test_the_kill_switch_engaged_as_the_agent_ends_computes_no_patch(
+    example: Path, tmp_path: Path
+) -> None:
+    data = agent_task(example, tmp_path, engaged=switch(False, False, True)).data
+    assert (data["agent"]["status"], data["agent"]["note"]) == ("arrete", STOPPED)
+    assert (data["patch"], data["patch_note"], data["checks"]) == (None, NOT_RUN, None)
+
+
+def test_a_copy_past_its_bounds_stops_both_containers(
+    example: Path, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """F5: the copy is watched while the agent writes in it."""
+    monkeypatch.setattr(server_module, "MAX_WORK_ENTRIES", 1)
+    done = agent_task(example, tmp_path, Scenario(until_killed=True), watch_s=0.01)
+    data = done.data
+    task = agent.names(data["task_id"])
+    assert done.docker.kinds() == [*STARTED, "kill", "agent", *ENDED]
+    assert done.docker.calls[4].arguments == agent.kill(task.agent, task.proxy)
+    assert data["agent"]["status"] == "erreur"
+    assert data["agent"]["note"] == (
+        f"copie au-delà de ses bornes (1 entrées, {server_module.MAX_WORK_BYTES} octets) "
+        "pendant le travail de l'agent : conteneurs arrêtés"
+    )
+    assert (data["patch"], data["patch_note"], data["checks"]) == (None, NOT_RUN, None)
+    # Both containers seen gone: the proxy's counts are final.
+    assert data["depense"] == {"modeles": {MODEL: TOKENS}, "cout_inconnu": False}
+
+
+@dataclass
+class HeldCheck:
+    """The first check runs until its container is killed; the kill switch is engaged meanwhile."""
+
+    docker: FakeDocker
+    engaged: threading.Event
+    killed: threading.Event
+
+    def run(
+        self, arguments: Sequence[str], *, name: str, timeout_s: float, max_bytes: int
+    ) -> Bounded:
+        kind = kind_of(arguments)
+        if kind == "kill" and self.engaged.is_set():
+            self.killed.set()
+        if kind == "check":
+            self.engaged.set()
+            assert self.killed.wait(10), "the check's container was never killed"
+        return self.docker.run(arguments, name=name, timeout_s=timeout_s, max_bytes=max_bytes)
+
+
+def test_the_kill_switch_stops_a_running_check(example: Path, tmp_path: Path) -> None:
+    engaged, killed = threading.Event(), threading.Event()
+    done = agent_task(
+        example,
+        tmp_path,
+        engaged=engaged.is_set,
+        wrap=lambda docker: HeldCheck(docker, engaged, killed),
+        watch_s=0.01,
+    )
+    data = done.data
+    assert done.docker.kinds() == [*STARTED, "agent", *ENDED, "kill", "check"]
+    assert done.docker.calls[-2].arguments == agent.kill(done.call("check").name)
+    assert data["patch"] is not None
+    assert (data["checks"], data["checks_note"]) == (None, STOPPED)
+
+
+def test_the_kill_switch_engaged_between_two_checks_starts_no_more(
+    example: Path, tmp_path: Path
+) -> None:
+    # Read before the start, once the proxy runs, after the agent, before and between the checks.
+    done = agent_task(example, tmp_path, engaged=switch(False, False, False, False, False, True))
+    assert done.docker.kinds() == [*STARTED, "agent", *ENDED, "check"]
+    assert (done.data["checks"], done.data["checks_note"]) == (None, STOPPED)
 
 
 def test_an_engaged_kill_switch_starts_nothing(example: Path, tmp_path: Path) -> None:
@@ -518,7 +633,7 @@ def test_the_kill_switch_engaged_after_the_agent_skips_the_checks(
     assert data["agent"]["status"] == "termine"
     assert data["patch"] is not None
     assert (data["checks"], data["checks_note"]) == (None, STOPPED)
-    assert done.docker.kinds() == [*STARTED, "agent", *STOPPED_KINDS]
+    assert done.docker.kinds() == [*STARTED, "agent", *ENDED]
 
 
 # --- Docker failing ---------------------------------------------------------------------------
@@ -538,9 +653,14 @@ def test_the_kill_switch_engaged_after_the_agent_skips_the_checks(
             ["network", "remove"],
         ),
         (
+            Scenario(replies={"outside": DAEMON_DOWN}),
+            f"Docker : réseau de sortie du proxy impossible ({DOCKER_CODES[125]})",
+            ["network", "outside", "remove", "remove"],
+        ),
+        (
             "proxy_absent",
             "Docker : démarrage du proxy impossible (",
-            ["network", "proxy", *STOPPED_KINDS],
+            ["network", "outside", "proxy", *STOPPED_KINDS],
         ),
         ("proxy_muet", "le proxy n'a pas démarré en 15 s", [*STARTED, *STOPPED_KINDS]),
         (
@@ -562,14 +682,27 @@ def test_a_failed_start_stops_what_started(
 def test_the_network_is_removed_once_the_containers_are_gone(example: Path, tmp_path: Path) -> None:
     busy = out(1, stderr="error while removing network: has active endpoints")
     done = agent_task(example, tmp_path, Scenario(replies={"remove": [busy, OK]}))
-    assert done.docker.kinds().count("remove") == 2
+    assert done.docker.kinds().count("remove") == 3
     assert done.data["cleanup"]["network_removed"] is True
 
 
-@pytest.mark.parametrize("reply", [out(1, stderr="has active endpoints"), TIMED_OUT])
-def test_a_network_that_stays_is_reported(reply: Bounded, example: Path, tmp_path: Path) -> None:
-    done = agent_task(example, tmp_path, Scenario(replies={"remove": reply}))
-    assert done.docker.kinds().count("remove") == NETWORK_TRIES
+@pytest.mark.parametrize(
+    ("replies", "count"),
+    [
+        (out(1, stderr="has active endpoints"), 2 * NETWORK_TRIES),
+        (TIMED_OUT, 2 * NETWORK_TRIES),
+        # The task's network goes, the way out stays: both are tried all the same.
+        ([OK, out(1, stderr="has active endpoints")], 1 + NETWORK_TRIES),
+    ],
+)
+def test_a_network_that_stays_is_reported(
+    replies: Bounded | list[Bounded], count: int, example: Path, tmp_path: Path
+) -> None:
+    done = agent_task(example, tmp_path, Scenario(replies={"remove": replies}))
+    removed = [call.arguments[-1] for call in done.calls("remove")]
+    task = agent.names(done.data["task_id"])
+    assert len(removed) == count
+    assert set(removed) == {task.network, task.outside}
     assert done.data["cleanup"]["network_removed"] is False
 
 
@@ -580,11 +713,41 @@ def test_docker_that_cannot_be_launched_after_the_agent(example: Path, tmp_path:
         wrap=lambda docker: Unreachable(docker, frozenset({"kill", "remove", "check"})),
     )
     data = done.data
-    assert done.docker.kinds() == [*STARTED, "agent"]
-    assert data["cleanup"] == {"copy_removed": True, "network_removed": False}
+    assert done.docker.kinds() == [*STARTED, "agent", "running"]
+    assert data["cleanup"] == {**CLEAN, "network_removed": False}
     assert data["checks"] is None
     assert data["checks_note"] == "Docker ne peut pas être lancé (FileNotFoundError)"
     assert data["patch"] is not None
+
+
+@pytest.mark.parametrize("reply", [STILL_THERE, TIMED_OUT, out(1, stderr="ps")])
+def test_containers_still_running_leave_no_patch(
+    reply: Bounded, example: Path, tmp_path: Path
+) -> None:
+    """Until ``docker ps`` shows both gone, the copy and the proxy's counts may still change."""
+    done = agent_task(example, tmp_path, Scenario(replies={"running": reply}))
+    data = done.data
+    assert done.docker.kinds() == [*STARTED, "agent", *STOPPED_KINDS, *["running"] * NETWORK_TRIES]
+    assert data["agent"]["status"] == "termine"
+    assert (data["patch"], data["patch_note"], data["checks"]) == (None, NOT_STOPPED, None)
+    # Unknown spend: the adapter charges the ceiling (core/mcp/spend.py).
+    assert (data["proxy"], data["depense"]) == (None, None)
+    assert data["cleanup"] == {**CLEAN, "containers_stopped": False}
+
+
+def test_containers_seen_gone_at_last_are_stopped(example: Path, tmp_path: Path) -> None:
+    done = agent_task(example, tmp_path, Scenario(replies={"running": [STILL_THERE, GONE]}))
+    assert done.docker.kinds() == [*STARTED, "agent", *ENDED, "running", *CHECKS]
+    assert done.data["cleanup"] == CLEAN
+    assert done.data["patch"] is not None
+
+
+def test_docker_ps_that_cannot_be_launched_leaves_no_patch(example: Path, tmp_path: Path) -> None:
+    done = agent_task(
+        example, tmp_path, wrap=lambda docker: Unreachable(docker, frozenset({"running"}))
+    )
+    assert done.data["patch_note"] == NOT_STOPPED
+    assert done.data["cleanup"]["containers_stopped"] is False
 
 
 def test_checks_that_fail_to_run_are_reported(example: Path, tmp_path: Path) -> None:

@@ -22,6 +22,7 @@ from core.code.patch import (
     file_diff,
     is_risky,
     scan,
+    sets_checks,
 )
 from core.guardrails.secrets import MASK
 from tests.code_support import git, make_repo
@@ -136,13 +137,42 @@ def special(monkeypatch: pytest.MonkeyPatch, root: Path, **kinds: str) -> Iterat
         ("tests/conftest.py", True),
         ("PyProject.toml", True),
         ("site/evil.pth", True),
+        (".coveragerc", True),
+        ("ruff.toml", True),
+        ("pkg/.ruff.toml", True),
+        ("uv.lock", True),
+        ("requirements.txt", True),
+        ("Requirements-Dev.txt", True),
         ("src/main.py", False),
         (".github", False),
         ("docs/makefile.md", False),
+        ("requirements.md", False),
+        ("docs/requirements", False),
     ],
 )
 def test_paths_that_run_code_on_lucass_machine_are_flagged(path: str, risky: bool) -> None:
     assert is_risky(path) is risky
+
+
+@pytest.mark.parametrize(
+    ("path", "sets"),
+    [
+        ("tests/conftest.py", True),
+        ("PyProject.toml", True),
+        ("pkg/.ruff.toml", True),
+        (".coveragerc", True),
+        ("setup.cfg", True),
+        ("site/evil.pth", True),
+        ("Makefile", False),
+        (".github/workflows/ci.yml", False),
+        ("src/conftest.py.bak", False),
+        ("src/main.py", False),
+    ],
+)
+def test_files_that_set_the_checks_are_known(path: str, sets: bool) -> None:
+    # Changed by the agent, the checks of the changed copy prove nothing (ADR-054).
+    assert sets_checks(path) is sets
+    assert not sets or is_risky(path)
 
 
 # --- the scan -----------------------------------------------------------------------------------

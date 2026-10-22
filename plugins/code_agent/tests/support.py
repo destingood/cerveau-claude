@@ -160,8 +160,9 @@ class Scenario:
     edit: Callable[[Path], None] = fix_main
     # The proxy's state once the agent is done; a text is written as is, None keeps the start.
     final: Mapping[str, Any] | str | None = field(default_factory=state)
-    # Replies by step, in place of success: network, proxy, connect, agent, kill, remove, check,
-    # format, pytest. A list is answered in order (the network's removal is tried again).
+    # Replies by step, in place of success: network, outside, proxy, connect, agent, kill,
+    # remove, running, check, format, pytest. A list is answered in order (the removal of a
+    # network and docker ps are tried again).
     replies: Mapping[str, Bounded | list[Bounded]] = field(default_factory=dict)
     proxy_starts: bool = True
     # Seconds the agent works; one timed out takes all the time it was given.
@@ -173,6 +174,9 @@ class Scenario:
 TIMED_OUT = out(-9, timed_out=True)
 DAEMON_DOWN = out(125, stderr="Cannot connect to the Docker daemon")
 OK = out(0, "f00d\n")
+# docker ps: no container of the task left; STILL_THERE: one is.
+GONE = out(0, "")
+STILL_THERE = out(0, "f00d\n")
 
 SCENARIOS_AGENT: dict[str, Scenario] = {
     "corrige": Scenario(),
@@ -213,7 +217,9 @@ def kind_of(arguments: Sequence[str]) -> str:
     """The step a Docker command line stands for."""
     first = list(arguments[:2])
     if first == ["network", "create"]:
-        return "network"
+        return "network" if "--internal" in arguments else "outside"
+    if first[0] == "ps":
+        return "running"
     if first == ["network", "connect"]:
         return "connect"
     if first == ["network", "rm"]:
@@ -333,7 +339,7 @@ class FakeDocker:
             reply = self._reply(kind, SCENARIOS["propre"][kind])
             self.clock.now += timeout_s if reply.timed_out else 1.0
         else:
-            reply = self._reply(kind, OK)
+            reply = self._reply(kind, GONE if kind == "running" else OK)
         if kind == "kill":
             self.killed.set()
         self.calls.append(Call(kind, via, list(arguments), name, timeout_s, max_bytes, files))

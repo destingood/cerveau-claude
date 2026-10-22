@@ -76,7 +76,7 @@
     },
     "Checks": {
       "additionalProperties": false,
-      "description": "ruff and pytest on the copy the agent changed (``code_checks``): the only results the\nanswer cites (R1).",
+      "description": "ruff and pytest on the copy the agent changed (``code_checks``): the only counts the\nanswer cites (R1), and a hint, never a proof. ``conclusive`` is false, with its ``caveats``,\nwhen the patch changes what the checks read (``conftest.py``, ``pyproject.toml``...) or when\nthe copy they ran on is not what the patch gives (files left out, secrets masked).",
       "properties": {
         "ruff_check": {
           "$ref": "#/$defs/RuffCheck"
@@ -90,13 +90,26 @@
         "budget_seconds": {
           "title": "Budget Seconds",
           "type": "number"
+        },
+        "conclusive": {
+          "title": "Conclusive",
+          "type": "boolean"
+        },
+        "caveats": {
+          "items": {
+            "type": "string"
+          },
+          "title": "Caveats",
+          "type": "array"
         }
       },
       "required": [
         "ruff_check",
         "ruff_format",
         "pytest",
-        "budget_seconds"
+        "budget_seconds",
+        "conclusive",
+        "caveats"
       ],
       "title": "Checks",
       "type": "object"
@@ -111,11 +124,16 @@
         "network_removed": {
           "title": "Network Removed",
           "type": "boolean"
+        },
+        "containers_stopped": {
+          "title": "Containers Stopped",
+          "type": "boolean"
         }
       },
       "required": [
         "copy_removed",
-        "network_removed"
+        "network_removed",
+        "containers_stopped"
       ],
       "title": "Cleanup",
       "type": "object"

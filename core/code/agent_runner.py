@@ -17,6 +17,9 @@ The options are built by a pure function, tested without the SDK:
 The runner prints one JSON line: the outcome, the number of turns and the agent's final summary,
 bounded. A command the agent runs can write to this output too, so the plugin treats the line as
 untrusted data; the spend comes from the proxy, the changes from the files (ADR-054).
+
+The plugin also gives the runner a lifetime: at its end, ``SIGALRM``, whose default action ends
+the process, and ``tini`` (``--init``) then ends the container, should the plugin be gone.
 """
 
 from __future__ import annotations
@@ -24,6 +27,7 @@ from __future__ import annotations
 import argparse
 import asyncio
 import json
+import signal
 import sys
 from collections.abc import Callable, Mapping
 from dataclasses import dataclass
@@ -177,6 +181,13 @@ async def run(task: Task, sdk: ModuleType) -> dict[str, Any]:
     return report(status, last.subtype, last.num_turns, last.result)
 
 
+def _seconds(text: str) -> int:
+    value = int(text)
+    if value <= 0:
+        raise ValueError(text)
+    return value
+
+
 def load_sdk() -> ModuleType:
     # Imported here: the SDK exists in the agent's image only, not in CERVEAU's environment.
     import claude_agent_sdk
@@ -192,7 +203,11 @@ def main(
 ) -> int:
     parser = argparse.ArgumentParser(prog="cerveau-agent", description="Agent de code isolé.")
     parser.add_argument("--task", type=Path, required=True, help="fichier de la tâche (JSON)")
+    parser.add_argument(
+        "--max-seconds", type=_seconds, required=True, help="durée de vie du runner (s)"
+    )
     args = parser.parse_args(argv)
+    signal.alarm(args.max_seconds)  # Linux only, as is the image
     try:
         task = read_task(args.task.read_text(encoding="utf-8"))
     except (OSError, UnicodeDecodeError, TaskError) as exc:

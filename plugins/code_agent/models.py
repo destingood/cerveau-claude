@@ -89,18 +89,25 @@ class PatchOut(_Out):
 
 
 class Checks(_Out):
-    """ruff and pytest on the copy the agent changed (``code_checks``): the only results the
-    answer cites (R1)."""
+    """ruff and pytest on the copy the agent changed (``code_checks``): the only counts the
+    answer cites (R1), and a hint, never a proof. ``conclusive`` is false, with its ``caveats``,
+    when the patch changes what the checks read (``conftest.py``, ``pyproject.toml``...) or when
+    the copy they ran on is not what the patch gives (files left out, secrets masked)."""
 
     ruff_check: RuffCheck
     ruff_format: RuffFormat
     pytest: Pytest
     budget_seconds: float
+    conclusive: bool
+    caveats: list[str]
 
 
 class Cleanup(_Out):
     copy_removed: bool
+    # Both networks of the task.
     network_removed: bool
+    # ``docker ps`` saw neither container of the task running any more.
+    containers_stopped: bool
 
 
 class AgentResult(_Out):
@@ -111,7 +118,8 @@ class AgentResult(_Out):
     model: str
     source: Source
     agent: AgentRun
-    # None when the proxy's state could not be read: the adapter then charges the ceiling.
+    # None when the proxy's state could not be read, or the containers were not seen stopped:
+    # the adapter then charges the ceiling.
     proxy: ProxyCounts | None
     depense: Spend | None
     # None when no patch was computed (stopped, timed out, Docker failure) or the copy could not

@@ -52,6 +52,8 @@ RISKY_FILES = frozenset(
         ".npmrc",
         ".pre-commit-config.yaml",
         ".pypirc",
+        ".coveragerc",
+        ".ruff.toml",
         "agents.md",
         "claude.md",
         "compose.yaml",
@@ -64,15 +66,35 @@ RISKY_FILES = frozenset(
         "package.json",
         "pyproject.toml",
         "pytest.ini",
+        "ruff.toml",
         "setup.cfg",
         "setup.py",
         "sitecustomize.py",
         "tox.ini",
         "usercustomize.py",
+        "uv.lock",
     }
 )
 # Read by Python at start-up: a line of a .pth file can run code.
 RISKY_SUFFIXES = (".pth",)
+# What pip installs: requirements.txt, requirements-dev.txt...
+REQUIREMENTS = ("requirements", ".txt")
+# Files that set what ruff and pytest check or how: changed by the agent, the checks of the
+# changed copy are no proof (ADR-054).
+CHECK_FILES = frozenset(
+    {
+        ".coveragerc",
+        ".ruff.toml",
+        "conftest.py",
+        "pyproject.toml",
+        "pytest.ini",
+        "ruff.toml",
+        "setup.cfg",
+        "sitecustomize.py",
+        "tox.ini",
+        "usercustomize.py",
+    }
+)
 
 
 class PatchError(Exception):
@@ -118,11 +140,19 @@ class Patch:
 
 def is_risky(path: str) -> bool:
     segments = path.lower().split("/")
+    name = segments[-1]
     return (
         any(segment in RISKY_DIRS for segment in segments[:-1])
-        or segments[-1] in RISKY_FILES
-        or segments[-1].endswith(RISKY_SUFFIXES)
+        or name in RISKY_FILES
+        or name.endswith(RISKY_SUFFIXES)
+        or (name.startswith(REQUIREMENTS[0]) and name.endswith(REQUIREMENTS[1]))
     )
+
+
+def sets_checks(path: str) -> bool:
+    """Whether ``path`` sets what ruff or pytest check, or runs code at Python's start-up."""
+    name = path.lower().rsplit("/", 1)[-1]
+    return name in CHECK_FILES or name.endswith(RISKY_SUFFIXES)
 
 
 def _skipped(path: str) -> bool:

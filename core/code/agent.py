@@ -1,11 +1,13 @@
 """Host side of the code agent (ADR-054, F1 to F5): containers, network, proxy settings, reports.
 
 One task runs two containers on a Docker network of its own, created ``--internal`` (no way
-out). The API proxy (ADR-053) also joins the default bridge to reach ``api.anthropic.com``; it
-gets the real key by name from the environment of its ``docker run`` only. The agent's container
-has the throwaway copy as its only writable mount, a ``tmpfs``, an unprivileged user, no
-capability, bounded processors, memory and processes, and an image pinned by content and never
-pulled. Every command is built by a pure function, tested option by option.
+out). The API proxy (ADR-053) also joins a second network of the task, a bridge without traffic
+between its containers, to reach ``api.anthropic.com``; it gets the real key by name from the
+environment of its ``docker run`` only. The agent's container has the throwaway copy as its only
+writable mount, a ``tmpfs``, an unprivileged user, no capability, bounded processors, memory,
+processes and file size, and an image pinned by content and never pulled. Both containers end
+by themselves at the task's time, the proxy also at the kill switch (R4), should the plugin that
+started them be gone. Every command is built by a pure function, tested option by option.
 
 The reports are read back as untrusted data: the proxy's state file (its counts, written in a
 folder only the proxy mounts) gives the spend; the runner's line (which a command of the agent
@@ -14,7 +16,9 @@ could forge) only gives the outcome and a summary shown as data.
 
 from __future__ import annotations
 
+import itertools
 import json
+import os
 import threading
 from collections.abc import Callable, Mapping
 from dataclasses import dataclass
@@ -29,17 +33,21 @@ SCHEMA = 1  # task file, proxy settings and state (core/code/llm_proxy.py)
 KEY_ENV = "ANTHROPIC_API_KEY"
 PROXY_ALIAS = "llm-proxy"
 PROXY_PORT = 8080
-OUTSIDE = "bridge"
 LABEL = "cerveau.code_agent=1"
+# The default bridge would let the proxy reach the other containers on it.
+NO_ICC = "com.docker.network.bridge.enable_icc=false"
 TASK_DIR = "/task"
 TASK_FILE = "task.json"
 CONFIG_DIR = "/config"
 SETTINGS_FILE = "settings.json"
 STATE_DIR = "/state"
 STATE_FILE = "state.json"
+KILL_DIR = "/kill_switch"
 AGENT_TMPFS = "/tmp:rw,nosuid,nodev,size=524288k"  # noqa: S108 - inside the container
 PROXY_TMPFS = "/tmp:rw,noexec,nosuid,nodev,size=16384k"  # noqa: S108 - inside the container
 PROXY_LIMITS = Limits(cpus=0.5, memory_mb=256, pids=64)
+# Largest file a process of the agent's container may write, in bytes (setrlimit(2)).
+MAX_FILE_SIZE = 100 << 20
 MAX_BODY_BYTES = 32 << 20
 UPSTREAM_TIMEOUT_S = 600
 PRICES = ("input", "cache_write_5m", "cache_write_1h", "cache_read", "output")
@@ -53,13 +61,17 @@ MAX_FIELD_CHARS = 100
 @dataclass(frozen=True)
 class Names:
     network: str
+    outside: str
     proxy: str
     agent: str
 
 
 def names(task_id: str) -> Names:
     return Names(
-        f"cerveau-agent-net-{task_id}", f"cerveau-agent-proxy-{task_id}", f"cerveau-agent-{task_id}"
+        f"cerveau-agent-net-{task_id}",
+        f"cerveau-agent-out-{task_id}",
+        f"cerveau-agent-proxy-{task_id}",
+        f"cerveau-agent-{task_id}",
     )
 
 
@@ -102,6 +114,11 @@ def network_create(network: str) -> list[str]:
     return ["network", "create", "--internal", "--label", LABEL, network]
 
 
+def outside_create(network: str) -> list[str]:
+    """The proxy's way out: a bridge of the task, no traffic between its containers."""
+    return ["network", "create", "--opt", NO_ICC, "--label", LABEL, network]
+
+
 def network_connect(network: str, container: str) -> list[str]:
     return ["network", "connect", network, container]
 
@@ -114,8 +131,31 @@ def kill(*containers: str) -> list[str]:
     return ["kill", *containers]
 
 
-def proxy_command(task: Names, image: str, settings_dir: Path, state_dir: Path) -> list[str]:
-    """``docker run`` of the proxy, detached; the key comes by name, never as a value (R6)."""
+def running(task: Names) -> list[str]:
+    """``docker ps`` of the task's containers still running (one name filter or the other)."""
+    return [
+        "ps",
+        "--quiet",
+        "--filter",
+        f"label={LABEL}",
+        "--filter",
+        f"name={task.agent}",
+        "--filter",
+        f"name={task.proxy}",
+    ]
+
+
+def proxy_command(
+    task: Names,
+    image: str,
+    settings_dir: Path,
+    state_dir: Path,
+    kill_switch: Path,
+    max_seconds: int,
+) -> list[str]:
+    """``docker run`` of the proxy, detached; the key comes by name, never as a value (R6). The
+    kill switch's folder is mounted read only: the proxy stops at the switch and at the end of
+    ``max_seconds`` by itself (R4)."""
     return [
         "run",
         "--detach",
@@ -131,6 +171,8 @@ def proxy_command(task: Names, image: str, settings_dir: Path, state_dir: Path) 
         _mount(settings_dir, CONFIG_DIR, readonly=True),
         "--mount",
         _mount(state_dir, STATE_DIR, readonly=False),
+        "--mount",
+        _mount(kill_switch.parent, KILL_DIR, readonly=True),
         "--env",
         KEY_ENV,
         image,
@@ -140,11 +182,18 @@ def proxy_command(task: Names, image: str, settings_dir: Path, state_dir: Path) 
         f"{STATE_DIR}/{STATE_FILE}",
         "--port",
         str(PROXY_PORT),
+        "--kill-switch",
+        f"{KILL_DIR}/{kill_switch.name}",
+        "--max-seconds",
+        str(max_seconds),
     ]
 
 
-def agent_command(task: Names, image: str, work: Path, task_dir: Path, limits: Limits) -> list[str]:
-    """``docker run`` of the agent: the copy is its only writable mount (F1, F5)."""
+def agent_command(
+    task: Names, image: str, work: Path, task_dir: Path, limits: Limits, max_seconds: int
+) -> list[str]:
+    """``docker run`` of the agent: the copy is its only writable mount (F1, F5); the runner
+    ends itself after ``max_seconds``, should nobody stop it."""
     return [
         "run",
         "--rm",
@@ -153,6 +202,8 @@ def agent_command(task: Names, image: str, work: Path, task_dir: Path, limits: L
         "--network",
         task.network,
         *_confined(limits, AGENT_TMPFS),
+        "--ulimit",
+        f"fsize={MAX_FILE_SIZE}",
         "--init",
         "--mount",
         _mount(work, WORKDIR, readonly=False),
@@ -165,6 +216,8 @@ def agent_command(task: Names, image: str, work: Path, task_dir: Path, limits: L
         image,
         "--task",
         f"{TASK_DIR}/{TASK_FILE}",
+        "--max-seconds",
+        str(max_seconds),
     ]
 
 
@@ -313,17 +366,58 @@ def read_report(stdout: bytes) -> RunnerReport | None:
 
 def watch(
     stop: threading.Event,
-    engaged: Callable[[], bool],
+    reason: Callable[[], str | None],
     halt: Callable[[], None],
     interval: float,
-) -> bool:
-    """Until ``stop`` is set, check the kill switch every ``interval`` seconds (R4); once it is
-    engaged, call ``halt`` (which kills both containers) and return ``True``."""
+) -> str | None:
+    """Until ``stop`` is set, ask ``reason`` every ``interval`` seconds (kill switch, R4; disk,
+    F5); at the first reason given, call ``halt`` (which kills the containers) and return it."""
     while not stop.wait(interval):
-        if engaged():
+        found = reason()
+        if found is not None:
             halt()
-            return True
-    return False
+            return found
+    return None
+
+
+def outgrown(root: Path, max_entries: int, max_bytes: int) -> str | None:
+    """Why the copy the agent writes in is past its bounds, or ``None``; entries and sizes taken
+    without following a link, ``.git`` included. A folder that cannot be listed counts as past
+    them (R7); one the agent removed meanwhile does not."""
+    entries = size = 0
+    pending = [str(root)]
+    try:
+        while pending:
+            for entry in _listing(pending.pop(), max_entries + 1):
+                entries += 1
+                if entry.is_dir(follow_symlinks=False) and not entry.is_junction():
+                    pending.append(entry.path)
+                else:
+                    size += _size(entry)
+                if entries > max_entries or size > max_bytes:
+                    return (
+                        f"copie au-delà de ses bornes ({max_entries} entrées, {max_bytes} octets) "
+                        "pendant le travail de l'agent"
+                    )
+    except OSError:
+        return "copie illisible pendant le travail de l'agent"
+    return None
+
+
+def _listing(folder: str, limit: int) -> list[os.DirEntry[str]]:
+    """At most ``limit`` entries of ``folder``; none once the agent removed it."""
+    try:
+        with os.scandir(folder) as listing:
+            return list(itertools.islice(listing, limit))
+    except FileNotFoundError:
+        return []
+
+
+def _size(entry: os.DirEntry[str]) -> int:
+    try:
+        return entry.stat(follow_symlinks=False).st_size
+    except FileNotFoundError:
+        return 0
 
 
 def has_key(environ: Mapping[str, str]) -> bool:

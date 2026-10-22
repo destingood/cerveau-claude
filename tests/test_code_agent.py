@@ -4,8 +4,10 @@ from __future__ import annotations
 
 import json
 import threading
+from dataclasses import dataclass
 from decimal import Decimal
 from pathlib import Path
+from types import SimpleNamespace
 from typing import Any
 
 import pytest
@@ -16,8 +18,10 @@ from core.code.agent import (
     KEY_ENV,
     LABEL,
     MAX_FIELD_CHARS,
+    MAX_FILE_SIZE,
     MAX_LINE_BYTES,
     MAX_SUMMARY_CHARS,
+    NO_ICC,
     PROXY_ALIAS,
     PROXY_LIMITS,
     PROXY_TMPFS,
@@ -47,8 +51,9 @@ def option(arguments: list[str], name: str) -> list[str]:
 
 
 def test_each_task_has_its_own_names() -> None:
-    assert (TASK.network, TASK.proxy, TASK.agent) == (
+    assert (TASK.network, TASK.outside, TASK.proxy, TASK.agent) == (
         "cerveau-agent-net-0123456789ab",
+        "cerveau-agent-out-0123456789ab",
         "cerveau-agent-proxy-0123456789ab",
         "cerveau-agent-0123456789ab",
     )
@@ -63,14 +68,39 @@ def test_the_network_has_no_way_out() -> None:
         LABEL,
         TASK.network,
     ]
-    assert agent.network_connect("bridge", TASK.proxy) == [
-        "network",
-        "connect",
-        "bridge",
-        TASK.proxy,
-    ]
     assert agent.network_remove(TASK.network) == ["network", "rm", TASK.network]
     assert agent.kill(TASK.agent, TASK.proxy) == ["kill", TASK.agent, TASK.proxy]
+
+
+def test_the_proxys_way_out_is_a_bridge_of_its_own() -> None:
+    # Of the task, not Docker's default bridge: no other container to reach (ICC off).
+    assert agent.outside_create(TASK.outside) == [
+        "network",
+        "create",
+        "--opt",
+        NO_ICC,
+        "--label",
+        LABEL,
+        TASK.outside,
+    ]
+    assert NO_ICC == "com.docker.network.bridge.enable_icc=false"
+    assert "--internal" not in agent.outside_create(TASK.outside)
+    assert agent.network_connect(TASK.outside, TASK.proxy) == [
+        "network",
+        "connect",
+        TASK.outside,
+        TASK.proxy,
+    ]
+
+
+def test_the_containers_still_running_are_listed_by_label_and_name() -> None:
+    command = agent.running(TASK)
+    assert command[:2] == ["ps", "--quiet"] and "--all" not in command
+    assert option(command, "--filter") == [
+        f"label={LABEL}",
+        f"name={TASK.agent}",
+        f"name={TASK.proxy}",
+    ]
 
 
 def confined(arguments: list[str], limits: Limits, tmpfs: str) -> None:
@@ -90,7 +120,8 @@ def confined(arguments: list[str], limits: Limits, tmpfs: str) -> None:
 
 
 def test_the_proxy_gets_the_key_by_name_only(tmp_path: Path) -> None:
-    command = agent.proxy_command(TASK, IMAGE, tmp_path / "config", tmp_path / "state")
+    switch = tmp_path / "governance" / "kill_switch" / "KILL"
+    command = agent.proxy_command(TASK, IMAGE, tmp_path / "config", tmp_path / "state", switch, 870)
     assert command[:3] == ["run", "--detach", "--rm"]
     assert option(command, "--name") == [TASK.proxy]
     assert option(command, "--network") == [TASK.network]
@@ -101,6 +132,8 @@ def test_the_proxy_gets_the_key_by_name_only(tmp_path: Path) -> None:
     assert option(command, "--mount") == [
         f"type=bind,source={tmp_path / 'config'},target=/config,readonly",
         f"type=bind,source={tmp_path / 'state'},target=/state",
+        # The kill switch's folder, read only: the proxy stops at the switch by itself (R4).
+        f"type=bind,source={switch.parent},target=/kill_switch,readonly",
     ]
     assert command[command.index(IMAGE) :] == [
         IMAGE,
@@ -110,16 +143,23 @@ def test_the_proxy_gets_the_key_by_name_only(tmp_path: Path) -> None:
         "/state/state.json",
         "--port",
         "8080",
+        "--kill-switch",
+        "/kill_switch/KILL",
+        "--max-seconds",
+        "870",
     ]
 
 
 def test_the_agent_writes_to_its_copy_only(tmp_path: Path) -> None:
-    command = agent.agent_command(TASK, IMAGE, tmp_path / "work", tmp_path / "task", LIMITS)
+    command = agent.agent_command(TASK, IMAGE, tmp_path / "work", tmp_path / "task", LIMITS, 780)
     assert command[:2] == ["run", "--rm"] and "--detach" not in command
     assert option(command, "--name") == [TASK.agent]
     assert option(command, "--network") == [TASK.network]
     confined(command, LIMITS, AGENT_TMPFS)
     assert "--init" in command
+    # No file of more than 100 MiB (F5); the unit is A_VERIFIER on Lucas's Docker (B287).
+    assert option(command, "--ulimit") == [f"fsize={MAX_FILE_SIZE}"]
+    assert MAX_FILE_SIZE == 100 * 1024 * 1024
     assert option(command, "--mount") == [
         f"type=bind,source={tmp_path / 'work'},target={WORKDIR}",
         f"type=bind,source={tmp_path / 'task'},target=/task,readonly",
@@ -127,13 +167,19 @@ def test_the_agent_writes_to_its_copy_only(tmp_path: Path) -> None:
     assert option(command, "--workdir") == [WORKDIR]
     # No key, not even by name: the runner hands a dummy one to the CLI.
     assert option(command, "--env") == ["HOME=/tmp"]
-    assert command[command.index(IMAGE) :] == [IMAGE, "--task", "/task/task.json"]
+    assert command[command.index(IMAGE) :] == [
+        IMAGE,
+        "--task",
+        "/task/task.json",
+        "--max-seconds",
+        "780",
+    ]
 
 
 @pytest.mark.parametrize("name", ["a,b", "a=b", 'a"b'])
 def test_a_folder_that_would_change_the_mount_is_refused(name: str, tmp_path: Path) -> None:
     with pytest.raises(SandboxError, match="dossier de la tâche refusé"):
-        agent.agent_command(TASK, IMAGE, tmp_path / name, tmp_path / "task", LIMITS)
+        agent.agent_command(TASK, IMAGE, tmp_path / name, tmp_path / "task", LIMITS, 60)
 
 
 # --- settings of the proxy and task file ------------------------------------------------------
@@ -326,20 +372,102 @@ def test_an_unreadable_report_is_none(stdout: bytes) -> None:
     assert agent.read_report(stdout) is None
 
 
-# --- kill switch watcher and key --------------------------------------------------------------
+# --- watcher, size of the copy and key ---------------------------------------------------------
 
 
-def test_the_watcher_halts_once_the_switch_is_engaged() -> None:
-    reads = iter([False, False, True])
+def test_the_watcher_halts_at_the_first_reason() -> None:
+    reasons = iter([None, None, "raison"])
     halted: list[bool] = []
-    assert agent.watch(threading.Event(), lambda: next(reads), lambda: halted.append(True), 0)
+    assert (
+        agent.watch(threading.Event(), lambda: next(reasons), lambda: halted.append(True), 0)
+        == "raison"
+    )
     assert halted == [True]
 
 
 def test_the_watcher_ends_with_the_task() -> None:
     stop = threading.Event()
     stop.set()
-    assert agent.watch(stop, lambda: True, lambda: pytest.fail("arrêté"), 0) is False
+    assert agent.watch(stop, lambda: "raison", lambda: pytest.fail("arrêté"), 0) is None
+
+
+def tree(root: Path) -> Path:
+    """Three entries, 15 bytes."""
+    (root / "src").mkdir()
+    (root / "src" / "a.py").write_bytes(b"x" * 10)
+    (root / "b.txt").write_bytes(b"y" * 5)
+    return root
+
+
+def test_a_copy_within_its_bounds_is_left_alone(tmp_path: Path) -> None:
+    assert agent.outgrown(tree(tmp_path), 3, 15) is None
+
+
+@pytest.mark.parametrize(("entries", "size"), [(2, 100), (10, 14)])
+def test_a_copy_past_its_bounds_stops_the_agent(tmp_path: Path, entries: int, size: int) -> None:
+    reason = agent.outgrown(tree(tmp_path), entries, size)
+    assert reason == (
+        f"copie au-delà de ses bornes ({entries} entrées, {size} octets) "
+        "pendant le travail de l'agent"
+    )
+
+
+def test_a_copy_removed_by_the_agent_is_not_past_its_bounds(tmp_path: Path) -> None:
+    assert agent.outgrown(tmp_path / "absent", 1, 1) is None
+
+
+def test_a_copy_that_cannot_be_listed_stops_the_agent(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    def refused(folder: str, limit: int) -> list[Any]:
+        raise PermissionError(folder)
+
+    monkeypatch.setattr(agent, "_listing", refused)
+    assert agent.outgrown(tmp_path, 10, 10) == "copie illisible pendant le travail de l'agent"
+
+
+@dataclass
+class Entry:
+    path: str
+    folder: bool = False
+    junction: bool = False
+    size: int | None = 0  # None: removed meanwhile
+
+    def is_dir(self, *, follow_symlinks: bool) -> bool:
+        assert follow_symlinks is False
+        return self.folder
+
+    def is_junction(self) -> bool:
+        return self.junction
+
+    def stat(self, *, follow_symlinks: bool) -> SimpleNamespace:
+        assert follow_symlinks is False
+        if self.size is None:
+            raise FileNotFoundError(self.path)
+        return SimpleNamespace(st_size=self.size)
+
+
+def test_links_are_never_followed_and_removed_files_weigh_nothing(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    listed: list[tuple[str, int]] = []
+    entries = {
+        str(tmp_path): [
+            Entry("jonction", folder=True, junction=True, size=4),
+            Entry("parti", size=None),
+            Entry("dossier", folder=True),
+        ],
+        "dossier": [Entry("dossier/f", size=6)],
+    }
+
+    def listing(folder: str, limit: int) -> list[Entry]:
+        listed.append((folder, limit))
+        return entries[folder]
+
+    monkeypatch.setattr(agent, "_listing", listing)
+    assert agent.outgrown(tmp_path, 4, 10) is None
+    assert listed == [(str(tmp_path), 5), ("dossier", 5)]
+    assert agent.outgrown(tmp_path, 4, 9) is not None
 
 
 @pytest.mark.parametrize(
