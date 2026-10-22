@@ -1,0 +1,49 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  Questions d'évaluation du plugin code_checks (R8). La liste blanche des dépôts et l'image des
+  contrôles restent A_DEFINIR tant que Lucas ne les a pas fixées (E2, E4) : chaque question porte
+  donc sur une borne ou un refus de l'outil, dont la réponse ne dépend ni d'un dépôt ni de Docker.
+  Elles servent aux évals live (consentement de Lucas par campagne) ; aucun résultat n'est stocké.
+-->
+<evaluation>
+  <qa_pair>
+    <question>Le conteneur où run_checks lance ruff et pytest a-t-il accès au réseau ? Réponds par oui ou non.</question>
+    <answer>non</answer>
+  </qa_pair>
+  <qa_pair>
+    <question>run_checks installe-t-il les dépendances d'un dépôt avant de lancer pytest ? Réponds par oui ou non.</question>
+    <answer>non</answer>
+  </qa_pair>
+  <qa_pair>
+    <question>Combien de diagnostics de ruff check run_checks montre-t-il au plus, les autres étant seulement comptés ?</question>
+    <answer>50</answer>
+  </qa_pair>
+  <qa_pair>
+    <question>Combien de secondes au plus les conteneurs d'un même appel de run_checks se partagent-ils ?</question>
+    <answer>25</answer>
+  </qa_pair>
+  <qa_pair>
+    <question>run_checks peut-il contrôler le dépôt de CERVEAU lui-même s'il est inscrit dans la liste blanche ? Réponds par oui ou non.</question>
+    <answer>non</answer>
+  </qa_pair>
+  <qa_pair>
+    <question>Un fichier .env commité dans un dépôt est-il copié dans le dossier que voient les conteneurs de run_checks ? Réponds par oui ou non.</question>
+    <answer>non</answer>
+  </qa_pair>
+  <qa_pair>
+    <question>Quel statut run_checks donne-t-il à pytest quand le dépôt n'a pas d'environnement préparé par Lucas ? Réponds par le statut exact.</question>
+    <answer>non_lance</answer>
+  </qa_pair>
+  <qa_pair>
+    <question>Le conteneur de run_checks peut-il écrire dans le dossier du dépôt qu'il contrôle ? Réponds par oui ou non.</question>
+    <answer>non</answer>
+  </qa_pair>
+  <qa_pair>
+    <question>run_checks télécharge-t-il l'image Docker des contrôles quand elle est absente du poste ? Réponds par oui ou non.</question>
+    <answer>non</answer>
+  </qa_pair>
+  <qa_pair>
+    <question>Combien de processus au plus le conteneur de run_checks peut-il lancer avec les plafonds de config/code.yaml ?</question>
+    <answer>256</answer>
+  </qa_pair>
+</evaluation>

@@ -11,16 +11,15 @@ working tree, so no checkout filter runs either.
 from __future__ import annotations
 
 import os
-import subprocess
-import threading
 from collections.abc import Mapping, Sequence
 from dataclasses import dataclass
 from pathlib import Path
-from typing import IO, cast
+
+from core.code.process import MAX_STDERR_BYTES, run_bounded
+
+__all__ = ["GLOBAL_OPTIONS", "MAX_STDERR_BYTES", "GitError", "GitOutput", "GitRunner"]
 
 GIT_TIMEOUT_S = 10.0
-MAX_STDERR_BYTES = 4_000
-_CHUNK = 65_536
 
 # Before the subcommand. The -c values override the repository's own configuration.
 GLOBAL_OPTIONS = (
@@ -66,21 +65,6 @@ def git_environment(environ: Mapping[str, str]) -> dict[str, str]:
     return env
 
 
-def _read_bounded(stream: IO[bytes], limit: int) -> tuple[bytes, bool]:
-    data = bytearray()
-    while chunk := stream.read1(_CHUNK):  # type: ignore[attr-defined]
-        data.extend(chunk)
-        if len(data) > limit:
-            return bytes(data[:limit]), True
-    return bytes(data), False
-
-
-def _drain(stream: IO[bytes], sink: bytearray) -> None:
-    """Read stderr to its end so git never blocks on it; keep only its beginning."""
-    while chunk := stream.read1(_CHUNK):  # type: ignore[attr-defined]
-        sink.extend(chunk[: max(0, MAX_STDERR_BYTES - len(sink))])
-
-
 class GitRunner:
     def __init__(
         self,
@@ -94,44 +78,23 @@ class GitRunner:
         self.env = git_environment(environ)
 
     def run(
-        self, repo: Path, args: Sequence[str], *, max_bytes: int, literal_paths: bool = False
+        self,
+        repo: Path,
+        args: Sequence[str],
+        *,
+        max_bytes: int,
+        literal_paths: bool = False,
+        stdin: bytes | None = None,
     ) -> GitOutput:
         """``git -C repo <args>``; ``literal_paths`` makes every path argument a plain name."""
         command = [*self.executable, *GLOBAL_OPTIONS, "-C", str(repo), *args]
         env = dict(self.env, GIT_LITERAL_PATHSPECS="1") if literal_paths else self.env
         try:
-            process = subprocess.Popen(  # noqa: S603 - fixed arguments, no shell
-                command,
-                stdin=subprocess.DEVNULL,
-                stdout=subprocess.PIPE,
-                stderr=subprocess.PIPE,
-                env=env,
+            out = run_bounded(
+                command, env=env, timeout_s=self.timeout_s, max_bytes=max_bytes, stdin=stdin
             )
         except OSError as exc:
             raise GitError(f"git ne peut pas être lancé ({type(exc).__name__})") from None
-        stdout_pipe = cast(IO[bytes], process.stdout)
-        timed_out = threading.Event()
-
-        def stop() -> None:
-            timed_out.set()
-            process.kill()
-
-        timer = threading.Timer(self.timeout_s, stop)
-        errors = bytearray()
-        reader = threading.Thread(target=_drain, args=(process.stderr, errors), daemon=True)
-        timer.start()
-        reader.start()
-        try:
-            stdout, truncated = _read_bounded(stdout_pipe, max_bytes)
-            if truncated:
-                process.kill()
-            process.wait()
-        finally:
-            timer.cancel()
-            reader.join(timeout=1.0)
-            stdout_pipe.close()
-        if timed_out.is_set():
+        if out.timed_out:
             raise GitError(f"git : délai de {self.timeout_s:g} s dépassé")
-        return GitOutput(
-            process.returncode, stdout, errors.decode("utf-8", errors="replace"), truncated
-        )
+        return GitOutput(out.returncode, out.stdout, out.stderr, out.truncated)

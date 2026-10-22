@@ -36,6 +36,9 @@ _REVISION = re.compile(REVISION)
 _SHA = re.compile(r"^[0-9a-f]{40}(?:[0-9a-f]{24})?$")
 MAX_PATH_CHARS = 300
 _SMALL = 8_000
+MAX_TREE_BYTES = 8_000_000
+# Header line of each object in ``cat-file --batch``: "<sha> blob <size>\n", plus the final "\n".
+_BATCH_HEADER_BYTES = 100
 
 # Content never shown (R6). Compared without case, on every segment of the path.
 _SECRET_DIRS = frozenset({"secrets"})
@@ -146,19 +149,34 @@ class RepoReader:
         self.cerveau = cerveau_root.resolve()
 
     def read(
-        self, repo: Path, args: Sequence[str], max_bytes: int, *, literal_paths: bool = True
+        self,
+        repo: Path,
+        args: Sequence[str],
+        max_bytes: int,
+        *,
+        literal_paths: bool = True,
+        stdin: bytes | None = None,
     ) -> tuple[bytes, bool]:
         """Output of ``git -C repo <args>`` up to ``max_bytes``, and whether it was cut there."""
         try:
-            out = self.git.run(repo, args, max_bytes=max_bytes, literal_paths=literal_paths)
+            out = self.git.run(
+                repo, args, max_bytes=max_bytes, literal_paths=literal_paths, stdin=stdin
+            )
         except GitError as exc:
             raise RepoError(str(exc)) from None
         if out.returncode != 0 and not out.truncated:
             raise RepoError(f"git {args[0]} a échoué")
         return out.stdout, out.truncated
 
-    def _git(self, repo: Path, args: Sequence[str], max_bytes: int = _SMALL) -> bytes:
-        stdout, truncated = self.read(repo, args, max_bytes)
+    def _git(
+        self,
+        repo: Path,
+        args: Sequence[str],
+        max_bytes: int = _SMALL,
+        *,
+        stdin: bytes | None = None,
+    ) -> bytes:
+        stdout, truncated = self.read(repo, args, max_bytes, stdin=stdin)
         if truncated:
             raise RepoError(f"git {args[0]} : sortie de plus de {max_bytes} octets")
         return stdout
@@ -215,13 +233,17 @@ class RepoReader:
             raise RepoError(f"révision « {rev} » : réponse de git inattendue")
         return sha
 
-    def tree(self, repo: Repository, treeish: str, path: str | None = None) -> list[TreeItem]:
-        """Entries of a tree (``path`` None), or the one entry at ``path``; sizes in bytes."""
-        args = ["ls-tree", "-z", "-l", treeish]
+    def tree(
+        self, repo: Repository, treeish: str, path: str | None = None, *, recursive: bool = False
+    ) -> list[TreeItem]:
+        """Entries of a tree (``path`` None), or the one entry at ``path``; sizes in bytes.
+        ``recursive`` lists every file and submodule below, with its full path, no folder."""
+        args = ["ls-tree", "-z", "-l", *(["-r"] if recursive else []), treeish]
         if path is not None:
             args += ["--", check_path(path)]
         items = []
-        for record in self._git(repo.root, args, max_bytes=2_000_000).split(b"\0"):
+        limit = MAX_TREE_BYTES if recursive else 2_000_000
+        for record in self._git(repo.root, args, max_bytes=limit).split(b"\0"):
             if not record:
                 continue
             meta, _, name = record.decode("utf-8", errors="replace").partition("\t")
@@ -235,3 +257,31 @@ class RepoReader:
             return self._git(repo.root, ["cat-file", "blob", sha], max_bytes=max_bytes)
         except RepoError:
             raise RepoError(f"fichier illisible ou de plus de {max_bytes} octets") from None
+
+    def blobs(self, repo: Repository, shas: Sequence[str], max_bytes: int) -> dict[str, bytes]:
+        """The contents of several blobs in one ``cat-file --batch`` call, ``max_bytes`` in all."""
+        wanted = list(dict.fromkeys(shas))
+        if not wanted:
+            return {}
+        if any(not _SHA.fullmatch(sha) for sha in wanted):
+            raise RepoError("empreinte d'objet refusée")
+        raw = self._git(
+            repo.root,
+            ["cat-file", "--batch"],
+            max_bytes=max_bytes + _BATCH_HEADER_BYTES * len(wanted),
+            stdin="".join(f"{sha}\n" for sha in wanted).encode("ascii"),
+        )
+        contents: dict[str, bytes] = {}
+        position = 0
+        for sha in wanted:
+            end = raw.find(b"\n", position)
+            header = raw[position:end].decode("ascii", errors="replace").split(" ")
+            if end < 0 or len(header) != 3 or header[:2] != [sha, "blob"]:
+                raise RepoError("git cat-file : réponse de git inattendue")
+            size = int(header[2]) if header[2].isdigit() else -1
+            start, stop = end + 1, end + 1 + size
+            if size < 0 or raw[stop : stop + 1] != b"\n":
+                raise RepoError("git cat-file : réponse de git inattendue")
+            contents[sha] = raw[start:stop]
+            position = stop + 1
+        return contents

@@ -80,6 +80,18 @@ def test_literal_paths_is_set_only_when_asked(tmp_path: Path) -> None:
     assert runner.run(tmp_path, [], max_bytes=100, literal_paths=True).stdout.strip() == b"1"
 
 
+def test_stdin_is_passed_to_git(tmp_path: Path) -> None:
+    runner = GitRunner((*PYTHON, "import sys; print(len(sys.stdin.buffer.read()))"))
+    assert runner.run(tmp_path, [], max_bytes=100).stdout.strip() == b"0"
+    assert runner.run(tmp_path, [], max_bytes=100, stdin=b"x" * 1_000).stdout.strip() == b"1000"
+
+
+def test_a_git_that_ignores_its_stdin_does_not_block(tmp_path: Path) -> None:
+    runner = GitRunner((*PYTHON, "print('done')"), timeout_s=5)
+    out = runner.run(tmp_path, [], max_bytes=100, stdin=b"x" * 5_000_000)
+    assert (out.returncode, out.stdout.strip()) == (0, b"done")
+
+
 def test_the_arguments_follow_the_options_and_the_repository(tmp_path: Path) -> None:
     runner = GitRunner((*PYTHON, "import sys; print(sys.argv[1:])"))
     out = runner.run(tmp_path, ["log", "-z"], max_bytes=10_000).stdout.decode()

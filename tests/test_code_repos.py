@@ -33,11 +33,19 @@ class FakeGit:
         self.output = output
         self.error = error
         self.calls: list[list[str]] = []
+        self.stdin: list[bytes | None] = []
 
     def run(
-        self, repo: Path, args: Sequence[str], *, max_bytes: int, literal_paths: bool = False
+        self,
+        repo: Path,
+        args: Sequence[str],
+        *,
+        max_bytes: int,
+        literal_paths: bool = False,
+        stdin: bytes | None = None,
     ) -> GitOutput:
         self.calls.append(list(args))
+        self.stdin.append(stdin)
         if self.error is not None:
             raise GitError(self.error)
         assert self.output is not None
@@ -314,6 +322,82 @@ def test_a_sensitive_tree_path_is_refused_before_git(repo: Path) -> None:
     with pytest.raises(RepoError, match="fichier sensible"):
         fake.tree(Repository("p", repo, None, False, None), "HEAD", ".env")
     assert cast(FakeGit, fake.git).calls == []
+
+
+def test_a_recursive_tree_lists_every_file_with_its_full_path(
+    reader: RepoReader, repo: Path
+) -> None:
+    add_entry(repo, "120000", blob(repo, b"src"), "lien", "link")
+    opened = reader.open([listed("p", repo)], "p")
+    items = {item.path: item.kind for item in reader.tree(opened, "HEAD", recursive=True)}
+    assert items == {
+        ".env.example": "file",
+        "README.md": "file",
+        "src/app.py": "file",
+        "lien": "symlink",
+    }
+
+
+def test_blobs_are_read_in_one_call(reader: RepoReader, repo: Path) -> None:
+    empty = blob(repo, b"")
+    binary = blob(repo, b"\x00\n\xff\nend")
+    opened = reader.open([listed("p", repo)], "p")
+    readme = reader.tree(opened, "HEAD", "README.md")[0].sha
+    contents = reader.blobs(opened, [readme, empty, binary, readme], 100)
+    assert contents == {readme: b"Projet\n", empty: b"", binary: b"\x00\n\xff\nend"}
+
+
+def test_no_blob_asked_needs_no_git() -> None:
+    fake = fake_reader(GitOutput(0, b"", "", False))
+    assert fake.blobs(Repository("p", Path("/x"), None, False, None), [], 10) == {}
+    assert cast(FakeGit, fake.git).calls == []
+
+
+def test_blobs_are_asked_by_hash_on_stdin() -> None:
+    sha = "a" * 40
+    fake = fake_reader(GitOutput(0, f"{sha} blob 2\nok\n".encode(), "", False))
+    assert fake.blobs(Repository("p", Path("/x"), None, False, None), [sha], 10) == {sha: b"ok"}
+    fake_git = cast(FakeGit, fake.git)
+    assert fake_git.calls == [["cat-file", "--batch"]]
+    assert fake_git.stdin == [f"{sha}\n".encode()]
+
+
+@pytest.mark.parametrize("sha", ["HEAD", "a" * 39, "--batch-all-objects", "a" * 40 + "\n"])
+def test_a_blob_name_that_is_not_a_hash_is_refused(sha: str) -> None:
+    fake = fake_reader(GitOutput(0, b"", "", False))
+    with pytest.raises(RepoError, match="empreinte d'objet refusée"):
+        fake.blobs(Repository("p", Path("/x"), None, False, None), [sha], 10)
+    assert cast(FakeGit, fake.git).calls == []
+
+
+A = "a" * 40
+B = "b" * 40
+
+
+@pytest.mark.parametrize(
+    "reply",
+    [
+        f"{A} missing\n",
+        f"{A} tree 2\nok\n",
+        f"{B} blob 2\nok\n",
+        f"{A} blob x\nok\n",
+        f"{A} blob 2\nok!",
+        f"{A} blob 9\nok\n",
+        f"{A} blob 2",
+        "",
+    ],
+)
+def test_an_unexpected_batch_reply_is_refused(reply: str) -> None:
+    fake = fake_reader(GitOutput(0, reply.encode(), "", False))
+    with pytest.raises(RepoError, match="réponse de git inattendue"):
+        fake.blobs(Repository("p", Path("/x"), None, False, None), [A], 100)
+
+
+def test_blobs_past_their_limit_are_refused(reader: RepoReader, repo: Path) -> None:
+    opened = reader.open([listed("p", repo)], "p")
+    big = blob(repo, b"x" * 5_000)
+    with pytest.raises(RepoError, match="sortie de plus de"):
+        reader.blobs(opened, [big], 1_000)
 
 
 def test_a_blob_past_its_limit_is_refused(reader: RepoReader, repo: Path) -> None:
