@@ -41,12 +41,13 @@ jobs:
       - run: uv run ruff format --check .
       # Same as make test (GATE_COVERAGE in the Makefile): full line and branch coverage of the
       # Risk Gate (ADR-031), the policy engine, the approvals, the governance, the live adapter,
-      # the network guard-rails of the reader plugins (ADR-043) and the deep research engine
-      # (ADR-045).
+      # the network guard-rails of the reader plugins (ADR-043), the deep research engine
+      # (ADR-045) and the git reader of the code pack (ADR-047).
       - run: >-
           uv run pytest --cov=core/risk_gate --cov=core/policy --cov=core/approvals
           --cov=core/governance
-          --cov=core.execution.live --cov=core/net --cov=core/research --cov-branch
+          --cov=core.execution.live --cov=core/net --cov=core/research --cov=core/code
+          --cov-branch
           --cov-fail-under=100
           --cov-report=term-missing:skip-covered
       - run: uv run cerveau config check

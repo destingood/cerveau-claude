@@ -1,0 +1,58 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  Questions d'évaluation du plugin code_repo (R8). La liste blanche des dépôts reste A_DEFINIR
+  tant que Lucas ne l'a pas remplie (E2) : chaque question porte donc sur un refus ou une borne
+  des outils, dont la réponse ne dépend pas du contenu d'un dépôt. Les questions sur un dépôt réel
+  viendront avec la liste blanche (docs/backlog.md). Elles servent aux évals live (consentement de
+  Lucas par campagne) ; aucun résultat n'est stocké ici.
+-->
+<evaluation>
+  <qa_pair>
+    <question>Avec repo_file, peut-on lire un dépôt en donnant directement son chemin C:/Users/User/Documents/projet au lieu de son identifiant ? Réponds par oui ou non.</question>
+    <answer>non</answer>
+  </qa_pair>
+  <qa_pair>
+    <question>Combien de commits repo_log renvoie-t-il au plus en un appel ?</question>
+    <answer>50</answer>
+  </qa_pair>
+  <qa_pair>
+    <question>Combien de commits repo_log renvoie-t-il quand on ne précise pas leur nombre ?</question>
+    <answer>20</answer>
+  </qa_pair>
+  <qa_pair>
+    <question>Combien de lignes repo_file montre-t-il au plus en un appel ?</question>
+    <answer>400</answer>
+  </qa_pair>
+  <qa_pair>
+    <question>Les outils code_repo peuvent-ils lire le dépôt de CERVEAU lui-même s'il est inscrit dans la liste blanche ? Réponds par oui ou non.</question>
+    <answer>non</answer>
+  </qa_pair>
+  <qa_pair>
+    <question>repo_file montre-t-il le contenu d'un fichier .env commité ? Réponds par oui ou non.</question>
+    <answer>non</answer>
+  </qa_pair>
+  <qa_pair>
+    <question>repo_file suit-il un lien symbolique commité vers un fichier hors du dépôt ? Réponds par oui ou non.</question>
+    <answer>non</answer>
+  </qa_pair>
+  <qa_pair>
+    <question>repo_log accepte-t-il la plage de révisions main..HEAD comme révision ? Réponds par oui ou non.</question>
+    <answer>non</answer>
+  </qa_pair>
+  <qa_pair>
+    <question>Les outils code_repo lisent-ils les fichiers modifiés mais non commités d'un dépôt ? Réponds par oui ou non.</question>
+    <answer>non</answer>
+  </qa_pair>
+  <qa_pair>
+    <question>Quelle taille de fichier, en mégaoctets, repo_file refuse-t-il de dépasser ?</question>
+    <answer>1</answer>
+  </qa_pair>
+  <qa_pair>
+    <question>repo_log montre-t-il l'adresse e-mail des auteurs des commits ? Réponds par oui ou non.</question>
+    <answer>non</answer>
+  </qa_pair>
+  <qa_pair>
+    <question>Combien de fichiers sensibles modifiés repo_diff peut-il exclure un à un avant de ne plus montrer le patch du tout ?</question>
+    <answer>50</answer>
+  </qa_pair>
+</evaluation>

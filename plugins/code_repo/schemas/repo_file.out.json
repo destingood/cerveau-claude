@@ -1,0 +1,167 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$defs": {
+    "Entry": {
+      "additionalProperties": false,
+      "properties": {
+        "name": {
+          "title": "Name",
+          "type": "string"
+        },
+        "kind": {
+          "enum": [
+            "file",
+            "directory",
+            "symlink",
+            "submodule",
+            "other"
+          ],
+          "title": "Kind",
+          "type": "string"
+        },
+        "size": {
+          "anyOf": [
+            {
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Size"
+        },
+        "withheld": {
+          "title": "Withheld",
+          "type": "boolean"
+        }
+      },
+      "required": [
+        "name",
+        "kind",
+        "size",
+        "withheld"
+      ],
+      "title": "Entry",
+      "type": "object"
+    }
+  },
+  "additionalProperties": false,
+  "properties": {
+    "repo": {
+      "title": "Repo",
+      "type": "string"
+    },
+    "rev": {
+      "title": "Rev",
+      "type": "string"
+    },
+    "sha": {
+      "title": "Sha",
+      "type": "string"
+    },
+    "path": {
+      "title": "Path",
+      "type": "string"
+    },
+    "kind": {
+      "enum": [
+        "file",
+        "directory"
+      ],
+      "title": "Kind",
+      "type": "string"
+    },
+    "size": {
+      "anyOf": [
+        {
+          "type": "integer"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "title": "Size"
+    },
+    "total_lines": {
+      "anyOf": [
+        {
+          "type": "integer"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "title": "Total Lines"
+    },
+    "start_line": {
+      "anyOf": [
+        {
+          "type": "integer"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "title": "Start Line"
+    },
+    "end_line": {
+      "anyOf": [
+        {
+          "type": "integer"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "title": "End Line"
+    },
+    "content": {
+      "anyOf": [
+        {
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "title": "Content"
+    },
+    "content_truncated": {
+      "title": "Content Truncated",
+      "type": "boolean"
+    },
+    "masked": {
+      "title": "Masked",
+      "type": "integer"
+    },
+    "entries": {
+      "items": {
+        "$ref": "#/$defs/Entry"
+      },
+      "title": "Entries",
+      "type": "array"
+    },
+    "more_entries": {
+      "title": "More Entries",
+      "type": "integer"
+    }
+  },
+  "required": [
+    "repo",
+    "rev",
+    "sha",
+    "path",
+    "kind",
+    "size",
+    "total_lines",
+    "start_line",
+    "end_line",
+    "content",
+    "content_truncated",
+    "masked",
+    "entries",
+    "more_entries"
+  ],
+  "title": "FileResult",
+  "type": "object"
+}

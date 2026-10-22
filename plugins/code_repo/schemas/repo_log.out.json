@@ -1,0 +1,69 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$defs": {
+    "Commit": {
+      "additionalProperties": false,
+      "properties": {
+        "sha": {
+          "title": "Sha",
+          "type": "string"
+        },
+        "author": {
+          "title": "Author",
+          "type": "string"
+        },
+        "date": {
+          "title": "Date",
+          "type": "string"
+        },
+        "subject": {
+          "title": "Subject",
+          "type": "string"
+        }
+      },
+      "required": [
+        "sha",
+        "author",
+        "date",
+        "subject"
+      ],
+      "title": "Commit",
+      "type": "object"
+    }
+  },
+  "additionalProperties": false,
+  "properties": {
+    "repo": {
+      "title": "Repo",
+      "type": "string"
+    },
+    "rev": {
+      "title": "Rev",
+      "type": "string"
+    },
+    "commits": {
+      "items": {
+        "$ref": "#/$defs/Commit"
+      },
+      "title": "Commits",
+      "type": "array"
+    },
+    "more_commits": {
+      "title": "More Commits",
+      "type": "boolean"
+    },
+    "masked": {
+      "title": "Masked",
+      "type": "integer"
+    }
+  },
+  "required": [
+    "repo",
+    "rev",
+    "commits",
+    "more_commits",
+    "masked"
+  ],
+  "title": "LogResult",
+  "type": "object"
+}

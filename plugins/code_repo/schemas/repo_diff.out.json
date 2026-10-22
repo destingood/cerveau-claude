@@ -1,0 +1,123 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$defs": {
+    "ChangedFile": {
+      "additionalProperties": false,
+      "properties": {
+        "path": {
+          "title": "Path",
+          "type": "string"
+        },
+        "added": {
+          "anyOf": [
+            {
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Added"
+        },
+        "deleted": {
+          "anyOf": [
+            {
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Deleted"
+        }
+      },
+      "required": [
+        "path",
+        "added",
+        "deleted"
+      ],
+      "title": "ChangedFile",
+      "type": "object"
+    }
+  },
+  "additionalProperties": false,
+  "properties": {
+    "repo": {
+      "title": "Repo",
+      "type": "string"
+    },
+    "base": {
+      "title": "Base",
+      "type": "string"
+    },
+    "head": {
+      "title": "Head",
+      "type": "string"
+    },
+    "base_sha": {
+      "title": "Base Sha",
+      "type": "string"
+    },
+    "head_sha": {
+      "title": "Head Sha",
+      "type": "string"
+    },
+    "files": {
+      "items": {
+        "$ref": "#/$defs/ChangedFile"
+      },
+      "title": "Files",
+      "type": "array"
+    },
+    "more_files": {
+      "title": "More Files",
+      "type": "integer"
+    },
+    "withheld": {
+      "items": {
+        "type": "string"
+      },
+      "title": "Withheld",
+      "type": "array"
+    },
+    "patch": {
+      "title": "Patch",
+      "type": "string"
+    },
+    "patch_truncated": {
+      "title": "Patch Truncated",
+      "type": "boolean"
+    },
+    "masked": {
+      "title": "Masked",
+      "type": "integer"
+    },
+    "note": {
+      "anyOf": [
+        {
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "title": "Note"
+    }
+  },
+  "required": [
+    "repo",
+    "base",
+    "head",
+    "base_sha",
+    "head_sha",
+    "files",
+    "more_files",
+    "withheld",
+    "patch",
+    "patch_truncated",
+    "masked",
+    "note"
+  ],
+  "title": "DiffResult",
+  "type": "object"
+}
