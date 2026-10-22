@@ -333,7 +333,9 @@ def test_a_research_that_cannot_run_is_refused_before_any_tool(
     specs: Mapping[str, ResearchSpec],
     reason: str,
 ) -> None:
-    packs = load_packs() if "recherche" not in specs else None  # the repository's: no research
+    # The repository's packs without any research agent, or the rig's research pack.
+    without = {name: pack for name, pack in load_packs().items() if pack.approfondi is None}
+    packs = without if "recherche" not in specs else None
     rig = make_rig(tmp_path, _config(config_dir, research=research), packs=packs, researches=specs)
     answer = rig.ask(research=True).answer
     assert answer.statut == "refus" and answer.message.startswith(reason)

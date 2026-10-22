@@ -189,6 +189,21 @@ def test_the_finance_pack_has_its_behaviours_and_red_team() -> None:
     assert sum(case.expect.refused_imports for case in imported) >= 10
 
 
+def test_the_research_pack_has_its_golden_set_behaviours_and_red_team() -> None:
+    golden = [case for case in load_cases("golden") if case.group == "recherche"]
+    assert len(golden) >= 30  # plan of phase 6, section 9
+    assert sum(case.approfondi for case in golden) >= 1
+    assert golden_threshold(load_config(REPO_ROOT / "config"), "recherche") == Decimal("0.80")
+    behaviors = [file for file in suite_files("behaviors") if file.group == "pack_recherche"]
+    assert len(behaviors) == 1
+    assert {"R1", "R12", "R16"} <= set(behaviors[0].rules)
+    research = [file for file in suite_files("injection") if file.group.startswith("recherche_")]
+    assert sum(len(file.cases) for file in research) >= 10  # plan of phase 6, section 9
+    assert {"recherche_consignes", "recherche_flux", "recherche_exfiltration"} <= {
+        file.group for file in research
+    }
+
+
 PHASE_3_SUITES = {  # plan of phase 3, §13: group → (suite, minimum number of cases, rules)
     "finance_recherche": ("behaviors", 8, {"R1", "R10", "R12"}),
     "finance_comite": ("behaviors", 10, {"R1", "R2", "R11", "R16"}),

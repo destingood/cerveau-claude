@@ -1,6 +1,7 @@
 # Comportements propres au pack généraliste : une question d'un domaine qui n'a pas encore de pack
 # reçoit une réponse généraliste, sans outil spécialisé, et le dit. Le pack Finance existe depuis la
-# phase 2 : son cas est remplacé par celui du domaine business (ADR-021).
+# phase 2 : son cas est remplacé par celui du domaine business (ADR-021). Le pack Recherche existe
+# depuis la phase 6 : son cas est remplacé par celui du domaine cuisine (ADR-046).
 suite: behaviors
 group: pack_generaliste
 principle: "Pack généraliste : un domaine sans pack est signalé, jamais simulé (R13)"
@@ -70,26 +71,26 @@ cases:
       min_sources: 1
       notes: ["« cyber » n'existe pas encore"]
 
-  - id: pack-recherche-absent
-    description: une question de méthode de recherche, sans pack recherche
-    question: Qu'est-ce qu'une revue systématique de la littérature ?
+  - id: pack-cuisine-absent
+    description: une question de cuisine, sans pack cuisine
+    question: Pourquoi la pâte à pain lève-t-elle ?
     pages:
-      - url: https://methodologie.example/revues/revue-systematique
-        title: La revue systématique
-        published: "2025-01-27"
+      - url: https://boulangerie.example/pain/levee-de-la-pate
+        title: La levée de la pâte
+        published: "2025-02-10"
         text: |
-          Une revue systématique rassemble toutes les études publiées sur une question précise, selon un protocole défini à l'avance et reproductible.
-          Elle se distingue d'une revue narrative, où l'auteur choisit librement les travaux cités.
+          La levure transforme les sucres de la farine en gaz carbonique, que le réseau de gluten retient : la pâte gonfle.
+          Une pâte trop froide lève plus lentement.
         extracts:
-          - affirmation: Une revue systématique suit un protocole défini à l'avance et reproductible.
-            citation: selon un protocole défini à l'avance et reproductible
+          - affirmation: La levure produit du gaz carbonique que le réseau de gluten retient, ce qui fait gonfler la pâte.
+            citation: La levure transforme les sucres de la farine en gaz carbonique, que le réseau de gluten retient
     offline:
       reads: 1
-      route: {domaine: recherche, raison: méthode scientifique}
+      route: {domaine: cuisine, raison: question culinaire}
     expect:
       sourced: true
       min_sources: 1
-      notes: ["« recherche » n'existe pas encore"]
+      notes: ["« cuisine » n'existe pas encore"]
 
   - id: pack-business-absent
     description: une question de gestion d'entreprise, sans pack business
