@@ -20,6 +20,7 @@ from pathlib import Path
 from typing import Annotated, Protocol
 
 from mcp.server import MCPServer
+from mcp.server.mcpserver import Context
 from mcp.server.mcpserver.exceptions import ToolError
 from mcp.types import ToolAnnotations
 from pydantic import Field
@@ -29,7 +30,15 @@ from core.code.checks import ChecksError
 from core.code.git import GitRunner
 from core.code.process import Bounded
 from core.code.repos import REPO_ID, REVISION, RepoError, RepoReader, Repository
-from core.code.sandbox import Copy, DockerRunner, Limits, SandboxError, copy_tree, docker_command
+from core.code.sandbox import (
+    KILL_TIMEOUT_S,
+    Copy,
+    DockerRunner,
+    Limits,
+    SandboxError,
+    copy_tree,
+    docker_command,
+)
 from core.code.text import visible
 from core.config.loader import (
     BlockedFeatureError,
@@ -40,6 +49,7 @@ from core.config.loader import (
 )
 from core.finance.views import home_location
 from core.guardrails.secrets import mask_secrets
+from core.mcp.time_limit import time_limit
 from core.net.text import clean_text, clip
 from plugins.code_checks import __version__
 from plugins.code_checks.models import (
@@ -53,7 +63,11 @@ from plugins.code_checks.models import (
     Status,
 )
 
-# An MCP tool call lasts 30 s at most (core/mcp/adapter.py): the containers share less than that.
+# The adapter sends the limit it cuts the call at (ADR-052; the manifest declares 315 s, the
+# request's budget may give less). The containers share that limit less a reserve for stopping a
+# late one (KILL_TIMEOUT_S) and replying, so the call ends before the adapter cuts it.
+RESERVE_S = KILL_TIMEOUT_S + 5.0
+# Without a limit sent with the call (another client), the budget of ADR-048 under 30 s.
 BUDGET_S = 25.0
 # A container is not started with less time left.
 MIN_STEP_S = 2.0
@@ -283,12 +297,13 @@ def build_server(
 ) -> MCPServer:
     server = MCPServer("code_checks", version=__version__, instructions=INSTRUCTIONS)
 
-    def checked(repo_id: str, rev: str, want_pytest: bool) -> ChecksResult:
+    def checked(repo_id: str, rev: str, want_pytest: bool, limit_s: float | None) -> ChecksResult:
         current = settings()
         repo: Repository = reader.open(current.repositories, repo_id)
         sha = reader.commit(repo, rev)
         limits = Limits(current.checks.cpus, current.checks.memory_mb, current.checks.pids)
-        seconds = min(float(current.checks.timeout_seconds), BUDGET_S)
+        share = BUDGET_S if limit_s is None else max(limit_s - RESERVE_S, 0.0)
+        seconds = min(float(current.checks.timeout_seconds), share)
         # The copy counts too: the whole call has to end within the tool call's own time limit.
         budget = _Budget(seconds, clock)
         folder = runs / uuid.uuid4().hex
@@ -331,6 +346,7 @@ def build_server(
         structured_output=True,
     )
     def run_checks(
+        ctx: Context,
         repo: RepoArg,
         rev: Annotated[
             str,
@@ -345,7 +361,7 @@ def build_server(
         ] = True,
     ) -> ChecksResult:
         try:
-            return checked(repo, rev, pytest)
+            return checked(repo, rev, pytest, time_limit(ctx.request_context.meta))
         except (RepoError, SandboxError) as exc:
             raise ToolError(str(exc)) from None
 

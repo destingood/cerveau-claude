@@ -6,6 +6,7 @@ signatures the SDK reads at runtime.
 
 import asyncio
 import json
+import shutil
 import sys
 from collections.abc import AsyncIterator, Awaitable, Callable
 from contextlib import asynccontextmanager
@@ -14,6 +15,7 @@ from pathlib import Path
 from typing import Any
 
 import pytest
+import yaml
 from langchain_core.messages import ToolMessage
 from langchain_core.tools import ToolException
 from mcp import StdioServerParameters
@@ -25,12 +27,14 @@ from core.config import load_config
 from core.config.loader import PerRequest
 from core.finance.fixtures import REFERENCE_READ_AT, reference_store
 from core.mcp.adapter import (
+    TOOL_TIMEOUT_S,
     McpAdapterError,
     McpPlugin,
     RequestScope,
     ToolRefusedError,
     server_environment,
 )
+from core.mcp.time_limit import TIME_LIMIT_META_KEY
 from core.models import CostCalculator, Meter
 from core.net.guard import FetchError
 from core.orchestrator.runtime import LazyPlugin, _Holder
@@ -222,6 +226,80 @@ def test_a_slow_call_is_cut_at_the_timeout(scope: RequestScope) -> None:
     assert message.status == "error"
     assert "délai" in message.content
     assert entries(scope)[0]["payload"]["status"] == "delai"
+
+
+def _sent_limits(scope: RequestScope, directory: Path = PLUGIN) -> list[Any]:
+    """The ``_meta`` of each call that reached the client, after one web_search."""
+    sent: list[Any] = []
+
+    async def action(plugin: McpPlugin) -> ToolMessage:
+        client = plugin._client
+        assert client is not None
+        original = client.call_tool
+
+        async def recording(*args: Any, **kwargs: Any) -> Any:
+            sent.append(kwargs.get("meta"))
+            return await original(*args, **kwargs)
+
+        client.call_tool = recording  # type: ignore[method-assign]
+        return await invoke(plugin, "web_search", {"query": "q"})
+
+    server = build_server(FakeProvider(), FakeReader())
+
+    async def go() -> None:
+        async with McpPlugin(directory, scope, target=server) as plugin:
+            message = await action(plugin)
+            assert message.status != "error", message.content
+
+    asyncio.run(go())
+    return sent
+
+
+def test_each_call_sends_the_limit_it_is_cut_at(tmp_path: Path) -> None:
+    """ADR-052: without a declared limit, 30 s; the request's budget may cut it sooner."""
+    assert _sent_limits(make_scope(tmp_path / "a")) == [{TIME_LIMIT_META_KEY: TOOL_TIMEOUT_S}]
+    short = PerRequest(max_tool_calls=25, max_tokens=150000, max_seconds=12)
+    assert _sent_limits(make_scope(tmp_path / "b", short)) == [{TIME_LIMIT_META_KEY: 12.0}]
+
+
+def _declaring(root: Path, seconds: float) -> Path:
+    """A copy of web_research whose manifest declares ``seconds`` for a call."""
+    directory = root / "plugins" / "web_research"
+    shutil.copytree(PLUGIN, directory, ignore=shutil.ignore_patterns("__pycache__"))
+    manifest = yaml.safe_load((directory / "plugin.yaml").read_text(encoding="utf-8"))
+    manifest["runtime"]["tool_timeout_s"] = seconds
+    (directory / "plugin.yaml").write_text(yaml.safe_dump(manifest), encoding="utf-8")
+    return directory
+
+
+def test_a_manifest_may_give_its_calls_a_longer_limit(tmp_path: Path) -> None:
+    directory = _declaring(tmp_path, 90)
+    assert _sent_limits(make_scope(tmp_path), directory) == [{TIME_LIMIT_META_KEY: 90.0}]
+    short = PerRequest(max_tool_calls=25, max_tokens=150000, max_seconds=60)
+    sent = _sent_limits(make_scope(tmp_path / "b", short), directory)
+    assert sent == [{TIME_LIMIT_META_KEY: 60.0}]  # the request's budget comes first
+
+
+def test_a_server_start_keeps_the_default_limit(
+    scope: RequestScope, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """A long call is not a long start: a server that does not start is cut at 30 s."""
+    plugin = McpPlugin(_declaring(tmp_path, 900), scope, target=object())
+    waited: list[float] = []
+
+    async def at_once(awaitable: Any, timeout: float) -> Any:
+        waited.append(timeout)
+        awaitable.close()
+        raise TimeoutError
+
+    async def never() -> None:
+        await asyncio.sleep(30)
+
+    monkeypatch.setattr(asyncio, "wait_for", at_once)
+    plugin.plan(never)
+    with pytest.raises(McpAdapterError, match="démarrage au-delà de 30 s"):
+        asyncio.run(plugin.call(spec(plugin, "web_search"), {"query": "q"}))
+    assert waited == [TOOL_TIMEOUT_S]
 
 
 def test_the_request_tool_budget_is_enforced(tmp_path: Path) -> None:

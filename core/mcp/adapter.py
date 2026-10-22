@@ -37,11 +37,12 @@ from mcp.types import Tool
 from core.audit.chain import AuditJournal
 from core.budget.gate import RequestBudget, RequestBudgetExceeded
 from core.config.loader import AutonomyConfig
+from core.mcp.time_limit import DEFAULT_TOOL_TIMEOUT_S, time_limit_meta
 from core.models.meter import Meter, SearchCall
 from core.policy.engine import PolicyDecision, decide, kill_switch_engaged
 from core.registry.manifest import PluginManifest, ToolSpec, validate_plugin
 
-TOOL_TIMEOUT_S = 30.0
+TOOL_TIMEOUT_S = DEFAULT_TOOL_TIMEOUT_S  # a server's start, and a call by default (ADR-052)
 MAX_ARGUMENT_CHARS = 2048
 MAX_ERROR_CHARS = 300
 
@@ -106,7 +107,7 @@ class McpPlugin:
         scope: RequestScope,
         *,
         target: Any = None,
-        timeout_s: float = TOOL_TIMEOUT_S,
+        timeout_s: float | None = None,
         environ: Mapping[str, str] | None = None,
         clock: Callable[[], float] = time.monotonic,
     ) -> None:
@@ -138,7 +139,9 @@ class McpPlugin:
             )
         self._target = target
         self._scope = scope
-        self._timeout_s = timeout_s
+        # ADR-052: the manifest's limit of a call, unless the caller sets one (tests)
+        declared = runtime.tool_timeout_s if runtime else TOOL_TIMEOUT_S
+        self._timeout_s = declared if timeout_s is None else timeout_s
         self._clock = clock
         self._stack = AsyncExitStack()
         self._client: Client | None = None
@@ -199,7 +202,8 @@ class McpPlugin:
             return None
         async with self._connecting:
             if not self._connected and self._connect_error is None:
-                timeout = min(self._timeout_s, self._scope.budget.remaining_seconds())
+                budget = self._scope.budget.remaining_seconds()
+                timeout = min(self._timeout_s, TOOL_TIMEOUT_S, budget)  # a long call, not start
                 try:
                     await asyncio.wait_for(self._connect(), max(timeout, 0.0))
                 except McpAdapterError as exc:
@@ -329,7 +333,12 @@ class McpPlugin:
             if provider is not None:  # counted once sent, whatever the outcome (prudence)
                 search = self._scope.meter.record_search(provider)
             reply = await asyncio.wait_for(
-                self._client.call_tool(spec.name, arguments, read_timeout_seconds=timeout),
+                self._client.call_tool(
+                    spec.name,
+                    arguments,
+                    read_timeout_seconds=timeout,
+                    meta=time_limit_meta(timeout),
+                ),
                 timeout,
             )
         except TimeoutError:

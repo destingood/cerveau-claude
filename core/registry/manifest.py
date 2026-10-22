@@ -20,6 +20,7 @@ from jsonschema.exceptions import SchemaError
 from pydantic import BaseModel, ConfigDict, Field, ValidationError, model_validator
 
 from core.config.loader import ActionClass, Level, Marker
+from core.mcp.time_limit import DEFAULT_TOOL_TIMEOUT_S, MAX_TOOL_TIMEOUT_S
 
 MIN_EVAL_QUESTIONS = 10
 DOMAINS = ("generaliste", "finance", "recherche", "code", "cyber", "juridique_fr", "business")
@@ -90,6 +91,8 @@ class Runtime(_Strict):
     # Variables copied by name into the server's environment; their values are never logged.
     env: list[Annotated[str, Field(pattern=r"^[A-Z][A-Z0-9_]*$")]] = Field(default_factory=list)
     priced_tools: dict[str, str] = Field(default_factory=dict)  # tool → pricing.search key
+    # ADR-052: how long one tool call may last; the request's budget may cut it sooner.
+    tool_timeout_s: float = Field(default=DEFAULT_TOOL_TIMEOUT_S, gt=0, le=MAX_TOOL_TIMEOUT_S)
 
 
 class Agent(_Strict):

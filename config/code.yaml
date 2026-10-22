@@ -13,4 +13,4 @@ checks:
   cpus: 2
   memory_mb: 2048
   pids: 256
-  timeout_seconds: 300   # borné en pratique par le délai d'un appel d'outil (TOOL_TIMEOUT_S, 30 s)
+  timeout_seconds: 300   # borné aussi par le délai de l'appel (runtime.tool_timeout_s, ADR-052)

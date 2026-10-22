@@ -17,8 +17,9 @@ from mcp.types import CallToolResult
 from core.code.git import GitRunner
 from core.code.process import Bounded
 from core.code.repos import RepoReader
-from core.code.sandbox import DockerRunner, SandboxError, docker_command
-from core.config.loader import CodeRepository
+from core.code.sandbox import KILL_TIMEOUT_S, DockerRunner, SandboxError, docker_command
+from core.config.loader import CHECKS_CEILINGS, CodeRepository
+from core.mcp.time_limit import TIME_LIMIT_META_KEY
 from core.registry.manifest import validate_plugin
 from plugins.code_checks import server as server_module
 from plugins.code_checks.models import MAX_SHOWN
@@ -27,6 +28,7 @@ from plugins.code_checks.server import (
     MAX_OUTPUT_BYTES,
     NOT_PREPARED,
     PYTEST,
+    RESERVE_S,
     RUFF_CHECK,
     RUFF_FORMAT,
     Settings,
@@ -79,13 +81,14 @@ def checks_with(
     docker: FakeDocker,
     runs: Path,
     arguments: Mapping[str, Any] | None = None,
+    *,
+    meta: Any = None,
     **limits: Any,
 ) -> CallToolResult:
     current = settings(repositories, **limits)
     server = build_server(lambda: current, RepoReader(GitRunner()), docker, runs, docker.clock)
-    return run(
-        server, lambda c: c.call_tool("run_checks", {"repo": "exemple", **(arguments or {})})
-    )
+    arguments = {"repo": "exemple", **(arguments or {})}
+    return run(server, lambda c: c.call_tool("run_checks", arguments, meta=meta))
 
 
 def data(result: CallToolResult) -> dict[str, Any]:
@@ -116,6 +119,14 @@ def test_the_plugin_passes_the_registry() -> None:
     report = validate_plugin(PLUGIN)
     assert report.ok, report.errors
     assert report.plugin_id == "code_checks"
+
+
+def test_the_call_limit_covers_e5_and_the_reserve() -> None:
+    """ADR-052 (B272): the containers may use the whole 300 s of E5 when the budget allows."""
+    manifest = validate_plugin(PLUGIN).manifest
+    assert manifest is not None and manifest.runtime is not None
+    assert manifest.runtime.tool_timeout_s == CHECKS_CEILINGS["timeout_seconds"] + RESERVE_S
+    assert RESERVE_S > KILL_TIMEOUT_S
 
 
 def test_the_published_tool_matches_the_manifest(tmp_path: Path) -> None:
@@ -163,7 +174,7 @@ def test_a_clean_repository(example: Path, tmp_path: Path) -> None:
         "errors": [],
         "more_failures": 0,
     }
-    assert result["budget_seconds"] == BUDGET_S
+    assert result["budget_seconds"] == BUDGET_S  # no limit sent with the call
     assert [call.step for call in docker.calls] == ["check", "format", "pytest"]
 
 
@@ -344,6 +355,36 @@ def test_the_budget_is_shared_by_the_containers(example: Path, tmp_path: Path) -
     assert [call.timeout_s for call in late.calls] == [10.0, 5.5]
     assert result["pytest"]["status"] == "non_lance"
     assert result["budget_seconds"] == 10.0
+
+
+@pytest.mark.parametrize(("limit", "budget"), [(315, 300.0), (100, 85.0), (40.5, 25.5)])
+def test_the_containers_share_the_limit_sent_with_the_call(
+    limit: float, budget: float, example: Path, tmp_path: Path
+) -> None:
+    """ADR-052: the call's limit less the reserve, within the configured E5 time."""
+    docker = FakeDocker(SCENARIOS["propre"])
+    meta = {TIME_LIMIT_META_KEY: limit}
+    result = data(checks_with(allow_lists(example)["exemple"], docker, tmp_path, meta=meta))
+    assert result["budget_seconds"] == budget
+    assert docker.calls[0].timeout_s == budget
+
+
+def test_a_call_cut_too_soon_launches_no_container(example: Path, tmp_path: Path) -> None:
+    docker = FakeDocker(SCENARIOS["propre"])
+    meta = {TIME_LIMIT_META_KEY: RESERVE_S - 1}
+    result = data(checks_with(allow_lists(example)["exemple"], docker, tmp_path, meta=meta))
+    assert result["budget_seconds"] == 0.0
+    assert docker.calls == []
+    for step in ("ruff_check", "ruff_format", "pytest"):
+        assert result[step]["status"] == "non_lance"
+
+
+def test_the_configured_time_comes_first(example: Path, tmp_path: Path) -> None:
+    docker = FakeDocker(SCENARIOS["propre"])
+    meta = {TIME_LIMIT_META_KEY: 315}
+    repos = allow_lists(example)["exemple"]
+    result = data(checks_with(repos, docker, tmp_path, meta=meta, timeout_seconds=60))
+    assert result["budget_seconds"] == 60.0
 
 
 def test_the_copy_counts_in_the_budget(

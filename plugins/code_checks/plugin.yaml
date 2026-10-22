@@ -46,3 +46,7 @@ runtime:
   module: plugins.code_checks
   env: []
   priced_tools: {}
+  # ADR-052 (B272) : les 300 s de E5 pour les conteneurs, plus 15 s pour arrêter un conteneur en
+  # retard et répondre. Le budget de la requête (config/budgets.yaml) peut couper l'appel plus tôt ;
+  # le serveur reçoit la limite appliquée et la partage entre la copie et les conteneurs.
+  tool_timeout_s: 315

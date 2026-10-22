@@ -12,6 +12,7 @@ import pytest
 import yaml
 
 import plugins
+from core.mcp.time_limit import DEFAULT_TOOL_TIMEOUT_S, MAX_TOOL_TIMEOUT_S
 from core.registry import (
     EXPECTED_ANNOTATIONS,
     AgentLoadError,
@@ -79,6 +80,29 @@ def test_declared_runtime_is_accepted(make_plugin: Callable[..., Path]) -> None:
     assert report.ok, report.errors
     assert report.manifest is not None and report.manifest.runtime is not None
     assert report.manifest.runtime.module == "plugins.demo_plugin"
+    assert report.manifest.runtime.tool_timeout_s == DEFAULT_TOOL_TIMEOUT_S  # ADR-052
+
+
+@pytest.mark.parametrize("seconds", [0.5, 300, MAX_TOOL_TIMEOUT_S])
+def test_a_plugin_may_declare_its_tool_timeout(
+    make_plugin: Callable[..., Path], seconds: float
+) -> None:
+    manifest = base_manifest()
+    manifest["runtime"] = {**RUNTIME, "tool_timeout_s": seconds}
+    report = validate_plugin(make_plugin(manifest=manifest))
+    assert report.ok, report.errors
+    assert report.manifest is not None and report.manifest.runtime is not None
+    assert report.manifest.runtime.tool_timeout_s == seconds
+
+
+@pytest.mark.parametrize("seconds", [0, -1, MAX_TOOL_TIMEOUT_S + 1, "A_DEFINIR"])
+def test_a_tool_timeout_out_of_bounds_is_refused(
+    make_plugin: Callable[..., Path], seconds: object
+) -> None:
+    manifest = base_manifest()
+    manifest["runtime"] = {**RUNTIME, "tool_timeout_s": seconds}
+    report = validate_plugin(make_plugin(manifest=manifest))
+    assert any("tool_timeout_s" in e for e in report.errors), report.errors
 
 
 @pytest.mark.parametrize(
