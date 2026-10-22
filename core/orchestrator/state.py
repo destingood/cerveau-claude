@@ -23,6 +23,7 @@ ActionClass = Literal[
     "COMMUNICATION_EXTERNE",
     "IRREVERSIBLE",
     "FINANCIERE",
+    "EXECUTION_ISOLEE",  # ADR-051
 ]
 Complexity = Literal["simple", "complexe"]
 Importance = Literal["normale", "elevee"]

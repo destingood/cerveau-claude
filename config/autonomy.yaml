@@ -10,6 +10,10 @@ matrix:
   COMMUNICATION_EXTERNE: { N0: refus, N1: brouillon,   N2: brouillon, N3: approbation, N4: approbation }
   IRREVERSIBLE:          { N0: refus, N1: refus,       N2: simule,    N3: approbation, N4: approbation }
   FINANCIERE:            { N0: refus, N1: proposition, N2: paper,     N3: approbation, N4: auto_dans_limites }
+  # ADR-051 (F7, P3b) : tâche exécutée dans un conteneur jetable, sans Internet, dont la seule
+  # sortie est une proposition (un patch) que Lucas applique lui-même ; accordée au seul domaine
+  # code par le moteur de politique, sous le budget de la tâche.
+  EXECUTION_ISOLEE:      { N0: auto,  N1: auto,        N2: auto,      N3: auto,        N4: auto }
 promotion:
   finance:
     # D16 : les deux mesures viennent d'une campagne réelle (`cerveau eval --live`) ; le score ne

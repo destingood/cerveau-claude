@@ -40,6 +40,7 @@ SPEC_MATRIX = {
     "COMMUNICATION_EXTERNE": ("refus", "brouillon", "brouillon", "approbation", "approbation"),
     "IRREVERSIBLE": ("refus", "refus", "simule", "approbation", "approbation"),
     "FINANCIERE": ("refus", "proposition", "paper", "approbation", "auto_dans_limites"),
+    "EXECUTION_ISOLEE": ("auto", "auto", "auto", "auto", "auto"),  # ADR-051, beyond section 8.2
 }
 
 
@@ -94,6 +95,7 @@ def _order(level: str, gate: RiskGateResult | None, **kw: bool) -> PolicyDecisio
 
 
 def test_matrix_matches_section_8_2() -> None:
+    assert set(AUTONOMY.matrix) == set(SPEC_MATRIX) == set(ACTION_CLASSES)
     for action_class, row in SPEC_MATRIX.items():
         assert tuple(AUTONOMY.matrix[action_class][lvl] for lvl in LEVELS) == row
 
@@ -232,7 +234,11 @@ def test_unknown_domain_is_refused() -> None:
 
 
 @given(
-    cells=st.lists(st.sampled_from(CELLS), min_size=30, max_size=30),
+    cells=st.lists(
+        st.sampled_from(CELLS),
+        min_size=len(ACTION_CLASSES) * len(LEVELS),
+        max_size=len(ACTION_CLASSES) * len(LEVELS),
+    ),
     level=st.sampled_from(LEVELS),
     action_class=st.sampled_from(ACTION_CLASSES),
     granted_classes=st.frozensets(st.sampled_from(ACTION_CLASSES)),
@@ -305,11 +311,11 @@ def test_phase_2_classes() -> None:
     assert frozenset({"LECTURE"}) == PHASE_ACTION_CLASSES
     assert dict(PHASE_DOMAIN_ACTION_CLASSES) == {
         "finance": frozenset({"LECTURE", "CALCUL"}),
-        "code": frozenset({"LECTURE", "CALCUL"}),  # ADR-049
+        "code": frozenset({"LECTURE", "CALCUL", "EXECUTION_ISOLEE"}),  # ADR-049, ADR-051
     }
-    assert frozenset({"CALCUL"}) == ROUTED_ACTION_CLASSES
+    assert frozenset({"CALCUL", "EXECUTION_ISOLEE"}) == ROUTED_ACTION_CLASSES
     assert phase_action_classes("finance") == frozenset({"LECTURE", "CALCUL"})
-    assert phase_action_classes("code") == frozenset({"LECTURE", "CALCUL"})
+    assert phase_action_classes("code") == frozenset({"LECTURE", "CALCUL", "EXECUTION_ISOLEE"})
     for domain in ("generaliste", "recherche", "cyber", "test", "inconnu", ""):
         assert phase_action_classes(domain) == PHASE_ACTION_CLASSES
 
@@ -319,14 +325,21 @@ def test_phase_grants_are_read_only() -> None:
         PHASE_DOMAIN_ACTION_CLASSES["generaliste"] = frozenset({"CALCUL"})  # type: ignore[index]
 
 
+GRANTED_BEYOND_READING = {
+    ("CALCUL", "finance"),  # ADR-022
+    ("CALCUL", "code"),  # ADR-049
+    ("EXECUTION_ISOLEE", "code"),  # ADR-051
+}
+
+
 @given(
-    domain=st.sampled_from(["generaliste", "finance", "recherche", "test"]),
+    domain=st.sampled_from(["generaliste", "finance", "recherche", "code", "test"]),
     known=st.booleans(),
     action_class=st.sampled_from(ACTION_CLASSES),
     level=st.sampled_from(LEVELS),
     kill=st.booleans(),
 )
-def test_the_phase_grants_nothing_beyond_reading_and_finance_computing(
+def test_the_phase_grants_nothing_beyond_reading_and_the_pack_capabilities(
     domain: str, known: bool, action_class: str, level: str, kill: bool
 ) -> None:
     autonomy = _at(level, domain=domain) if known else AUTONOMY
@@ -334,7 +347,23 @@ def test_the_phase_grants_nothing_beyond_reading_and_finance_computing(
     if result.effect != "refuser":
         assert result.effect == "executer"
         assert not kill
-        assert action_class == "LECTURE" or (action_class, domain) == ("CALCUL", "finance")
+        assert action_class == "LECTURE" or (action_class, domain) in GRANTED_BEYOND_READING
+
+
+@pytest.mark.parametrize("level", LEVELS)
+def test_isolated_execution_is_granted_to_the_code_pack_only(level: str) -> None:
+    for domain in ("generaliste", "finance", "recherche", "test"):
+        refused = _decide(_at(level, domain=domain), domain, "EXECUTION_ISOLEE")
+        assert refused.effect == "refuser"
+        assert any("aucune capacité EXECUTION_ISOLEE" in r for r in refused.reasons)
+    code = _at(level, domain="code")
+    granted = _decide(code, "code", "EXECUTION_ISOLEE")
+    assert (granted.decision, granted.effect) == ("auto", "executer")
+    killed = _decide(code, "code", "EXECUTION_ISOLEE", kill_switch=True)
+    assert (killed.decision, killed.autonomy_level) == ("refus", "N0")
+    assert _decide(code, "code", "EXECUTION_ISOLEE", live_enabled=True).effect == "refuser"
+    gated = _decide(code, "code", "EXECUTION_ISOLEE", risk_gate=_gate("ACCEPTE"))
+    assert gated.effect == "refuser"
 
 
 # --- order intents of the paper loop (ADR-030) ---

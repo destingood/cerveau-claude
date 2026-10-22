@@ -39,6 +39,9 @@ EXPECTED_ANNOTATIONS: dict[str, dict[str, bool]] = {
     "COMMUNICATION_EXTERNE": {"readOnlyHint": False, "openWorldHint": True},
     "IRREVERSIBLE": {"readOnlyHint": False, "destructiveHint": True},
     "FINANCIERE": {"readOnlyHint": False, "destructiveHint": True, "openWorldHint": True},
+    # ADR-051: runs in a disposable container and writes only its proposal under var/; the
+    # output of a model is never the same twice.
+    "EXECUTION_ISOLEE": {"readOnlyHint": False, "destructiveHint": False, "idempotentHint": False},
 }
 
 

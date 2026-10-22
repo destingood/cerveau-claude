@@ -34,8 +34,16 @@ Level = Literal["N0", "N1", "N2", "N3", "N4"]
 # A judge score or a pass rate: a real number in [0, 1], never a boolean, an infinity or NaN.
 Score = Annotated[float, Field(ge=0, le=1, strict=True, allow_inf_nan=False)]
 LEVELS: tuple[str, ...] = ("N0", "N1", "N2", "N3", "N4")
+# Annex C.4, plus EXECUTION_ISOLEE (ADR-051): a task carried out in an isolated container,
+# whose only output is a proposal (a patch) that Lucas applies himself.
 ActionClass = Literal[
-    "LECTURE", "CALCUL", "ECRITURE_INTERNE", "COMMUNICATION_EXTERNE", "IRREVERSIBLE", "FINANCIERE"
+    "LECTURE",
+    "CALCUL",
+    "ECRITURE_INTERNE",
+    "COMMUNICATION_EXTERNE",
+    "IRREVERSIBLE",
+    "FINANCIERE",
+    "EXECUTION_ISOLEE",
 ]
 ACTION_CLASSES: tuple[str, ...] = (
     "LECTURE",
@@ -44,6 +52,7 @@ ACTION_CLASSES: tuple[str, ...] = (
     "COMMUNICATION_EXTERNE",
     "IRREVERSIBLE",
     "FINANCIERE",
+    "EXECUTION_ISOLEE",
 )
 MatrixDecision = Literal[
     "auto",
