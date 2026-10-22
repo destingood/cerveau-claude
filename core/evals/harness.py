@@ -39,6 +39,7 @@ from core.evals.offline import (
     fixture_toolbox,
     offline_config,
     presidio,
+    research_toolboxes,
     scripted_router,
     uses_finance,
 )
@@ -49,6 +50,7 @@ from core.orchestrator.graph import Orchestrator, RunResult, committee_file
 from core.orchestrator.packs import PACKS_DIR
 from core.orchestrator.runtime import WEB_PLUGIN
 from core.policy.engine import KILL_SWITCH_FILE
+from core.research.engine import WITHDRAWN
 from core.verification.citations import citation_numbers
 from plugins.finance_committee.agent import FEATURE, PACK
 from plugins.finance_committee.limits import CHECKED, paper_limit_checks
@@ -230,6 +232,17 @@ def _pages_read(log: WebLog, reader: FixtureReader) -> list[tuple[str, str]]:
     return [(page.url, page.text) for page in pages if page is not None]
 
 
+def _abstracts_read(case: Case, log: WebLog) -> list[tuple[str, str]]:
+    """The abstracts a scholarly search could hand the reader: never a withdrawn record's."""
+    if not log.scholar:
+        return []
+    return [
+        (record.url, record.abstract)
+        for record in case.records
+        if record.abstract and not WITHDRAWN.intersection(record.updated_by)
+    ]
+
+
 def _computed(finance: FinanceLog) -> list[tuple[str, str]]:
     """What the finance tools computed, as the judge reads it: figures, warnings, limits."""
     references = []
@@ -257,7 +270,9 @@ def _outcome(
     texts: tuple[str, ...] = (),
     unknown: tuple[str, ...] = (),
 ) -> Outcome:
-    hits = case.search_hits() if log.queries else ()
+    hits = [f"{hit.title} {hit.snippet}" for hit in case.search_hits()] if log.queries else []
+    titles = [record.title for record in case.records] if log.scholar else []
+    read = [*_pages_read(log, reader), *_abstracts_read(case, log)]
     return Outcome(
         case=case,
         mode=mode,
@@ -266,8 +281,8 @@ def _outcome(
         sent=tuple(recorder.sent),
         executed=tuple(log.arguments()),
         requested=tuple(recorder.requested),
-        read_texts=tuple(text for _url, text in _pages_read(log, reader)),
-        search_texts=tuple(f"{hit.title} {hit.snippet}" for hit in hits),
+        read_texts=tuple(text for _url, text in read),
+        search_texts=(*hits, *titles),
         now=result.now,
         tool_calls=result.tool_calls,
         tool_outputs=result.tool_outputs,
@@ -348,6 +363,7 @@ async def _offline(case: Case, root: Path, run: str) -> CaseResult:
             router=scripted_router(config, pilot),
             toolboxes={
                 WEB_PLUGIN: fixture_toolbox(case, log, root),
+                **research_toolboxes(case, log),
                 **finance_toolboxes(finance, root / "config", store),
             },
             pseudonymiser=lambda: presidio(config),
@@ -356,7 +372,7 @@ async def _offline(case: Case, root: Path, run: str) -> CaseResult:
             tz=UTC,
             committees={PACK: paper_committee(limits)} if given else None,
         )
-        result = await orchestrator.ask(case.question)
+        result = await orchestrator.ask(case.question, research=case.approfondi)
         payload = decision_payload(journal, result.request_id)
         roles = role_entries(journal, result.request_id)
         texts = committee_texts(home, payload)
@@ -401,12 +417,13 @@ async def _live(case: Case, root: Path, run: str) -> CaseResult:
             router=router,
             toolboxes={
                 WEB_PLUGIN: fixture_toolbox(case, log, root),
+                **research_toolboxes(case, log),
                 **finance_toolboxes(finance, live_config_dir(root), store),
             },
             pseudonymiser=lambda: presidio(config),
             callbacks=(recorder,),
         )
-        result = await orchestrator.ask(case.question)
+        result = await orchestrator.ask(case.question, research=case.approfondi)
     payload = decision_payload(journal, result.request_id)
     roles = role_entries(journal, result.request_id)
     texts = committee_texts(root, payload)
@@ -430,7 +447,7 @@ async def _live(case: Case, root: Path, run: str) -> CaseResult:
         judgement = await judge(
             case,
             outcome.markdown,
-            [*_pages_read(log, reader), *_computed(finance)],
+            [*_pages_read(log, reader), *_abstracts_read(case, log), *_computed(finance)],
             config=config,
             router=router,
             journal=journal,

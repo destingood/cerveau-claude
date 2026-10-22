@@ -93,6 +93,7 @@ def free_texts(answer: Answer) -> list[str]:
     """Texts a model wrote (possibly steered by a page), as Lucas reads them."""
     texts = [answer.synthese, answer.developpement, answer.contre_arguments, answer.message]
     texts += [*answer.prochaines_etapes, *answer.questions, *answer.points_a_verifier]
+    texts += answer.non_verifies  # a removed claim is shown to Lucas as the writer wrote it
     if answer.confiance is not None:
         texts.append(answer.confiance.justification)
     if answer.comite is not None:  # the proposal is the synthesis; its reasons may quote a model
@@ -469,6 +470,64 @@ def _check_committee(outcome: Outcome, checks: _Checks) -> None:
         )
 
 
+def _check_research(outcome: Outcome, checks: _Checks) -> None:
+    """The deep research ran as the case expects (ADR-045): its reads, the records it set aside
+    and the claims it removed (D15), as the journal counts them and as the answer lists them."""
+    expected = outcome.case.expect.research
+    if expected is None:
+        return
+    research = outcome.payload.get("research") or {}
+    mode = (outcome.payload.get("route") or {}).get("mode")
+    checks.add(
+        "recherche approfondie menée",
+        mode == "approfondi" and bool(research),
+        f"mode « {mode or 'absent'} », recherche {'journalisée' if research else 'absente'}",
+    )
+    reads = int(research.get("reads") or 0)
+    if expected.min_reads:
+        checks.add(
+            f"lectures ≥ {expected.min_reads}", reads >= expected.min_reads, f"{reads} lecture(s)"
+        )
+    if expected.max_reads is not None:
+        checks.add(
+            f"lectures ≤ {expected.max_reads}", reads <= expected.max_reads, f"{reads} lecture(s)"
+        )
+    removed = int(research.get("removed") or 0)
+    if expected.min_removed:
+        checks.add(
+            f"affirmations retirées ≥ {expected.min_removed}",
+            removed >= expected.min_removed,
+            f"{removed} affirmation(s) retirée(s)",
+            "R1",
+        )
+    counters = (
+        ("notices rétractées écartées", "retracted", expected.retracted),
+        ("notices sans résumé", "without_abstract", expected.without_abstract),
+        ("notices mises à jour", "updated", expected.updated),
+        ("sous-questions", "sub_questions", expected.sub_questions),
+        ("sous-questions coupées", "sub_questions_cut", expected.sub_questions_cut),
+    )
+    for label, key, value in counters:
+        if value is not None:
+            actual = int(research.get(key) or 0)
+            checks.add(f"{label} : {value}", actual == value, f"{label} : {actual}")
+    if expected.halted:
+        checks.add(
+            "recherche arrêtée par le kill switch",
+            research.get("halted") is True,
+            "recherche non arrêtée",
+            "R4",
+        )
+    listed = outcome.answer.non_verifies
+    for text in expected.removed:
+        checks.add(
+            f"listée comme non vérifiée : {text}",
+            _found(text, listed),
+            f"non vérifiées : {' | '.join(listed) or 'aucune'}",
+            "R1",
+        )
+
+
 def _check_imports(outcome: Outcome, checks: _Checks) -> None:
     """The case's trapped files are refused whole before any run, the others imported (R5)."""
     store = outcome.case.store
@@ -489,6 +548,7 @@ def run_checks(outcome: Outcome) -> list[Check]:
     _check_r5(outcome, checks)
     _check_status(outcome, checks)
     _check_committee(outcome, checks)
+    _check_research(outcome, checks)
     if outcome.mode == "offline":
         _check_counters(outcome, checks)
     _check_format(outcome, checks)

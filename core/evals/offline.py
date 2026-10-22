@@ -23,6 +23,11 @@ reads and cites the checked extracts; the debaters cite the findings; the manage
 argument and proposes to wait; the controller prices a stress scenario and blocks whenever a
 limit is unknown or exceeded. The research server reads a project root of its own: the
 repository's registry, and no trial nor report of Lucas.
+
+The scholarly and feeds servers run for real too, on the case's records and on the feeds of its
+own allow-list. A deep research (``--approfondi``, ADR-045) runs the real engine: the scripted
+planner proposes the case's sub-questions, the reader returns the extracts of the pages and
+abstracts, and the writer cites the checked extracts it is shown, plus what the case adds.
 """
 
 from __future__ import annotations
@@ -38,7 +43,7 @@ import unicodedata
 from collections.abc import AsyncIterator, Callable, Mapping, Sequence
 from contextlib import asynccontextmanager, closing
 from dataclasses import dataclass, field
-from datetime import UTC, datetime, timedelta
+from datetime import UTC, date, datetime, timedelta
 from functools import cache
 from pathlib import Path
 from typing import Any
@@ -59,6 +64,7 @@ from core.evals.cases import (
     CommitteeTurn,
     PageFixture,
     QualityFixture,
+    RecordFixture,
     cached_web,
 )
 from core.finance.fixtures import REFERENCE_FETCHED_AT, REFERENCE_READ_AT, reference_store
@@ -77,17 +83,26 @@ from core.orchestrator.runtime import McpToolbox, Toolbox, ToolboxOpener
 from core.orchestrator.structured import REPAIR
 from core.verification.figures import Figure
 from core.verification.trace import tool_output
+from plugins.feeds.allowlist import FeedSource
+from plugins.feeds.models import FeedError
+from plugins.feeds.server import build_server as feeds_server
 from plugins.finance_data.server import build_server as finance_data_server
 from plugins.finance_optimize.server import build_server as finance_optimize_server
 from plugins.finance_portfolio.server import build_server as finance_portfolio_server
 from plugins.finance_report.server import build_server as finance_report_server
 from plugins.finance_research.server import build_server as finance_research_server
 from plugins.finance_risk.server import build_server as finance_risk_server
+from plugins.scholarly.common import ScholarError
+from plugins.scholarly.models import ScholarRecord, Update
+from plugins.scholarly.server import build_server as scholarly_server
 from plugins.web_research.models import PageText
 from plugins.web_research.search import Hit
 from plugins.web_research.server import build_server
 
 WEB_PLUGIN = REPO_ROOT / "plugins" / "web_research"
+SCHOLARLY_PLUGIN = REPO_ROOT / "plugins" / "scholarly"
+FEEDS_PLUGIN = REPO_ROOT / "plugins" / "feeds"
+FIXTURE_DOI = "10.0000/fixture"  # the record a fixture's published update points to
 FIXTURE_NOW = datetime(2026, 10, 18, 12, 0, tzinfo=UTC)
 # A run that reads the reference store is dated when the tools read it (R10): never before.
 FINANCE_NOW = REFERENCE_READ_AT
@@ -107,6 +122,16 @@ _EXTRACT = re.compile(r"^- (.+)\n  Citation : « (.+) »$", re.MULTILINE)
 _QUESTION = re.compile(r"Question de Lucas :\n(.*?)\n\nAdresses web", re.DOTALL)
 _REPAIRS = (FORMAT_REPAIR.split("{", 1)[0], REPAIR.split("{", 1)[0])
 WEB_TOOLS = frozenset({"web_search", "web_read"})
+RESEARCH_TOOLS = frozenset({"feed_read", "scholar_search", "scholar_record"})  # read, never compute
+# What the deep research shows its planner and its writer (core/research/engine.py).
+_RESEARCH_HEAD = re.compile(r"Question de Lucas :\n(.*?)\n\nDate du jour", re.DOTALL)
+_PLAN_TASK = "\n\nPropose au plus "
+_WRITE_TASK = "\n\nSous-questions étudiées :\n"
+_RESEARCH_EXTRACT = re.compile(r"^- \[(\d+\.\d+)\] (.+)\n  Citation : « (.+) »$", re.MULTILINE)
+SOURCES_SECTION = "Ce que disent les sources"
+RESEARCH_REASON = "Extraits vérifiés des sources lues, croisés entre les sous-questions."
+MAX_SYNTHESIS_CLAIMS = 5  # the synthesis of a complex answer has 3 to 5 sentences
+MAX_SECTION_CLAIMS = 12
 # What the committee engine shows a member (core/committee/engine.py).
 _CALL = re.compile(r'<donnees_externes source="([a-z_]+:([a-z_]+)#[0-9]+)">')
 _ASKED = re.compile(r"^Question de Lucas : (.*)$", re.MULTILINE)
@@ -177,9 +202,11 @@ class WebLog:
 
     queries: list[str] = field(default_factory=list)
     reads: list[str] = field(default_factory=list)
+    scholar: list[str] = field(default_factory=list)  # scholarly queries and identifiers
+    feeds: list[str] = field(default_factory=list)  # feed addresses fetched
 
     def arguments(self) -> list[str]:
-        return [*self.queries, *self.reads]
+        return [*self.queries, *self.reads, *self.scholar, *self.feeds]
 
 
 class FixtureSearch:
@@ -228,6 +255,104 @@ def fixture_toolbox(case: Case, log: WebLog, root: Path = REPO_ROOT) -> ToolboxO
             yield McpToolbox(plugin)
 
     return open_toolbox
+
+
+def _scholar_record(record: RecordFixture) -> ScholarRecord:
+    return ScholarRecord(
+        source=record.source,
+        identifier=record.identifier,
+        type="preprint" if record.preprint else "journal-article",
+        preprint=record.preprint,
+        title=record.title,
+        authors=[],
+        more_authors=0,
+        published=record.published,
+        updated=None,
+        venue=None,
+        doi=record.doi,
+        url=record.url,
+        abstract=record.abstract,
+        abstract_truncated=False,
+        update_to=[],
+        updated_by=[Update(type=kind, doi=FIXTURE_DOI) for kind in record.updated_by],
+        retrieved_at=FIXTURE_NOW.isoformat(),
+    )
+
+
+class FixtureScholar:
+    """A scholarly source answering from the case's records of that source."""
+
+    def __init__(self, name: str, case: Case, log: WebLog) -> None:
+        self.name = name
+        self._records = [record for record in case.records if record.source == name]
+        self._log = log
+
+    async def search(self, query: str, since: date | None, max_results: int) -> list[ScholarRecord]:
+        self._log.scholar.append(query)
+        return [_scholar_record(record) for record in self._records[:max_results]]
+
+    async def record(self, identifier: str) -> ScholarRecord:
+        self._log.scholar.append(identifier)
+        for record in self._records:
+            if record.identifier == identifier:
+                return _scholar_record(record)
+        raise ScholarError("notice absente des données de test")
+
+
+def fixture_scholarly(case: Case, log: WebLog) -> ToolboxOpener:
+    """The real scholarly server and MCP adapter, in memory, on the case's records."""
+
+    @asynccontextmanager
+    async def open_toolbox(scope: RequestScope) -> AsyncIterator[Toolbox]:
+        sources = {name: FixtureScholar(name, case, log) for name in ("arxiv", "crossref")}
+        server = scholarly_server(dict(sources))
+        async with McpPlugin(SCHOLARLY_PLUGIN, scope, target=server) as plugin:
+            yield McpToolbox(plugin)
+
+    return open_toolbox
+
+
+class FixtureFeedReader:
+    def __init__(self, case: Case, log: WebLog) -> None:
+        self._xml = {feed.url: feed.xml for feed in case.feeds}
+        self._log = log
+
+    async def fetch(self, raw_url: str) -> bytes:
+        self._log.feeds.append(raw_url)
+        xml = self._xml.get(raw_url)
+        if xml is None:
+            raise FeedError("flux absent du web de test")
+        return xml.encode("utf-8")
+
+
+def fixture_feeds(case: Case, log: WebLog) -> ToolboxOpener:
+    """The real feeds server and MCP adapter, in memory, on the case's own allow-list (the
+    repository's stays empty until Lucas fills it, D18)."""
+    catalog = {
+        feed.id: FeedSource(
+            id=feed.id,
+            titre=feed.titre,
+            url=feed.url,
+            licence=feed.licence,
+            frequence=feed.frequence,
+        )
+        for feed in case.feeds
+    }
+
+    @asynccontextmanager
+    async def open_toolbox(scope: RequestScope) -> AsyncIterator[Toolbox]:
+        server = feeds_server(
+            lambda: catalog, FixtureFeedReader(case, log), now=lambda: FIXTURE_NOW
+        )
+        async with McpPlugin(FEEDS_PLUGIN, scope, target=server) as plugin:
+            yield McpToolbox(plugin)
+
+    return open_toolbox
+
+
+def research_toolboxes(case: Case, log: WebLog) -> dict[str, ToolboxOpener]:
+    """The Recherche pack's plugins other than the web, on the case's records and feeds."""
+    return {"scholarly": fixture_scholarly(case, log), "feeds": fixture_feeds(case, log)}
 
 
 # --- finance servers ----------------------------------------------------------------------------
@@ -412,9 +537,8 @@ def finance_toolboxes(
 
 def uses_finance(case: Case) -> bool:
     """A case whose run reads the reference store, so is dated when the store is read."""
-    return case.group == "finance" or bool(
-        case.offline.calls or case.expect.tools or case.store is not None
-    )
+    computed = [call for call in case.offline.calls if call.tool not in RESEARCH_TOOLS]
+    return case.group == "finance" or bool(computed or case.expect.tools or case.store is not None)
 
 
 # --- scripted models ---------------------------------------------------------------------------
@@ -454,6 +578,10 @@ class Pilot:
             return AIMessage(_json({"extraits": self._extracts(first)}))
         if role == "verifier":
             return AIMessage(_json({"factuels": list(offline.factual)}))
+        if _RESEARCH_HEAD.match(first) and _PLAN_TASK in first:
+            return self._research_plan(first, messages)
+        if _RESEARCH_HEAD.match(first) and _WRITE_TASK in first:
+            return self._research_write(first, messages)
         return self._plan(messages)
 
     # --- committee --------------------------------------------------------------------------
@@ -555,7 +683,9 @@ class Pilot:
 
     def _extracts(self, task: str) -> list[dict[str, str]]:
         found = _SOURCE.search(task)
-        page = self.pages.page(found.group(1)) if found else None
+        url = found.group(1) if found else None
+        record = next((r for r in self.case.records if r.url == url), None)
+        page: PageFixture | RecordFixture | None = record or (self.pages.page(url) if url else None)
         if page is None:
             return []
         extracts = [e.model_dump() for e in page.extracts]
@@ -596,15 +726,71 @@ class Pilot:
         """The answer of an honest planner: the tools' figures and the checked extracts only."""
         offline = self.case.offline
         complex_ = offline.route.complexite == "complexe"
+        computed = [call for call in offline.calls if call.tool not in RESEARCH_TOOLS]
         if offline.answer is not None:
             answer = offline.answer.model_dump(mode="json")
-        elif offline.calls or self.case.expect.figures:
+        elif computed or self.case.expect.figures:
             answer = _from_figures(self.case, self.finance, views, complex_=complex_)
         else:
             answer = _from_extracts(views, complex_=complex_)
         if offline.attack is not None and offline.attack.append:
             answer["developpement"] = f"{answer['developpement']}\n\n{offline.attack.append}"
         return _json(answer)
+
+    # --- deep research (core/research/engine.py) --------------------------------------------
+
+    def _research_plan(self, task: str, messages: Sequence[BaseMessage]) -> AIMessage:
+        """The case's scripted plans first (one per attempt), then an honest plan: one
+        sub-question per angle, each searching the question itself."""
+        research = self.case.offline.research
+        used = sum(isinstance(message, AIMessage) for message in messages)
+        if used < len(research.plans):
+            return AIMessage(research.plans[used])
+        found = _RESEARCH_HEAD.match(task)
+        question = " ".join((found.group(1) if found else self.case.question).split())
+        plan = [
+            {
+                "question": f"{question[:280]} (angle {n})",
+                "angle": f"angle {n}",
+                "requete_web": question[:200],
+                "requete_scientifique": question[:200] if research.scholar else "",
+                "source_scientifique": research.scholar or "crossref",
+            }
+            for n in range(1, research.sub_questions + 1)
+        ]
+        return AIMessage(_json({"sous_questions": plan}))
+
+    def _research_write(self, task: str, messages: Sequence[BaseMessage]) -> AIMessage:
+        """The case's scripted reports first, then an honest report: the case's own claims, then
+        one claim per checked extract, each citing that extract only."""
+        research = self.case.offline.research
+        used = sum(isinstance(message, AIMessage) for message in messages)
+        if used < len(research.reports):
+            return AIMessage(research.reports[used])
+        claims = [
+            {"texte": _plain(claim), "extraits": [ref]}
+            for ref, claim, _quote in _RESEARCH_EXTRACT.findall(task)
+        ]
+        scripted = [claim.model_dump(mode="json") for claim in research.claims]
+        synthesis = [*scripted, *claims][:MAX_SYNTHESIS_CLAIMS]
+        report = {
+            "synthese": synthesis or [{"texte": UNSURE, "extraits": []}],
+            "sections": [
+                {
+                    "titre": research.section or SOURCES_SECTION,
+                    "affirmations": claims[:MAX_SECTION_CLAIMS],
+                }
+            ]
+            if claims
+            else [],
+            "contre_arguments": claims[-1:],
+            "confiance": {
+                "niveau": research.level,
+                "justification": research.reason or RESEARCH_REASON,
+            },
+            "prochaines_etapes": [*STEPS, *research.steps][:6],
+        }
+        return AIMessage(_json(report))
 
 
 def _turn(turn: CommitteeTurn) -> AIMessage:

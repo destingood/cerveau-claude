@@ -9,6 +9,12 @@ cites: their displays are frozen from the reference store (ADR-023) and the real
 must compute them again, in both modes. It may add to its own copy of that store what Lucas would
 import (a CSV file of instruments or transactions, possibly trapped) and quality scores (D12).
 
+A research case (``approfondi``) is asked as with ``cerveau ask --approfondi`` (ADR-045): it may
+add scholarly records (``records``), whose abstracts the reader reads as it reads a page, and
+feeds of its own allow-list (``feeds``), the repository's staying empty (D18). Its scripted
+planner proposes the case's sub-questions and its writer cites the checked extracts it is shown,
+plus the claims, titles and steps the case adds to test what the engine removes or masks.
+
 A paper case (``paper``) runs the daily paper loop on a synthetic market of fictitious
 instruments, with no model: its source proposes target orders and the drafter, the policy and the
 Risk Gate decide, over a copy of the configuration; at N3, the case answers the approval requests
@@ -52,6 +58,7 @@ from core.orchestrator.state import (
 )
 from core.risk_gate.gate import Result
 from core.verification.quotes import check_quote
+from plugins.feeds.allowlist import FEED_ID
 from plugins.web_research.fetcher import _extract  # the plugin's own extraction of HTML pages
 
 REPO_ROOT = Path(__file__).resolve().parents[2]
@@ -128,6 +135,40 @@ class PageFixture(_Data):
         return self
 
 
+class RecordFixture(_Data):
+    """A record as scholar_search returns it; its abstract is what the reader reads (ADR-044)."""
+
+    source: Literal["arxiv", "crossref"] = "crossref"
+    identifier: str = Field(min_length=1, max_length=200)
+    title: str = Field(min_length=1)
+    preprint: bool = False
+    published: str | None = None
+    doi: str | None = None
+    url: str = Field(pattern=r"^https?://")
+    abstract: str | None = None  # None: a record without abstract, never read (no PDF, D12)
+    updated_by: tuple[str, ...] = ()  # the types of its published updates (« retraction »...)
+    extracts: tuple[ExtractFixture, ...] = ()  # what an honest reader returns (offline)
+    trap: ExtractFixture | None = None  # what a manipulated reader returns (offline attack)
+
+    @model_validator(mode="after")
+    def _check_extracts(self) -> RecordFixture:
+        for extract in self.extracts:  # an honest extract quotes the abstract word for word
+            if not check_quote(extract.citation, self.abstract or "").ok:
+                raise ValueError(f"{self.url} : citation absente du résumé : {extract.citation}")
+        return self
+
+
+class FeedFixture(_Data):
+    """A feed of the case's own allow-list and the XML it serves."""
+
+    id: str = Field(pattern=FEED_ID)
+    titre: str = "Flux de test"
+    url: str = Field(pattern=r"^https://")
+    licence: str = "CC BY 4.0"
+    frequence: str = "quotidienne"
+    xml: str = Field(min_length=1)
+
+
 class Hit(_Data):
     title: str = Field(min_length=1)
     url: str = Field(pattern=r"^https?://")
@@ -157,6 +198,34 @@ class Attack(_Data):
     searches: tuple[str, ...] = ()  # queries the page dictates, built from Lucas's figures (R6)
     append: str = ""  # added to the developpement: a link, an image, a bare address
     reader: bool = True  # the reader returns the trap extracts of the pages
+
+
+class ResearchClaim(_Data):
+    """A claim the scripted writer adds to its honest report, citing extracts as « n.k »."""
+
+    texte: str = Field(min_length=1)
+    extraits: tuple[str, ...] = ()
+
+
+class ResearchFixture(_Data):
+    """The scripted planner and writer of a deep research; the engine runs for real.
+
+    The honest plan has ``sub_questions`` sub-questions, each searching the web and, when
+    ``scholar`` is set, that source; above the cap, the engine cuts it. ``plans`` and ``reports``
+    are raw replies given first (a malformed output, then its repair). The honest report cites the
+    checked extracts it is shown; the case's claims, section title, steps and reason are what a
+    mistaken or manipulated writer would add (R1, R5, D15).
+    """
+
+    sub_questions: int = Field(default=2, ge=1, le=20)
+    scholar: Literal["", "arxiv", "crossref"] = ""
+    plans: tuple[str, ...] = Field(default=(), max_length=2)
+    reports: tuple[str, ...] = Field(default=(), max_length=2)
+    claims: tuple[ResearchClaim, ...] = Field(default=(), max_length=6)
+    section: str | None = Field(default=None, min_length=1)  # the title of the sources' section
+    steps: tuple[str, ...] = Field(default=(), max_length=4)
+    reason: str | None = Field(default=None, min_length=1)  # the confidence's justification
+    level: Confidence = "moyen"
 
 
 class ToolCallFixture(_Data):
@@ -358,6 +427,7 @@ class Offline(_Data):
     # Paper limits the case's committee checks over a copy of risk_limits.paper.yaml: a key left
     # out keeps the file's value, so a case about an unknown limit marks it A_DEFINIR itself.
     paper_limits: dict[str, Any] | None = None
+    research: ResearchFixture = ResearchFixture()  # the planner and writer of ``approfondi``
 
     @model_validator(mode="after")
     def _answer_without_web(self) -> Offline:
@@ -440,6 +510,21 @@ class ExpectCommittee(_Data):
     libelle: str = "analyse"  # N0: an analysis, never a proposal to execute
 
 
+class ExpectResearch(_Data):
+    """What the deep research's audit payload and its answer must show (ADR-045)."""
+
+    min_reads: int = Field(default=0, ge=0)
+    max_reads: int | None = Field(default=None, ge=0)
+    min_removed: int = Field(default=0, ge=0)  # claims removed and listed (D15)
+    retracted: int | None = Field(default=None, ge=0)
+    without_abstract: int | None = Field(default=None, ge=0)
+    updated: int | None = Field(default=None, ge=0)  # sources shown with a published update
+    sub_questions: int | None = Field(default=None, ge=0)
+    sub_questions_cut: int | None = Field(default=None, ge=0)
+    halted: bool = False
+    removed: tuple[str, ...] = ()  # substrings of the « Points non vérifiés »
+
+
 class Expect(_Data):
     status: tuple[Status, ...] = ("complete",)
     sourced: bool = False  # sources cited in the synthesis and the development, none invalid
@@ -462,6 +547,7 @@ class Expect(_Data):
     refused_imports: int = Field(default=0, ge=0, le=2)  # files of `store` the import refuses (R5)
     committee: ExpectCommittee | None = None  # the session of the pack's Committee
     paper: ExpectPaper | None = None  # what the paper loop shows (the case's ``paper``)
+    research: ExpectResearch | None = None  # what the deep research shows (``approfondi``)
     offline: ExpectOffline = ExpectOffline()
 
     @model_validator(mode="after")
@@ -481,6 +567,9 @@ class Case(_Data):
     question: str = Field(min_length=1)
     hits: tuple[Hit, ...] = ()  # search results; by default, the case's own pages
     pages: tuple[PageFixture, ...] = ()
+    records: tuple[RecordFixture, ...] = ()  # what scholar_search finds, by source
+    feeds: tuple[FeedFixture, ...] = ()  # the allow-list feed_read reads (the case's own)
+    approfondi: bool = False  # asked as with `cerveau ask --approfondi` (D14)
     offline: Offline = Offline()
     store: StoreFixture | None = None  # added to the case's copy of the reference store
     paper: PaperFixture | None = None  # a run of the paper loop instead of a question's run
@@ -497,6 +586,17 @@ class Case(_Data):
     def _paper_and_its_expectation(self) -> Case:
         if (self.paper is None) != (self.expect.paper is None):
             raise ValueError("paper et expect.paper vont ensemble")
+        return self
+
+    @model_validator(mode="after")
+    def _research_and_its_records(self) -> Case:
+        if self.expect.research is not None and not self.approfondi:
+            raise ValueError("expect.research suppose approfondi")
+        urls = [record.url for record in self.records]
+        if len(set(urls)) != len(urls):
+            raise ValueError("records : adresse de notice en double")
+        if len({feed.id for feed in self.feeds}) != len(self.feeds):
+            raise ValueError("feeds : identifiant de flux en double")
         return self
 
     def search_hits(self) -> tuple[Hit, ...]:
