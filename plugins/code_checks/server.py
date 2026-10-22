@@ -151,7 +151,9 @@ class _Early:
     note: str
 
 
-class _Budget:
+class Budget:
+    """Seconds left to the containers of one call."""
+
     def __init__(self, seconds: float, clock: Callable[[], float]) -> None:
         self.clock = clock
         self.end = clock() + seconds
@@ -174,7 +176,7 @@ def _shown(values: Sequence[str]) -> tuple[list[str], int]:
 
 def _launch(
     runner: Runner,
-    budget: _Budget,
+    budget: Budget,
     image: str,
     source: Path,
     limits: Limits,
@@ -274,6 +276,32 @@ def _pytest(out: Bounded | _Early) -> Pytest:
     )
 
 
+def run_on_copy(
+    runner: Runner,
+    budget: Budget,
+    settings: CodeChecks,
+    repo: Repository,
+    folder: Path,
+    want_pytest: bool,
+) -> tuple[RuffCheck, RuffFormat, Pytest]:
+    """ruff, then pytest when asked and prepared (E3), on the copy in ``folder``, read only.
+
+    Also run by ``code_agent`` on the copy its agent changed (ADR-054): these counts are the
+    only ones the answer cites (R1).
+    """
+    limits = Limits(settings.cpus, settings.memory_mb, settings.pids)
+    image = settings.image
+    ruff_check = _ruff_check(_launch(runner, budget, image, folder, limits, "ruff", RUFF_CHECK))
+    ruff_format = _ruff_format(_launch(runner, budget, image, folder, limits, "ruff", RUFF_FORMAT))
+    if not want_pytest:
+        pytest = _pytest(_Early("non_lance", "non demandé"))
+    elif not (repo.pytest and repo.image):
+        pytest = _pytest(_Early("non_lance", NOT_PREPARED))
+    else:
+        pytest = _pytest(_launch(runner, budget, repo.image, folder, limits, "python", PYTEST))
+    return ruff_check, ruff_format, pytest
+
+
 def _source(copy: Copy, removed: bool) -> Source:
     withheld, more_withheld = _shown(copy.withheld)
     skipped, more_skipped = _shown(copy.skipped)
@@ -301,31 +329,18 @@ def build_server(
         current = settings()
         repo: Repository = reader.open(current.repositories, repo_id)
         sha = reader.commit(repo, rev)
-        limits = Limits(current.checks.cpus, current.checks.memory_mb, current.checks.pids)
         share = BUDGET_S if limit_s is None else max(limit_s - RESERVE_S, 0.0)
         seconds = min(float(current.checks.timeout_seconds), share)
         # The copy counts too: the whole call has to end within the tool call's own time limit.
-        budget = _Budget(seconds, clock)
+        budget = Budget(seconds, clock)
         folder = runs / uuid.uuid4().hex
         try:
             copy = copy_tree(
                 reader, repo, sha, folder, max_files=MAX_COPY_FILES, max_bytes=MAX_COPY_BYTES
             )
-            image = current.checks.image
-            ruff_check = _ruff_check(
-                _launch(runner, budget, image, folder, limits, "ruff", RUFF_CHECK)
+            ruff_check, ruff_format, pytest = run_on_copy(
+                runner, budget, current.checks, repo, folder, want_pytest
             )
-            ruff_format = _ruff_format(
-                _launch(runner, budget, image, folder, limits, "ruff", RUFF_FORMAT)
-            )
-            if not want_pytest:
-                pytest = _pytest(_Early("non_lance", "non demandé"))
-            elif not (repo.pytest and repo.image):
-                pytest = _pytest(_Early("non_lance", NOT_PREPARED))
-            else:
-                pytest = _pytest(
-                    _launch(runner, budget, repo.image, folder, limits, "python", PYTEST)
-                )
         finally:
             shutil.rmtree(folder, ignore_errors=True)
         return ChecksResult(

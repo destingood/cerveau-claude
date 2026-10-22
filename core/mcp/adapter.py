@@ -24,6 +24,7 @@ from __future__ import annotations
 import asyncio
 import json
 import os
+import re
 import sys
 import time
 from collections.abc import Awaitable, Callable, Mapping, Sequence
@@ -51,6 +52,7 @@ TOOL_TIMEOUT_S = DEFAULT_TOOL_TIMEOUT_S  # a server's start, and a call by defau
 MAX_ARGUMENT_CHARS = 2048
 MAX_ERROR_CHARS = 300
 ISOLATED = "EXECUTION_ISOLEE"
+DIGEST = re.compile(r"[0-9a-f]{64}")
 ISOLATION_REFUSAL = (
     "classe EXECUTION_ISOLEE : la requête n'est pas classée EXECUTION_ISOLEE par le contrôle "
     "d'entrée (ADR-054)"
@@ -83,6 +85,14 @@ class RequestScope:
     live_enabled: bool  # an enabled live configuration refuses every call (R3, ADR-030)
     # The code agent's task (ADR-054): set only for a request classed EXECUTION_ISOLEE.
     isolation: IsolatedTask | None = None
+
+
+def patch_digest(result: Any) -> str | None:
+    """The SHA-256 of the patch an isolated task returned (``patch.sha256``), journaled so that
+    the patch Lucas applies can be traced to its request (R11); ``None`` when there is none."""
+    patch = result.get("patch") if isinstance(result, Mapping) else None
+    digest = patch.get("sha256") if isinstance(patch, Mapping) else None
+    return digest if isinstance(digest, str) and DIGEST.fullmatch(digest) else None
 
 
 def server_environment(names: Sequence[str], environ: Mapping[str, str]) -> dict[str, str]:
@@ -380,8 +390,10 @@ class McpPlugin:
                 result = reply.structured_content
                 size = len(json.dumps(result, ensure_ascii=False).encode("utf-8"))
         spend: tuple[LlmCall, ...] = ()
+        task: dict[str, Any] = {}
         if spec.action_class == ISOLATED and isolation is not None:  # sent: never zero (R7)
             spend = charge(self._scope.meter, isolation, role=self.manifest.id, result=result)
+            task["patch_sha256"] = patch_digest(result)
         self._journal(
             spec,
             shown,
@@ -392,6 +404,7 @@ class McpPlugin:
             search=search.to_payload() if search else None,
             spend=[call.to_payload() for call in spend] if spend else None,
             tool_calls=self._scope.budget.tool_calls,
+            **task,
         )
         if result is None:
             raise ToolException(f"{spec.name} : {(error or '')[:MAX_ERROR_CHARS]}")

@@ -216,10 +216,17 @@ def docker_environment(environ: Mapping[str, str]) -> dict[str, str]:
 
 class DockerRunner:
     def __init__(
-        self, executable: Sequence[str] = ("docker",), *, environ: Mapping[str, str] = os.environ
+        self,
+        executable: Sequence[str] = ("docker",),
+        *,
+        environ: Mapping[str, str] = os.environ,
+        passed: Sequence[str] = (),
     ) -> None:
+        """``passed``: further variables the client hands to a container by name (``--env``)."""
         self.executable = tuple(executable)
-        self.env = docker_environment(environ)
+        self.env = docker_environment(environ) | {
+            name: environ[name] for name in passed if name in environ
+        }
 
     def run(
         self, arguments: Sequence[str], *, name: str, timeout_s: float, max_bytes: int

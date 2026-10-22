@@ -12,7 +12,9 @@ Docker network with no other way out; only the proxy reaches ``api.anthropic.com
   arithmetic of ``core/models/costs.py`` (R1). Once the task's ceiling in USD or in requests is
   reached, or once a cost could not be read (R7), it refuses every further request. One request
   runs at a time, so a ceiling is exceeded by the cost of one request at most;
-- writes its counts, never a request's content, to a state file that the plugin reads.
+- writes its counts, never a request's content, to a state file that the plugin reads. The file
+  also says whether a request is on its way (``pending``): stopped then, the proxy may owe the API
+  a cost it never read, which the plugin charges as unknown (R7).
 
 The file is copied alone into the ``cerveau-llm-proxy`` image: it imports the standard library
 only (a test checks it).
@@ -614,6 +616,7 @@ class Proxy:
         self._requests = 0
         self._usd = Decimal(0)
         self._unknown = False
+        self._pending = False
         self._refusals: dict[str, int] = {}
         self._models: dict[str, _ModelCount] = {}
 
@@ -640,6 +643,7 @@ class Proxy:
             "max_usd": str(self._settings.max_usd),
             "max_requests": self._settings.max_requests,
             "unknown_cost": self._unknown,
+            "pending": self._pending,
             "stopped": stopped.code if stopped else None,
             "refusals": dict(sorted(self._refusals.items())),
             "models": {
@@ -672,7 +676,12 @@ class Proxy:
             stopped = self._stopped()
             if stopped is None:
                 self._requests += 1
-                self._forward(target, sent, body, message, reply)
+                self._pending = True
+                self.write_state()
+                try:
+                    self._forward(target, sent, body, message, reply)
+                finally:
+                    self._pending = False
             else:
                 self._note(stopped.code)
             self.write_state()

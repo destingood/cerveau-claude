@@ -127,6 +127,14 @@ def test_the_docker_client_gets_only_what_it_needs() -> None:
     assert env == {"PATH": "p", "USERPROFILE": "u", "DOCKER_HOST": "npipe:////./pipe/docker_engine"}
 
 
+def test_a_variable_for_a_container_is_passed_by_name_only_when_asked() -> None:
+    """The proxy's ``docker run --env ANTHROPIC_API_KEY`` reads it from the client (ADR-054)."""
+    environ = {"PATH": "p", "ANTHROPIC_API_KEY": "cle-factice", "GITHUB_TOKEN": "x"}
+    assert "ANTHROPIC_API_KEY" not in DockerRunner(environ=environ).env
+    passed = DockerRunner(environ=environ, passed=("ANTHROPIC_API_KEY", "ABSENTE"))
+    assert passed.env == {"PATH": "p", "ANTHROPIC_API_KEY": "cle-factice"}
+
+
 FAKE_DOCKER = """
 import sys, time
 arguments = sys.argv[1:]

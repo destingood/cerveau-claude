@@ -669,7 +669,7 @@ SPEND = {"modeles": {TASK.model: TOKENS}, "cout_inconnu": False}  # 1000 × 2 + 
 
 
 class AgentReply(BaseModel):
-    patch: str
+    patch: str | dict[str, Any]
     depense: dict[str, Any] | None = None
 
 
@@ -849,3 +849,45 @@ def test_a_tool_of_another_class_charges_no_spend(scope: RequestScope) -> None:
     session(scope, lambda p: invoke(p, "web_search", {"query": "q"}))
     assert scope.meter.llm_calls == ()
     assert entries(scope)[0]["payload"]["spend"] is None
+    assert "patch_sha256" not in entries(scope)[0]["payload"]
+
+
+DIGEST = "0123456789abcdef" * 4
+
+
+@pytest.mark.parametrize(
+    ("patch", "digest"),
+    [
+        ({"sha256": DIGEST}, DIGEST),
+        ({"sha256": DIGEST.upper()}, None),
+        ({"sha256": DIGEST[:-1]}, None),
+        ({"sha256": 7}, None),
+        ("diff --git a/x b/x", None),
+    ],
+    ids=["digest", "upper-case", "short", "not-text", "not-a-mapping"],
+)
+def test_an_isolated_call_journals_the_digest_of_its_patch(
+    tmp_path: Path, patch: Any, digest: str | None
+) -> None:
+    """The patch Lucas applies is traced to its request (R11); a malformed digest is not kept."""
+    scope = code_scope(tmp_path)
+    isolated_session(
+        scope,
+        _isolated_plugin(tmp_path),
+        [{"patch": patch, "depense": SPEND}],
+        lambda p: invoke(p, "agent_task", {"task": "corrige"}),
+    )
+    [entry] = entries(scope)
+    assert entry["payload"]["patch_sha256"] == digest
+
+
+def test_a_failed_isolated_call_journals_no_digest(tmp_path: Path) -> None:
+    scope = code_scope(tmp_path)
+    isolated_session(
+        scope,
+        _isolated_plugin(tmp_path),
+        [ValueError("échec de la tâche")],
+        lambda p: invoke(p, "agent_task", {"task": "corrige"}),
+    )
+    [entry] = entries(scope)
+    assert (entry["payload"]["status"], entry["payload"]["patch_sha256"]) == ("erreur", None)

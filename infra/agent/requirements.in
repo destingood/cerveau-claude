@@ -1,0 +1,7 @@
+# Paquets de l'image cerveau-agent (ADR-054), jamais installés dans l'environnement de CERVEAU.
+# Lucas en tire requirements.txt, figé par empreinte (infra/agent/README.md).
+# Agent SDK, MIT ; son CLI embarqué est sous licence restrictive (docs/licences.md, R14).
+claude-agent-sdk==0.2.172
+# Les mêmes versions que l'environnement de CERVEAU (uv.lock) et que l'image des contrôles (E4).
+ruff==0.17.1
+pytest==9.1.1

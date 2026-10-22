@@ -801,12 +801,32 @@ def test_a_streamed_reply_is_passed_on_and_counted(tmp_path: Path) -> None:
         "max_usd": "2",
         "max_requests": 100,
         "unknown_cost": False,
+        "pending": False,
         "stopped": None,
         "refusals": {},
         "models": {SONNET: {"requests": 1, "usd": str(usd), "tokens": STREAM_USAGE.to_payload()}},
     }
     assert KEY not in state.read_text(encoding="utf-8")
     assert not (tmp_path / "state.json.tmp").exists()
+
+
+def test_the_state_says_when_a_request_is_on_its_way(tmp_path: Path) -> None:
+    """Killed while it waits for the API, the proxy leaves ``pending`` set: the plugin then
+    charges an unknown cost (R7)."""
+    proxy, upstream, state = make_proxy(tmp_path, upstream_reply(), UpstreamError(sent=True))
+    seen: list[tuple[int, bool]] = []
+    send = upstream.send
+
+    def sending(path: str, headers: Any, data: bytes) -> UpstreamReply:
+        counts = state_of(state)
+        seen.append((counts["requests"], counts["pending"]))
+        return send(path, headers, data)
+
+    upstream.send = sending  # type: ignore[method-assign]
+    call(proxy)
+    call(proxy)
+    assert seen == [(1, True), (2, True)]
+    assert state_of(state)["pending"] is False
 
 
 def test_a_json_reply_is_counted(tmp_path: Path) -> None:
