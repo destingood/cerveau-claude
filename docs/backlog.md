@@ -249,6 +249,9 @@ reporté (phase 3 : décision D23 de `docs/plans/phase-3-plan.md`).
 | B252 | `scholarly` : sens exact de `updated-by` chez Crossref à confirmer sur de vraies rétractations (`A_VERIFIER`) ; en attendant, la recherche approfondie ne lit jamais une notice dont une mise à jour est une rétractation, un retrait ou une suppression | `plugins/scholarly/crossref.py`, `core/research/engine.py`, ADR-044 | 6 |
 | B253 | `scholarly` : `slo.p95_latency_ms` à `A_DEFINIR` et `success_rate_min` provisoire, à fixer après les premières mesures réelles (aucune en phase 6, D5) | `plugins/scholarly/plugin.yaml`, ADR-044 | 7 |
 | B254 | `scholarly` : les anciens DOI SICI (avec `<` et `>`) sont hors du motif recommandé par Crossref, donc refusés ; les accepter si un besoin réel apparaît, en gardant le refus des segments « . » et « .. » | `plugins/scholarly/crossref.py`, ADR-044 | ? |
+| B255 | `feeds` : questions d'éval sur le contenu des flux une fois la liste blanche remplie par Lucas (vide en phase 6, D18) | `plugins/feeds/evals/`, ADR-044 | 7 |
+| B256 | `feeds` : requêtes conditionnelles (`ETag`, `If-Modified-Since`) pour ménager les sites lus | `plugins/feeds/`, ADR-044 | 7 |
+| B257 | `feeds` : `slo.p95_latency_ms` à `A_DEFINIR` et `success_rate_min` provisoire, à fixer après les premières mesures réelles (aucune en phase 6, D5) | `plugins/feeds/plugin.yaml`, ADR-044 | 7 |
 
 ## Évaluations
 | # | Élément | Origine | Phase |

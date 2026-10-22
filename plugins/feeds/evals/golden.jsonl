@@ -1,0 +1,17 @@
+{"id": "fd-001", "tool": "feed_read", "arguments": {"feed": "https://example.org/feed.xml"}, "expected": {"is_error": true, "contains": "validation"}}
+{"id": "fd-002", "tool": "feed_read", "arguments": {"feed": "../../etc/passwd"}, "expected": {"is_error": true, "contains": "validation"}}
+{"id": "fd-003", "tool": "feed_read", "arguments": {"feed": "Exemple"}, "expected": {"is_error": true, "contains": "validation"}}
+{"id": "fd-004", "tool": "feed_read", "arguments": {"feed": ""}, "expected": {"is_error": true, "contains": "validation"}}
+{"id": "fd-005", "tool": "feed_read", "arguments": {"feed": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"}, "expected": {"is_error": true, "contains": "validation"}}
+{"id": "fd-006", "tool": "feed_read", "arguments": {"feed": "-exemple"}, "expected": {"is_error": true, "contains": "validation"}}
+{"id": "fd-007", "tool": "feed_read", "arguments": {}, "expected": {"is_error": true, "contains": "validation"}}
+{"id": "fd-008", "tool": "feed_read", "arguments": {"feed": "exemple", "max_entries": 0}, "expected": {"is_error": true, "contains": "validation"}}
+{"id": "fd-009", "tool": "feed_read", "arguments": {"feed": "exemple", "max_entries": 21}, "expected": {"is_error": true, "contains": "validation"}}
+{"id": "fd-010", "tool": "feed_read", "arguments": {"feed": "exemple", "since": "2026-02-30"}, "expected": {"is_error": true, "contains": "invalide"}}
+{"id": "fd-011", "tool": "feed_read", "arguments": {"feed": "exemple", "since": "22/10/2026"}, "expected": {"is_error": true, "contains": "validation"}}
+{"id": "fd-012", "tool": "feed_read", "arguments": {"feed": "exemple", "max_entries": "dix"}, "expected": {"is_error": true, "contains": "validation"}}
+{"id": "fd-013", "allowlist": "vide", "tool": "feed_read", "arguments": {"feed": "exemple"}, "expected": {"is_error": true, "contains": "liste blanche des flux est vide"}}
+{"id": "fd-014", "allowlist": "illisible", "tool": "feed_read", "arguments": {"feed": "exemple"}, "expected": {"is_error": true, "contains": "liste blanche des flux illisible"}}
+{"id": "fd-015", "tool": "feed_read", "arguments": {"feed": "flux-inconnu"}, "expected": {"is_error": true, "contains": "non autorisé"}}
+{"id": "fd-016", "tool": "feed_read", "arguments": {"feed": "licence-a-verifier"}, "expected": {"is_error": true, "contains": "bloqué : licence à vérifier"}}
+{"id": "fd-017", "tool": "feed_read", "arguments": {"feed": "frequence-a-definir"}, "expected": {"is_error": true, "contains": "bloqué : frequence à vérifier"}}
