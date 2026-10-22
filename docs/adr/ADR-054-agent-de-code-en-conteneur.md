@@ -65,8 +65,11 @@ Option 2 (`core/code/agent.py`, `core/code/agent_runner.py`, `core/code/patch.py
   `ruff.toml`, `pytest.ini`, `setup.cfg`, `.coveragerc`, `sitecustomize.py`, `*.pth`…), écarte
   des fichiers ou masque un secret : la copie contrôlée n'est alors pas ce que le patch redonne.
 - Dépense : l'état du proxy, lu une fois les conteneurs arrêtés ; illisible ou arrêt non
-  confirmé, le plafond de la tâche est imputé (R7). N0 : Lucas applique le patch lui-même
-  (`git apply`) ; rien n'est écrit dans ses dépôts.
+  confirmé, le plafond de la tâche est imputé (R7). Ses jetons comptés entrent dans `max_tokens`
+  (`per_code_agent`) ; un plafond imputé n'en compte aucun : une requête confie donc une tâche au
+  plus (`MAX_TASKS_PER_REQUEST`, revue `risk-gate-auditor`), la deuxième est refusée avant tout
+  conteneur et journalisée. N0 : Lucas applique le patch lui-même (`git apply`) ; rien n'est écrit
+  dans ses dépôts.
 
 ## Conséquences
 - La clé n'entre jamais dans le conteneur de l'agent ; une sortie réseau, un réglage ou un outil

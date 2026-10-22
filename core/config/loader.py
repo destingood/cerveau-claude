@@ -312,7 +312,8 @@ class BudgetsConfig(_Strict):
     per_request: PerRequest
     per_committee: PerCommittee
     per_deep_research: PerDeepResearch
-    # ADR-054, F5: one code agent task, its own tokens included; no real task until Lucas decides.
+    # ADR-054, F5: one code agent task, its counted tokens included (a ceiling charged counts none);
+    # no real task until Lucas decides.
     per_code_agent: PerCommittee
     on_exceeded: list[
         Literal["refuse_new_requests", "downgrade_to_fast_or_local", "stop_non_critical_tasks"]

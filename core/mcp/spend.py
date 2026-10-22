@@ -13,7 +13,7 @@ than each of its requests would.
 from __future__ import annotations
 
 from collections.abc import Mapping
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from decimal import Decimal
 from typing import Any
 
@@ -23,14 +23,22 @@ from core.models.meter import LlmCall, Meter
 SPEND_KEY = "depense"
 AGENT_TIER = "agent"
 TOKEN_FIELDS = ("input", "cache_read", "cache_write_5m", "cache_write_1h", "output")
+# A task may be charged its ceiling without a token counted: one per request keeps the request's
+# spend within ``max_usd`` plus what its own model calls count (risk-gate-auditor review, C1).
+MAX_TASKS_PER_REQUEST = 1
 
 
-@dataclass(frozen=True)
+@dataclass
 class IsolatedTask:
-    """The model and the spending ceiling of a code agent task (``code.yaml`` › ``agent``)."""
+    """The model and the spending ceiling of a code agent task (``code.yaml`` › ``agent``).
+
+    ``sent`` counts the request's calls that went past the policy and the budget, whether or not
+    their server then started; the adapter refuses one more beyond ``MAX_TASKS_PER_REQUEST``.
+    """
 
     model: str
     max_usd: Decimal
+    sent: int = field(default=0, compare=False)
 
 
 def _usage(raw: Any) -> TokenUsage | None:

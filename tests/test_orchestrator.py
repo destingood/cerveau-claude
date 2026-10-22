@@ -22,6 +22,7 @@ from langchain_core.outputs import ChatGeneration, ChatResult
 from langchain_core.tools import BaseTool, StructuredTool
 
 from core.audit.chain import AuditJournal, verify
+from core.budget.gate import RequestBudget
 from core.config import BlockedFeatureError, load_config
 from core.config.loader import Config
 from core.mcp.adapter import McpAdapterError, RequestScope
@@ -1109,3 +1110,37 @@ def test_a_reading_in_the_code_pack_is_not_isolated(tmp_path: Path, config_dir: 
     rig.ask("Que contient le dernier commit de mon dépôt ?")
     [scope] = seen
     assert scope.isolation is None
+
+
+def test_a_code_agent_task_routed_outside_code_is_refused(rig: Rig) -> None:
+    """The routing, not the input guard, picks the pack: the policy refuses it there (ADR-051)."""
+    rig.brain.verdict = dict(AGENT_TASK)
+    answer = rig.ask("Corrige le test en échec de mon dépôt.").answer
+    assert answer.statut == "refus"
+    assert answer.message.startswith("action de classe EXECUTION_ISOLEE")
+    assert "aucune capacité EXECUTION_ISOLEE pour le domaine « generaliste »" in answer.message
+    assert rig.brain.roles() == ["classifier", "classifier"]  # guard and route, no planner
+    assert (rig.world.opened, rig.world.calls) == (0, [])  # no tool opens
+    [entry] = rig.decisions()
+    assert (entry["payload"]["route"]["domain"], entry["payload"]["route"]["tools"]) == (
+        "generaliste",
+        [],
+    )
+
+
+def test_a_code_agent_budget_that_cannot_be_built_blocks_the_task(
+    tmp_path: Path, config_dir: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """A budget refused by its own checks blocks the task like a marker does (R7)."""
+
+    def unbuildable(*args: Any, **kwargs: Any) -> RequestBudget:
+        raise ValueError("per_code_agent non défini : tâche bloquée (R7)")
+
+    monkeypatch.setattr(RequestBudget, "for_code_agent", unbuildable)
+    rig, seen = _code_rig(tmp_path, _config(config_dir), AGENT_TASK)
+    answer = rig.ask("Corrige le test en échec de mon dépôt.").answer
+    assert answer.statut == "refus"
+    assert answer.message == (
+        "Agent de code bloqué (R7) : per_code_agent non défini : tâche bloquée (R7)"
+    )
+    assert seen == []  # no tool opens

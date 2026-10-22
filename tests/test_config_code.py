@@ -299,7 +299,9 @@ def test_the_agent_bounds_are_those_of_f5() -> None:
         ("max_usd", "2.01"),
         ("timeout_seconds", 901),
         ("cpus", 2.5),
+        ("cpus", 2.01),
         ("memory_mb", 8192),
+        ("memory_mb", 4097),
         ("pids", 513),
     ],
 )

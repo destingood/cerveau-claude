@@ -260,7 +260,8 @@ class RequestBudget:
     def for_code_agent(
         cls, config: Config, meter: Meter, *, feature: str, **kwargs: Any
     ) -> RequestBudget:
-        """The limits of one code agent task (``per_code_agent``, ADR-054), its tokens included.
+        """The limits of one code agent task (``per_code_agent``, ADR-054), its counted tokens
+        included. A task charged its ceiling counts none: the adapter sends one task per request.
 
         Blocked while ``feature`` (``code.agent``) still holds a marker (R7).
         """

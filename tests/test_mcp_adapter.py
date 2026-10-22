@@ -31,6 +31,7 @@ from core.config.loader import PerRequest
 from core.finance.fixtures import REFERENCE_READ_AT, reference_store
 from core.mcp.adapter import (
     ISOLATION_REFUSAL,
+    TASK_LIMIT_REFUSAL,
     TOOL_TIMEOUT_S,
     McpAdapterError,
     McpPlugin,
@@ -674,7 +675,8 @@ class AgentReply(BaseModel):
 
 
 def _isolated_server(replies: list[Any]) -> MCPServer:
-    """One isolated tool; each call takes the next reply, raising it when it is an exception."""
+    """One isolated tool; each call takes the next reply, raising it when it is an exception and
+    sleeping that many seconds when it is a number."""
     server = MCPServer("web_research")
 
     @server.tool(
@@ -683,10 +685,12 @@ def _isolated_server(replies: list[Any]) -> MCPServer:
         annotations=ISOLATED_ANNOTATIONS,
         structured_output=True,
     )
-    def agent_task(task: str) -> AgentReply:
+    async def agent_task(task: str) -> AgentReply:
         reply = replies.pop(0)
         if isinstance(reply, Exception):
             raise reply
+        if isinstance(reply, float):
+            await asyncio.sleep(reply)
         return AgentReply.model_validate(reply)
 
     return server
@@ -727,15 +731,24 @@ def _isolated_plugin(root: Path) -> Path:
     return directory
 
 
-def code_scope(root: Path, isolation: IsolatedTask | None = TASK) -> RequestScope:
-    return replace(make_scope(root), domain="code", isolation=isolation)
+def code_scope(
+    root: Path, isolation: IsolatedTask | None = TASK, limits: PerRequest = LIMITS
+) -> RequestScope:
+    """A request of the code pack; its task is a copy, so that what it counts stays its own."""
+    task = None if isolation is None else IsolatedTask(isolation.model, isolation.max_usd)
+    return replace(make_scope(root, limits), domain="code", isolation=task)
 
 
 def isolated_session(
-    scope: RequestScope, directory: Path, replies: list[Any], action: Callable[..., Any]
+    scope: RequestScope,
+    directory: Path,
+    replies: list[Any],
+    action: Callable[..., Any],
+    timeout_s: float | None = None,
 ) -> Any:
     async def go() -> Any:
-        async with McpPlugin(directory, scope, target=_isolated_server(replies)) as plugin:
+        server = _isolated_server(replies)
+        async with McpPlugin(directory, scope, target=server, timeout_s=timeout_s) as plugin:
             return await action(plugin)
 
     return asyncio.run(go())
@@ -891,3 +904,92 @@ def test_a_failed_isolated_call_journals_no_digest(tmp_path: Path) -> None:
     )
     [entry] = entries(scope)
     assert (entry["payload"]["status"], entry["payload"]["patch_sha256"]) == ("erreur", None)
+
+
+def test_an_isolated_task_counts_nothing_into_its_equality() -> None:
+    assert IsolatedTask(TASK.model, TASK.max_usd, sent=1) == TASK
+
+
+@pytest.mark.parametrize("concurrent", [False, True], ids=["one-after-the-other", "together"])
+def test_a_request_sends_one_isolated_task_at_most(tmp_path: Path, concurrent: bool) -> None:
+    """A task charged its ceiling counts no token: one task keeps the spend near max_usd (C1)."""
+    scope = code_scope(tmp_path)
+    reply = {"patch": "diff --git a/x b/x", "depense": SPEND}
+
+    async def twice(plugin: McpPlugin) -> list[ToolMessage]:
+        calls = [invoke(plugin, "agent_task", {"task": task}) for task in ("un", "deux")]
+        if concurrent:
+            return list(await asyncio.gather(*calls))
+        return [await call for call in calls]
+
+    messages = isolated_session(scope, _isolated_plugin(tmp_path), [reply, reply], twice)
+    assert sorted(message.status for message in messages) == ["error", "success"]
+    [refused] = [message for message in messages if message.status == "error"]
+    assert TASK_LIMIT_REFUSAL in str(refused.content)
+    assert len(scope.meter.llm_calls) == 1
+    assert scope.budget.tool_calls == 1
+    assert scope.isolation is not None and scope.isolation.sent == 1
+    payloads = sorted((entry["payload"] for entry in entries(scope)), key=lambda p: p["status"])
+    assert [p["status"] for p in payloads] == ["budget_depasse", "ok"]
+    assert payloads[0]["limit"] == "isolated_tasks"
+    assert "spend" not in payloads[0]
+
+
+def _engage(root: Path) -> None:
+    (root / KILL_SWITCH_FILE).parent.mkdir(parents=True, exist_ok=True)
+    (root / KILL_SWITCH_FILE).write_text("", encoding="utf-8")
+
+
+@pytest.mark.parametrize("cause", ["kill-switch", "live"])
+def test_an_open_isolation_still_obeys_the_policy_at_its_call(tmp_path: Path, cause: str) -> None:
+    """The kill switch or an enabled live configuration refuses the task: nothing sent or paid."""
+    scope = code_scope(tmp_path)
+    plugin = McpPlugin(_isolated_plugin(tmp_path), scope, target=object())
+    plugin.plan(_never)
+    assert [tool.name for tool in plugin.tools] == ["agent_task"]
+    if cause == "live":
+        scope = replace(scope, live_enabled=True)
+        plugin._scope = scope
+    else:
+        _engage(tmp_path)
+    with pytest.raises(ToolRefusedError):
+        asyncio.run(plugin.call(spec(plugin, "agent_task"), {"task": "corrige"}))
+    [entry] = entries(scope)
+    assert entry["payload"]["status"] == "refuse"
+    assert (scope.budget.tool_calls, scope.meter.llm_calls) == (0, ())
+    assert scope.isolation is not None and scope.isolation.sent == 0
+
+
+def test_an_open_isolation_still_obeys_the_request_budget(tmp_path: Path) -> None:
+    limits = PerRequest(max_tool_calls=1, max_tokens=150000, max_seconds=120)
+    scope = code_scope(tmp_path, limits=limits)
+    scope.budget.charge_tool_call()  # an earlier call took the last one
+    plugin = McpPlugin(_isolated_plugin(tmp_path), scope, target=object())
+    plugin.plan(_never)
+    with pytest.raises(RequestBudgetExceeded):
+        asyncio.run(plugin.call(spec(plugin, "agent_task"), {"task": "corrige"}))
+    [entry] = entries(scope)
+    assert (entry["payload"]["status"], entry["payload"]["limit"]) == (
+        "budget_depasse",
+        "tool_calls",
+    )
+    assert scope.meter.llm_calls == ()
+    assert scope.isolation is not None and scope.isolation.sent == 0
+
+
+def test_a_task_cut_at_its_timeout_costs_its_ceiling(tmp_path: Path) -> None:
+    """The proxy may have spent until the cut: its ceiling is charged (R7)."""
+    scope = code_scope(tmp_path)
+    message = isolated_session(
+        scope,
+        _isolated_plugin(tmp_path),
+        [5.0],
+        lambda p: invoke(p, "agent_task", {"task": "corrige"}),
+        timeout_s=0.05,
+    )
+    assert message.status == "error"
+    [call] = scope.meter.llm_calls
+    assert (call.tier, call.usd) == (CEILING_TIER, Decimal("2.000000"))
+    [entry] = entries(scope)
+    assert entry["payload"]["status"] == "delai"
+    assert entry["payload"]["spend"] == [call.to_payload()]

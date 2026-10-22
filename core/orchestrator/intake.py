@@ -247,6 +247,8 @@ def _isolate(run: Run) -> str | None:
         )
     except BlockedFeatureError as exc:
         return "Agent de code bloqué (R7) : " + " ; ".join(exc.reasons)
+    except ValueError as exc:
+        return f"Agent de code bloqué (R7) : {exc}"
     agent = run.config.code.agent
     run.budget = budget
     run.isolation = IsolatedTask(model=agent.model, max_usd=agent.max_usd)

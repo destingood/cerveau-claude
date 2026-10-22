@@ -346,6 +346,24 @@ def test_a_research_that_cannot_run_is_refused_before_any_tool(
     assert payload["route"]["mode"] == "direct" and "research" not in payload
 
 
+def test_a_code_agent_task_asked_with_approfondi_is_refused_before_any_tool(rig: Rig) -> None:
+    """The deep research picks its pack; the policy refuses EXECUTION_ISOLEE there (ADR-051)."""
+    task = {"decision": "ok", "classe_action": "EXECUTION_ISOLEE", "raison": "tâche de code"}
+
+    def classifier(messages: Sequence[BaseMessage]) -> str:
+        first = str(messages[1].content)
+        return as_json(task if first.startswith("Question à classer") else rig.route)
+
+    rig.brain.scripts["classifier"] = classifier
+    answer = rig.ask("Corrige le test en échec de mon dépôt.", research=True).answer
+    assert answer.statut == "refus"
+    assert answer.message.startswith("action de classe EXECUTION_ISOLEE")
+    assert "aucune capacité EXECUTION_ISOLEE pour le domaine « recherche »" in answer.message
+    assert rig.webs == [] and "planner" not in rig.brain.roles()
+    route = rig.decision()["route"]
+    assert (route["domain"], route["mode"], route["tools"]) == ("recherche", "direct", [])
+
+
 # --- the kill switch and the specs -------------------------------------------------------------
 
 

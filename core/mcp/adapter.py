@@ -16,7 +16,9 @@ reaches a model through this adapter; the graph decides what the reader and the 
 
 A tool of class ``EXECUTION_ISOLEE`` (the code agent, ADR-054) is offered only to a request that
 the input guard classed so and that has its own task budget (``RequestScope.isolation``). Once
-sent, its call charges the task's model spend to the request's meter, whatever the outcome.
+sent, its call charges the task's model spend to the request's meter, whatever the outcome. A
+request sends one task at most (``MAX_TASKS_PER_REQUEST``): a task charged its ceiling counts no
+token against ``max_tokens``, so only this bound keeps the request's spend near ``max_usd``.
 """
 
 from __future__ import annotations
@@ -42,7 +44,7 @@ from mcp.types import Tool
 from core.audit.chain import AuditJournal
 from core.budget.gate import RequestBudget, RequestBudgetExceeded
 from core.config.loader import AutonomyConfig
-from core.mcp.spend import IsolatedTask, charge
+from core.mcp.spend import MAX_TASKS_PER_REQUEST, IsolatedTask, charge
 from core.mcp.time_limit import DEFAULT_TOOL_TIMEOUT_S, time_limit_meta
 from core.models.meter import LlmCall, Meter, SearchCall
 from core.policy.engine import PolicyDecision, decide, kill_switch_engaged
@@ -56,6 +58,10 @@ DIGEST = re.compile(r"[0-9a-f]{64}")
 ISOLATION_REFUSAL = (
     "classe EXECUTION_ISOLEE : la requête n'est pas classée EXECUTION_ISOLEE par le contrôle "
     "d'entrée (ADR-054)"
+)
+TASK_LIMIT_REFUSAL = (
+    f"une requête confie {MAX_TASKS_PER_REQUEST} tâche à l'agent de code au plus (ADR-054) : "
+    "réponds avec le résultat de la première"
 )
 
 
@@ -341,11 +347,17 @@ class McpPlugin:
         if decision.effect != "executer":
             self._journal(spec, shown, status="refuse", policy=decision.to_payload())
             raise ToolRefusedError(decision)
+        isolated = isolation if spec.action_class == ISOLATED else None
+        if isolated is not None and isolated.sent >= MAX_TASKS_PER_REQUEST:
+            self._journal(spec, shown, status="budget_depasse", limit="isolated_tasks")
+            raise ToolException(f"{spec.name} : {TASK_LIMIT_REFUSAL}")
         try:
             self._scope.budget.charge_tool_call()
         except RequestBudgetExceeded as exc:
             self._journal(spec, shown, status="budget_depasse", limit=exc.limit)
             raise
+        if isolated is not None:  # counted before any await: a concurrent call sees it
+            isolated.sent += 1
         failure = await self._started()
         if failure is not None or self._client is None:
             failure = failure or f"plugin « {self.manifest.id} » : session fermée"
@@ -391,8 +403,8 @@ class McpPlugin:
                 size = len(json.dumps(result, ensure_ascii=False).encode("utf-8"))
         spend: tuple[LlmCall, ...] = ()
         task: dict[str, Any] = {}
-        if spec.action_class == ISOLATED and isolation is not None:  # sent: never zero (R7)
-            spend = charge(self._scope.meter, isolation, role=self.manifest.id, result=result)
+        if isolated is not None:  # sent: never zero (R7)
+            spend = charge(self._scope.meter, isolated, role=self.manifest.id, result=result)
             task["patch_sha256"] = patch_digest(result)
         self._journal(
             spec,
