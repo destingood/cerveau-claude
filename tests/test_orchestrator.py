@@ -9,6 +9,7 @@ from collections.abc import AsyncIterator, Callable, Iterator, Mapping, Sequence
 from contextlib import asynccontextmanager, contextmanager
 from dataclasses import dataclass, field, replace
 from datetime import UTC, datetime
+from decimal import Decimal
 from pathlib import Path
 from typing import Any
 
@@ -24,6 +25,7 @@ from core.audit.chain import AuditJournal, verify
 from core.config import BlockedFeatureError, load_config
 from core.config.loader import Config
 from core.mcp.adapter import McpAdapterError, RequestScope
+from core.mcp.spend import IsolatedTask
 from core.models.router import ModelRequest, ModelRouter
 from core.orchestrator.answer import _Links
 from core.orchestrator.graph import Orchestrator, RunResult
@@ -33,6 +35,7 @@ from core.orchestrator.runtime import OUTPUT_CAPS, WEB_PLUGIN
 from core.orchestrator.state import MARKER
 from core.policy.engine import KILL_SWITCH_FILE
 from core.verification.domains import REMOVED
+from tests.test_config_code import unblock_agent
 
 REPO_CONFIG = Path(__file__).resolve().parents[1] / "config"
 NOW = datetime(2026, 10, 18, 12, 0, tzinfo=UTC)
@@ -1034,3 +1037,75 @@ def test_a_refusal_is_not_an_error(rig: Rig, tmp_path: Path) -> None:
     kill.write_text("arrêt", encoding="utf-8")
     assert rig.ask("Quelle est la population de la France ?").answer.statut == "refus"
     assert _errors(rig) == []
+
+
+# --- a code agent task (ADR-054) ----------------------------------------------------------------
+
+AGENT_TASK = {
+    "decision": "ok",
+    "classe_action": "EXECUTION_ISOLEE",
+    "raison": "tâche de code demandée",
+}
+CODE_ROUTE = {
+    "domaine": "code",
+    "complexite": "simple",
+    "importance": "normale",
+    "web": False,
+    "raison": "dépôt de Lucas",
+}
+
+
+class _EmptyToolbox:
+    def __init__(self) -> None:
+        self.tools: list[BaseTool] = []
+        self.skipped: dict[str, str] = {}
+        self.version = "code_repo@0.1.0"
+
+    async def call(self, name: str, arguments: dict[str, Any], **_: Any) -> dict[str, Any]:
+        raise AssertionError("never called")
+
+
+def _code_rig(root: Path, config: Config, verdict: dict[str, Any]) -> tuple[Rig, list[Any]]:
+    """A rig routed to the code pack, whose code_repo opener records the scope it is given."""
+    rig = make_rig(root, config, Brain(verdict=verdict, route=dict(CODE_ROUTE)))
+    seen: list[RequestScope] = []
+
+    @asynccontextmanager
+    async def code_repo(scope: RequestScope) -> AsyncIterator[_EmptyToolbox]:
+        seen.append(scope)
+        yield _EmptyToolbox()
+
+    rig.orchestrator.toolboxes = {"code_repo": code_repo}
+    return rig, seen
+
+
+def test_a_code_agent_task_waits_for_lucas(tmp_path: Path, config_dir: Path) -> None:
+    rig, seen = _code_rig(tmp_path, _config(config_dir), AGENT_TASK)
+    answer = rig.ask("Corrige le test en échec de mon dépôt.").answer
+    assert answer.statut == "refus"
+    assert answer.message.startswith("Agent de code bloqué (R7) : ")
+    assert "agent.image" in answer.message
+    assert rig.brain.roles() == ["classifier", "classifier"]  # guard and route, no planner
+    assert seen == []  # no tool opens
+
+
+def test_a_code_agent_task_gets_its_own_budget_and_spend(
+    tmp_path: Path, config_dir: Path, tmp_path_factory: pytest.TempPathFactory
+) -> None:
+    unblock_agent(config_dir, str(tmp_path_factory.mktemp("depot")))
+    rig, seen = _code_rig(tmp_path, load_config(config_dir), AGENT_TASK)
+    rig.brain.planner = [final()]
+    rig.ask("Corrige le test en échec de mon dépôt.")
+    [scope] = seen
+    assert scope.isolation == IsolatedTask(model="claude-sonnet-5-5", max_usd=Decimal("2"))
+    assert scope.budget.max_seconds == 1000  # per_code_agent, not per_request
+    assert scope.domain == "code"
+
+
+def test_a_reading_in_the_code_pack_is_not_isolated(tmp_path: Path, config_dir: Path) -> None:
+    reading = {"decision": "ok", "classe_action": "LECTURE", "raison": "lecture du dépôt"}
+    rig, seen = _code_rig(tmp_path, _config(config_dir), reading)
+    rig.brain.planner = [final()]
+    rig.ask("Que contient le dernier commit de mon dépôt ?")
+    [scope] = seen
+    assert scope.isolation is None

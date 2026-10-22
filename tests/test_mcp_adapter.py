@@ -11,6 +11,7 @@ import sys
 from collections.abc import AsyncIterator, Awaitable, Callable
 from contextlib import asynccontextmanager
 from dataclasses import replace
+from decimal import Decimal
 from pathlib import Path
 from typing import Any
 
@@ -18,8 +19,10 @@ import pytest
 import yaml
 from langchain_core.messages import ToolMessage
 from langchain_core.tools import ToolException
-from mcp import StdioServerParameters
+from mcp import Client, StdioServerParameters
 from mcp.server import MCPServer
+from mcp.types import ToolAnnotations
+from pydantic import BaseModel
 
 from core.audit.chain import AuditJournal, verify
 from core.budget.gate import RequestBudget, RequestBudgetExceeded
@@ -27,6 +30,7 @@ from core.config import load_config
 from core.config.loader import PerRequest
 from core.finance.fixtures import REFERENCE_READ_AT, reference_store
 from core.mcp.adapter import (
+    ISOLATION_REFUSAL,
     TOOL_TIMEOUT_S,
     McpAdapterError,
     McpPlugin,
@@ -34,8 +38,10 @@ from core.mcp.adapter import (
     ToolRefusedError,
     server_environment,
 )
+from core.mcp.spend import IsolatedTask
 from core.mcp.time_limit import TIME_LIMIT_META_KEY
 from core.models import CostCalculator, Meter
+from core.models.meter import CEILING_TIER
 from core.net.guard import FetchError
 from core.orchestrator.runtime import LazyPlugin, _Holder
 from core.policy.engine import KILL_SWITCH_FILE
@@ -649,3 +655,197 @@ def test_lazy_plugin_plans_a_toolbox_without_starting_it(scope: RequestScope) ->
     names, result = asyncio.run(go())
     assert sorted(names) == ["web_read", "web_search"]
     assert result["results"][0]["title"] == HITS[0].title
+
+
+# --- an isolated tool, the code agent's (ADR-054) ----------------------------------------------
+
+TASK_DESCRIPTION = "Tâche de code dans un conteneur isolé (double de test)."
+ISOLATED_ANNOTATIONS = ToolAnnotations(
+    read_only_hint=False, idempotent_hint=False, destructive_hint=False, open_world_hint=False
+)
+TASK = IsolatedTask(model="claude-sonnet-5-5", max_usd=Decimal(2))
+TOKENS = {"input": 1000, "cache_read": 0, "cache_write_5m": 0, "cache_write_1h": 0, "output": 100}
+SPEND = {"modeles": {TASK.model: TOKENS}, "cout_inconnu": False}  # 1000 × 2 + 100 × 10 per MTok
+
+
+class AgentReply(BaseModel):
+    patch: str
+    depense: dict[str, Any] | None = None
+
+
+def _isolated_server(replies: list[Any]) -> MCPServer:
+    """One isolated tool; each call takes the next reply, raising it when it is an exception."""
+    server = MCPServer("web_research")
+
+    @server.tool(
+        name="agent_task",
+        description=TASK_DESCRIPTION,
+        annotations=ISOLATED_ANNOTATIONS,
+        structured_output=True,
+    )
+    def agent_task(task: str) -> AgentReply:
+        reply = replies.pop(0)
+        if isinstance(reply, Exception):
+            raise reply
+        return AgentReply.model_validate(reply)
+
+    return server
+
+
+def _isolated_plugin(root: Path) -> Path:
+    """A copy of web_research whose manifest declares one EXECUTION_ISOLEE tool."""
+    directory = root / "plugins" / "web_research"
+    shutil.copytree(PLUGIN, directory, ignore=shutil.ignore_patterns("__pycache__"))
+
+    async def published() -> Any:
+        async with Client(_isolated_server([])) as client:
+            return (await client.list_tools()).tools
+
+    [tool] = asyncio.run(published())
+    draft = "https://json-schema.org/draft/2020-12/schema"
+    for name, schema in (("in", tool.input_schema), ("out", tool.output_schema)):
+        path = directory / "schemas" / f"agent_task.{name}.json"
+        path.write_text(json.dumps({"$schema": draft, **schema}), encoding="utf-8")
+    manifest = yaml.safe_load((directory / "plugin.yaml").read_text(encoding="utf-8"))
+    manifest["tools"] = [
+        {
+            "name": "agent_task",
+            "description": TASK_DESCRIPTION,
+            "action_class": "EXECUTION_ISOLEE",
+            "annotations": {
+                "readOnlyHint": False,
+                "idempotentHint": False,
+                "destructiveHint": False,
+                "openWorldHint": False,
+            },
+            "input_schema": "schemas/agent_task.in.json",
+            "output_schema": "schemas/agent_task.out.json",
+        }
+    ]
+    manifest["runtime"].pop("priced_tools", None)
+    (directory / "plugin.yaml").write_text(yaml.safe_dump(manifest), encoding="utf-8")
+    return directory
+
+
+def code_scope(root: Path, isolation: IsolatedTask | None = TASK) -> RequestScope:
+    return replace(make_scope(root), domain="code", isolation=isolation)
+
+
+def isolated_session(
+    scope: RequestScope, directory: Path, replies: list[Any], action: Callable[..., Any]
+) -> Any:
+    async def go() -> Any:
+        async with McpPlugin(directory, scope, target=_isolated_server(replies)) as plugin:
+            return await action(plugin)
+
+    return asyncio.run(go())
+
+
+async def _never() -> None:
+    raise AssertionError("never started")
+
+
+def test_an_isolated_tool_is_offered_only_to_an_isolated_request(tmp_path: Path) -> None:
+    directory = _isolated_plugin(tmp_path)
+    for root, isolation in ((tmp_path / "a", None), (tmp_path / "b", TASK)):
+        scope = code_scope(root, isolation)
+        listed = isolated_session(scope, directory, [], lambda p: asyncio.sleep(0, p))
+        planned = McpPlugin(directory, scope, target=object())
+        planned.plan(_never)
+        for plugin in (listed, planned):
+            if isolation is None:
+                assert (plugin.tools, plugin.skipped) == ([], {"agent_task": ISOLATION_REFUSAL})
+            else:
+                assert [tool.name for tool in plugin.tools] == ["agent_task"]
+                assert plugin.skipped == {}
+
+
+def test_isolation_does_not_bypass_the_policy(tmp_path: Path) -> None:
+    """A task scope outside the code pack: the policy still refuses (ADR-051)."""
+    scope = replace(code_scope(tmp_path), domain="generaliste")
+    plugin = isolated_session(scope, _isolated_plugin(tmp_path), [], lambda p: asyncio.sleep(0, p))
+    assert plugin.tools == []
+    assert plugin.skipped["agent_task"].startswith("politique : ")
+    assert "aucune capacité EXECUTION_ISOLEE" in plugin.skipped["agent_task"]
+
+
+def test_a_call_outside_isolation_is_refused_before_anything(tmp_path: Path) -> None:
+    scope = code_scope(tmp_path, None)
+    plugin = McpPlugin(_isolated_plugin(tmp_path), scope, target=object())
+    plugin.plan(_never)
+    with pytest.raises(ToolException, match=r"agent_task : classe EXECUTION_ISOLEE"):
+        asyncio.run(plugin.call(spec(plugin, "agent_task"), {"task": "corrige"}))
+    [entry] = entries(scope)
+    assert (entry["payload"]["status"], entry["payload"]["error"]) == (
+        "hors_perimetre",
+        ISOLATION_REFUSAL,
+    )
+    assert (scope.budget.tool_calls, scope.meter.llm_calls) == (0, ())
+
+
+def test_an_isolated_call_charges_the_spend_it_reports(tmp_path: Path) -> None:
+    scope = code_scope(tmp_path)
+    reply = {"patch": "diff --git a/x b/x", "depense": SPEND}
+    message = isolated_session(
+        scope,
+        _isolated_plugin(tmp_path),
+        [reply],
+        lambda p: invoke(p, "agent_task", {"task": "corrige"}),
+    )
+    assert message.status != "error", message.content
+    [call] = scope.meter.llm_calls
+    assert (call.role, call.tier, call.model) == ("web_research", "agent", TASK.model)
+    assert call.usd == Decimal("0.003000")
+    assert scope.meter.total_tokens == 1100  # counted against the task's budget
+    [entry] = entries(scope)
+    assert entry["payload"]["status"] == "ok"
+    assert entry["payload"]["spend"] == [call.to_payload()]
+
+
+@pytest.mark.parametrize(
+    ("reply", "status"),
+    [
+        ({"patch": "diff"}, "ok"),
+        ({"patch": "diff", "depense": {"modeles": {}}}, "ok"),
+        (ValueError("échec de la tâche"), "erreur"),
+    ],
+    ids=["no-report", "unreadable", "failed"],
+)
+def test_a_sent_task_without_a_readable_report_costs_its_ceiling(
+    tmp_path: Path, reply: Any, status: str
+) -> None:
+    scope = code_scope(tmp_path)
+    isolated_session(
+        scope,
+        _isolated_plugin(tmp_path),
+        [reply],
+        lambda p: invoke(p, "agent_task", {"task": "corrige"}),
+    )
+    [call] = scope.meter.llm_calls
+    assert (call.tier, call.usd) == (CEILING_TIER, Decimal("2.000000"))
+    [entry] = entries(scope)
+    assert entry["payload"]["status"] == status
+    assert entry["payload"]["spend"] == [call.to_payload()]
+
+
+def test_a_task_whose_server_cannot_start_costs_nothing(tmp_path: Path) -> None:
+    """Nothing was sent: no model could run, so nothing is charged."""
+    scope = code_scope(tmp_path)
+    plugin = McpPlugin(_isolated_plugin(tmp_path), scope, target=object())
+
+    async def failing() -> None:
+        raise McpAdapterError("plugin « web_research » : démarrage impossible")
+
+    plugin.plan(failing)
+    with pytest.raises(McpAdapterError, match="démarrage impossible"):
+        asyncio.run(plugin.call(spec(plugin, "agent_task"), {"task": "corrige"}))
+    assert scope.meter.llm_calls == ()
+    [entry] = entries(scope)
+    assert entry["payload"]["status"] == "demarrage_impossible"
+    assert "spend" not in entry["payload"]
+
+
+def test_a_tool_of_another_class_charges_no_spend(scope: RequestScope) -> None:
+    session(scope, lambda p: invoke(p, "web_search", {"query": "q"}))
+    assert scope.meter.llm_calls == ()
+    assert entries(scope)[0]["payload"]["spend"] is None

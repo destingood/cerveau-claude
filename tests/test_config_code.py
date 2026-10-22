@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import re
 from collections.abc import Callable
+from decimal import Decimal
 from pathlib import Path
 from typing import Any
 
@@ -11,7 +12,7 @@ import pytest
 import yaml
 
 from core.config import ConfigError, load_config
-from core.config.loader import CERVEAU_ROOT, CHECKS_CEILINGS
+from core.config.loader import AGENT_CEILINGS, CERVEAU_ROOT, CHECKS_CEILINGS
 from tests.conftest import REPO_ROOT
 
 IMAGE = "sha256:" + "a" * 64
@@ -227,4 +228,147 @@ def test_no_token_field_exists(config_dir: Path, repo_path: str) -> None:
     """E6: code_ci reads public repositories without a token; none can be written here."""
     with_repositories(config_dir, {"id": "a", "path": repo_path, "token": "x"})
     with pytest.raises(ConfigError, match=re.escape("repositories.list[CodeRepository].0.token")):
+        load_config(config_dir)
+
+
+# --- the code agent (ADR-054, F5, F6) ------------------------------------------------------------
+
+AGENT_BLOCKERS = [
+    "code.yaml › repositories = A_DEFINIR",
+    "code.yaml › checks.image = A_DEFINIR",
+    "code.yaml › agent.image = A_DEFINIR",
+    "code.yaml › agent.proxy_image = A_DEFINIR",
+    "code.yaml › agent.max_requests = A_DEFINIR",
+    "budgets.yaml › llm_budget_eur.daily = A_DEFINIR",
+    "budgets.yaml › llm_budget_eur.monthly = A_DEFINIR",
+    "budgets.yaml › per_code_agent.max_tokens = A_DEFINIR",
+    "budgets.yaml › per_code_agent.max_seconds = A_DEFINIR",
+    "budgets.yaml › per_code_agent.max_tool_calls = A_DEFINIR",
+]
+
+
+def unblock_agent(config_dir: Path, repo_path: str, **per_code_agent: int) -> None:
+    """Every value the code agent waits for, as Lucas would set them."""
+    with_repositories(config_dir, {"id": "mon-projet", "path": repo_path})
+    agent = {"image": IMAGE, "proxy_image": "sha256:" + "b" * 64, "max_requests": 60}
+    edit_code(config_dir, lambda d: (d["checks"].update(image=IMAGE), d["agent"].update(agent)))
+    path = config_dir / "budgets.yaml"
+    data = yaml.safe_load(path.read_text(encoding="utf-8"))
+    data["llm_budget_eur"] = {"daily": "5.00", "monthly": "50.00"}
+    limits = {"max_tokens": 2_000_000, "max_seconds": 1000, "max_tool_calls": 5}
+    data["per_code_agent"] = limits | per_code_agent
+    path.write_text(yaml.safe_dump(data), encoding="utf-8")
+
+
+def test_the_agent_waits_for_lucas() -> None:
+    config = load_config(REPO_ROOT / "config")
+    agent = config.code.agent
+    assert (agent.image, agent.proxy_image, agent.max_requests) == ("A_DEFINIR",) * 3
+    assert agent.model == "claude-sonnet-5-5"  # F6
+    assert config.blockers("code.agent") == AGENT_BLOCKERS
+
+
+def test_the_agent_unblocks_once_every_value_is_set(config_dir: Path, repo_path: str) -> None:
+    unblock_agent(config_dir, repo_path)
+    config = load_config(config_dir)
+    assert config.blockers("code.agent") == []
+    limits = config.budgets.per_code_agent
+    assert (limits.max_tokens, limits.max_seconds, limits.max_tool_calls) == (2_000_000, 1000, 5)
+
+
+def test_the_agent_bounds_are_those_of_f5() -> None:
+    agent = load_config(REPO_ROOT / "config").code.agent
+    bounds = {name: getattr(agent, name) for name in AGENT_CEILINGS}
+    assert bounds == dict(AGENT_CEILINGS)
+    assert bounds == {
+        "max_turns": 30,
+        "max_usd": Decimal(2),
+        "timeout_seconds": 900,
+        "cpus": 2,
+        "memory_mb": 4096,
+        "pids": 512,
+    }
+    with pytest.raises(TypeError):
+        AGENT_CEILINGS["max_turns"] = 100  # type: ignore[index]
+
+
+@pytest.mark.parametrize(
+    ("field", "value"),
+    [
+        ("max_turns", 31),
+        ("max_usd", "2.01"),
+        ("timeout_seconds", 901),
+        ("cpus", 2.5),
+        ("memory_mb", 8192),
+        ("pids", 513),
+    ],
+)
+def test_an_agent_bound_cannot_go_above_f5(config_dir: Path, field: str, value: object) -> None:
+    edit_code(config_dir, lambda d: d["agent"].update({field: value}))
+    with pytest.raises(ConfigError, match=re.escape(f"{field} : {value} dépasse le plafond")):
+        load_config(config_dir)
+
+
+def test_the_agent_bounds_may_be_lowered(config_dir: Path) -> None:
+    lower = {
+        "max_turns": 10,
+        "max_usd": "0.50",
+        "timeout_seconds": 300,
+        "cpus": 1.0,
+        "memory_mb": 2048,
+        "pids": 128,
+    }
+    edit_code(config_dir, lambda d: d["agent"].update(lower))
+    agent = load_config(config_dir).code.agent
+    assert {name: getattr(agent, name) for name in lower} == lower | {"max_usd": Decimal("0.50")}
+
+
+@pytest.mark.parametrize(
+    ("field", "value"),
+    [
+        ("max_usd", "0"),
+        ("max_usd", "-1"),
+        ("max_usd", "0.005"),  # cents at most
+        ("max_usd", "NaN"),
+        ("max_usd", "Infinity"),
+        ("max_turns", 0),
+        ("max_turns", True),
+        ("max_requests", 0),
+        ("max_requests", "60"),
+        ("timeout_seconds", 1.5),
+        ("cpus", float("nan")),
+        ("pids", -1),
+    ],
+)
+def test_an_agent_bound_is_a_positive_number(config_dir: Path, field: str, value: object) -> None:
+    edit_code(config_dir, lambda d: d["agent"].update({field: value}))
+    with pytest.raises(ConfigError, match=re.escape(f"agent.{field}")):
+        load_config(config_dir)
+
+
+@pytest.mark.parametrize("model", ["sonnet", "claude-Sonnet-5-5", "claude-sonnet 5", "gpt-5"])
+def test_the_agent_model_is_a_claude_identifier(config_dir: Path, model: str) -> None:
+    edit_code(config_dir, lambda d: d["agent"].update(model=model))
+    with pytest.raises(ConfigError, match=re.escape("agent.model")):
+        load_config(config_dir)
+
+
+def test_the_agent_model_must_be_priced(config_dir: Path) -> None:
+    """R1: the proxy and the meter price its calls; an unpriced model is refused at load."""
+    edit_code(config_dir, lambda d: d["agent"].update(model="claude-sonnet-9-9"))
+    with pytest.raises(ConfigError, match=re.escape("prix absent pour claude-sonnet-9-9")):
+        load_config(config_dir)
+
+
+@pytest.mark.parametrize("field", ["image", "proxy_image"])
+def test_an_agent_image_must_be_pinned_by_content(config_dir: Path, field: str) -> None:
+    edit_code(config_dir, lambda d: d["agent"].update({field: "cerveau/agent:latest"}))
+    with pytest.raises(ConfigError, match=re.escape(f"agent.{field}")):
+        load_config(config_dir)
+
+
+def test_no_agent_field_may_be_added(config_dir: Path) -> None:
+    """The key, the tools and the network are not settings: the code fixes them (ADR-054)."""
+    edit_code(config_dir, lambda d: d["agent"].update(api_key="x"))
+    with pytest.raises(ConfigError, match=re.escape("agent.api_key")):
         load_config(config_dir)

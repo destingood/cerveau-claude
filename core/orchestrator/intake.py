@@ -11,7 +11,9 @@ routed to the committee (D15). Its session budget replaces the request's before 
 open; while that budget or the committee's configuration holds a marker, the question is refused
 rather than answered by the planner alone (R7). A question asked with ``--approfondi`` goes to the
 first pack with a deep research, under that research's budget and on the same terms (ADR-045);
-the router never chooses one (D14).
+the router never chooses one (D14). A question the input guard classed ``EXECUTION_ISOLEE`` goes to
+the code agent of its pack (ADR-054): the task's budget replaces the request's, and its model and
+ceiling open the agent's tool, on the same terms; neither the committee nor a deep research applies.
 """
 
 from __future__ import annotations
@@ -27,6 +29,7 @@ from langchain_core.messages import HumanMessage, SystemMessage
 from core.budget.gate import RequestBudget
 from core.config.loader import BlockedFeatureError
 from core.guardrails.input import InputRefusedError, check_question
+from core.mcp.spend import IsolatedTask
 from core.orchestrator.packs import DEFAULT_DOMAIN
 from core.orchestrator.runtime import WEB_PLUGIN, Run
 from core.orchestrator.state import (
@@ -43,6 +46,7 @@ from core.orchestrator.structured import StructuredOutputError, ask_json
 from core.policy.engine import ROUTED_ACTION_CLASSES, decide, kill_switch_engaged
 
 TIMEZONE = "Europe/Paris"
+CODE_AGENT_FEATURE = "code.agent"
 KILL_MESSAGE = (
     "Le kill switch est engagé : CERVEAU est à l'arrêt et ne traite aucune requête (R4). "
     "Seul Lucas peut le désengager."
@@ -230,6 +234,25 @@ def _deepen(run: Run, domain: str) -> tuple[Mode, str | None]:
     return "approfondi", None
 
 
+def _isolate(run: Run) -> str | None:
+    """The reason a code agent task is refused (ADR-054); none once its scope is set.
+
+    Its budget replaces the request's here, before any tool opens, as a committee's does. The
+    feature lists ``per_code_agent``: a marker left there blocks it.
+    """
+    clock = {"clock": run.budget_clock} if run.budget_clock is not None else {}
+    try:
+        budget = RequestBudget.for_code_agent(
+            run.config, run.meter, feature=CODE_AGENT_FEATURE, **clock
+        )
+    except BlockedFeatureError as exc:
+        return "Agent de code bloqué (R7) : " + " ; ".join(exc.reasons)
+    agent = run.config.code.agent
+    run.budget = budget
+    run.isolation = IsolatedTask(model=agent.model, max_usd=agent.max_usd)
+    return None
+
+
 def _prudent_route(reason: str) -> RouteVerdict:
     return RouteVerdict(complexite="complexe", importance="elevee", web=True, raison=reason)
 
@@ -255,7 +278,9 @@ async def route_node(run: Run, state: CerveauState) -> dict[str, Any]:
     mode: Mode = "direct"
     note: str | None = None
     if refused is None:
-        if run.research_forced:
+        if guarded.action_class == "EXECUTION_ISOLEE":
+            blocked = _isolate(run)
+        elif run.research_forced:
             mode, blocked = _deepen(run, domain)
         else:
             mode, note, blocked = _convene(run, domain, asked=verdict.mode == "comite")

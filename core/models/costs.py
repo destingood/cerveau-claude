@@ -154,5 +154,9 @@ class CostCalculator:
         per_1000 = _price(price.usd_per_1000_requests, f"search.{provider}")  # type: ignore[arg-type]
         return _round_up(_CTX.divide(_CTX.multiply(Decimal(requests), per_1000), _PER_1000))
 
+    def round_up(self, usd: Decimal) -> Decimal:
+        """An amount in USD rounded up to the precision of every computed cost."""
+        return _round_up(usd)
+
     def to_eur(self, usd: Decimal) -> Decimal:
         return _round_up(_CTX.divide(usd, self.rate))

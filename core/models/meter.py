@@ -18,6 +18,8 @@ from langchain_core.outputs import ChatGeneration, LLMResult
 
 from core.models.costs import COST_SCHEMA, CostCalculator, CostUnavailableError, TokenUsage
 
+CEILING_TIER = "plafond"  # an LlmCall charged at its ceiling, usage unknown (ADR-054)
+
 
 @dataclass(frozen=True)
 class LlmCall:
@@ -85,6 +87,26 @@ class Meter:
             model_reported=model_reported,
             usage=usage,
             price_tier=price_tier,
+            usd=usd,
+            eur=self._calculator.to_eur(usd),
+        )
+        with self._lock:
+            self._llm.append(call)
+        return call
+
+    def record_ceiling(self, *, role: str, model: str, usd: Decimal) -> LlmCall:
+        """Calls whose usage is unknown, charged at the ceiling that bounded them (R7): an isolated
+        task whose spend could not be read (ADR-054). No token is counted; ``tier`` says why."""
+        if not usd.is_finite() or usd <= 0:
+            raise ValueError(f"plafond invalide : {usd}")
+        usd = self._calculator.round_up(usd)
+        call = LlmCall(
+            role=role,
+            tier=CEILING_TIER,
+            model=model,
+            model_reported=None,
+            usage=TokenUsage(),
+            price_tier=0,
             usd=usd,
             eur=self._calculator.to_eur(usd),
         )

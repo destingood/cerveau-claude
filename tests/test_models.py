@@ -24,6 +24,7 @@ from core.models import (
     TokenUsage,
     anthropic_factory,
 )
+from core.models.meter import CEILING_TIER
 
 REPO_CONFIG = Path(__file__).resolve().parents[1] / "config"
 
@@ -180,6 +181,38 @@ def test_meter_totals_and_payload(calc: CostCalculator) -> None:
         "cost_usd": "0.010000",
         "cost_eur": "0.008887",
     }
+
+
+def test_a_ceiling_is_charged_when_the_usage_is_unknown(calc: CostCalculator) -> None:
+    """ADR-054: an isolated task whose spend cannot be read costs its whole ceiling (R7)."""
+    meter = Meter(calc)
+    call = meter.record_ceiling(role="code_agent", model="claude-sonnet-5-5", usd=Decimal(2))
+    assert (call.tier, call.model, call.model_reported, call.price_tier) == (
+        CEILING_TIER,
+        "claude-sonnet-5-5",
+        None,
+        0,
+    )
+    assert call.usage == TokenUsage()  # no token is invented
+    assert (call.usd, call.eur) == (Decimal("2.000000"), Decimal("1.777304"))  # rounded up
+    assert meter.llm_calls == (call,)
+    assert (meter.total_usd, meter.total_tokens) == (Decimal("2.000000"), 0)
+    assert meter.to_payload()["llm_calls"][0]["tier"] == "plafond"
+
+
+def test_a_ceiling_is_rounded_up_like_any_cost(calc: CostCalculator) -> None:
+    assert calc.round_up(Decimal("0.1234561")) == Decimal("0.123457")
+    assert calc.round_up(Decimal("0.5")) == Decimal("0.500000")
+    call = Meter(calc).record_ceiling(role="r", model="m", usd=Decimal("0.1234561"))
+    assert (call.usd, call.eur) == (Decimal("0.123457"), Decimal("0.109711"))
+
+
+@pytest.mark.parametrize("usd", ["0", "-1", "NaN", "Infinity"])
+def test_a_ceiling_is_a_positive_amount(calc: CostCalculator, usd: str) -> None:
+    meter = Meter(calc)
+    with pytest.raises(ValueError, match="plafond invalide"):
+        meter.record_ceiling(role="r", model="m", usd=Decimal(usd))
+    assert meter.llm_calls == ()
 
 
 def test_callback_records_every_call(calc: CostCalculator) -> None:

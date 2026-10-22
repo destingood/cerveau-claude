@@ -312,6 +312,8 @@ class BudgetsConfig(_Strict):
     per_request: PerRequest
     per_committee: PerCommittee
     per_deep_research: PerDeepResearch
+    # ADR-054, F5: one code agent task, its own tokens included; no real task until Lucas decides.
+    per_code_agent: PerCommittee
     on_exceeded: list[
         Literal["refuse_new_requests", "downgrade_to_fast_or_local", "stop_non_critical_tasks"]
     ] = Field(min_length=1)
@@ -783,9 +785,48 @@ class CodeChecks(_Strict):
         return self
 
 
+# Bounds of one code agent task that Lucas set (F5, ADR-054): turns, dollars held by the API
+# proxy (ADR-053), seconds and container. The configuration may lower them, never raise them (R9).
+AGENT_CEILINGS: Mapping[str, int | float | Decimal] = MappingProxyType(
+    {
+        "max_turns": 30,
+        "max_usd": Decimal(2),
+        "timeout_seconds": 900,
+        "cpus": 2,
+        "memory_mb": 4096,
+        "pids": 512,
+    }
+)
+
+
+class CodeAgent(_Strict):
+    image: Annotated[str, Field(pattern=IMAGE_REF)] | Marker
+    proxy_image: Annotated[str, Field(pattern=IMAGE_REF)] | Marker
+    model: Annotated[str, Field(pattern=r"^claude-[a-z0-9-]{1,60}$")]  # F6, priced (cross-check)
+    max_turns: Annotated[int, Field(strict=True, ge=1)]
+    max_usd: Annotated[Decimal, Field(gt=0, decimal_places=2)]
+    max_requests: Annotated[int, Field(strict=True, ge=1)] | Marker
+    timeout_seconds: Annotated[int, Field(strict=True, ge=1)]
+    cpus: Annotated[float, Field(gt=0, strict=True, allow_inf_nan=False)]
+    memory_mb: Annotated[int, Field(strict=True, ge=1)]
+    pids: Annotated[int, Field(strict=True, ge=1)]
+
+    @model_validator(mode="after")
+    def _within_f5(self) -> CodeAgent:
+        errors = [
+            f"{name} : {getattr(self, name)} dépasse le plafond {ceiling}"
+            for name, ceiling in AGENT_CEILINGS.items()
+            if getattr(self, name) > ceiling
+        ]
+        if errors:
+            raise ValueError("; ".join(errors) + " (F5 ; seule une ADR les change)")
+        return self
+
+
 class CodeConfig(_Strict):
     repositories: list[CodeRepository] | Marker
     checks: CodeChecks
+    agent: CodeAgent
 
     @model_validator(mode="after")
     def _unique(self) -> CodeConfig:
@@ -981,6 +1022,18 @@ FEATURES: dict[str, Feature] = {
         "Contrôles ruff et pytest dans un conteneur sans réseau",
         ("code:repositories", "code:checks"),
     ),
+    # The agent's images, model and caps (F1 to F6), its task budget, and the checks it reruns on
+    # its copy (ADR-054).
+    "code.agent": Feature(
+        "Agent de code dans un conteneur isolé (patch rendu, N0)",
+        (
+            "code:repositories",
+            "code:checks",
+            "code:agent",
+            "budgets:llm_budget_eur",
+            "budgets:per_code_agent",
+        ),
+    ),
 }
 
 
@@ -1111,7 +1164,8 @@ def _cross_file_errors(parsed: dict[str, BaseModel]) -> list[str]:
     nor is the score of N1 → N2 below that of N0 → N1 (D9), and « 0 violation R1-R5 » is only
     measured if every behaviour suite must fully pass. Every committee role runs on a tier that
     models.yaml defines. A drafted limit price stays within the collar of the Risk Gate (D17).
-    Every domain is one of section 9.2 and stays under its cap there (ADR-043).
+    Every domain is one of section 9.2 and stays under its cap there (ADR-043). The code agent's
+    model has a price, which its API proxy needs to hold the task's ceiling (ADR-053).
     """
     models: ModelsConfig = parsed["models"]  # type: ignore[assignment]
     pricing: PricingConfig = parsed["pricing"]  # type: ignore[assignment]
@@ -1124,6 +1178,12 @@ def _cross_file_errors(parsed: dict[str, BaseModel]) -> list[str]:
         and tier.model not in MARKERS
         and tier.model not in pricing.anthropic.models
     ]
+    code: CodeConfig = parsed["code"]  # type: ignore[assignment]
+    if code.agent.model not in pricing.anthropic.models:
+        errors.append(
+            f"pricing.yaml › anthropic.models : prix absent pour {code.agent.model} "
+            "(code.yaml › agent.model, ADR-053)"
+        )
     promoted = set(type(autonomy.promotion).model_fields)
     for domain, levels in autonomy.domains.items():
         cap = DOMAIN_MAX_LEVELS.get(domain)

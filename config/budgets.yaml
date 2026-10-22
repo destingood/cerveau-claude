@@ -15,3 +15,7 @@ per_deep_research:
   max_tool_calls: A_DEFINIR
   max_sub_questions: 5
   max_reads: 12
+# Tâche de l'agent de code (ADR-054, F5) : ses jetons, comptés par le proxy (ADR-053), entrent dans
+# max_tokens avec ceux de l'orchestrateur ; max_seconds couvre la tâche (au plus 15 min, code.yaml)
+# et la réponse. Les valeurs attendent la décision de Lucas ; aucune tâche réelle n'a lieu avant.
+per_code_agent: { max_tokens: A_DEFINIR, max_seconds: A_DEFINIR, max_tool_calls: A_DEFINIR }

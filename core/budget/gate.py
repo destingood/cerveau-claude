@@ -197,7 +197,8 @@ class RequestBudgetExceeded(Exception):
 
 
 def _session(limits: PerCommittee, refusal: str) -> PerRequest:
-    """The limits of a committee session or a deep research, as a request's; a marker refuses."""
+    """The limits of a committee session, a deep research or a code agent task, as a request's;
+    a marker refuses."""
     values = (limits.max_tool_calls, limits.max_tokens, limits.max_seconds)
     if not all(isinstance(value, int) for value in values):  # a marker remains
         raise ValueError(refusal)
@@ -253,6 +254,19 @@ class RequestBudget:
         config.require(feature)
         limits = config.budgets.per_deep_research
         refusal = "per_deep_research non défini : recherche bloquée (R7)"
+        return cls(_session(limits, refusal), meter, **kwargs)
+
+    @classmethod
+    def for_code_agent(
+        cls, config: Config, meter: Meter, *, feature: str, **kwargs: Any
+    ) -> RequestBudget:
+        """The limits of one code agent task (``per_code_agent``, ADR-054), its tokens included.
+
+        Blocked while ``feature`` (``code.agent``) still holds a marker (R7).
+        """
+        config.require(feature)
+        limits = config.budgets.per_code_agent
+        refusal = "per_code_agent non défini : tâche bloquée (R7)"
         return cls(_session(limits, refusal), meter, **kwargs)
 
     @property

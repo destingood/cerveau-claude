@@ -14,3 +14,17 @@ checks:
   memory_mb: 2048
   pids: 256
   timeout_seconds: 300   # borné aussi par le délai de l'appel (runtime.tool_timeout_s, ADR-052)
+agent:
+  # ADR-054 : Claude Code dans un conteneur sans Internet ; il rend un patch que Lucas applique (N0).
+  # Images construites par Lucas (infra/agent/README.md), lancées avec --pull never.
+  image: A_DEFINIR
+  proxy_image: A_DEFINIR   # proxy de l'API d'Anthropic, seul conteneur qui sort (ADR-053)
+  model: claude-sonnet-5-5   # F6 ; son prix doit figurer dans pricing.yaml
+  # F5 (plafonds ; la configuration peut seulement les baisser)
+  max_turns: 30
+  max_usd: "2"   # par tâche, tenu par le proxy (dépassé d'une requête au plus)
+  max_requests: A_DEFINIR   # requêtes à l'API par tâche, tenu par le proxy
+  timeout_seconds: 900   # borné aussi par le délai de l'appel (runtime.tool_timeout_s, ADR-052)
+  cpus: 2
+  memory_mb: 4096
+  pids: 512

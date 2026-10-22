@@ -28,6 +28,7 @@ from core.budget.gate import RequestBudget, RequestBudgetExceeded
 from core.config.loader import Config
 from core.governance.signatures import effective_autonomy
 from core.mcp.adapter import McpAdapterError, McpPlugin, RequestScope
+from core.mcp.spend import IsolatedTask
 from core.models.meter import Meter
 from core.models.router import ModelRouter, Role, Seat
 from core.orchestrator.packs import Pack, load_packs
@@ -262,6 +263,7 @@ class Run:
     research_forced: bool = False  # cerveau ask --approfondi (ADR-045, D14)
     research_for: Callable[[str], ResearchSpec | None] | None = field(default=None, repr=False)
     budget_clock: Callable[[], float] | None = field(default=None, repr=False)
+    isolation: IsolatedTask | None = None  # a code agent task, set by the routing (ADR-054)
     _holders: list[_Holder] = field(default_factory=list, repr=False)
 
     def __post_init__(self) -> None:
@@ -322,6 +324,7 @@ class Run:
             meter=self.meter,
             project_root=self.project_root,
             live_enabled=self.config.live.enabled,
+            isolation=self.isolation,
         )
 
         async def open_one(plugin: str) -> Toolbox | str:

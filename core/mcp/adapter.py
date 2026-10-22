@@ -13,6 +13,10 @@ and a tool it publishes differently from the manifest is refused at its call, wi
 The LangChain tools answer in ``content_and_artifact`` form: the message content is a neutral
 status line and the structured result travels as the artifact. External content therefore never
 reaches a model through this adapter; the graph decides what the reader and the planner see (R5).
+
+A tool of class ``EXECUTION_ISOLEE`` (the code agent, ADR-054) is offered only to a request that
+the input guard classed so and that has its own task budget (``RequestScope.isolation``). Once
+sent, its call charges the task's model spend to the request's meter, whatever the outcome.
 """
 
 from __future__ import annotations
@@ -37,14 +41,20 @@ from mcp.types import Tool
 from core.audit.chain import AuditJournal
 from core.budget.gate import RequestBudget, RequestBudgetExceeded
 from core.config.loader import AutonomyConfig
+from core.mcp.spend import IsolatedTask, charge
 from core.mcp.time_limit import DEFAULT_TOOL_TIMEOUT_S, time_limit_meta
-from core.models.meter import Meter, SearchCall
+from core.models.meter import LlmCall, Meter, SearchCall
 from core.policy.engine import PolicyDecision, decide, kill_switch_engaged
 from core.registry.manifest import PluginManifest, ToolSpec, validate_plugin
 
 TOOL_TIMEOUT_S = DEFAULT_TOOL_TIMEOUT_S  # a server's start, and a call by default (ADR-052)
 MAX_ARGUMENT_CHARS = 2048
 MAX_ERROR_CHARS = 300
+ISOLATED = "EXECUTION_ISOLEE"
+ISOLATION_REFUSAL = (
+    "classe EXECUTION_ISOLEE : la requête n'est pas classée EXECUTION_ISOLEE par le contrôle "
+    "d'entrée (ADR-054)"
+)
 
 
 class McpAdapterError(Exception):
@@ -71,6 +81,8 @@ class RequestScope:
     meter: Meter
     project_root: Path
     live_enabled: bool  # an enabled live configuration refuses every call (R3, ADR-030)
+    # The code agent's task (ADR-054): set only for a request classed EXECUTION_ISOLEE.
+    isolation: IsolatedTask | None = None
 
 
 def server_environment(names: Sequence[str], environ: Mapping[str, str]) -> dict[str, str]:
@@ -187,11 +199,11 @@ class McpPlugin:
         self._connect = connect
         self.tools = []
         for spec in self.manifest.tools:
-            decision = self._decide(spec)
-            if decision.effect == "executer":
+            reason = self._refusal(spec)
+            if reason is None:
                 self.tools.append(self._as_langchain(spec))
             else:
-                self.skipped[spec.name] = "politique : " + " ; ".join(decision.reasons)
+                self.skipped[spec.name] = reason
 
     async def _started(self) -> str | None:
         """Starts a planned server once, whoever calls first; the reason it could not start.
@@ -227,6 +239,15 @@ class McpPlugin:
             live_enabled=scope.live_enabled,
         )
 
+    def _refusal(self, spec: ToolSpec) -> str | None:
+        """Why the request cannot have this tool: out of its isolation, or refused by policy."""
+        if spec.action_class == ISOLATED and self._scope.isolation is None:
+            return ISOLATION_REFUSAL
+        decision = self._decide(spec)
+        if decision.effect != "executer":
+            return "politique : " + " ; ".join(decision.reasons)
+        return None
+
     def _schema(self, path: str) -> dict[str, Any]:
         schema = json.loads((self.directory / path).read_text(encoding="utf-8"))
         schema.pop("$schema", None)
@@ -251,9 +272,7 @@ class McpPlugin:
         for spec in self.manifest.tools:
             reason = self._mismatch(spec, published.pop(spec.name, None))
             if reason is None:
-                decision = self._decide(spec)
-                if decision.effect != "executer":
-                    reason = "politique : " + " ; ".join(decision.reasons)
+                reason = self._refusal(spec)
             if reason is not None:
                 self.skipped[spec.name] = reason
             else:
@@ -304,6 +323,10 @@ class McpPlugin:
         the journal must not keep (R6): an address he gave goes there in its masked form.
         """
         shown = arguments if journaled is None else journaled
+        isolation = self._scope.isolation
+        if spec.action_class == ISOLATED and isolation is None:
+            self._journal(spec, shown, status="hors_perimetre", error=ISOLATION_REFUSAL)
+            raise ToolException(f"{spec.name} : {ISOLATION_REFUSAL}")
         decision = self._decide(spec)
         if decision.effect != "executer":
             self._journal(spec, shown, status="refuse", policy=decision.to_payload())
@@ -356,6 +379,9 @@ class McpPlugin:
             else:
                 result = reply.structured_content
                 size = len(json.dumps(result, ensure_ascii=False).encode("utf-8"))
+        spend: tuple[LlmCall, ...] = ()
+        if spec.action_class == ISOLATED and isolation is not None:  # sent: never zero (R7)
+            spend = charge(self._scope.meter, isolation, role=self.manifest.id, result=result)
         self._journal(
             spec,
             shown,
@@ -364,6 +390,7 @@ class McpPlugin:
             result_bytes=size,
             error=error[:MAX_ERROR_CHARS] if error else None,
             search=search.to_payload() if search else None,
+            spend=[call.to_payload() for call in spend] if spend else None,
             tool_calls=self._scope.budget.tool_calls,
         )
         if result is None:

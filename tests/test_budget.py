@@ -21,6 +21,7 @@ from core.budget import (
 from core.config import BlockedFeatureError, load_config
 from core.config.loader import Config, PerRequest
 from core.models import COST_SCHEMA, CostCalculator, Meter, TokenUsage
+from tests.test_config_code import unblock_agent
 
 REPO_CONFIG = Path(__file__).resolve().parents[1] / "config"
 NOW = datetime(2026, 10, 18, 12, 0, tzinfo=UTC)
@@ -372,3 +373,36 @@ def test_undefined_token_limit_blocks(meter: Meter) -> None:
     limits = PerRequest(max_tool_calls=25, max_tokens="A_DEFINIR", max_seconds=120)
     with pytest.raises(ValueError, match="R7"):
         RequestBudget(limits, meter)
+
+
+# --- the code agent's task (ADR-054) -----------------------------------------------------------
+
+
+def test_the_code_agent_budget_is_blocked_while_marked(meter: Meter) -> None:
+    config = load_config(REPO_CONFIG)
+    with pytest.raises(BlockedFeatureError) as err:
+        RequestBudget.for_code_agent(config, meter, feature="code.agent")
+    assert "budgets.yaml › per_code_agent.max_tokens = A_DEFINIR" in err.value.reasons
+
+
+def test_a_marked_code_agent_budget_refuses_any_feature(config_dir: Path, meter: Meter) -> None:
+    """Even a feature that does not list it cannot open a task on a marker (R7)."""
+    config = load_config(config_dir)
+    with pytest.raises(ValueError, match="per_code_agent non défini : tâche bloquée"):
+        RequestBudget.for_code_agent(config, meter, feature="llm.fast")
+
+
+def test_the_code_agent_task_has_its_own_limits(
+    config_dir: Path, tmp_path_factory: pytest.TempPathFactory
+) -> None:
+    unblock_agent(config_dir, str(tmp_path_factory.mktemp("depot")), max_seconds=950)
+    config = load_config(config_dir)
+    meter = Meter(CostCalculator(config.pricing))
+    clock = _Clock()
+    budget = RequestBudget.for_code_agent(config, meter, feature="code.agent", clock=clock)
+    assert budget.max_seconds == 950
+    assert budget.to_payload() == {
+        "tool_calls": {"used": 0, "max": 5},
+        "tokens": {"used": 0, "max": 2_000_000},
+        "seconds": {"used": 0.0, "max": 950},
+    }
