@@ -11,6 +11,7 @@ from typing import Any
 import pytest
 
 from core.code.checks import parse_pytest, parse_ruff
+from core.config.loader import BlockedFeatureError
 from core.evals.cases import CodeChecksFixture, CodeFixture
 from core.evals.code_fixtures import (
     CERVEAU_ID,
@@ -26,7 +27,17 @@ from core.evals.code_fixtures import (
     filled,
     step_of,
 )
-from core.evals.offline import CODE_UNSURE, _from_code
+from core.evals.offline import (
+    AGENT_COUNTER,
+    AGENT_RETRY,
+    AGENT_STEPS,
+    CODE_COUNTER,
+    CODE_UNSURE,
+    _agent_facts,
+    _from_code,
+    _patch_lines,
+    offline_config,
+)
 from plugins.code_ci.github import CiError
 from tests.code_support import git
 
@@ -184,3 +195,104 @@ def test_no_usable_result_is_a_plain_i_do_not_know() -> None:
     assert answer["synthese"].startswith(CODE_UNSURE)
     assert answer["confiance"]["niveau"] == "faible"
     assert answer["prochaines_etapes"]  # a complex question keeps its steps
+
+
+def _agent(
+    *, status: str = "termine", files: int = 1, checks: bool = True, **extra: Any
+) -> dict[str, Any]:
+    items = [
+        {"path": f"src/projet/m{n}.py", "change": "ajoute", "added": 2, "removed": 0}
+        for n in range(files)
+    ]
+    data: dict[str, Any] = {
+        "repo": "projet",
+        "agent": {"status": status, "turns": 3, "summary": "Fait."},
+        "patch": {"folder": "var/code/agent/abc", "files": items},
+        "proxy": {"requests": 2, "usd": "0.010000"},
+        "cleanup": {"copy_removed": True, "network_removed": True, "containers_stopped": True},
+    }
+    if checks:
+        data["checks"] = {
+            **_checks(ruff_check="ok", ruff_format="ok", pytest="ok"),
+            "conclusive": True,
+        }
+    return {**data, **extra}
+
+
+def test_a_clean_agent_patch_is_cited_and_left_for_lucas_to_apply() -> None:
+    answer = _from_code([_view(_agent(), "agent_task")], complex_=True)
+    assert answer["synthese"].startswith(
+        "L'agent de code a terminé sur une copie de projet et rend un patch : premier fichier "
+        "src/projet/m0.py, ajouté."
+    )
+    details = answer["developpement"]
+    assert "Patch enregistré sous var/code/agent/abc, appliqué nulle part." in details
+    assert "copie modifiée de projet" in details
+    assert answer["confiance"]["niveau"] == "eleve"
+    assert answer["contre_arguments"] == AGENT_COUNTER
+    assert answer["prochaines_etapes"] == list(AGENT_STEPS)
+
+
+@pytest.mark.parametrize(
+    ("change", "line"),
+    [
+        ({"agent": {"status": "erreur"}}, "s'est arrêté en erreur"),
+        ({"patch": {"folder": "f", "risky": ["ci.yml"]}}, "Chemins à risque"),
+        ({"proxy": None}, "Comptes du proxy illisibles"),
+        ({"cleanup": {"copy_removed": False}}, "Nettoyage incomplet : copie non supprimée."),
+        ({"checks": None}, "Patch enregistré"),
+    ],
+)
+def test_each_doubt_on_the_agent_lowers_the_confidence(change: dict[str, Any], line: str) -> None:
+    data = {**_agent(), **change}
+    if "patch" in change:
+        data["patch"] = {**change["patch"], "files": _agent()["patch"]["files"]}
+    if data.get("checks") is None:
+        data.pop("checks")
+    head, lines, shortfall = _agent_facts(data)
+    assert shortfall == "partial"
+    assert line in " ".join([head, *lines])
+
+
+def test_the_patch_lines_name_what_was_left_out_and_masked() -> None:
+    lines = _patch_lines(
+        {
+            "folder": "var/code/agent/abc",
+            "files": [
+                {"path": "a.py", "change": "inconnu", "added": 1, "removed": 1, "masked": True}
+            ],
+            "more_files": 4,
+            "masked": 1,
+            "binary": ["logo.png"],
+            "sensitive": ["deploy/id_ed25519"],
+            "more_left_out": 2,
+        }
+    )
+    assert lines[0] == "- a.py : changé, 1 ligne(s) ajoutée(s) et 1 retirée(s) (secret masqué)"
+    assert "Autres fichiers du patch, non montrés : 4." in lines
+    assert "Secrets masqués dans le patch : 1 ; il ne s'applique pas tel quel." in lines
+    assert "Fichiers écartés du patch : logo.png, deploy/id_ed25519." in lines
+    assert "Autres fichiers écartés, non montrés : 2." in lines
+
+
+@pytest.mark.parametrize("status", ["erreur", "delai", "arrete", "autre"])
+def test_an_agent_without_patch_is_an_i_do_not_know_with_steps_to_retry(status: str) -> None:
+    data = _agent(status=status, files=0, checks=False, checks_note="aucun fichier changé")
+    answer = _from_code([_view(data, "agent_task")], complex_=True)
+    assert answer["synthese"].startswith("Je ne sais pas : l'agent de code ")
+    assert "Patch vide : aucun fichier à appliquer." in answer["developpement"]
+    assert answer["confiance"]["niveau"] == "faible"
+    assert answer["contre_arguments"] == CODE_COUNTER
+    assert answer["prochaines_etapes"] == list(AGENT_RETRY)
+
+
+def test_an_agent_that_ended_well_without_changing_anything_says_so() -> None:
+    head, _, shortfall = _agent_facts(_agent(files=0, checks=False))
+    assert head.endswith("sans y changer de fichier lisible : aucun patch à appliquer.")
+    assert shortfall == "none"
+
+
+def test_the_offline_world_leaves_the_task_budget_unset_only_when_the_case_asks() -> None:
+    offline_config().require("code.agent")
+    with pytest.raises(BlockedFeatureError, match="per_code_agent"):
+        offline_config(agent_budget=False).require("code.agent")

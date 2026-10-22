@@ -63,6 +63,7 @@ from core.config.loader import Config
 from core.evals.cases import (
     REPO_ROOT,
     Case,
+    CodeAgentFixture,
     CommitteeTurn,
     PageFixture,
     QualityFixture,
@@ -70,9 +71,17 @@ from core.evals.cases import (
     cached_web,
 )
 from core.evals.code_fixtures import (
+    AGENT_IMAGE,
+    AGENT_REQUESTS,
     CODE_REPO,
+    IMAGE,
+    PROXY_IMAGE,
+    STAND_IN_KEY,
+    FixtureAgentDocker,
+    FixtureClock,
     FixtureDocker,
     FixtureGitHub,
+    agent_settings,
     build_repo,
     check_settings,
     code_repositories,
@@ -91,8 +100,10 @@ from core.net.guard import FetchError
 from core.orchestrator.planner import FORMAT_REPAIR, sentence_count
 from core.orchestrator.runtime import McpToolbox, Toolbox, ToolboxOpener
 from core.orchestrator.structured import REPAIR
+from core.policy.engine import kill_switch_engaged
 from core.verification.figures import Figure
 from core.verification.trace import tool_output
+from plugins.code_agent.server import build_server as agent_server
 from plugins.code_checks.server import build_server as checks_server
 from plugins.code_ci.server import build_server as ci_server
 from plugins.code_repo.server import build_server as repo_server
@@ -127,6 +138,9 @@ OFFLINE_BUDGETS = {"daily": "100.00", "monthly": "1000.00"}
 OFFLINE_COMMITTEE = {"max_tokens": 400000, "max_seconds": 600, "max_tool_calls": 40}
 OFFLINE_RESEARCH = {"max_tokens": 400000, "max_seconds": 600, "max_tool_calls": 40}
 OFFLINE_PII_THRESHOLD = 0.5
+# One code agent task: the tool's own limit (900 s, its manifest) fits within the seconds.
+OFFLINE_CODE_AGENT = {"max_tokens": 400000, "max_seconds": 1200, "max_tool_calls": 10}
+OFFLINE_CODE_PATH = Path(tempfile.gettempdir()) / "cerveau-eval-code" / CODE_REPO  # never created
 
 _SOURCE = re.compile(r'<donnees_externes source="(https?://[^"]+)">')
 _HIT = re.compile(r"^\d+\. .* — (https?://\S+)$", re.MULTILINE)
@@ -215,6 +229,30 @@ CODE_STEPS = (
     "Relire soi-même les fichiers et les diagnostics cités.",
     "Faire soi-même toute modification du dépôt : CERVEAU lit sans écrire.",
 )
+AGENT_COUNTER = (
+    "Des contrôles réussis sur la copie ne prouvent pas que le patch fait ce qui était demandé, "
+    "et le résumé de l'agent est son propre texte, non vérifié."
+)
+AGENT_STEPS = (
+    "Relire soi-même le patch enregistré, chemins à risque d'abord.",
+    "L'appliquer soi-même s'il convient, avec git apply : CERVEAU n'écrit rien dans le dépôt.",
+)
+AGENT_RETRY = (
+    "Lire la note de l'agent et le compte rendu de la tâche avant toute nouvelle tentative.",
+    "Relancer une tâche plus courte ou plus précise, ou faire la modification soi-même.",
+)
+AGENT_ENDS = {
+    "termine": "a terminé",
+    "erreur": "s'est arrêté en erreur",
+    "delai": "n'a pas fini à temps",
+    "arrete": "a été arrêté par le kill switch",
+}
+AGENT_CHANGES = {"ajoute": "ajouté", "modifie": "modifié", "supprime": "supprimé"}
+AGENT_CLEANUP = {
+    "copy_removed": "copie non supprimée",
+    "network_removed": "réseaux non supprimés",
+    "containers_stopped": "conteneurs non vus arrêtés",
+}
 CODE_FAILED = "L'outil {tool} a refusé la demande"
 CODE_REFUSED = (
     "Le résultat de {tool} est écarté : il contient un texte qui ressemble à une consigne."
@@ -596,10 +634,12 @@ def uses_finance(case: Case) -> bool:
 # --- code servers ------------------------------------------------------------------------------
 
 
-def code_toolboxes(case: Case, home: Path) -> dict[str, ToolboxOpener]:
+def code_toolboxes(case: Case, home: Path, config: Config) -> dict[str, ToolboxOpener]:
     """The code pack's real servers on the case's repository, a fake Docker and a fake GitHub
     (core/evals/code_fixtures.py); a case without one gets an empty allow-list, so that no real
-    repository, container or request is ever reached."""
+    repository, container, request or model is ever reached. code_agent runs with the model and
+    caps of ``config``, a stand-in key (or none, as the case says) and the kill switch of
+    ``home``."""
     folder = home / "code"
     repo = folder / CODE_REPO
     if case.code is not None:
@@ -611,12 +651,31 @@ def code_toolboxes(case: Case, home: Path) -> dict[str, ToolboxOpener]:
     reader = RepoReader(GitRunner(), cerveau_root=REPO_ROOT)
     checks = case.code.checks if case.code is not None else None
     docker, github = FixtureDocker(checks), FixtureGitHub(case.code)
+    task = case.code.agent if case.code is not None else CodeAgentFixture()
+
+    def code_agent() -> MCPServer:
+        current = agent_settings(config, repositories)
+        clock = FixtureClock()
+        containers = FixtureAgentDocker(task, checks, current.agent.model)
+        return agent_server(
+            lambda: current,
+            reader,
+            containers,
+            containers,
+            home,
+            lambda: kill_switch_engaged(home),
+            environ=STAND_IN_KEY if task.key else {},
+            clock=clock,
+            sleep=clock.sleep,
+        )
+
     factories: dict[str, Callable[[], MCPServer]] = {
         "code_repo": lambda: repo_server(lambda: repositories, reader),
         "code_checks": lambda: checks_server(lambda: settings, reader, docker, runs),
         "code_ci": lambda: ci_server(
             lambda: repositories, github, now=lambda: FIXTURE_NOW, cerveau=REPO_ROOT
         ),
+        "code_agent": code_agent,
     }
 
     def opener(name: str, factory: Callable[[], MCPServer]) -> ToolboxOpener:
@@ -1259,12 +1318,123 @@ def _ci_facts(data: Mapping[str, Any]) -> CodeFacts:
     return head, lines, "none"
 
 
+def _mapping(data: Mapping[str, Any], key: str) -> Mapping[str, Any] | None:
+    value = data.get(key)
+    return value if isinstance(value, Mapping) else None
+
+
+def _patch_lines(patch: Mapping[str, Any]) -> list[str]:
+    lines = []
+    for item in _items(patch, "files"):
+        marks = [
+            mark
+            for mark, hit in (
+                ("chemin à risque", item.get("risky")),
+                ("secret masqué", item.get("masked")),
+            )
+            if hit
+        ]
+        change = AGENT_CHANGES.get(str(item.get("change")), "changé")
+        lines.append(
+            f"- {_line(item.get('path'))} : {change}, "
+            f"{item.get('added')} ligne(s) ajoutée(s) et {item.get('removed')} retirée(s)"
+            + (f" ({', '.join(marks)})" if marks else "")
+        )
+    if patch.get("more_files"):
+        lines.append(f"Autres fichiers du patch, non montrés : {patch['more_files']}.")
+    if risky := _texts(patch, "risky"):
+        lines.append(f"Chemins à risque (CI, outils, hooks, contrôles) : {', '.join(risky)}.")
+    if patch.get("masked"):
+        lines.append(
+            f"Secrets masqués dans le patch : {patch['masked']} ; il ne s'applique pas tel quel."
+        )
+    left = [*(_texts(patch, key) for key in ("binary", "too_big", "ignored", "sensitive"))]
+    if names := [name for names in left for name in names]:
+        lines.append(f"Fichiers écartés du patch : {', '.join(names)}.")
+    if patch.get("more_left_out"):
+        lines.append(f"Autres fichiers écartés, non montrés : {patch['more_left_out']}.")
+    if _items(patch, "files"):
+        lines.append(f"Patch enregistré sous {_line(patch.get('folder'))}, appliqué nulle part.")
+    else:
+        lines.append("Patch vide : aucun fichier à appliquer.")
+    return lines
+
+
+def _agent_facts(data: Mapping[str, Any]) -> CodeFacts:
+    """What agent_task gave: the agent's end, its patch, the checks rerun on its copy, the
+    proxy's counts. The summary is the agent's own text, quoted as such (R5, R12)."""
+    repo, run = _line(data.get("repo", "")), _mapping(data, "agent") or {}
+    patch, checks = _mapping(data, "patch"), _mapping(data, "checks")
+    proxy, cleanup = _mapping(data, "proxy"), _mapping(data, "cleanup") or {}
+    status = str(run.get("status"))
+    ended = AGENT_ENDS.get(status, "a rendu un état inconnu")
+    files = _items(patch, "files") if patch is not None else []
+    # Nothing to apply from an agent that did not end well: no answer founded on it (R12).
+    unsure = not files and (patch is None or status != "termine")
+    if files:
+        first = files[0]
+        head = (
+            f"L'agent de code {ended} sur une copie de {repo} et rend un patch : premier fichier "
+            f"{_line(first.get('path'))}, {AGENT_CHANGES.get(str(first.get('change')), 'changé')}."
+        )
+    elif unsure:
+        head = f"Je ne sais pas : l'agent de code {ended} sur une copie de {repo}, aucun patch."
+    else:
+        head = (
+            f"L'agent de code {ended} sur une copie de {repo} sans y changer de fichier lisible : "
+            "aucun patch à appliquer."
+        )
+    lines = [f"Note de l'agent : {_plain(str(run['note']))}."] if run.get("note") else []
+    if run.get("turns") is not None:
+        lines.append(f"Tours de l'agent : {run['turns']}.")
+    if run.get("summary"):
+        lines.append(f"Résumé écrit par l'agent, non vérifié : « {_line(run['summary'])} ».")
+    lines += _patch_lines(patch) if patch is not None else []
+    if data.get("patch_note"):
+        lines.append(f"Note sur le patch : {_plain(str(data['patch_note']))}.")
+    checked: Shortfall = "total"
+    if checks is not None:
+        head_checks, check_lines, checked = _checks_facts(
+            {**checks, "repo": f"la copie modifiée de {repo}"}
+        )
+        lines += [head_checks, *check_lines]
+        lines += [
+            f"Contrôles non probants : {_plain(str(c))}." for c in checks.get("caveats") or ()
+        ]
+    if data.get("checks_note"):
+        lines.append(f"Contrôles : {_plain(str(data['checks_note']))}.")
+    if proxy is not None:
+        lines.append(
+            f"Proxy de l'API : {proxy.get('requests')} requête(s), {proxy.get('usd')} $ comptés."
+        )
+        if proxy.get("stopped"):
+            lines.append(f"Le proxy a arrêté la tâche : {_line(proxy['stopped'])}.")
+        if refusals := _mapping(proxy, "refusals"):
+            counts = ", ".join(f"{_line(k)} × {v}" for k, v in refusals.items())
+            lines.append(f"Requêtes refusées par le proxy : {counts}.")
+    else:
+        lines.append("Comptes du proxy illisibles : le plafond de la tâche est imputé au budget.")
+    if missing := [text for key, text in AGENT_CLEANUP.items() if cleanup.get(key) is False]:
+        lines.append(f"Nettoyage incomplet : {', '.join(missing)}.")
+    if unsure:
+        return head, lines, "total"
+    doubts = (
+        status != "termine",
+        bool(patch and (patch.get("risky") or patch.get("masked"))),
+        bool(files) and (checks is None or checked != "none" or not checks.get("conclusive")),
+        proxy is None,
+        bool(missing),
+    )
+    return head, lines, "partial" if any(doubts) else "none"
+
+
 CODE_FACTS: dict[str, Callable[[Mapping[str, Any]], CodeFacts]] = {
     "repo_log": _log_facts,
     "repo_diff": _diff_facts,
     "repo_file": _file_facts,
     "run_checks": _checks_facts,
     "ci_runs": _ci_facts,
+    "agent_task": _agent_facts,
 }
 
 
@@ -1335,12 +1505,16 @@ def _from_code(views: Sequence[str], *, complex_: bool) -> dict[str, Any]:
         }
     else:
         confidence = {"niveau": "faible", "justification": "Aucun résultat d'outil exploitable."}
+    # A patch to read once the agent rendered one; otherwise its failure to look into (R12).
+    agent = "agent_task" in tools
+    patched = agent and shortfalls[tools.index("agent_task")] != "total"
+    steps = AGENT_STEPS if patched else AGENT_RETRY if agent else CODE_STEPS
     return {
         "synthese": " ".join(sentences),
         "developpement": "\n".join([*details, *problems]) or "Aucun résultat d'outil exploitable.",
-        "contre_arguments": CODE_COUNTER if complex_ else "",
+        "contre_arguments": (AGENT_COUNTER if patched else CODE_COUNTER) if complex_ else "",
         "confiance": confidence,
-        "prochaines_etapes": list(CODE_STEPS) if complex_ else [],
+        "prochaines_etapes": list(steps) if complex_ else [],
     }
 
 
@@ -1438,12 +1612,13 @@ class Recorder(BaseCallbackHandler):
 
 
 @cache
-def offline_config(source: Path = REPO_ROOT / "config") -> Config:
+def offline_config(source: Path = REPO_ROOT / "config", *, agent_budget: bool = True) -> Config:
     """A temporary copy of ``config/`` with the values an offline run needs (never the real one).
 
-    The euro budgets, the committee's and the deep research's budgets and the PII threshold stay
-    ``A_DEFINIR`` in the repository (R7); the copy gives the scripted run room to work. Its costs
-    are estimates and are labelled as such.
+    The euro budgets, the committee's, the deep research's and the code agent's budgets, the PII
+    threshold and the code pack's repositories, images and request cap stay ``A_DEFINIR`` in the
+    repository (R7); the copy gives the scripted run room to work. Its costs are estimates and are
+    labelled as such. ``agent_budget=False`` leaves ``per_code_agent`` unset, as Lucas left it.
     """
     directory = Path(tempfile.mkdtemp(prefix="cerveau-eval-config-")) / "config"
     shutil.copytree(source, directory)
@@ -1451,8 +1626,20 @@ def offline_config(source: Path = REPO_ROOT / "config") -> Config:
     def budgets(data: dict[str, Any]) -> None:
         data.update(llm_budget_eur=dict(OFFLINE_BUDGETS), per_committee=dict(OFFLINE_COMMITTEE))
         data["per_deep_research"].update(OFFLINE_RESEARCH)  # its caps stay the repository's
+        if agent_budget:
+            data["per_code_agent"] = dict(OFFLINE_CODE_AGENT)
+
+    def code(data: dict[str, Any]) -> None:
+        # The case's repository is built elsewhere (code_toolboxes); this path only unblocks the
+        # feature and lies outside both the copy and CERVEAU (ADR-047).
+        data["repositories"] = [{"id": CODE_REPO, "path": str(OFFLINE_CODE_PATH)}]
+        data["checks"]["image"] = IMAGE
+        data["agent"].update(
+            image=AGENT_IMAGE, proxy_image=PROXY_IMAGE, max_requests=AGENT_REQUESTS
+        )
 
     _edit(directory / "budgets.yaml", budgets)
+    _edit(directory / "code.yaml", code)
     _edit(
         directory / "guardrails.yaml",
         lambda d: d["pii"].update(score_threshold=OFFLINE_PII_THRESHOLD),

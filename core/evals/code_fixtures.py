@@ -16,10 +16,19 @@ from dataclasses import dataclass, field
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
 
+from core.code import agent
 from core.code.git import GitRunner
 from core.code.process import Bounded, run_bounded
-from core.config.loader import CodeChecks, CodeRepository
-from core.evals.cases import REPO_ROOT, CodeChecksFixture, CodeFixture, CodeRunFixture
+from core.config.loader import CodeChecks, CodeRepository, Config
+from core.evals.cases import (
+    REPO_ROOT,
+    CodeAgentFixture,
+    CodeAgentProxyFixture,
+    CodeChecksFixture,
+    CodeFixture,
+    CodeRunFixture,
+)
+from plugins.code_agent.server import Settings as AgentSettings
 from plugins.code_checks.server import Settings
 from plugins.code_ci.github import CiError, Rate, refusal
 
@@ -35,6 +44,11 @@ FICTITIOUS_KEY = "\n".join(
 IMAGE = "sha256:" + "c" * 64
 REPO_IMAGE = "sha256:" + "d" * 64
 CHECK_LIMITS = {"image": IMAGE, "cpus": 2, "memory_mb": 2048, "pids": 256, "timeout_seconds": 300}
+AGENT_IMAGE = "sha256:" + "e" * 64
+PROXY_IMAGE = "sha256:" + "f" * 64
+AGENT_REQUESTS = 200  # the run's copy of code.yaml only; A_DEFINIR in the repository
+# A stand-in for the proxy's key: the server only checks that the variable is set (R6).
+STAND_IN_KEY = {agent.KEY_ENV: "valeur-factice"}
 NO_DOCKER = 125  # docker run's own failure: the daemon does not answer
 IDENTITY = (
     "-c",
@@ -174,6 +188,145 @@ class FixtureDocker:
         return Bounded(
             checks.pytest_code, filled(checks.pytest_output).encode("utf-8"), "", False, False
         )
+
+
+def agent_settings(config: Config, repositories: Sequence[CodeRepository]) -> AgentSettings:
+    """code_agent's settings: the configuration's model and caps (F5, F6) with fixture images."""
+    current = config.code.agent.model_copy(
+        update={"image": AGENT_IMAGE, "proxy_image": PROXY_IMAGE, "max_requests": AGENT_REQUESTS}
+    )
+    pricing = config.pricing.anthropic.models[current.model]
+    checks = CodeChecks.model_validate(CHECK_LIMITS)
+    return AgentSettings(tuple(repositories), checks, current, pricing, AGENT_REQUESTS)
+
+
+@dataclass
+class FixtureClock:
+    """The time of code_agent: a wait passes at once."""
+
+    now: float = 0.0
+
+    def __call__(self) -> float:
+        return self.now
+
+    def sleep(self, seconds: float) -> None:
+        self.now += seconds
+
+
+def _agent_step(arguments: Sequence[str]) -> str:
+    """The step a Docker command line of agent_task stands for."""
+    first = list(arguments[:2])
+    if first == ["network", "create"]:
+        return "network" if "--internal" in arguments else "outside"
+    if first[0] == "ps":
+        return "running"
+    if first == ["network", "connect"]:
+        return "connect"
+    if first == ["network", "rm"]:
+        return "remove"
+    if first[0] == "kill":
+        return "kill"
+    if "--detach" in arguments:
+        return "proxy"
+    if "--task" in arguments:
+        return "agent"
+    return step_of(arguments)
+
+
+def _mounted(arguments: Sequence[str], target: str) -> Path:
+    """The host folder a ``docker run`` mounts at ``target``."""
+    for at, value in enumerate(arguments):
+        if value == "--mount" and f",target={target}" in arguments[at + 1]:
+            return Path(arguments[at + 1].split(",")[1].removeprefix("source="))
+    raise FixtureError(f"aucun montage sur {target}")
+
+
+def proxy_state(counts: CodeAgentProxyFixture | None, model: str) -> dict[str, object]:
+    """The proxy's state file as core/code/llm_proxy.py writes it: at its start (``None``), or
+    with the counts the case gives once the agent is done."""
+    requests = 0 if counts is None else counts.requests
+    usd = "0" if counts is None else counts.usd
+    tokens = {
+        "input": 0 if counts is None else counts.input_tokens,
+        "cache_read": 0,
+        "cache_write_5m": 0,
+        "cache_write_1h": 0,
+        "output": 0 if counts is None else counts.output_tokens,
+    }
+    return {
+        "schema": 1,
+        "requests": requests,
+        "usd": usd,
+        "max_usd": "2",
+        "max_requests": AGENT_REQUESTS,
+        "unknown_cost": False if counts is None else counts.unknown_cost,
+        "pending": False,
+        "stopped": None if counts is None else counts.stopped,
+        "refusals": {} if counts is None else dict(counts.refusals),
+        "models": {model: {"requests": requests, "usd": usd, "tokens": tokens}} if requests else {},
+    }
+
+
+@dataclass
+class FixtureAgentDocker:
+    """The containers of agent_task, answering as the case says; none is started, no model is
+    called. The proxy's start writes its state file; the agent's changes the copy, writes the
+    proxy's final counts and prints the runner's last line; the checks answer as run_checks'."""
+
+    fixture: CodeAgentFixture
+    checks: CodeChecksFixture | None
+    model: str
+    steps: list[str] = field(default_factory=list)
+    state_file: Path | None = None
+
+    def run(
+        self, arguments: Sequence[str], *, name: str, timeout_s: float, max_bytes: int
+    ) -> Bounded:
+        step = _agent_step(arguments)
+        if step in ("check", "format", "pytest"):
+            return FixtureDocker(self.checks, self.steps).run(
+                arguments, name=name, timeout_s=timeout_s, max_bytes=max_bytes
+            )
+        self.steps.append(step)
+        if self.fixture.docker is not None:
+            return Bounded(
+                self.fixture.docker, b"", "Cannot connect to the Docker daemon", False, False
+            )
+        if step == "proxy":
+            self.state_file = _mounted(arguments, "/state") / agent.STATE_FILE
+            self._state(None)
+        if step == "agent":
+            return self._agent(_mounted(arguments, "/work"))
+        return Bounded(0, b"" if step == "running" else b"f00d\n", "", False, False)
+
+    def _state(self, counts: CodeAgentProxyFixture | None) -> None:
+        if self.state_file is not None:
+            document = proxy_state(counts, self.model)
+            self.state_file.write_text(json.dumps(document), encoding="utf-8")
+
+    def _agent(self, work: Path) -> Bounded:
+        fixture = self.fixture
+        for name, content in fixture.writes.items():
+            target = work.joinpath(*name.split("/"))
+            if content is None:
+                target.unlink(missing_ok=True)
+                continue
+            target.parent.mkdir(parents=True, exist_ok=True)
+            target.write_bytes(filled(content).encode("utf-8"))
+        self._state(fixture.proxy)
+        if fixture.status == "delai":
+            return Bounded(-9, b"", "", False, True)
+        line = {
+            "schema": 1,
+            "statut": fixture.status,
+            "sous_type": fixture.subtype,
+            "tours": fixture.turns,
+            "resume": filled(fixture.summary) if fixture.summary is not None else None,
+            "erreur": fixture.error,
+        }
+        output = "démarrage\n" + json.dumps(line, ensure_ascii=False) + "\n"
+        code = 0 if fixture.status == "termine" else 1
+        return Bounded(code, output.encode("utf-8"), "", False, False)
 
 
 def _run(run: CodeRunFixture, number: int, index: int, github: str) -> dict[str, object]:

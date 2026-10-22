@@ -339,7 +339,7 @@ def _result(
 
 
 async def _offline(case: Case, root: Path, run: str) -> CaseResult:
-    config = offline_config(root / "config")
+    config = offline_config(root / "config", agent_budget=case.offline.agent_budget)
     log, recorder, finance = WebLog(), Recorder(), FinanceLog()
     reader = FixtureReader(case, log, root)
     pilot = Pilot(case, reader, finance)
@@ -366,7 +366,7 @@ async def _offline(case: Case, root: Path, run: str) -> CaseResult:
                 WEB_PLUGIN: fixture_toolbox(case, log, root),
                 **research_toolboxes(case, log),
                 **finance_toolboxes(finance, root / "config", store),
-                **code_toolboxes(case, home),
+                **code_toolboxes(case, home, config),
             },
             pseudonymiser=lambda: presidio(config),
             callbacks=(recorder,),
@@ -421,7 +421,7 @@ async def _live(case: Case, root: Path, run: str) -> CaseResult:
                 WEB_PLUGIN: fixture_toolbox(case, log, root),
                 **research_toolboxes(case, log),
                 **finance_toolboxes(finance, live_config_dir(root), store),
-                **code_toolboxes(case, Path(tmp)),
+                **code_toolboxes(case, Path(tmp), config),
             },
             pseudonymiser=lambda: presidio(config),
             callbacks=(recorder,),

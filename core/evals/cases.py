@@ -428,6 +428,9 @@ class Offline(_Data):
     # out keeps the file's value, so a case about an unknown limit marks it A_DEFINIR itself.
     paper_limits: dict[str, Any] | None = None
     research: ResearchFixture = ResearchFixture()  # the planner and writer of ``approfondi``
+    # per_code_agent set in the run's copy of budgets.yaml; False leaves it A_DEFINIR, as in the
+    # repository, so that a code agent task is blocked (R7).
+    agent_budget: bool = True
 
     @model_validator(mode="after")
     def _answer_without_web(self) -> Offline:
@@ -612,10 +615,48 @@ class CodeRunFixture(_Data):
     conclusion: str | None = "success"
 
 
+class CodeAgentProxyFixture(_Data):
+    """The API proxy's counts once the agent is done, as core/code/llm_proxy.py writes them."""
+
+    requests: int = Field(default=3, ge=0)
+    usd: str = Field(default="0.025000", pattern=r"^[0-9]{1,4}\.[0-9]{1,6}$")
+    input_tokens: int = Field(default=9000, ge=0)
+    output_tokens: int = Field(default=700, ge=0)
+    stopped: str | None = None  # the ceiling that stopped it: plafond_usd, plafond_requetes…
+    refusals: dict[str, int] = Field(default_factory=dict)  # reason → requests refused
+    unknown_cost: bool = False
+
+
+class CodeAgentFixture(_Data):
+    """What the fake Docker of agent_task does instead of the two containers: the agent's
+    changes to the copy, the runner's last line and the proxy's counts. No container runs, no
+    model is called and no key is read: the variable is a stand-in value, or absent (``key``)."""
+
+    writes: dict[str, str | None] = Field(default_factory=dict)  # path → content; None deletes
+    status: Literal["termine", "erreur", "delai"] = "termine"  # delai: out of its time
+    subtype: str | None = "success"
+    turns: int | None = Field(default=4, ge=0)
+    summary: str | None = "Tâche faite."
+    error: str | None = None
+    proxy: CodeAgentProxyFixture = CodeAgentProxyFixture()
+    docker: int | None = None  # an exit code every agent step answers instead (125: no daemon)
+    key: bool = True  # ANTHROPIC_API_KEY set, to a stand-in value the server never reads
+
+    @model_validator(mode="after")
+    def _paths_inside(self) -> CodeAgentFixture:
+        # Written in the throwaway copy under the temporary home, never out of it.
+        for path in self.writes:
+            parts = path.split("/")
+            if "\\" in path or ":" in path or any(p in ("", ".", "..", ".git") for p in parts):
+                raise ValueError(f"{path} : chemin relatif à la copie attendu")
+        return self
+
+
 class CodeFixture(_Data):
     """The repository « projet » of a code case, built in the run's temporary home and alone on
-    the allow-list (with CERVEAU's own when ``cerveau``), the fake Docker of run_checks and the
-    fake GitHub of ci_runs: no network, no container, no real repository read but CERVEAU's."""
+    the allow-list (with CERVEAU's own when ``cerveau``), the fake Docker of run_checks and of
+    agent_task and the fake GitHub of ci_runs: no network, no container, no real repository read
+    but CERVEAU's."""
 
     commits: tuple[CodeCommitFixture, ...] = Field(min_length=1, max_length=10)
     cerveau: bool = False  # CERVEAU listed too: every tool must refuse it (ADR-047)
@@ -625,6 +666,7 @@ class CodeFixture(_Data):
     runs: tuple[CodeRunFixture, ...] = Field(default=(), max_length=20)
     total_runs: int | None = Field(default=None, ge=0)  # the API's total_count; None: the runs
     ci_status: int = Field(default=200, ge=200, le=599)  # the API's HTTP status
+    agent: CodeAgentFixture = CodeAgentFixture()  # what agent_task's containers would do
 
 
 class Case(_Data):
