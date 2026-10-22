@@ -43,6 +43,8 @@ from core.research.engine import (
     MASKED_STEP,
     MAX_REMOVED_CHARS,
     NO_DEVELOPMENT,
+    NOTHING_CHECKED,
+    NOTHING_READ,
     NOTHING_VERIFIED,
     RETRY_STEPS,
     SYNTHESIS_REMOVED,
@@ -51,6 +53,7 @@ from core.research.engine import (
     _update_type,
     compose,
     extract_index,
+    unverified_answer,
 )
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
@@ -517,7 +520,8 @@ def test_nothing_verified_means_no_writer_and_no_conclusion(
     research = rig.research()
     answer = research.draft.answer  # type: ignore[union-attr]
     assert answer.synthese == NOTHING_VERIFIED
-    assert answer.developpement.startswith("Sources lues : 5 ;")
+    assert answer.developpement == NOTHING_CHECKED
+    assert not any(char.isdigit() for char in answer.developpement)  # nothing for R1 to flag
     assert answer.confiance.niveau == "faible"
     assert answer.prochaines_etapes == list(RETRY_STEPS)
     assert "planner_complex" not in rig.brain.roles()
@@ -558,6 +562,28 @@ def test_a_removed_synthesis_lowers_the_confidence_to_low() -> None:
     assert answer.confiance.niveau == "faible"
     assert "ramenée à « faible »" in answer.confiance.justification
     assert len(removed) == 1
+
+
+def test_an_unverified_answer_states_no_count() -> None:
+    assert unverified_answer(0, 12).developpement == NOTHING_READ
+    assert unverified_answer(3, 12).developpement == NOTHING_CHECKED
+
+
+def test_the_synthesis_reads_as_one_sentence_per_claim() -> None:
+    claims = [
+        Claim(texte="Il consolide", extraits=["1.1"]),
+        Claim(texte="Le sommeil consolide !", extraits=["1.1"]),
+    ]
+    removed: list[Unverified] = []
+    answer = compose(
+        _report(synthese=claims, contre_arguments=claims[:1]),
+        extract_index(_sources()),
+        removed,
+        max_reads=12,
+    )
+    assert answer.synthese == "Il consolide [1]. Le sommeil consolide [1]!"  # two sentences
+    assert answer.contre_arguments == "Il consolide [1]."
+    assert removed == []
 
 
 def test_nothing_kept_says_so() -> None:

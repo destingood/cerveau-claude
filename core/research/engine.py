@@ -97,6 +97,9 @@ SYNTHESIS_REMOVED = (
     "développement et les points non vérifiés."
 )
 NO_DEVELOPMENT = "Aucune affirmation vérifiée ne développe la synthèse."
+# No count here: the answer's R1 check would flag it, and the research signal already gives it.
+NOTHING_READ = "Aucune source n'a pu être lue : aucun extrait ne peut être vérifié."
+NOTHING_CHECKED = "Aucun extrait des sources lues n'a pu y être vérifié mot pour mot."
 LIMITS = (
     " Limites : au plus {reads} lectures ; les publications scientifiques sont lues par leur seul "
     "résumé (D12) ; la recherche n'est pas exhaustive."
@@ -327,6 +330,11 @@ def _cite(text: str, numbers: Sequence[int]) -> str:
     return f"{text[: end.start()].rstrip()} {marker}{end.group(0)}"
 
 
+def _sentences(claims: Sequence[str]) -> str:
+    """Claims joined as sentences: the answer's checks count them by their full stops."""
+    return " ".join(claim if _END.search(claim) else f"{claim}." for claim in claims)
+
+
 def check_claim(claim: Claim, extracts: Mapping[str, tuple[Source, Extract]]) -> str | Unverified:
     """The claim with its source numbers, or why it is removed (D15): it cites known extracts
     only, at least one, and each of its numbers and dates appears in what it cites (R1)."""
@@ -408,10 +416,10 @@ def compose(
             " (Confiance ramenée à « moyen » : des affirmations non vérifiées ont été retirées.)"
         )
     return DraftAnswer(
-        synthese=" ".join(synthesis)
+        synthese=_sentences(synthesis)
         or (SYNTHESIS_REMOVED if parts or contrary else NOTHING_VERIFIED),
         developpement="\n\n".join(parts) or NO_DEVELOPMENT,
-        contre_arguments=" ".join(contrary),
+        contre_arguments=_sentences(contrary),
         confiance=Confiance(
             niveau=level, justification=justification + LIMITS.format(reads=max_reads)
         ),
@@ -433,7 +441,7 @@ def unverified_answer(reads: int, max_reads: int) -> DraftAnswer:
     """No extract could be checked in what was read: no conclusion, and no writer is called."""
     return DraftAnswer(
         synthese=NOTHING_VERIFIED,
-        developpement=f"Sources lues : {reads} ; aucun extrait n'a pu y être vérifié mot pour mot.",
+        developpement=NOTHING_CHECKED if reads else NOTHING_READ,
         confiance=Confiance(
             niveau="faible",
             justification="Aucun extrait vérifié : aucune conclusion n'en est tirée."
