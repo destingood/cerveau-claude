@@ -1,0 +1,204 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$defs": {
+    "RateLimit": {
+      "additionalProperties": false,
+      "properties": {
+        "limit": {
+          "title": "Limit",
+          "type": "integer"
+        },
+        "remaining": {
+          "title": "Remaining",
+          "type": "integer"
+        },
+        "reset_at": {
+          "title": "Reset At",
+          "type": "string"
+        }
+      },
+      "required": [
+        "limit",
+        "remaining",
+        "reset_at"
+      ],
+      "title": "RateLimit",
+      "type": "object"
+    },
+    "Run": {
+      "additionalProperties": false,
+      "properties": {
+        "id": {
+          "title": "Id",
+          "type": "integer"
+        },
+        "run_number": {
+          "title": "Run Number",
+          "type": "integer"
+        },
+        "run_attempt": {
+          "anyOf": [
+            {
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Run Attempt"
+        },
+        "workflow": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Workflow"
+        },
+        "event": {
+          "title": "Event",
+          "type": "string"
+        },
+        "status": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Status"
+        },
+        "conclusion": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Conclusion"
+        },
+        "branch": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Branch"
+        },
+        "head_sha": {
+          "title": "Head Sha",
+          "type": "string"
+        },
+        "title": {
+          "title": "Title",
+          "type": "string"
+        },
+        "created_at": {
+          "title": "Created At",
+          "type": "string"
+        },
+        "updated_at": {
+          "title": "Updated At",
+          "type": "string"
+        },
+        "url": {
+          "title": "Url",
+          "type": "string"
+        }
+      },
+      "required": [
+        "id",
+        "run_number",
+        "run_attempt",
+        "workflow",
+        "event",
+        "status",
+        "conclusion",
+        "branch",
+        "head_sha",
+        "title",
+        "created_at",
+        "updated_at",
+        "url"
+      ],
+      "title": "Run",
+      "type": "object"
+    }
+  },
+  "additionalProperties": false,
+  "properties": {
+    "repo": {
+      "title": "Repo",
+      "type": "string"
+    },
+    "github": {
+      "title": "Github",
+      "type": "string"
+    },
+    "branch": {
+      "anyOf": [
+        {
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "title": "Branch"
+    },
+    "total_count": {
+      "title": "Total Count",
+      "type": "integer"
+    },
+    "runs": {
+      "items": {
+        "$ref": "#/$defs/Run"
+      },
+      "title": "Runs",
+      "type": "array"
+    },
+    "by_conclusion": {
+      "additionalProperties": {
+        "type": "integer"
+      },
+      "title": "By Conclusion",
+      "type": "object"
+    },
+    "rate": {
+      "anyOf": [
+        {
+          "$ref": "#/$defs/RateLimit"
+        },
+        {
+          "type": "null"
+        }
+      ]
+    },
+    "retrieved_at": {
+      "title": "Retrieved At",
+      "type": "string"
+    }
+  },
+  "required": [
+    "repo",
+    "github",
+    "branch",
+    "total_count",
+    "runs",
+    "by_conclusion",
+    "rate",
+    "retrieved_at"
+  ],
+  "title": "CiRunsResult",
+  "type": "object"
+}
