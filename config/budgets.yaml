@@ -6,3 +6,12 @@ on_exceeded: [refuse_new_requests]
 # Séance du Comité d'investissement (ADR-028, D18) : elle dépasse le budget d'une requête. Les
 # valeurs attendent la décision de Lucas ; aucune séance réelle n'a lieu avant.
 per_committee: { max_tokens: A_DEFINIR, max_seconds: A_DEFINIR, max_tool_calls: A_DEFINIR }
+# Recherche approfondie du pack Recherche (ADR-045, D13) : au plus 5 sous-questions et 12 lectures,
+# des plafonds qui ne se relèvent pas ici. Jetons, secondes et appels d'outils attendent la décision
+# de Lucas ; aucune recherche réelle n'a lieu avant.
+per_deep_research:
+  max_tokens: A_DEFINIR
+  max_seconds: A_DEFINIR
+  max_tool_calls: A_DEFINIR
+  max_sub_questions: 5
+  max_reads: 12

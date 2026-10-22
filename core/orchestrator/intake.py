@@ -9,7 +9,9 @@ packs only (``CALCUL``, ADR-022) is decided once the domain is routed, before an
 A decision question of a pack that has a committee, or any question asked with ``--comite``, is
 routed to the committee (D15). Its session budget replaces the request's before the pack's tools
 open; while that budget or the committee's configuration holds a marker, the question is refused
-rather than answered by the planner alone (R7).
+rather than answered by the planner alone (R7). A question asked with ``--approfondi`` goes to the
+first pack with a deep research, under that research's budget and on the same terms (ADR-045);
+the router never chooses one (D14).
 """
 
 from __future__ import annotations
@@ -202,6 +204,32 @@ def _convene(run: Run, domain: str, *, asked: bool) -> tuple[Mode, str | None, s
     return "comite", None, None
 
 
+def _research_domain(run: Run, routed: str) -> str:
+    """``--approfondi``: the first pack whose agent is a deep research, else the routed one."""
+    return next((pack_id for pack_id, pack in run.packs.items() if pack.approfondi), routed)
+
+
+def _deepen(run: Run, domain: str) -> tuple[Mode, str | None]:
+    """The mode and the reason a deep research asked for is refused (ADR-045, D14).
+
+    Its budget replaces the request's here, before any tool opens, as a committee's does.
+    """
+    spec = run.research_for(domain) if run.research_for is not None else None
+    if spec is None:
+        return "direct", f"Recherche approfondie demandée, mais le pack « {domain} » n'en a pas"
+    clock = {"clock": run.budget_clock} if run.budget_clock is not None else {}
+    try:
+        budget = RequestBudget.for_deep_research(
+            run.config, run.meter, feature=spec.feature, **clock
+        )
+    except BlockedFeatureError as exc:
+        return "direct", "Recherche approfondie bloquée (R7) : " + " ; ".join(exc.reasons)
+    except ValueError as exc:
+        return "direct", f"Recherche approfondie bloquée (R7) : {exc}"
+    run.budget = budget
+    return "approfondi", None
+
+
 def _prudent_route(reason: str) -> RouteVerdict:
     return RouteVerdict(complexite="complexe", importance="elevee", web=True, raison=reason)
 
@@ -220,16 +248,23 @@ async def route_node(run: Run, state: CerveauState) -> dict[str, Any]:
         verdict = _prudent_route("routage indisponible : route la plus prudente par défaut")
     requested = verdict.domaine.strip().lower() or DEFAULT_DOMAIN
     domain = requested if requested in run.packs else DEFAULT_DOMAIN
-    role = "planner_complex" if verdict.complexite == "complexe" else "planner"
+    if run.research_forced:  # Lucas chose the deep research, hence its pack (D14)
+        domain = requested = _research_domain(run, domain)
     needs_web = verdict.web or bool(guarded.urls)
     refused = _routed_refusal(run, guarded, domain)
     mode: Mode = "direct"
     note: str | None = None
     if refused is None:
-        mode, note, blocked = _convene(run, domain, asked=verdict.mode == "comite")
+        if run.research_forced:
+            mode, blocked = _deepen(run, domain)
+        else:
+            mode, note, blocked = _convene(run, domain, asked=verdict.mode == "comite")
         if blocked is not None:
             refused = guarded.model_copy(update={"decision": "refus", "reason": blocked})
-    needs_web = needs_web or mode == "comite"  # the news analyst reads the web (D16)
+    complex_ = verdict.complexite == "complexe" or mode == "approfondi"
+    role = "planner_complex" if complex_ else "planner"
+    # The news analyst reads the web (D16), and so does a deep research (ADR-045).
+    needs_web = needs_web or mode != "direct"
     # The web opens only when the question needs it; the pack's other plugins always do, unless
     # the policy refused the request.
     plugins = [name for name in run.packs[domain].plugins if needs_web or name != WEB_PLUGIN]

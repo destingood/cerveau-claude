@@ -6,7 +6,8 @@ A manifest is declarative: only its id, its status, its plugin list and its agen
 graph. The order of the list is the order of the planner's tools, so that the
 ``max_tools_to_planner`` cut keeps the pack's first tools. The agent, if any, is a registered agent
 of ``plugins/`` (``kind: agent``) that runs only when asked for (D14): the committee of a pack is
-the agent of mode ``comite`` (ADR-028).
+the agent of mode ``comite`` (ADR-028), its deep research the agent of mode ``approfondi``
+(ADR-045).
 """
 
 from __future__ import annotations
@@ -50,7 +51,9 @@ class PackAgent(BaseModel):
     model_config = ConfigDict(extra="forbid", frozen=True)
 
     plugin: str
-    mode: Literal["comite"]  # the router or ``--comite`` convenes it (ADR-028)
+    # ``comite``: the router or ``--comite`` convenes it (ADR-028); ``approfondi``: only
+    # ``--approfondi`` starts it, never the router (ADR-045).
+    mode: Literal["comite", "approfondi"]
 
     @field_validator("plugin")
     @classmethod
@@ -90,6 +93,13 @@ class Pack(BaseModel):
     def comite(self) -> str | None:
         """The plugin of its committee (D15), if its agent is one."""
         if self.agent is None or self.agent.mode != "comite":
+            return None
+        return self.agent.plugin
+
+    @property
+    def approfondi(self) -> str | None:
+        """The plugin of its deep research (ADR-045), if its agent is one."""
+        if self.agent is None or self.agent.mode != "approfondi":
             return None
         return self.agent.plugin
 

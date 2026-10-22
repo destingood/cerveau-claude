@@ -97,6 +97,7 @@ CHARS_PER_TOKEN = 4  # offline cost estimate: no tokenizer, no cache (labelled Â
 # Values an offline run needs and the repository leaves to Lucas (R7): a temporary copy only.
 OFFLINE_BUDGETS = {"daily": "100.00", "monthly": "1000.00"}
 OFFLINE_COMMITTEE = {"max_tokens": 400000, "max_seconds": 600, "max_tool_calls": 40}
+OFFLINE_RESEARCH = {"max_tokens": 400000, "max_seconds": 600, "max_tool_calls": 40}
 OFFLINE_PII_THRESHOLD = 0.5
 
 _SOURCE = re.compile(r'<donnees_externes source="(https?://[^"]+)">')
@@ -903,18 +904,18 @@ class Recorder(BaseCallbackHandler):
 def offline_config(source: Path = REPO_ROOT / "config") -> Config:
     """A temporary copy of ``config/`` with the values an offline run needs (never the real one).
 
-    The euro budgets, the committee's session budget and the PII threshold stay ``A_DEFINIR``
-    in the repository (R7); the copy gives the scripted run room to work. Its costs are
-    estimates and are labelled as such.
+    The euro budgets, the committee's and the deep research's budgets and the PII threshold stay
+    ``A_DEFINIR`` in the repository (R7); the copy gives the scripted run room to work. Its costs
+    are estimates and are labelled as such.
     """
     directory = Path(tempfile.mkdtemp(prefix="cerveau-eval-config-")) / "config"
     shutil.copytree(source, directory)
-    _edit(
-        directory / "budgets.yaml",
-        lambda d: d.update(
-            llm_budget_eur=dict(OFFLINE_BUDGETS), per_committee=dict(OFFLINE_COMMITTEE)
-        ),
-    )
+
+    def budgets(data: dict[str, Any]) -> None:
+        data.update(llm_budget_eur=dict(OFFLINE_BUDGETS), per_committee=dict(OFFLINE_COMMITTEE))
+        data["per_deep_research"].update(OFFLINE_RESEARCH)  # its caps stay the repository's
+
+    _edit(directory / "budgets.yaml", budgets)
     _edit(
         directory / "guardrails.yaml",
         lambda d: d["pii"].update(score_threshold=OFFLINE_PII_THRESHOLD),

@@ -290,11 +290,19 @@ class PerCommittee(_Strict):
     max_tool_calls: Annotated[int, Field(gt=0)] | Marker
 
 
+class PerDeepResearch(PerCommittee):
+    # ADR-045, D13: one deep research exceeds a request; no real run until Lucas decides. The
+    # caps of the plan are its upper bounds: a value may only be lowered here.
+    max_sub_questions: int = Field(gt=0, le=5)
+    max_reads: int = Field(gt=0, le=12)
+
+
 class BudgetsConfig(_Strict):
     llm_budget_eur: LlmBudget
     alerts_pct: list[Annotated[int, Field(gt=0, le=100)]] = Field(min_length=1)
     per_request: PerRequest
     per_committee: PerCommittee
+    per_deep_research: PerDeepResearch
     on_exceeded: list[
         Literal["refuse_new_requests", "downgrade_to_fast_or_local", "stop_non_critical_tasks"]
     ] = Field(min_length=1)
@@ -849,6 +857,17 @@ FEATURES: dict[str, Feature] = {
     "finance.committee": Feature(
         "Comité d'investissement (budget d'une séance)",
         ("committee:", "budgets:llm_budget_eur", "budgets:per_committee"),
+    ),
+    # Plan and writing (standard, deep), reader and verifier (fast): ROLE_TIERS.
+    "recherche.deep_research": Feature(
+        "Recherche approfondie (budget d'une recherche)",
+        (
+            "budgets:llm_budget_eur",
+            "budgets:per_deep_research",
+            "models:tiers.fast",
+            "models:tiers.standard",
+            "models:tiers.deep",
+        ),
     ),
 }
 

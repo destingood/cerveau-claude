@@ -11,6 +11,9 @@ is exactly an address Lucas gave or a source that was read.
 A committee session (D15) answers in the same format, with its decision, horizon, invalidation
 conditions, unresolved disagreements and verdict on top: an « analyse » at N0, a « proposition
 non exécutée » from N1, never an order (R16).
+
+A deep research (ADR-045) answers like the planner; the claims it removed are listed under
+« Points non vérifiés » with their reason (D15), and what it left unread is signalled.
 """
 
 from __future__ import annotations
@@ -36,6 +39,7 @@ from core.orchestrator.state import (
     Draft,
     GuardedInput,
     RequestContext,
+    ResearchOutcome,
     RoutePlan,
     Source,
     SourceRef,
@@ -46,6 +50,12 @@ from core.verification.domains import strip_foreign_links
 MAX_POINTS = 20
 MAX_TITLE_CHARS = 200
 CONFIDENCE_LABEL = {"faible": "faible", "moyen": "moyen", "eleve": "élevé"}
+KIND_SHOWN = {  # Crossref does not say whether an article was peer reviewed (ADR-045)
+    "preprint": "préprint, sans relecture par les pairs annoncée",
+    "article": "article publié",
+}
+UNVERIFIED = "Points non vérifiés"
+MASKED_UNVERIFIED = "(affirmation retirée masquée : formulation d'instruction)"
 CLARIFICATION = "Une précision est nécessaire avant d'analyser"
 DEFAULT_QUESTION = "Peux-tu préciser ce que tu cherches exactement ?"
 NOT_ADVICE = (
@@ -89,13 +99,11 @@ class _Links:
 
 
 def _limit_message(run: Run, limit: str) -> str:
-    per_request = run.config.budgets.per_request
+    """The limit reached and its maximum: the request's, or the deep research's (D13)."""
     maxima: dict[str, object] = {
-        "tool_calls": per_request.max_tool_calls,
-        "tokens": per_request.max_tokens,
-        "seconds": per_request.max_seconds,
-        "tours": MAX_PLANNER_TURNS,
+        name: used["max"] for name, used in run.budget.to_payload().items()
     }
+    maxima["tours"] = MAX_PLANNER_TURNS
     value = f" ({maxima[limit]})" if limit in maxima else ""
     return (
         f"Réponse partielle : la requête a atteint {LIMIT_TEXT.get(limit, limit)}{value}. "
@@ -180,6 +188,40 @@ def signals(guarded: GuardedInput, route: RoutePlan, draft: Draft, links: _Links
     return notes
 
 
+def research_notes(outcome: ResearchOutcome) -> list[str]:
+    """What the deep research planned, left unread or removed (ADR-045)."""
+    notes = [
+        f"Recherche approfondie {outcome.record_id} : {len(outcome.sub_questions)} "
+        f"sous-question(s), {outcome.searches} recherche(s), {outcome.reads} lecture(s)."
+    ]
+    if outcome.sub_questions_cut:
+        notes.append(
+            f"{outcome.sub_questions_cut} sous-question(s) du plan écartée(s) au-delà du maximum."
+        )
+    if outcome.without_abstract:
+        notes.append(
+            f"{outcome.without_abstract} publication(s) trouvée(s) sans résumé : non lue(s), "
+            "donc non citée(s) (D12)."
+        )
+    if outcome.retracted:
+        notes.append(
+            f"{outcome.retracted} publication(s) rétractée(s), retirée(s) ou supprimée(s) : "
+            "jamais citée(s)."
+        )
+    notes += [
+        f"Source {line} : mise à jour publiée de la notice, à lire avant de s'y fier."
+        for line in outcome.updated
+    ]
+    if outcome.tool_errors:
+        notes.append(f"{outcome.tool_errors} appel(s) d'outil en échec pendant la recherche.")
+    if outcome.removed:
+        notes.append(
+            f"{len(outcome.removed)} affirmation(s) retirée(s) de la réponse : aucun extrait "
+            f"vérifié ne la fondait (D15). Voir « {UNVERIFIED} »."
+        )
+    return notes
+
+
 def _early_answer(state: CerveauState) -> Answer | None:
     context = required(state.context, "contexte")
     if context.kill_switch:
@@ -208,6 +250,7 @@ def _source_ref(source: Source) -> SourceRef:
         url=source.final_url,
         published=source.published,
         retrieved_at=source.retrieved_at,
+        kind=source.kind,
     )
 
 
@@ -320,12 +363,19 @@ async def output_node(run: Run, state: CerveauState) -> dict[str, Any]:
         prochaines_etapes=tuple(links(s) for s in verified.prochaines_etapes if s.strip()),
         message=_limit_message(run, draft.limit) if draft.partial and draft.limit else "",
     )
-    notes = signals(guarded, route, draft, links)  # after the last link filter
-    return {
-        "answer": answer.model_copy(
-            update={"signalements": tuple(notes), "links_removed": links.removed}
+    unverified: tuple[str, ...] = ()
+    if (research := state.research) is not None:
+        removed = research.removed[:MAX_POINTS]
+        lines = (f"{claim.texte} — {claim.raison}" for claim in removed)
+        # The writer read external content: a removed claim phrased as an instruction is masked.
+        unverified = tuple(
+            MASKED_UNVERIFIED if injection_signals(line) else links(line) for line in lines
         )
-    }
+    notes = signals(guarded, route, draft, links)  # after the last link filter
+    if research is not None:
+        notes += research_notes(research)
+    update = {"signalements": tuple(notes), "non_verifies": unverified}
+    return {"answer": answer.model_copy(update=update | {"links_removed": links.removed})}
 
 
 def map_texts(answer: Answer, fn: Callable[[str], str]) -> Answer:
@@ -353,6 +403,7 @@ def map_texts(answer: Answer, fn: Callable[[str], str]) -> Answer:
                 for s in answer.sources
             ),
             "points_a_verifier": tuple(fn(p) for p in answer.points_a_verifier),
+            "non_verifies": tuple(fn(p) for p in answer.non_verifies),
             "prochaines_etapes": tuple(fn(s) for s in answer.prochaines_etapes),
             "signalements": tuple(fn(s) for s in answer.signalements),
             "questions": tuple(fn(q) for q in answer.questions),
@@ -363,11 +414,13 @@ def map_texts(answer: Answer, fn: Callable[[str], str]) -> Answer:
 
 
 def _source_line(source: SourceRef) -> str:
-    dates = [f"consulté le {source.retrieved_at}"]
+    details = [f"consulté le {source.retrieved_at}"]
     if source.published:
-        dates.insert(0, f"publié le {source.published}, date non vérifiée")
+        details.insert(0, f"publié le {source.published}, date non vérifiée")
+    if source.kind in KIND_SHOWN:
+        details.insert(0, KIND_SHOWN[source.kind])
     title = source.title or "Sans titre"
-    return f"{source.number}. {title} — {source.url} ({' ; '.join(dates)})"
+    return f"{source.number}. {title} — {source.url} ({' ; '.join(details)})"
 
 
 def _committee_lines(view: CommitteeView) -> list[str]:
@@ -415,6 +468,9 @@ def render_markdown(answer: Answer) -> str:
     if answer.points_a_verifier:
         parts += ["", f"**Points {MARKER}**", ""]
         parts += [f"- {point}" for point in answer.points_a_verifier]
+    if answer.non_verifies:
+        parts += ["", f"**{UNVERIFIED}**", ""]
+        parts += [f"- {point}" for point in answer.non_verifies]
     if answer.signalements:
         parts += ["", "**Signalements**", ""]
         parts += [f"- {note}" for note in answer.signalements]

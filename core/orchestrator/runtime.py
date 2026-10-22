@@ -36,6 +36,7 @@ from core.policy.engine import kill_switch_engaged
 
 if TYPE_CHECKING:
     from core.committee.engine import CommitteeSpec
+    from core.research.engine import ResearchSpec
 
 # Output ceilings per role, below what is left of the request's token budget (R9: a change here
 # changes the behaviour under evaluation).
@@ -258,6 +259,8 @@ class Run:
     last_state: Any = field(default=None, repr=False)  # the state the running node was given
     committee_forced: bool = False  # cerveau ask --comite (D15)
     committee_for: Callable[[str], CommitteeSpec | None] | None = field(default=None, repr=False)
+    research_forced: bool = False  # cerveau ask --approfondi (ADR-045, D14)
+    research_for: Callable[[str], ResearchSpec | None] | None = field(default=None, repr=False)
     budget_clock: Callable[[], float] | None = field(default=None, repr=False)
     _holders: list[_Holder] = field(default_factory=list, repr=False)
 
@@ -268,7 +271,7 @@ class Run:
         self.config = dataclasses.replace(self.config, autonomy=capped)
 
     def _time_exceeded(self) -> RequestBudgetExceeded:
-        maximum = self.budget.max_seconds  # the request's, or the committee session's
+        maximum = self.budget.max_seconds  # the request's, the committee's or the research's
         return RequestBudgetExceeded("seconds", round(self.budget.elapsed_s, 3), maximum)
 
     async def invoke(

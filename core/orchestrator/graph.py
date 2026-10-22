@@ -10,6 +10,8 @@ answered or not, ends with one DECISION entry in the audit journal (R11) that ca
 (the ledger reads it) and counts, never the question, the answer or a URL; one ERROR entry per
 error the request shows follows it (ADR-011). A committee session writes before it one DECISION
 entry per role, with the digest of the session file ``var/<pack>/committee/<id>.json`` (D19).
+A question asked with ``--approfondi`` goes route → deep research → verify → output; the request's
+DECISION entry cites the digest of the research file ``var/<pack>/approfondi/<id>.json`` (ADR-045).
 """
 
 from __future__ import annotations
@@ -55,17 +57,19 @@ from core.orchestrator.state import (
     Answer,
     CerveauState,
     CommitteeOutcome,
+    ResearchOutcome,
     TraceRow,
     required,
 )
 from core.orchestrator.verify import verify_node
 from core.policy.engine import decide, kill_switch_engaged
 from core.registry.agents import load_agent
+from core.research.engine import Research, ResearchSpec, run_research
 from core.verification.trace import ToolOutput
 
 Node = Callable[[Run, CerveauState], Awaitable[dict[str, Any]]]
-RECURSION_LIMIT = 20  # 9 nodes, no cycle in the graph
-PLUGINS_DIR = Path(__file__).resolve().parents[2] / "plugins"  # in-process agents (committees)
+RECURSION_LIMIT = 20  # 10 nodes, no cycle in the graph
+PLUGINS_DIR = Path(__file__).resolve().parents[2] / "plugins"  # in-process agents of the packs
 MAX_TRACE_ROWS = 200  # the counts stay whole beyond it
 POLICY_REFUSAL = "Réponse retenue par le moteur de politique"
 
@@ -173,6 +177,23 @@ def audit_payload(run: Run, state: CerveauState, *, status: str | None = None) -
             "verdict": committee.verdict,
             "file_sha256": committee.file_sha256,
         }
+    if (research := state.research) is not None:
+        payload["research"] = {
+            "research_record_id": research.record_id,
+            "pack": research.pack,
+            "version": research.version,
+            "halted": research.halted,
+            "sub_questions": len(research.sub_questions),
+            "sub_questions_cut": research.sub_questions_cut,
+            "searches": research.searches,
+            "reads": research.reads,
+            "without_abstract": research.without_abstract,
+            "retracted": research.retracted,
+            "updated": len(research.updated),
+            "tool_errors": research.tool_errors,
+            "removed": len(research.removed),
+            "file_sha256": research.file_sha256,
+        }
     if (draft := state.draft) is not None:
         payload["planner"] = {
             "turns": draft.turns,
@@ -236,7 +257,8 @@ def journal_decision(run: Run, payload: dict[str, Any]) -> None:
 
 def halted_state(run: Run) -> CerveauState:
     """R4: the state the interrupted node was given, with what it had produced when it keeps it
-    (the planner's partial draft, the committee's session: B97), and the kill switch's refusal."""
+    (the planner's or the research's partial draft, the committee's session: B97), and the kill
+    switch's refusal."""
     state = run.last_state
     if not isinstance(state, CerveauState):
         state = CerveauState(request_id=run.request_id)
@@ -315,6 +337,54 @@ async def committee_node(run: Run, state: CerveauState) -> dict[str, Any]:
     return {"committee": outcome}
 
 
+def research_file(root: Path, pack: str, record_id: str) -> Path:
+    return root / "var" / pack / "approfondi" / f"{record_id}.json"
+
+
+def _research_outcome(run: Run, research: Research) -> ResearchOutcome:
+    """Writes the research file; the request's DECISION entry cites its digest (ADR-045)."""
+    path = research_file(run.project_root, research.pack, research.record_id)
+    path.parent.mkdir(parents=True, exist_ok=True)
+    data = json.dumps(research.to_payload(), ensure_ascii=False, indent=2).encode("utf-8")
+    path.write_bytes(data)
+    return ResearchOutcome(
+        record_id=research.record_id,
+        pack=research.pack,
+        version=research.version,
+        halted=research.halted,
+        sub_questions=tuple(sub.question for sub in research.plan),
+        sub_questions_cut=research.sub_questions_cut,
+        searches=research.searches,
+        reads=research.reads,
+        without_abstract=research.without_abstract,
+        retracted=research.retracted,
+        updated=tuple(
+            f"[{number}] : {', '.join(types)}" for number, types in sorted(research.updated.items())
+        ),
+        tool_errors=research.tool_errors,
+        removed=tuple(research.removed),
+        file=path.relative_to(run.project_root).as_posix(),
+        file_sha256=hashlib.sha256(data).hexdigest(),
+    )
+
+
+async def research_node(run: Run, state: CerveauState) -> dict[str, Any]:
+    """The routed pack's deep research; the kill switch then stops the request (R4, B97)."""
+    guarded, route = required(state.guarded, "garde"), required(state.route, "routage")
+    context = required(state.context, "contexte")
+    spec = run.research_for(route.domain) if run.research_for is not None else None
+    if spec is None:  # the route only chooses the deep research when the pack has one
+        raise RuntimeError(f"aucune recherche approfondie pour le pack « {route.domain} »")
+    research = await run_research(
+        run, spec, question=guarded.question, now=context.now, record_id=str(uuid.uuid4())
+    )
+    update = {"draft": research.draft, "research": _research_outcome(run, research)}
+    if research.halted:
+        run.last_state = state.model_copy(update=update)
+        raise KillSwitchEngaged
+    return update
+
+
 async def audit_node(run: Run, state: CerveauState) -> dict[str, Any]:
     journal_decision(run, audit_payload(run, state))
     return {"audited": True}
@@ -326,6 +396,7 @@ NODES: Sequence[tuple[str, Node]] = (
     ("routage", route_node),
     ("planification", plan_node),
     ("comite", committee_node),
+    ("approfondi", research_node),
     ("controle", verify_node),
     ("sortie", output_node),
     ("politique", policy_node),
@@ -345,7 +416,8 @@ def _after_guard(state: CerveauState) -> str:
 def _after_route(state: CerveauState) -> str:
     if required(state.guarded, "garde").decision != "ok":
         return "sortie"
-    return "comite" if required(state.route, "routage").mode == "comite" else "planification"
+    mode = required(state.route, "routage").mode
+    return "planification" if mode == "direct" else mode
 
 
 def build_graph(run: Run) -> Any:
@@ -367,10 +439,16 @@ def build_graph(run: Run) -> Any:
     graph.add_conditional_edges(
         "routage",
         _after_route,
-        {"sortie": "sortie", "planification": "planification", "comite": "comite"},
+        {
+            "sortie": "sortie",
+            "planification": "planification",
+            "comite": "comite",
+            "approfondi": "approfondi",
+        },
     )
     for source, target in (
         ("planification", "controle"),
+        ("approfondi", "controle"),
         ("comite", "sortie"),
         ("controle", "sortie"),
         ("sortie", "politique"),
@@ -418,6 +496,7 @@ class Orchestrator:
         budget_clock: Callable[[], float] | None = None,
         tz: tzinfo | None = None,
         committees: Mapping[str, CommitteeSpec] | None = None,  # pack → spec; None: its agent
+        researches: Mapping[str, ResearchSpec] | None = None,  # pack → spec; None: its agent
         alerts: Alerts | None = None,  # budget thresholds (B46); None: journal and console only
     ) -> None:
         self.config = config
@@ -438,6 +517,19 @@ class Orchestrator:
         self._analyzer: PiiAnalyzer | None = None
         self._committees: dict[str, CommitteeSpec | None] = dict(committees or {})
         self._given_committees = committees is not None
+        self._researches: dict[str, ResearchSpec | None] = dict(researches or {})
+        self._given_researches = researches is not None
+
+    def research_spec(self, pack_id: str) -> ResearchSpec | None:
+        """The pack's deep research (ADR-045): the specs given (tests, evals) or its agent."""
+        if pack_id in self._researches or self._given_researches:
+            return self._researches.get(pack_id)
+        pack = self.packs.get(pack_id)
+        spec = None
+        if pack is not None and pack.approfondi is not None:
+            spec = load_agent(PLUGINS_DIR / pack.approfondi, domain=pack_id)(self.config)
+        self._researches[pack_id] = spec
+        return spec
 
     def committee_spec(self, pack_id: str) -> CommitteeSpec | None:
         """The pack's committee (D15): the specs given (tests, evals) or its registered agent."""
@@ -462,8 +554,16 @@ class Orchestrator:
         return Pseudonymiser(self._analyzer)
 
     async def ask(
-        self, question: str, *, request_id: str | None = None, committee: bool = False
+        self,
+        question: str,
+        *,
+        request_id: str | None = None,
+        committee: bool = False,
+        research: bool = False,
     ) -> RunResult:
+        """``committee``: ``--comite`` (D15); ``research``: ``--approfondi`` (D14), not both."""
+        if committee and research:
+            raise ValueError("--comite et --approfondi s'excluent")
         request_id = request_id or str(uuid.uuid4())
         now = self._clock()
         gate = BudgetGate(self.config, self.journal, tz=self._tz, alerts=self.alerts)
@@ -489,6 +589,8 @@ class Orchestrator:
             callbacks=self.callbacks + self.tracer.callbacks(),
             committee_forced=committee,
             committee_for=self.committee_spec,
+            research_forced=research,
+            research_for=self.research_spec,
             budget_clock=self._budget_clock,
         )
         start = {"config": self.config.digest}
@@ -528,7 +630,7 @@ class Orchestrator:
             answer=answer,
             cost_eur=meter.total_eur,
             tokens=meter.total_tokens,
-            tool_calls=run.budget.tool_calls,  # the committee's session budget, if one sat
+            tool_calls=run.budget.tool_calls,  # the committee's or the research's, if one ran
             elapsed_s=round(budget.elapsed_s, 3),  # the whole request
             budget_alerts=alerts,
             now=final.context.now if final.context is not None else None,

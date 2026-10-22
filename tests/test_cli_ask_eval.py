@@ -70,10 +70,14 @@ class FakeOrchestrator:
         self.config, self.journal, self.tracer = config, journal, tracer
         self.questions: list[str] = []
         self.committee: list[bool] = []
+        self.research: list[bool] = []
 
-    async def ask(self, question: str, *, committee: bool = False) -> RunResult:
+    async def ask(
+        self, question: str, *, committee: bool = False, research: bool = False
+    ) -> RunResult:
         self.questions.append(question)
         self.committee.append(committee)
+        self.research.append(research)
         check = BudgetGate(self.config, AuditJournal(self.journal)).check()  # D9 refusal
         return RunResult(
             request_id="req-1",
@@ -115,6 +119,26 @@ def test_ask_comite_asks_for_the_committee(fake: list[FakeOrchestrator], budgete
     result = runner.invoke(app, args)
     assert result.exit_code == 0, result.output
     assert fake[0].committee == [True]
+    assert fake[0].research == [False]
+
+
+def test_ask_approfondi_asks_for_the_deep_research(
+    fake: list[FakeOrchestrator], budgeted: Path
+) -> None:
+    args = ["ask", "État de l'art ?", "--approfondi", "--config-dir", str(budgeted)]
+    result = runner.invoke(app, args)
+    assert result.exit_code == 0, result.output
+    assert (fake[0].committee, fake[0].research) == ([False], [True])
+
+
+def test_ask_refuses_comite_and_approfondi_together(
+    fake: list[FakeOrchestrator], budgeted: Path
+) -> None:
+    args = ["ask", "Q ?", "--comite", "--approfondi", "--config-dir", str(budgeted)]
+    result = runner.invoke(app, args)
+    assert result.exit_code == 1
+    assert "--comite et --approfondi s'excluent" in result.stderr
+    assert fake == []  # refused before any orchestrator is built
 
 
 def test_ask_without_langfuse_keys_warns_and_answers(
@@ -195,7 +219,7 @@ def test_ask_reports_an_error_in_one_line(
     fake: list[FakeOrchestrator], budgeted: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     async def broken(
-        self: FakeOrchestrator, question: str, *, committee: bool = False
+        self: FakeOrchestrator, question: str, *, committee: bool = False, research: bool = False
     ) -> RunResult:
         raise RuntimeError("première ligne\nseconde ligne")
 

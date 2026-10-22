@@ -28,7 +28,10 @@ Complexity = Literal["simple", "complexe"]
 Importance = Literal["normale", "elevee"]
 Confidence = Literal["faible", "moyen", "eleve"]
 Status = Literal["complete", "partielle", "clarification", "refus"]
-Mode = Literal["direct", "comite"]  # D15: the committee answers decision questions
+RouterMode = Literal["direct", "comite"]  # D15: the committee answers decision questions
+# A deep research runs only when Lucas asks for it (ADR-045, D14): the router never chooses it.
+Mode = Literal["direct", "comite", "approfondi"]
+SourceKind = Literal["page_web", "preprint", "article"]  # a preprint has no announced peer review
 
 
 def required[T](value: T | None, node: str) -> T:
@@ -83,7 +86,7 @@ class RouteVerdict(_Llm):  # the router's output, node 3
     complexite: Complexity
     importance: Importance
     web: bool
-    mode: Mode = "direct"
+    mode: RouterMode = "direct"
     raison: str = Field(max_length=400)
 
 
@@ -121,6 +124,7 @@ class Source(_Node):
     rejected: int = 0  # quote not found in the page, claim too long or empty
     flagged: int = 0  # dropped for instruction-like phrasing (R5)
     signals: tuple[str, ...] = ()  # instruction-like patterns found in the page
+    kind: SourceKind = "page_web"  # a scholarly record is read from its abstract only (D12)
 
 
 class Confiance(_Llm):
@@ -210,12 +214,40 @@ class CommitteeOutcome(_Node):
         return self.status == "complete" and self.decision is not None
 
 
+class Unverified(_Node):
+    """A claim of a deep research left out of its answer, and why (D15)."""
+
+    texte: str
+    raison: str
+
+
+class ResearchOutcome(_Node):
+    """What a deep research left: its file, what it collected and what it removed (ADR-045)."""
+
+    record_id: str
+    pack: str
+    version: str
+    halted: bool = False
+    sub_questions: tuple[str, ...] = ()
+    sub_questions_cut: int = 0  # planned beyond max_sub_questions
+    searches: int = 0  # web and scholarly searches made
+    reads: int = 0  # pages and abstracts read
+    without_abstract: int = 0  # scholarly records left unread: no abstract to check quotes on
+    retracted: int = 0  # records retracted, withdrawn or removed: never cited
+    updated: tuple[str, ...] = ()  # « [n] : correction », a source whose record has an update
+    tool_errors: int = 0
+    removed: tuple[Unverified, ...] = ()
+    file: str  # relative to the project root
+    file_sha256: str
+
+
 class SourceRef(_Node):
     number: int
     title: str | None
     url: str
     published: str | None
     retrieved_at: str
+    kind: SourceKind = "page_web"
 
 
 class CommitteeView(_Node):
@@ -242,6 +274,7 @@ class Answer(_Node):  # node 6: format 7.3
     confiance: Confiance | None = None
     sources: tuple[SourceRef, ...] = ()
     points_a_verifier: tuple[str, ...] = ()
+    non_verifies: tuple[str, ...] = ()  # claims of a deep research removed, with why (D15)
     prochaines_etapes: tuple[str, ...] = ()
     signalements: tuple[str, ...] = ()
     questions: tuple[str, ...] = ()
@@ -260,6 +293,7 @@ class CerveauState(BaseModel):
     draft: Draft | None = None
     verification: VerificationReport | None = None
     committee: CommitteeOutcome | None = None
+    research: ResearchOutcome | None = None
     answer: Answer | None = None
     policy: dict[str, Any] | None = None  # PolicyDecision.to_payload()
     audited: bool = False

@@ -24,7 +24,7 @@ from typing import Any, Literal
 
 from core.audit.chain import AuditJournal
 from core.budget.ledger import ALERT_KEY, Spending, read_spending
-from core.config.loader import Config, PerRequest
+from core.config.loader import Config, PerCommittee, PerRequest
 from core.learning.errors import budget_error, journal_errors
 from core.models.meter import Meter
 from core.notify.alerts import Alert, Alerts, budget_severity
@@ -196,6 +196,15 @@ class RequestBudgetExceeded(Exception):
         )
 
 
+def _session(limits: PerCommittee, refusal: str) -> PerRequest:
+    """The limits of a committee session or a deep research, as a request's; a marker refuses."""
+    values = (limits.max_tool_calls, limits.max_tokens, limits.max_seconds)
+    if not all(isinstance(value, int) for value in values):  # a marker remains
+        raise ValueError(refusal)
+    tool_calls, tokens, seconds = (int(value) for value in values)
+    return PerRequest(max_tool_calls=tool_calls, max_tokens=tokens, max_seconds=seconds)
+
+
 class RequestBudget:
     """Tool calls, tokens and seconds of one request (``budgets.yaml`` › ``per_request``)."""
 
@@ -230,12 +239,21 @@ class RequestBudget:
         """
         config.require(feature)
         limits = config.budgets.per_committee
-        values = (limits.max_tool_calls, limits.max_tokens, limits.max_seconds)
-        if not all(isinstance(value, int) for value in values):  # a marker remains
-            raise ValueError("per_committee non défini : séance bloquée (R7)")
-        tool_calls, tokens, seconds = (int(value) for value in values)
-        per_session = PerRequest(max_tool_calls=tool_calls, max_tokens=tokens, max_seconds=seconds)
-        return cls(per_session, meter, **kwargs)
+        refusal = "per_committee non défini : séance bloquée (R7)"
+        return cls(_session(limits, refusal), meter, **kwargs)
+
+    @classmethod
+    def for_deep_research(
+        cls, config: Config, meter: Meter, *, feature: str, **kwargs: Any
+    ) -> RequestBudget:
+        """The limits of one deep research (``per_deep_research``, D13), checked like a request's.
+
+        Blocked while ``feature`` (``recherche.deep_research``) still holds a marker (R7).
+        """
+        config.require(feature)
+        limits = config.budgets.per_deep_research
+        refusal = "per_deep_research non défini : recherche bloquée (R7)"
+        return cls(_session(limits, refusal), meter, **kwargs)
 
     @property
     def max_seconds(self) -> int:

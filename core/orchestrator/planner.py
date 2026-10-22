@@ -36,7 +36,7 @@ from core.budget.gate import RequestBudgetExceeded
 from core.guardrails.injection import injection_signals
 from core.guardrails.input import mark_untrusted
 from core.mcp.adapter import McpAdapterError, ToolRefusedError
-from core.orchestrator.reader import Page, extracts_view, read_page
+from core.orchestrator.reader import Page, Reading, extracts_view, read_page
 from core.orchestrator.runtime import KillSwitchEngaged, Run, Toolbox
 from core.orchestrator.state import (
     CerveauState,
@@ -271,32 +271,64 @@ def repeats_tool_data(query: str, outputs: Iterable[ToolOutput]) -> bool:
     return False
 
 
-async def _search(session: Session, toolbox: Toolbox, arguments: dict[str, Any]) -> str:
+@dataclass(frozen=True)
+class Hit:
+    """A search result as a model sees it: title masked and address withheld when they read as
+    an instruction (B68); a withheld address is never opened."""
+
+    rank: int
+    title: str
+    url: str
+
+
+async def search_web(
+    session: Session, toolbox: Toolbox, arguments: dict[str, Any]
+) -> list[Hit] | None:
+    """One web_search; ``None`` when the query carries Lucas's data and is not sent (R6)."""
     if repeats_tool_data(str(arguments.get("query", "")), session.tool_outputs):
         session.refused_searches += 1  # never sent, so never journaled with Lucas's data
-        return SEARCH_REFUSED
-    hits = _Results.model_validate(await toolbox.call(SEARCH, arguments)).results
+        return None
+    results = _Results.model_validate(await toolbox.call(SEARCH, arguments)).results
     session.searches += 1
-    lines: list[str] = []
-    for position, hit in enumerate(hits, start=1):
-        session.search_texts.append(hit.title)  # the planner sees titles, not snippets
+    hits: list[Hit] = []
+    for position, hit in enumerate(results, start=1):
+        session.search_texts.append(hit.title)  # the models see titles, not snippets
         url = hit.url
         if _instruction_like_url(url):  # never shown, so never opened (B68)
             session.masked_urls += 1
             url = MASKED_URL
         else:
             session.allowed.add(url)
-        lines.append(f"{hit.rank or position}. {_masked_title(hit.title)} — {url}")
-    body = "\n".join(lines) or "Aucun résultat."
+        hits.append(Hit(hit.rank or position, _masked_title(hit.title), url))
+    return hits
+
+
+async def _search(session: Session, toolbox: Toolbox, arguments: dict[str, Any]) -> str:
+    hits = await search_web(session, toolbox, arguments)
+    if hits is None:
+        return SEARCH_REFUSED
+    body = "\n".join(f"{hit.rank}. {hit.title} — {hit.url}" for hit in hits) or "Aucun résultat."
     return (
         mark_untrusted(body, source="web_search")
         + "\nPour lire une page, appelle web_read avec l'une de ces adresses."
     )
 
 
-async def _read(
+def keep_reading(session: Session, reading: Reading, *addresses: str) -> Source:
+    """Stores a read source under its addresses (the first one wins) and returns it."""
+    number = reading.source.number
+    session.sources.append(reading.source)
+    session.pages[number] = reading.text
+    for address in addresses:
+        session.read.setdefault(address, number)
+    session.reader_failures += int(reading.reader_failed)
+    return reading.source
+
+
+async def open_page(
     run: Run, session: Session, toolbox: Toolbox, arguments: dict[str, Any], question: str
-) -> str:
+) -> Source | str:
+    """One web_read turned into checked extracts; a refusal or a reminder as text otherwise."""
     url = str(arguments.get("url", "")).strip()
     given = run.url_map.get(url)
     if url not in session.allowed and given is None:
@@ -312,12 +344,14 @@ async def _read(
         page = page.model_copy(update={"final_url": run.pseudonymiser.pseudonymise(page.final_url)})
     number = len(session.sources) + 1
     reading = await read_page(run, question, page, number=number, url=url)
-    session.sources.append(reading.source)
-    session.pages[number] = reading.text
-    session.read[url] = number
-    session.read.setdefault(page.final_url, number)
-    session.reader_failures += int(reading.reader_failed)
-    return extracts_view(reading.source)
+    return keep_reading(session, reading, url, page.final_url)
+
+
+async def _read(
+    run: Run, session: Session, toolbox: Toolbox, arguments: dict[str, Any], question: str
+) -> str:
+    source = await open_page(run, session, toolbox, arguments, question)
+    return source if isinstance(source, str) else extracts_view(source)
 
 
 def figure_view(value: object) -> object:

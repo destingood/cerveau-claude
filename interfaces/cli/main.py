@@ -117,16 +117,27 @@ def ask(
         bool,
         typer.Option("--comite", help="Réunir le Comité d'investissement du pack (finance, D15)."),
     ] = False,
+    approfondi: Annotated[
+        bool,
+        typer.Option(
+            "--approfondi",
+            help="Recherche approfondie du pack recherche, citations vérifiées (ADR-045, D14).",
+        ),
+    ] = False,
     config_dir: ConfigDirOpt = None,
 ) -> None:
     """Pose une question en lecture seule (N0) ; réponse sourcée au format 7.3.
 
     Une question de décision en finance (« dois-je vendre… ») ou --comite réunit le Comité :
-    analyse en N0, proposition non exécutée en N1, jamais un ordre (R16).
+    analyse en N0, proposition non exécutée en N1, jamais un ordre (R16). --approfondi lance la
+    recherche approfondie : plan en sous-questions, lectures bornées, affirmations sans extrait
+    vérifié retirées et listées.
 
     Codes de sortie : 0 réponse rendue, 1 erreur, 2 fonction bloquée (R7) ou clé absente,
     3 budget du jour ou du mois atteint (D9).
     """
+    if comite and approfondi:
+        _fail("--comite et --approfondi s'excluent : choisis l'un des deux.", EXIT_ERROR)
     root = project_root()
     config = _load(config_dir)
     try:
@@ -148,7 +159,7 @@ def ask(
         typer.echo(f"avertissement : {tracing.reason}.", err=True)
     try:
         orchestrator = build_orchestrator(config, root, tracer=tracer)
-        result = asyncio.run(orchestrator.ask(question, committee=comite))
+        result = asyncio.run(orchestrator.ask(question, committee=comite, research=approfondi))
     except BlockedFeatureError as exc:
         _blocked(exc)
     except BudgetExceededError as exc:
