@@ -140,6 +140,18 @@ P3, §7). Conditions lues le 2026-10-22.
 | Image des contrôles, `python:3.12-slim` avec ruff et pytest (E4) | Python : PSF-2.0 ; ruff et pytest : MIT (tableau des dépendances) ; paquets Debian de l'image sous leurs licences propres (`A_VERIFIER` à la construction) | construite par Lucas, jamais par CERVEAU (`--pull never`), non redistribuée |
 | API REST de GitHub (Actions), `api.github.com` | [Conditions d'utilisation de GitHub](https://docs.github.com/en/site-policy/github-terms/github-terms-of-service), section H « API Terms », en vigueur depuis le 2026-04-27 : des requêtes abusives ou trop fréquentes peuvent suspendre l'accès à l'API ; aucun partage de jeton pour dépasser les limites | `code_ci` : lecture seule sans jeton (E6), une requête à la fois, pause respectée après un refus 403 ou 429 ; 60 requêtes par heure suffisent à un usage personnel |
 
+## Agent de code `code_agent` (phase 6, P3b)
+L'agent tourne dans une image construite par Lucas : CERVEAU n'ajoute aucune dépendance
+Python (plan P3b, §6). Faits relevés le 2026-10-22 (ADR-053, ADR-054, `infra/agent/README.md`).
+
+| Composant | Licence ou conditions | Usage dans CERVEAU |
+|---|---|---|
+| `claude-agent-sdk` 0.2.172 (publié sur PyPI le 2026-10-22) | MIT | installé dans l'image `cerveau-agent` seulement, figé par version et par empreinte (`requirements.txt`, `--require-hashes`) ; jamais dans `uv.lock` |
+| CLI de Claude Code, embarqué dans `claude-agent-sdk` (2.1.257 au moins) | « © Anthropic PBC. All rights reserved », usage soumis aux conditions commerciales d'Anthropic (`LICENSE.md` de `anthropics/claude-code`) : **licence restrictive** | lancé par le runner dans le conteneur de l'agent ; reste dans l'image, jamais copié dans le dépôt ni redistribué |
+| Image `cerveau-agent` : `python:3.12-slim`, ruff 0.17.1, pytest 9.1.1 | Python : PSF-2.0 ; ruff et pytest : MIT ; paquets Debian de l'image sous leurs licences propres (`A_VERIFIER` à la construction) | construite par Lucas, jamais par CERVEAU (`--pull never`), non redistribuée |
+| Image `cerveau-llm-proxy` : `python:3.12-slim` et `core/code/llm_proxy.py` | PSF-2.0 ; bibliothèque standard seulement | construite par Lucas, non redistribuée ; seul conteneur qui reçoit la clé et sort vers l'API (ADR-053) |
+| API Messages d'Anthropic, `api.anthropic.com` (`POST /v1/messages`) | conditions commerciales d'Anthropic, celles des appels de CERVEAU depuis la phase 1 ; texte non relu le 2026-10-22 (`A_VERIFIER`) | appelée par le proxy de la tâche avec la clé de Lucas : `claude-sonnet-5-5` (F6), 2 $ au plus par tâche (F5) ; le contenu des requêtes part chez Anthropic, comme pour toute utilisation de Claude |
+
 ## Licences restrictives ou à surveiller
 - **Redis 7.4 (RSALv2 / SSPLv1, depuis le 2024-03-20)** : interdit surtout de revendre Redis comme
   service. Usage interne non modifié : sans effet. Alternative libre à évaluer : Valkey (backlog).
@@ -150,6 +162,11 @@ P3, §7). Conditions lues le 2026-10-22.
   licence configurée).
 - **Hypothesis (MPL-2.0)** : copyleft faible par fichier, outil de test non modifié ni distribué.
 - **GNU make (GPL-3.0)** : outil de construction, sans lien avec le code de CERVEAU.
+- **CLI de Claude Code (« All rights reserved », conditions commerciales d'Anthropic)** :
+  embarqué dans `claude-agent-sdk` (MIT), il n'existe que dans l'image `cerveau-agent`,
+  construite par Lucas et jamais redistribuée ; aucun de ses fichiers n'entre dans le dépôt
+  ni dans `uv.lock`. Retirer `code_agent` du pack suffit à ne plus l'utiliser (ADR-054).
+  Redistribuer l'image ou servir des tiers (R16) exigerait de relire ces conditions.
 - **vectorbt (Apache-2.0 + Commons Clause v1.0)** : la clause interdit de « vendre » le
   logiciel, c'est-à-dire de fournir contre rémunération un produit ou un service dont la valeur
   vient substantiellement de vectorbt (conseil et hébergement compris). CERVEAU est un outil
