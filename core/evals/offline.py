@@ -46,7 +46,7 @@ from dataclasses import dataclass, field
 from datetime import UTC, date, datetime, timedelta
 from functools import cache
 from pathlib import Path
-from typing import Any
+from typing import Any, Literal
 
 import yaml
 from langchain_core.callbacks import BaseCallbackHandler
@@ -56,6 +56,8 @@ from langchain_core.outputs import ChatGeneration, ChatResult, LLMResult
 from langchain_core.tools import BaseTool, ToolException
 from mcp.server import MCPServer
 
+from core.code.git import GitRunner
+from core.code.repos import RepoReader
 from core.config import load_config
 from core.config.loader import Config
 from core.evals.cases import (
@@ -66,6 +68,14 @@ from core.evals.cases import (
     QualityFixture,
     RecordFixture,
     cached_web,
+)
+from core.evals.code_fixtures import (
+    CODE_REPO,
+    FixtureDocker,
+    FixtureGitHub,
+    build_repo,
+    check_settings,
+    code_repositories,
 )
 from core.finance.fixtures import REFERENCE_FETCHED_AT, REFERENCE_READ_AT, reference_store
 from core.finance.portfolio import PortfolioError, import_transactions
@@ -78,11 +88,14 @@ from core.guardrails.pii import PiiAnalyzer, Pseudonymiser
 from core.mcp.adapter import McpPlugin, RequestScope
 from core.models.router import ModelRequest, ModelRouter
 from core.net.guard import FetchError
-from core.orchestrator.planner import FORMAT_REPAIR
+from core.orchestrator.planner import FORMAT_REPAIR, sentence_count
 from core.orchestrator.runtime import McpToolbox, Toolbox, ToolboxOpener
 from core.orchestrator.structured import REPAIR
 from core.verification.figures import Figure
 from core.verification.trace import tool_output
+from plugins.code_checks.server import build_server as checks_server
+from plugins.code_ci.server import build_server as ci_server
+from plugins.code_repo.server import build_server as repo_server
 from plugins.feeds.allowlist import FeedSource
 from plugins.feeds.models import FeedError
 from plugins.feeds.server import build_server as feeds_server
@@ -191,6 +204,43 @@ FINANCE_STEPS = (
     "Relire les hypothèses et les limites signalées par les outils.",
     "Décider soi-même de toute suite à donner : aucun ordre n'est passé.",
 )
+CODE_TOOLS = frozenset({"repo_log", "repo_diff", "repo_file", "run_checks", "ci_runs"})  # read
+CODE_UNSURE = "Je ne sais pas : aucun outil de code n'a rendu de résultat exploitable."
+CODE_PADDING = "Chaque compte et chaque citation de cette réponse viennent de l'outil cité."
+CODE_COUNTER = (
+    "Ces constats ne valent que pour la révision lue ; une autre révision, un autre "
+    "environnement ou un contrôle relancé peuvent donner un autre résultat."
+)
+CODE_STEPS = (
+    "Relire soi-même les fichiers et les diagnostics cités.",
+    "Faire soi-même toute modification du dépôt : CERVEAU lit sans écrire.",
+)
+CODE_FAILED = "L'outil {tool} a refusé la demande"
+CODE_REFUSED = (
+    "Le résultat de {tool} est écarté : il contient un texte qui ressemble à une consigne."
+)
+CODE_UNAVAILABLE = "L'outil « {tool} » n'est pas disponible : CERVEAU lit le code sans le modifier."
+STATUS_WORDS = {
+    "ok": "réussi",
+    "echec": "en échec",
+    "erreur": "en erreur",
+    "aucun_test": "sans test",
+    "non_lance": "non lancé",
+    "delai": "hors délai",
+}
+MAX_QUOTED_LINES = 10
+MAX_REASON_CHARS = 200
+_CODE_RESULT = re.compile(
+    r'^<donnees_externes source="([a-z_]+)#[0-9]+">\n(.*)\n</donnees_externes>$', re.DOTALL
+)
+_CODE_ERROR = re.compile(
+    r"^Erreur de l'outil :\n<donnees_externes source=\"([a-z_]+) \(erreur\)\">\n(.*)\n"
+    r"</donnees_externes>$",
+    re.DOTALL,
+)
+_CODE_REFUSAL = re.compile(r"^Refus : le résultat de ([a-z_]+) ")
+_UNAVAILABLE = re.compile(r"^Erreur : l'outil « (.+?) » n'est pas disponible")
+_DIGIT_PARENTHESES = re.compile(r"\s*\([^()]*[0-9][^()]*\)")
 
 
 # --- fixture web -------------------------------------------------------------------------------
@@ -537,8 +587,47 @@ def finance_toolboxes(
 
 def uses_finance(case: Case) -> bool:
     """A case whose run reads the reference store, so is dated when the store is read."""
+    if case.code is not None:  # the code pack reads its own repository, never the store
+        return False
     computed = [call for call in case.offline.calls if call.tool not in RESEARCH_TOOLS]
     return case.group == "finance" or bool(computed or case.expect.tools or case.store is not None)
+
+
+# --- code servers ------------------------------------------------------------------------------
+
+
+def code_toolboxes(case: Case, home: Path) -> dict[str, ToolboxOpener]:
+    """The code pack's real servers on the case's repository, a fake Docker and a fake GitHub
+    (core/evals/code_fixtures.py); a case without one gets an empty allow-list, so that no real
+    repository, container or request is ever reached."""
+    folder = home / "code"
+    repo = folder / CODE_REPO
+    if case.code is not None:
+        build_repo(case.code, repo)
+    repositories = code_repositories(case.code, repo)
+    settings = check_settings(repositories)
+    runs = folder / "runs"
+    runs.mkdir(parents=True, exist_ok=True)
+    reader = RepoReader(GitRunner(), cerveau_root=REPO_ROOT)
+    checks = case.code.checks if case.code is not None else None
+    docker, github = FixtureDocker(checks), FixtureGitHub(case.code)
+    factories: dict[str, Callable[[], MCPServer]] = {
+        "code_repo": lambda: repo_server(lambda: repositories, reader),
+        "code_checks": lambda: checks_server(lambda: settings, reader, docker, runs),
+        "code_ci": lambda: ci_server(
+            lambda: repositories, github, now=lambda: FIXTURE_NOW, cerveau=REPO_ROOT
+        ),
+    }
+
+    def opener(name: str, factory: Callable[[], MCPServer]) -> ToolboxOpener:
+        @asynccontextmanager
+        async def open_toolbox(scope: RequestScope) -> AsyncIterator[Toolbox]:
+            async with McpPlugin(REPO_ROOT / "plugins" / name, scope, target=factory()) as plugin:
+                yield McpToolbox(plugin)
+
+        return open_toolbox
+
+    return {name: opener(name, factory) for name, factory in factories.items()}
 
 
 # --- scripted models ---------------------------------------------------------------------------
@@ -729,6 +818,8 @@ class Pilot:
         computed = [call for call in offline.calls if call.tool not in RESEARCH_TOOLS]
         if offline.answer is not None:
             answer = offline.answer.model_dump(mode="json")
+        elif self.case.code is not None and not self.case.expect.figures:
+            answer = _from_code(views, complex_=complex_)
         elif computed or self.case.expect.figures:
             answer = _from_figures(self.case, self.finance, views, complex_=complex_)
         else:
@@ -990,6 +1081,266 @@ def _from_figures(
         "contre_arguments": FINANCE_COUNTER if complex_ else "",
         "confiance": confidence,
         "prochaines_etapes": list(FINANCE_STEPS) if complex_ else [],
+    }
+
+
+def _line(text: object) -> str:
+    """A text of a code tool as the planner reads it, NFKC and spaces collapsed, marks kept."""
+    return " ".join(unicodedata.normalize("NFKC", str(text)).split())
+
+
+def _items(data: Mapping[str, Any], key: str) -> list[Mapping[str, Any]]:
+    """The objects of a list, without the note a bounded view puts in their place."""
+    return [item for item in data.get(key) or () if isinstance(item, Mapping)]
+
+
+def _texts(data: Mapping[str, Any], key: str) -> list[str]:
+    return [_line(item) for item in data.get(key) or () if str(item).strip()]
+
+
+def _quoted(text: str) -> list[str]:
+    lines = [_line(line) for line in text.splitlines()]
+    return [f"  « {line} »" for line in lines if line][:MAX_QUOTED_LINES]
+
+
+# Whether a result fell short: no step did ("none"), some did ("partial") or none concluded
+# ("total"), as when Docker launched no container or every step ran out of time.
+Shortfall = Literal["none", "partial", "total"]
+CodeFacts = tuple[str, list[str], Shortfall]  # the headline, the details, the shortfall
+
+
+def _log_facts(data: Mapping[str, Any]) -> CodeFacts:
+    repo, commits = _line(data.get("repo", "")), _items(data, "commits")
+    lines = [f"- « {_plain(str(c.get('subject')))} » ({_line(c.get('author'))})" for c in commits]
+    if data.get("more_commits"):
+        lines.append("D'autres commits, plus anciens, ne sont pas montrés.")
+    if not commits:
+        return f"Aucun commit lu dans {repo}.", lines, "none"
+    first = commits[0]
+    head = (
+        f"Dernier commit de {repo} : « {_plain(str(first.get('subject')))} », "
+        f"par {_line(first.get('author'))}."
+    )
+    return head, lines, "none"
+
+
+def _changed(item: Mapping[str, Any]) -> str:
+    added, deleted = item.get("added"), item.get("deleted")
+    if added is None or deleted is None:
+        return f"{_line(item.get('path'))} (fichier binaire)"
+    return f"{_line(item.get('path'))}, {added} ligne(s) ajoutée(s) et {deleted} retirée(s)"
+
+
+def _diff_facts(data: Mapping[str, Any]) -> CodeFacts:
+    repo, files = _line(data.get("repo", "")), _items(data, "files")
+    base, head = _line(data.get("base", "")), _line(data.get("head", ""))
+    lines = [f"- {_changed(item)}" for item in files]
+    if data.get("more_files"):
+        lines.append(f"Autres fichiers modifiés, non montrés : {data['more_files']}.")
+    if withheld := _texts(data, "withheld"):
+        lines.append(f"Fichiers sensibles retenus par l'outil : {', '.join(withheld)}.")
+    if data.get("note"):
+        lines.append(f"Note de repo_diff : {_plain(str(data['note']))}.")
+    patch = str(data.get("patch") or "").splitlines()
+    added = [line[1:] for line in patch if line.startswith("+") and not line.startswith("+++")]
+    if quoted := _quoted("\n".join(added)):
+        lines += ["Lignes ajoutées :", *quoted]
+    if data.get("patch_truncated"):
+        lines.append("Le patch est tronqué par l'outil.")
+    if not files:
+        return f"Aucun fichier modifié lu entre {base} et {head} dans {repo}.", lines, "none"
+    return f"Différences de {repo} entre {base} et {head} : {_changed(files[0])}.", lines, "none"
+
+
+def _file_facts(data: Mapping[str, Any]) -> CodeFacts:
+    repo, path = _line(data.get("repo", "")), _line(data.get("path") or "") or "racine"
+    if data.get("kind") == "directory":
+        names = [
+            _line(e.get("name")) + (" (retenu : sensible)" if e.get("withheld") else "")
+            for e in _items(data, "entries")
+        ]
+        lines = [f"- {name}" for name in names]
+        if data.get("more_entries"):
+            lines.append(f"Autres entrées, non montrées : {data['more_entries']}.")
+        shown = ", ".join(names[:5]) or "aucune entrée lisible"
+        return f"Le dossier « {path} » de {repo} contient {shown}.", lines, "none"
+    lines = []
+    content, total = data.get("content"), data.get("total_lines")
+    if content is None:
+        head = f"Le contenu de « {path} » dans {repo} n'est pas montré par l'outil."
+    elif total is None:
+        head = f"Le fichier « {path} » de {repo} est lu."
+    else:
+        head = f"Le fichier « {path} » de {repo} compte {total} ligne(s)."
+    if content is not None and (quoted := _quoted(str(content))):
+        lines += ["Extrait :", *quoted]
+    if data.get("content_truncated"):
+        lines.append("Le contenu est tronqué par l'outil.")
+    return head, lines, "none"
+
+
+def _checks_facts(data: Mapping[str, Any]) -> CodeFacts:
+    repo = _line(data.get("repo", ""))
+    steps = {
+        name: data.get(key) if isinstance(data.get(key), Mapping) else {}
+        for name, key in (
+            ("ruff check", "ruff_check"),
+            ("ruff format", "ruff_format"),
+            ("pytest", "pytest"),
+        )
+    }
+    words = {
+        name: STATUS_WORDS.get(str(step.get("status")), _line(step.get("status")))
+        for name, step in steps.items()
+    }
+    head = f"Contrôles de {repo} : " + ", ".join(f"{n} {w}" for n, w in words.items()) + "."
+    check, fmt, pytest = steps.values()
+    lines = []
+    if check.get("count") is not None:
+        lines.append(f"ruff check : {check['count']} diagnostic(s).")
+    if by_code := check.get("by_code"):
+        counts = ", ".join(f"{code} × {count}" for code, count in by_code.items())
+        lines.append(f"Diagnostics par code : {counts}.")
+    for item in _items(check, "diagnostics"):
+        where = _line(item.get("path"))
+        if item.get("line") is not None:
+            where = f"{where}, ligne {item['line']}"
+        lines.append(f"- {where} : {_line(item.get('code'))} {_plain(str(item.get('message')))}")
+    if check.get("more_diagnostics"):
+        lines.append(f"Autres diagnostics, non montrés : {check['more_diagnostics']}.")
+    if fmt.get("count") is not None:
+        lines.append(f"ruff format : {fmt['count']} fichier(s) à reformater.")
+    lines += [f"- à reformater : {path}" for path in _texts(fmt, "files")]
+    if counts := pytest.get("counts"):
+        lines.append("pytest : " + ", ".join(f"{k} {v}" for k, v in counts.items()) + ".")
+    lines += [f"- test en échec : {name}" for name in _texts(pytest, "failed")]
+    lines += [f"- test en erreur : {name}" for name in _texts(pytest, "errors")]
+    lines += [
+        f"Note de {name} : {_plain(str(step['note']))}."
+        for name, step in steps.items()
+        if step.get("note")
+    ]
+    source = data.get("source") if isinstance(data.get("source"), Mapping) else {}
+    if withheld := _texts(source, "withheld"):
+        lines.append(f"Fichiers sensibles retenus de la copie : {', '.join(withheld)}.")
+    if skipped := _texts(source, "skipped"):
+        lines.append(f"Fichiers non copiés : {', '.join(skipped)}.")
+    statuses = [step.get("status") for step in steps.values()]
+    if not any(status in ("ok", "echec", "aucun_test") for status in statuses):
+        return head, lines, "total"
+    return head, lines, "partial" if {"erreur", "delai"} & set(statuses) else "none"
+
+
+def _ci_facts(data: Mapping[str, Any]) -> CodeFacts:
+    github, runs = _line(data.get("github", "")), _items(data, "runs")
+
+    def state(run: Mapping[str, Any]) -> str:
+        conclusion = _line(run.get("conclusion")) if run.get("conclusion") else "aucune"
+        return f"{_line(run.get('status'))}, conclusion {conclusion}"
+
+    lines = [
+        f"- n°{run.get('run_number')} « {_plain(str(run.get('title')))} » "
+        f"({_line(run.get('workflow'))}, branche {_line(run.get('branch'))}, "
+        f"{_line(run.get('event'))}) : {state(run)}"
+        for run in runs
+    ]
+    if by_conclusion := data.get("by_conclusion"):
+        counts = ", ".join(f"{name} × {count}" for name, count in by_conclusion.items())
+        lines.append(f"Runs montrés, par conclusion : {counts}.")
+    if data.get("total_count") is not None:
+        lines.append(f"Runs comptés par GitHub : {data['total_count']}.")
+    if not runs:
+        return f"Aucun run lu pour {github}.", lines, "none"
+    first = runs[0]
+    head = (
+        f"Dernier run de {github} : n°{first.get('run_number')} "
+        f"« {_plain(str(first.get('title')))} », {state(first)}."
+    )
+    return head, lines, "none"
+
+
+CODE_FACTS: dict[str, Callable[[Mapping[str, Any]], CodeFacts]] = {
+    "repo_log": _log_facts,
+    "repo_diff": _diff_facts,
+    "repo_file": _file_facts,
+    "run_checks": _checks_facts,
+    "ci_runs": _ci_facts,
+}
+
+
+def _code_problem(view: str) -> str | None:
+    """The sentence an honest planner writes for a failed, refused or unavailable call."""
+    if (found := _CODE_ERROR.match(view)) is not None:
+        tool, error = found.groups()
+        reason = _DIGIT_PARENTHESES.sub("", _plain(_tool_error(tool, error)))
+        sentence = f"{CODE_FAILED.format(tool=tool)} : {reason[:MAX_REASON_CHARS]}."
+        # The error is not part of the R1 trace: no number of it is written.
+        if not reason or _DIGIT.search(reason) or sentence_count(sentence) != 1:
+            sentence = f"{CODE_FAILED.format(tool=tool)}."
+        return sentence
+    if (found := _CODE_REFUSAL.match(view)) is not None:
+        return CODE_REFUSED.format(tool=found.group(1))
+    if (found := _UNAVAILABLE.match(view)) is not None:
+        return CODE_UNAVAILABLE.format(tool=found.group(1))
+    return None
+
+
+def _from_code(views: Sequence[str], *, complex_: bool) -> dict[str, Any]:
+    """The answer of an honest planner on the code tools' results: what they read, as they
+    wrote it, with no count of its own (R1), and every failure or refusal said (R12)."""
+    heads: list[str] = []
+    details: list[str] = []
+    problems: list[str] = []
+    tools: list[str] = []
+    shortfalls: list[Shortfall] = []
+    for view in views:
+        if (problem := _code_problem(view)) is not None:
+            problems.append(problem)
+            continue
+        found = _CODE_RESULT.match(view)
+        if found is None or found.group(1) not in CODE_FACTS:
+            continue
+        tool = found.group(1)
+        try:
+            data = json.loads(found.group(2))
+        except ValueError:
+            continue
+        if not isinstance(data, Mapping):
+            continue
+        head, lines, shortfall = CODE_FACTS[tool](data)
+        if data.get("masked"):
+            lines.append(f"Secrets masqués par {tool} : {data['masked']}.")
+        heads.append(head if sentence_count(head) == 1 else RESULT.format(tool=tool))
+        details += lines
+        tools.append(tool)
+        shortfalls.append(shortfall)
+    low, high = (3, 5) if complex_ else (1, 3)
+    sentences = [*heads, *problems] if heads else [CODE_UNSURE, *problems]
+    sentences = sentences[: high - 1]
+    sentences += [CODE_PADDING] * max(0, low - len(sentences))
+    names = ", ".join(dict.fromkeys(tools))
+    if heads and not problems and set(shortfalls) == {"none"}:
+        confidence = {"niveau": "eleve", "justification": f"Résultats lus par {names}."}
+    elif heads and set(shortfalls) == {"total"}:
+        # A result that concluded nothing (no container, every step out of time) founds no
+        # answer: « je ne sais pas » stays the honest one (R12).
+        confidence = {
+            "niveau": "faible",
+            "justification": f"{names} n'a conclu sur aucun contrôle.",
+        }
+    elif heads:
+        confidence = {
+            "niveau": "moyen",
+            "justification": f"Résultats lus par {names}, avec les limites signalées.",
+        }
+    else:
+        confidence = {"niveau": "faible", "justification": "Aucun résultat d'outil exploitable."}
+    return {
+        "synthese": " ".join(sentences),
+        "developpement": "\n".join([*details, *problems]) or "Aucun résultat d'outil exploitable.",
+        "contre_arguments": CODE_COUNTER if complex_ else "",
+        "confiance": confidence,
+        "prochaines_etapes": list(CODE_STEPS) if complex_ else [],
     }
 
 

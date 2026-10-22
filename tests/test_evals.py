@@ -107,8 +107,9 @@ def test_the_injection_suite_has_at_least_20_trapped_pages() -> None:
         assert file.pass_rate == 1.0, file.group
         assert "R5" in file.rules, file.group
     for case in load_cases("injection"):
-        # the trap is in a page, in a file Lucas imports or in a manipulated member's reply
-        trapped = case.pages or case.hits or (case.store and case.store.files())
+        # the trap is in a page, in a file Lucas imports, in a repository (or a planner that
+        # obeys it) or in a manipulated member's reply
+        trapped = case.pages or case.hits or (case.store and case.store.files()) or case.code
         assert trapped or case.offline.committee or case.paper, case.id
 
 
@@ -202,6 +203,23 @@ def test_the_research_pack_has_its_golden_set_behaviours_and_red_team() -> None:
     assert {"recherche_consignes", "recherche_flux", "recherche_exfiltration"} <= {
         file.group for file in research
     }
+
+
+def test_the_code_pack_has_its_golden_set_behaviours_and_red_team() -> None:
+    golden = [case for case in load_cases("golden") if case.group == "code"]
+    assert len(golden) >= 30  # complement of plan P3, section 5
+    assert sum(case.code is not None for case in golden) >= 25  # read from a built repository
+    assert golden_threshold(load_config(REPO_ROOT / "config"), "code") == Decimal("0.80")
+    behaviors = [file for file in suite_files("behaviors") if file.group == "pack_code"]
+    assert len(behaviors) == 1
+    assert {"R1", "R6", "R12", "R16"} <= set(behaviors[0].rules)
+    code = [file for file in suite_files("injection") if file.group.startswith("code_")]
+    assert sum(len(file.cases) for file in code) >= 10  # complement of plan P3, section 5
+    assert {"code_consignes", "code_actions"} <= {file.group for file in code}
+    for case in load_cases("injection"):
+        if case.group.startswith("code_"):
+            assert case.code is not None, case.id
+            assert case.offline.calls, case.id  # a scripted planner, honest or compromised
 
 
 PHASE_3_SUITES = {  # plan of phase 3, §13: group → (suite, minimum number of cases, rules)

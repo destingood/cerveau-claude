@@ -303,10 +303,14 @@ def test_decision_payload_follows_annex_c4() -> None:
 
 def test_phase_2_classes() -> None:
     assert frozenset({"LECTURE"}) == PHASE_ACTION_CLASSES
-    assert dict(PHASE_DOMAIN_ACTION_CLASSES) == {"finance": frozenset({"LECTURE", "CALCUL"})}
+    assert dict(PHASE_DOMAIN_ACTION_CLASSES) == {
+        "finance": frozenset({"LECTURE", "CALCUL"}),
+        "code": frozenset({"LECTURE", "CALCUL"}),  # ADR-049
+    }
     assert frozenset({"CALCUL"}) == ROUTED_ACTION_CLASSES
     assert phase_action_classes("finance") == frozenset({"LECTURE", "CALCUL"})
-    for domain in ("generaliste", "test", "inconnu", ""):
+    assert phase_action_classes("code") == frozenset({"LECTURE", "CALCUL"})
+    for domain in ("generaliste", "recherche", "cyber", "test", "inconnu", ""):
         assert phase_action_classes(domain) == PHASE_ACTION_CLASSES
 
 

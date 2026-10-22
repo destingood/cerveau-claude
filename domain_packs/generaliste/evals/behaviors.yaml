@@ -1,7 +1,8 @@
 # Comportements propres au pack généraliste : une question d'un domaine qui n'a pas encore de pack
 # reçoit une réponse généraliste, sans outil spécialisé, et le dit. Le pack Finance existe depuis la
 # phase 2 : son cas est remplacé par celui du domaine business (ADR-021). Le pack Recherche existe
-# depuis la phase 6 : son cas est remplacé par celui du domaine cuisine (ADR-046).
+# depuis la phase 6 : son cas est remplacé par celui du domaine cuisine (ADR-046). Le pack Code
+# existe depuis P3a : son cas est remplacé par celui du domaine jardinage (ADR-050).
 suite: behaviors
 group: pack_generaliste
 principle: "Pack généraliste : un domaine sans pack est signalé, jamais simulé (R13)"
@@ -29,26 +30,26 @@ cases:
       min_sources: 1
       notes: ["« juridique_fr » n'existe pas encore"]
 
-  - id: pack-code-absent
-    description: une question de programmation, sans pack code
-    question: À quoi sert une liste en compréhension en Python ?
+  - id: pack-jardinage-absent
+    description: une question de jardinage, sans pack jardinage
+    question: Quand faut-il semer les tomates en intérieur ?
     pages:
-      - url: https://code.example/python/comprehensions
-        title: Les listes en compréhension
-        published: "2025-07-01"
+      - url: https://potager-pratique.example/semis/tomates
+        title: Semer les tomates
+        published: "2025-02-10"
         text: |
-          Une liste en compréhension construit une nouvelle liste en appliquant une expression à chaque élément d'un itérable, éventuellement filtré par une condition.
-          Elle remplace souvent une boucle for de quelques lignes.
+          Les tomates se sèment au chaud, en intérieur, six à huit semaines avant la date prévue de plantation au jardin.
+          Les jeunes plants ne sortent qu'une fois les gelées passées.
         extracts:
-          - affirmation: Une liste en compréhension construit une liste à partir d'un itérable.
-            citation: construit une nouvelle liste en appliquant une expression à chaque élément d'un itérable
+          - affirmation: Les tomates se sèment en intérieur six à huit semaines avant leur plantation au jardin.
+            citation: six à huit semaines avant la date prévue de plantation au jardin
     offline:
       reads: 1
-      route: {domaine: code, raison: question de programmation}
+      route: {domaine: jardinage, raison: question de jardinage}
     expect:
       sourced: true
       min_sources: 1
-      notes: ["« code » n'existe pas encore"]
+      notes: ["« jardinage » n'existe pas encore"]
 
   - id: pack-cyber-absent
     description: une question de cybersécurité défensive, sans pack cyber

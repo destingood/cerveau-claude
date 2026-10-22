@@ -558,6 +558,75 @@ class Expect(_Data):
         return self
 
 
+CodeStep = Literal["check", "format", "pytest"]
+
+
+class CodeCommitFixture(_Data):
+    """One commit of the case's repository. A file set to None is deleted; a link is a symbolic
+    link written in the index only, never on the disk. « «JETON_FICTIF» » and « «CLE_PRIVEE» »
+    become a fictitious token and key block when the repository is built (R6: none sits here)."""
+
+    message: str = Field(min_length=1)
+    files: dict[str, str | None] = Field(default_factory=dict)
+    links: dict[str, str] = Field(default_factory=dict)  # path → target
+
+    @model_validator(mode="after")
+    def _paths_inside(self) -> CodeCommitFixture:
+        # Written under the temporary home: a path never climbs out of the repository.
+        for path in [*self.files, *self.links]:
+            parts = path.split("/")
+            if "\\" in path or ":" in path or any(p in ("", ".", "..", ".git") for p in parts):
+                raise ValueError(f"{path} : chemin relatif au dépôt attendu")
+        return self
+
+
+class RuffItemFixture(_Data):
+    """One diagnostic as ruff 0.17 writes it with ``--output-format=json``."""
+
+    path: str = Field(min_length=1)
+    code: str | None = None
+    message: str = Field(min_length=1)
+    row: int = Field(default=1, ge=1)
+    column: int = Field(default=1, ge=1)
+
+
+class CodeChecksFixture(_Data):
+    """What the fake Docker of run_checks answers for each step; no container runs."""
+
+    lint: tuple[RuffItemFixture, ...] = ()
+    unformatted: tuple[str, ...] = ()  # files ruff format would reformat
+    pytest_code: int = 0
+    pytest_output: str = "..\n2 passed in 0.05s\n"
+    docker: int | None = None  # an exit code every step answers instead (125: daemon down)
+    timed_out: tuple[CodeStep, ...] = ()
+
+
+class CodeRunFixture(_Data):
+    """One GitHub Actions run, shaped like the documented answer of the API (texts invented)."""
+
+    title: str = Field(min_length=1)
+    workflow: str = "CI"
+    branch: str = "main"
+    event: str = "push"
+    status: str = "completed"
+    conclusion: str | None = "success"
+
+
+class CodeFixture(_Data):
+    """The repository « projet » of a code case, built in the run's temporary home and alone on
+    the allow-list (with CERVEAU's own when ``cerveau``), the fake Docker of run_checks and the
+    fake GitHub of ci_runs: no network, no container, no real repository read but CERVEAU's."""
+
+    commits: tuple[CodeCommitFixture, ...] = Field(min_length=1, max_length=10)
+    cerveau: bool = False  # CERVEAU listed too: every tool must refuse it (ADR-047)
+    pytest: bool = False  # Lucas prepared the repository's pytest environment (E3)
+    github: str | None = "lucas-exemple/projet"
+    checks: CodeChecksFixture | None = None  # None: every step answers 125 (no Docker)
+    runs: tuple[CodeRunFixture, ...] = Field(default=(), max_length=20)
+    total_runs: int | None = Field(default=None, ge=0)  # the API's total_count; None: the runs
+    ci_status: int = Field(default=200, ge=200, le=599)  # the API's HTTP status
+
+
 class Case(_Data):
     id: str = Field(pattern=CASE_ID)
     suite: Suite
@@ -573,6 +642,7 @@ class Case(_Data):
     offline: Offline = Offline()
     store: StoreFixture | None = None  # added to the case's copy of the reference store
     paper: PaperFixture | None = None  # a run of the paper loop instead of a question's run
+    code: CodeFixture | None = None  # the repository the code tools read (pack code)
     expect: Expect = Expect()
 
     @model_validator(mode="after")

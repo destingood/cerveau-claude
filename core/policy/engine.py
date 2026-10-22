@@ -7,8 +7,9 @@ says, and only the decisions this phase can carry out are granted, each with an 
 ``effect`` that the caller must read (ADR-030).
 
 The orchestrator and the plugins carry out ``auto`` for ``LECTURE`` in every domain and for
-``CALCUL`` in the finance pack alone, whose computing tools are deterministic, tested and
-evaluated (R1, R8, ADR-022): their effect is ``executer``. The paper loop alone carries out an
+``CALCUL`` in the finance pack, whose computing tools are deterministic, tested and evaluated (R1,
+R8, ADR-022), and in the code pack, whose checks run in a networkless, read-only container
+(ADR-048, ADR-049): their effect is ``executer``. The paper loop alone carries out an
 order intent of the finance pack (``decide_order``): ``proposition`` at N1 drafts it, ``paper`` at
 N2 sends it to the paper adapter, ``approbation`` at N3 files it for Lucas's approval before it
 is sent (ADR-035, ADR-036), and all three need the Risk Gate's answer (R2). ``approbation`` has an
@@ -34,9 +35,13 @@ if TYPE_CHECKING:
 
 # What phase 2 can carry out. Widening any of these is a phase decision (ADR, evals, Lucas).
 PHASE_ACTION_CLASSES: frozenset[ActionClass] = frozenset({"LECTURE"})  # in every domain
-# A pack computes only with deterministic tools that are tested and evaluated (R1, R8, ADR-022).
+# A pack computes only with deterministic tools that are tested and evaluated (R1, R8, ADR-022);
+# the code pack's checks run the repository's tools in a sandbox (ADR-048, ADR-049).
 PHASE_DOMAIN_ACTION_CLASSES: Mapping[str, frozenset[ActionClass]] = MappingProxyType(
-    {"finance": frozenset({"LECTURE", "CALCUL"})}
+    {
+        "finance": frozenset({"LECTURE", "CALCUL"}),
+        "code": frozenset({"LECTURE", "CALCUL"}),
+    }
 )
 # Granted in some domains only: decided once the request is routed to its domain.
 ROUTED_ACTION_CLASSES: frozenset[ActionClass] = (

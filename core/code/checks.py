@@ -4,7 +4,9 @@
 (checked with ruff 0.17.1). pytest is read from its terminal summary with ``-q -rfE --tb=no``:
 the last line ``1 failed, 2 passed in 0.12s`` and one ``FAILED <id>`` or ``ERROR <id>`` line per
 failure. The text after `` - `` on those lines is the exception message, written by the code under
-test: it is dropped. Paths and test names stay untrusted data (R5): the caller shows them through
+test: it is dropped. The parameter id of a test (``test_x[...]``) is free text that the code under
+test can set (``ids=``): it is kept only when made of word characters, dots and dashes, and shown
+as ``[…]`` otherwise. Paths and test names stay untrusted data (R5): the caller shows them through
 ``core.code.text``.
 """
 
@@ -35,6 +37,8 @@ _SUMMARY = re.compile(
 )
 _COUNT = re.compile(r"(\d+) ([a-z]+)")
 _FAILURE = re.compile(r"^(?P<kind>FAILED|ERROR) (?P<id>.+?)(?: - .*)?$")
+_SAFE_PARAMETER = re.compile(r"[\w.\-]*")
+MASKED_PARAMETER = "[…]"
 
 
 class ChecksError(Exception):
@@ -105,6 +109,19 @@ def count_codes(diagnostics: tuple[Diagnostic, ...]) -> dict[str, int]:
     return dict(sorted(counts.items(), key=lambda pair: (-pair[1], pair[0])))
 
 
+def shown_test_id(identifier: str) -> str:
+    """The test id with its parameter id masked unless it is plain (R5).
+
+    A parameter cut by the `` - `` separator has lost its closing bracket: it is masked too.
+    """
+    node, bracket, rest = identifier.partition("[")
+    if not bracket:
+        return identifier
+    if rest.endswith("]") and _SAFE_PARAMETER.fullmatch(rest[:-1]):
+        return identifier
+    return f"{node}{MASKED_PARAMETER}"
+
+
 def parse_pytest(stdout: bytes) -> PytestSummary:
     """Counts of the last summary line and the identifiers of failed and erroneous tests."""
     counts: dict[str, int] = {}
@@ -114,7 +131,7 @@ def parse_pytest(stdout: bytes) -> PytestSummary:
     for line in stdout.decode("utf-8", errors="replace").splitlines():
         line = line.strip()
         if match := _FAILURE.match(line):
-            (failed if match["kind"] == "FAILED" else errors).append(match["id"])
+            (failed if match["kind"] == "FAILED" else errors).append(shown_test_id(match["id"]))
         elif match := _SUMMARY.match(line):
             found = True
             counts = {}
