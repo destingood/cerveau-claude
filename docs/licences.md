@@ -3,6 +3,8 @@
 - Relevé du 2026-10-17 (phase 0), mis à jour le 2026-10-18 (phases 1 et 2), le 2026-10-20
   (phase 3), le 2026-10-21 (phases 4 et 5) et le 2026-10-22 (phase 6) ; à jour à chaque nouvelle
   dépendance (R14)
+- Phase 6, pack Code (P3a) : aucune nouvelle dépendance Python ; git, l'image des contrôles et
+  l'API de GitHub, appelés hors du verrou, sont relevés dans leur propre section
 - Phase 5 : licences lues dans les métadonnées des paquets installés (`License-Expression`) ;
   `pip-audit` sans vulnérabilité connue au 2026-10-21 ; bot Discord : licences lues dans
   `interfaces/discord_bot/package-lock.json`, `npm audit` sans vulnérabilité au 2026-10-21
@@ -127,6 +129,16 @@ Conditions lues le 2026-10-21 ; seules des métadonnées et des résumés sont l
 | arXiv, API `export.arxiv.org` | sans clé ; une requête toutes les 3 s et une seule connexion, toutes machines confondues ([conditions d'utilisation](https://info.arxiv.org/help/api/tou.html)) | métadonnées sous CC0 1.0 ; texte intégral sous la licence de chaque article, non redistribuable par l'API | plugin `scholarly` : limiteur partagé `var/net/arxiv.*` ; résumé coupé à 2 000 caractères ; texte intégral jamais lu (ADR-044) |
 | Crossref, REST API `api.crossref.org` | pool public sans clé et sans `mailto` (D11) ; en-têtes du 2026-10-21 : 1 requête par seconde, 1 requête simultanée ([accès](https://www.crossref.org/documentation/retrieve-metadata/rest-api/access-and-authentication/)) | métadonnées bibliographiques libres de restriction ; **résumés sous le droit d'auteur** de leurs éditeurs ou auteurs ([licence des métadonnées](https://www.crossref.org/documentation/retrieve-metadata/rest-api/rest-api-metadata-license-information/)) | plugin `scholarly` : limiteur partagé `var/net/crossref.*` ; résumé coupé à 1 000 caractères, montré mais jamais stocké ni mis en cache (ADR-044) |
 | Flux RSS et Atom, liste blanche `flux` de `domain_packs/recherche/knowledge/sources.yaml` | aucun flux au 2026-10-22 (D18) ; chaque flux est ajouté par Lucas après lecture des CGU du site, qui tiennent lieu de robots.txt (R15) | licence notée flux par flux (`licence`) ; `A_VERIFIER` ou `A_DEFINIR` bloque la lecture (R7) | plugin `feeds` : titre, lien, date et résumé coupé à 1 000 caractères ; contenus complets ignorés, liens jamais suivis (ADR-044) |
+
+## Outils et services du pack `code` (phase 6, P3a)
+git et Docker sont appelés en sous-processus, l'API de GitHub par `httpx`, déjà au verrou (plan
+P3, §7). Conditions lues le 2026-10-22.
+
+| Composant | Licence ou conditions | Usage dans CERVEAU |
+|---|---|---|
+| git (2.56.0.windows.2 sur le poste) | GPL-2.0-only (`LICENSE.txt` de Git for Windows) | `code_repo` et la copie jetable des contrôles l'appellent en sous-processus, sans lien ni redistribution : aucune obligation pour CERVEAU |
+| Image des contrôles, `python:3.12-slim` avec ruff et pytest (E4) | Python : PSF-2.0 ; ruff et pytest : MIT (tableau des dépendances) ; paquets Debian de l'image sous leurs licences propres (`A_VERIFIER` à la construction) | construite par Lucas, jamais par CERVEAU (`--pull never`), non redistribuée |
+| API REST de GitHub (Actions), `api.github.com` | [Conditions d'utilisation de GitHub](https://docs.github.com/en/site-policy/github-terms/github-terms-of-service), section H « API Terms », en vigueur depuis le 2026-04-27 : des requêtes abusives ou trop fréquentes peuvent suspendre l'accès à l'API ; aucun partage de jeton pour dépasser les limites | `code_ci` : lecture seule sans jeton (E6), une requête à la fois, pause respectée après un refus 403 ou 429 ; 60 requêtes par heure suffisent à un usage personnel |
 
 ## Licences restrictives ou à surveiller
 - **Redis 7.4 (RSALv2 / SSPLv1, depuis le 2024-03-20)** : interdit surtout de revendre Redis comme

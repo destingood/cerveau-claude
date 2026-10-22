@@ -1,15 +1,17 @@
 # Modèle de menace — CERVEAU
 
-- Version : v5 (phase 6, pack Recherche)
-- Date : 2026-10-22 (v4 : 2026-10-21, phase 5 ; v3 : 2026-10-21, phase 4 ; v2 : 2026-10-20,
-  phase 3 ; v1 : 2026-10-19, phase 2 ; v0 : 2026-10-17, phase 0)
+- Version : v6 (phase 6, packs Recherche et Code)
+- Date : 2026-10-22 (v5 : 2026-10-22, pack Recherche ; v4 : 2026-10-21, phase 5 ; v3 :
+  2026-10-21, phase 4 ; v2 : 2026-10-20, phase 3 ; v1 : 2026-10-19, phase 2 ; v0 : 2026-10-17,
+  phase 0)
 - Statut : proposé, à relire par Lucas ; mis à jour à chaque fin de phase (section 13). La v1
   rattrapait la phase 1 ; la v2 ajoute la recherche de stratégies et le Comité (T17, T18) ; la v3
   ajoute l'exécution paper (T19 à T21) ; la v4 ajoute les approbations N3, les interfaces et la
   garde live (T22 à T26) ; la v5 ajoute les sources savantes, les flux de veille et la recherche
-  approfondie (T27, T28).
+  approfondie (T27, T28) ; la v6 ajoute le pack Code, ses dépôts lus et ses contrôles exécutés
+  (T29, T30).
 
-## 1. Périmètre de la v5
+## 1. Périmètre de la v6
 Couvert : le poste Windows 11 de Lucas, le dépôt `cerveau-plateforme`, Claude Code et ses
 garde-fous (`.claude/`), la pile Docker locale (`infra/`), la CI GitHub Actions (pas encore
 poussée). Depuis la phase 1 : l'orchestrateur (`core/orchestrator/`), le plugin de recherche web,
@@ -38,6 +40,10 @@ Depuis la phase 6, en analyse seulement (N0) : le socle des packs (ADR-043, `cor
 clients HTTP sortants), le pack Recherche (statut `experimental`), le plugin `scholarly` (arXiv et
 Crossref, métadonnées et résumés, ADR-044), le plugin `feeds` (flux RSS et Atom d'une liste
 blanche vide en phase 6) et l'agent `deep_research` (`cerveau ask --approfondi`, ADR-045).
+Depuis la partie P3a de la phase 6, en lecture et en contrôle (N0) : le pack Code (statut
+`experimental`), `code_repo` (lecteur git des dépôts d'une liste blanche, ADR-047), `code_checks`
+(ruff et pytest dans un conteneur Docker sans réseau, ADR-048, classe `CALCUL`, ADR-049) et
+`code_ci` (état des runs GitHub Actions, sans jeton).
 Pas encore couvert, faute de code : mémoire, client de courtier réel (IBKR paper ou live), boucle
 live, VPS. Les menaces correspondantes sont listées avec les mesures prévues ; leur analyse sera
 détaillée dans la phase qui les introduit.
@@ -58,6 +64,7 @@ détaillée dans la phase qui les introduit.
 | A11 | Exécution paper : carnet d'ordres et compte du simulateur (`var/paper/`), fichier `governance/kill_switch/KILL`, rapports d'incident (`var/incidents/`) | intégrité : un état terminal réécrit ou un ordre renvoyé fausse la réconciliation ; disponibilité de l'arrêt (R4) ; seul Lucas réarme |
 | A12 | Approbations et promotion : base `var/approvals/approvals.db`, signatures `governance/approvals/`, rapports `var/promotion/` | intégrité : un accord, une signature ou un rapport forgé ouvre N3 sans Lucas ; un accord sert une seule fois, à une seule intention |
 | A13 | Secrets des interfaces : `CERVEAU_TOTP_SECRET`, `CERVEAU_API_TOKEN`, `DISCORD_BOT_TOKEN`, `NTFY_TOKEN`, `NTFY_TOPIC` (variables utilisateur de Lucas) | confidentialité : le secret TOTP permet de produire des accords, le jeton de l'API de piloter l'API |
+| A14 | Dépôts git de Lucas lus par le pack Code, et le poste qui exécute leurs contrôles | confidentialité du code et des secrets commités ; intégrité du poste et des dépôts (aucune écriture) ; CERVEAU jamais lu par ses propres outils |
 
 ## 3. Sources de menace
 - Contenu externe : pages web, documents, courriels, réponses d'API, sorties d'outils (R5).
@@ -114,6 +121,8 @@ pas encore.
 | T26 | Promotion forgée | Une signature écrite par un autre que Lucas, ou un rapport de promotion fabriqué ou retouché, fait passer la finance en N3 | Signature lue, jamais écrite, par le code (ADR-036) ; elle compte seulement si son nom, son en-tête et sa date concordent et si le rapport cité existe sous `var/promotion/` avec cette empreinte SHA-256 et conclut `promotion_possible` (ADR-040) ; signature invalide ignorée et signalée ; le niveau doit aussi être écrit dans `config/autonomy.yaml` ; rapport calculé par le code sur des critères déterministes, un seuil `A_DEFINIR` rendant le critère non évaluable (R7) ; `governance/approvals/` protégé par les hooks et, une fois l'ACL posée, par Windows (B2) ; depuis la phase 6, `var/promotion/` protégé en écriture par les hooks (B226, D8) | Lecture du rapport avant de signer ; ACL non posée (B173) | moyen |
 | T27 | Source savante ou flux piégé, faux ou interdit | Un résumé, un titre de notice ou un article de flux porte une consigne ; un flux renvoie vers une adresse interne ou sert un XML hostile (entités, DTD) ; un préprint ou une publication rétractée est présenté comme établi ; une source interdit la collecte (R15) | Plugins `scholarly` et `feeds` en lecture seule, sans outil d'action ; XML lu par defusedxml, DTD et entités refusées, analyseurs testés par Hypothesis (D17) ; flux d'une liste blanche que seul Lucas remplit, vide en phase 6 (D16, D18), sans redirection suivie, plafonnés à 2 Mo, adresses non publiques refusées (`core/net/guard.py`) ; lien d'un article de flux jamais suivi, lecture hors des résultats refusée ; sortie d'outil, titre de notice et résumé passés au détecteur de consignes, sortie piégée écartée et signalée ; préprint signalé, notice rétractée, retirée ou supprimée jamais lue, correction signalée ; ni PDF ni texte intégral (D12) ; résumés Crossref ni stockés ni mis en cache ; débit partagé (arXiv une requête toutes les 3 s, Crossref une par seconde) ; HAL écarté faute de conditions propres à son API, OpenAlex écarté (D10) ; red team `injection_recherche/consignes.yaml` et `flux.yaml` (7 cas) | Sens exact de `updated-by` chez Crossref (B252) ; questions sur le contenu des flux une fois la liste remplie (B255) ; mesure du modèle réel (B60) | moyen |
 | T28 | Recherche approfondie manipulée ou emballée | Le planificateur multiplie sous-questions et lectures (coût, T8) ; le rédacteur invente une affirmation, un chiffre ou un lien, ou glisse une consigne dans un titre de section, une justification ou une étape ; une requête emporte le contenu de la question chez Brave, arXiv ou Crossref | Agent `deep_research` lancé par `cerveau ask --approfondi` seulement (D14) ; plan coupé à 5 sous-questions et 12 lectures (D13) ; jetons, secondes et appels à `A_DEFINIR` : une recherche réelle reste bloquée (R7) ; kill switch relu avant chaque appel d'outil (R4) ; chaque affirmation retrouvée mot pour mot dans un extrait lu, une affirmation dont un chiffre ou une date manque à l'extrait cité est retirée et listée dans les points non vérifiés (D15, R1) ; titre de section porteur de consigne remplacé par « Partie n », justification et étape masquées ; liens hors sources retirés et comptés ; question pseudonymisée avant le planificateur, arguments d'outil jamais ré-identifiés (T3) ; red team `redaction.yaml`, `plan.yaml` et `exfiltration.yaml` (11 cas) | Texte non personnel de la question repris dans une requête (B41) ; budgets de la recherche à fixer par Lucas ; mesure réelle (B60) | moyen |
+| T29 | Dépôt piégé ou lecture détournée | Un diff, un commentaire, une docstring, un sujet de commit, un identifiant de test ou un titre de run porte une consigne ; un planificateur compromis demande `..`, un lien symbolique sortant, un `.env`, une clé privée, le dépôt de CERVEAU ou un dépôt hors liste ; un dépôt hostile fait lancer à git un hook, un filtre, un textconv, un fsmonitor ou une lecture réseau ; un secret commité part dans la réponse | Liste blanche relue à chaque appel, `A_DEFINIR` bloquant ; le modèle ne donne qu'un identifiant, jamais un chemin. CERVEAU refusé par le code même s'il est listé, worktree et clone partagé (objets empruntés) compris (ADR-047). git sans shell, environnement réduit, sans configuration système ni globale, objets seulement (ni dossier de travail, ni `checkout`, ni `archive`), `--no-pager`, `--no-lazy-fetch`, `--no-ext-diff`, `--no-textconv`, `core.fsmonitor=false`, chemins littéraux, délai et sorties bornés. Fichiers sensibles nommés, jamais lus ; patch non montré si un nom de fichier n'est pas en UTF-8 ou si la liste des fichiers est tronquée, et section du patch au chemin sensible ou illisible retirée ; secrets et clés privées (PEM, OpenSSH, OpenPGP) masqués et comptés ; caractères invisibles montrés ; identifiant de paramètre pytest non trivial masqué. Tout texte balisé comme donnée (R5) ; aucun outil d'écriture (N0). `code_ci` : hôte constant `api.github.com`, sans jeton, redirections refusées, proxys ignorés, une requête à la fois, pause partagée après un refus. Red team `injection_code` (12 cas) | Motifs manqués par le détecteur (B264) ; code cité en clair (B265) ; options git à revoir à chaque version majeure (B271) ; clone ordinaire de CERVEAU non reconnu (B280) ; identifiant de test en texte libre (B281) | moyen |
+| T30 | Code hostile exécuté par les contrôles | pytest importe le code du dépôt et son `conftest.py` : ce code tente de joindre le réseau, de lire les fichiers du poste, d'écrire hors de sa copie, de saturer processeur, mémoire ou processus, de survivre au délai, ou fausse ses propres résultats | Copie jetable depuis les objets git sous `var/code/runs/<uuid>/` (fichiers sensibles jamais écrits, 5 000 fichiers et 50 Mo au plus), supprimée en fin d'appel. Conteneur `--network none`, `--read-only` avec un `tmpfs` `noexec`, utilisateur 65534, `--cap-drop ALL`, `no-new-privileges`, processus, mémoire et processeur bornés (E5), copie montée en lecture seule ; image désignée par son condensé, `--pull never`, ni construite ni téléchargée par CERVEAU ; rien n'est installé dans le conteneur (E3) ; environnement du client Docker réduit ; `docker kill` par nom au délai (25 s par appel) ; sortie bornée à 4 Mo et traitée en donnée ; les instructions du serveur rappellent au planificateur qu'un dépôt hostile peut fausser ses résultats (ADR-048) | Premier test réel du bac à sable par Lucas (B270) ; aucune limite de durée dans le conteneur si `docker kill` échoue (B282, avant B270) ; copie jetable laissée dans CERVEAU après un arrêt brutal (B283) ; proxys du client Docker (B284) ; contrôle long (B272) ; configuration de ruff imposée (B268) | moyen tant que B270 et B282 ne sont pas faits |
 
 ## 5. Contournements connus des garde-fous de Claude Code
 Les hooks et les règles `deny` sont un confort (R3) : ils arrêtent les erreurs et les injections
@@ -189,3 +198,5 @@ simples, pas un adversaire déterminé. Limites connues à ce jour :
 - Le téléphone de Lucas (application d'authentification) et son compte Discord ne sont pas
   compromis en même temps ; l'un sans l'autre ne suffit pas à approuver.
 - Lucas lance lui-même l'API et le bot, et lit le rapport de promotion avant de le signer.
+- Le moteur Docker de Lucas est à jour : une évasion de conteneur par une faille du noyau ou du
+  moteur sort du périmètre de T30. Lucas construit lui-même l'image des contrôles.
