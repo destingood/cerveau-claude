@@ -1,0 +1,57 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  Questions d'évaluation du plugin scholarly (R8). Chacune se vérifie avec scholar_record ou
+  scholar_search sur arXiv ou Crossref, et sa réponse est stable dans le temps (réponses
+  contrôlées sur les deux API le 2026-10-22). Elles servent aux évals live (consentement de Lucas
+  par campagne) ; aucun résultat n'est stocké ici.
+-->
+<evaluation>
+  <qa_pair>
+    <question>Quel est le titre de la prépublication arXiv 1706.03762 ?</question>
+    <answer>Attention Is All You Need</answer>
+  </qa_pair>
+  <qa_pair>
+    <question>En quelle année la prépublication arXiv 1706.03762 a-t-elle été déposée ?</question>
+    <answer>2017</answer>
+  </qa_pair>
+  <qa_pair>
+    <question>Qui est le premier auteur de la prépublication arXiv 1512.03385 ?</question>
+    <answer>Kaiming He</answer>
+  </qa_pair>
+  <qa_pair>
+    <question>Quel modèle de langage la prépublication arXiv 1810.04805 présente-t-elle ?</question>
+    <answer>BERT</answer>
+  </qa_pair>
+  <qa_pair>
+    <question>Quel algorithme d'optimisation la prépublication arXiv 1412.6980 présente-t-elle ?</question>
+    <answer>Adam</answer>
+  </qa_pair>
+  <qa_pair>
+    <question>Combien d'auteurs compte la prépublication arXiv 1412.6980 ?</question>
+    <answer>2</answer>
+  </qa_pair>
+  <qa_pair>
+    <question>Quel est le titre de la prépublication arXiv 2005.14165 ?</question>
+    <answer>Language Models are Few-Shot Learners</answer>
+  </qa_pair>
+  <qa_pair>
+    <question>Dans quelle revue l'article de DOI 10.1038/nature14539 a-t-il paru ?</question>
+    <answer>Nature</answer>
+  </qa_pair>
+  <qa_pair>
+    <question>Quel est le titre de l'article de DOI 10.1038/nature14539 ?</question>
+    <answer>Deep learning</answer>
+  </qa_pair>
+  <qa_pair>
+    <question>Quel système de prédiction de structure des protéines l'article de DOI 10.1038/s41586-021-03819-2 décrit-il ?</question>
+    <answer>AlphaFold</answer>
+  </qa_pair>
+  <qa_pair>
+    <question>Dans quelle revue l'article de DOI 10.1103/PhysRevLett.116.061102 sur l'observation d'ondes gravitationnelles a-t-il paru ?</question>
+    <answer>Physical Review Letters</answer>
+  </qa_pair>
+  <qa_pair>
+    <question>Qui est le premier auteur de l'article de DOI 10.1126/science.1225829 ?</question>
+    <answer>Martin Jinek</answer>
+  </qa_pair>
+</evaluation>

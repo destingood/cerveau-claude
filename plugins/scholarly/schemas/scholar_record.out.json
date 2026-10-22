@@ -1,0 +1,179 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$defs": {
+    "Update": {
+      "additionalProperties": false,
+      "properties": {
+        "type": {
+          "description": "Nature de la mise à jour (correction, rétractation...)",
+          "title": "Type",
+          "type": "string"
+        },
+        "doi": {
+          "description": "DOI de la notice liée",
+          "title": "Doi",
+          "type": "string"
+        }
+      },
+      "required": [
+        "type",
+        "doi"
+      ],
+      "title": "Update",
+      "type": "object"
+    }
+  },
+  "additionalProperties": false,
+  "properties": {
+    "source": {
+      "enum": [
+        "arxiv",
+        "crossref"
+      ],
+      "title": "Source",
+      "type": "string"
+    },
+    "identifier": {
+      "description": "Identifiant arXiv (avec version) ou DOI",
+      "title": "Identifier",
+      "type": "string"
+    },
+    "type": {
+      "description": "Type de document annoncé par la source",
+      "title": "Type",
+      "type": "string"
+    },
+    "preprint": {
+      "description": "Prépublication, sans relecture par les pairs annoncée",
+      "title": "Preprint",
+      "type": "boolean"
+    },
+    "title": {
+      "title": "Title",
+      "type": "string"
+    },
+    "authors": {
+      "items": {
+        "type": "string"
+      },
+      "maxItems": 10,
+      "title": "Authors",
+      "type": "array"
+    },
+    "more_authors": {
+      "description": "Auteurs non listés au-delà de 10",
+      "minimum": 0,
+      "title": "More Authors",
+      "type": "integer"
+    },
+    "published": {
+      "anyOf": [
+        {
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "description": "Première date de publication ou de dépôt",
+      "title": "Published"
+    },
+    "updated": {
+      "anyOf": [
+        {
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "description": "Dernière version (arXiv)",
+      "title": "Updated"
+    },
+    "venue": {
+      "anyOf": [
+        {
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "description": "Revue, actes ou référence de publication",
+      "title": "Venue"
+    },
+    "doi": {
+      "anyOf": [
+        {
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "title": "Doi"
+    },
+    "url": {
+      "description": "Page de la notice (arXiv ou doi.org)",
+      "title": "Url",
+      "type": "string"
+    },
+    "abstract": {
+      "anyOf": [
+        {
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "description": "Résumé sans balises, tronqué",
+      "title": "Abstract"
+    },
+    "abstract_truncated": {
+      "title": "Abstract Truncated",
+      "type": "boolean"
+    },
+    "update_to": {
+      "description": "Notices que celle-ci met à jour (Crossref)",
+      "items": {
+        "$ref": "#/$defs/Update"
+      },
+      "title": "Update To",
+      "type": "array"
+    },
+    "updated_by": {
+      "description": "Mises à jour publiées de cette notice, dont les rétractations (Crossref)",
+      "items": {
+        "$ref": "#/$defs/Update"
+      },
+      "title": "Updated By",
+      "type": "array"
+    },
+    "retrieved_at": {
+      "title": "Retrieved At",
+      "type": "string"
+    }
+  },
+  "required": [
+    "source",
+    "identifier",
+    "type",
+    "preprint",
+    "title",
+    "authors",
+    "more_authors",
+    "published",
+    "updated",
+    "venue",
+    "doi",
+    "url",
+    "abstract",
+    "abstract_truncated",
+    "update_to",
+    "updated_by",
+    "retrieved_at"
+  ],
+  "title": "ScholarRecord",
+  "type": "object"
+}

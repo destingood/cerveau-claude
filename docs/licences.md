@@ -1,7 +1,8 @@
 # Licences des composants — CERVEAU
 
 - Relevé du 2026-10-17 (phase 0), mis à jour le 2026-10-18 (phases 1 et 2), le 2026-10-20
-  (phase 3) et le 2026-10-21 (phases 4 et 5) ; à jour à chaque nouvelle dépendance (R14)
+  (phase 3), le 2026-10-21 (phases 4 et 5) et le 2026-10-22 (phase 6) ; à jour à chaque nouvelle
+  dépendance (R14)
 - Phase 5 : licences lues dans les métadonnées des paquets installés (`License-Expression`) ;
   `pip-audit` sans vulnérabilité connue au 2026-10-21 ; bot Discord : licences lues dans
   `interfaces/discord_bot/package-lock.json`, `npm audit` sans vulnérabilité au 2026-10-21
@@ -37,6 +38,7 @@
 | exchange-calendars | 4.13.2 | Apache-2.0 | calendriers des places (phase 2) |
 | nautilus-trader | 1.231.0 | LGPL-3.0-or-later | adaptateur de backtest, seul import dans `core/finance/research/nautilus.py` (phase 3, ADR-024) |
 | fastapi | 0.156.8 | MIT | API interne locale (phase 5, ADR-037) ; le plan citait 0.156.7, 0.156.8 est la dernière publiée au 2026-10-21 ; aucune nouvelle transitive : annotated-doc 0.0.5 (MIT), starlette 1.8.0 (BSD-3-Clause), opentelemetry-api 1.45.1 (Apache-2.0) et typing-inspection 0.4.4 (MIT) étaient déjà au verrou |
+| defusedxml | 0.7.1 | PSF-2.0 (métadonnées `License: PSFL` du paquet installé) | lecture sûre des flux XML (Atom d'arXiv, RSS et Atom du plugin `feeds`), DTD refusées (phase 6, ADR-044) ; déjà au verrou en transitive (`py-serializable`), devenue directe et figée le 2026-10-22 |
 | uvicorn | 0.54.0 | BSD-3-Clause | serveur de l'API interne, lié à 127.0.0.1 (phase 5, ADR-037) ; déjà au verrou en transitive |
 | jinja2 | 3.1.6 | BSD-3-Clause | gabarits du dashboard en lecture seule, échappement automatique (phase 5, ADR-041) ; déjà au verrou en transitive, comme MarkupSafe 3.0.4 (BSD-3-Clause, métadonnées du paquet) ; licence de Jinja2 vérifiée le 2026-10-21 (ADR-041 ; classifieur « BSD License » du paquet installé) |
 
@@ -116,6 +118,15 @@ faite dans `core/guardrails/` à partir des résultats de `presidio-analyzer` (A
 | MinIO | `cgr.dev/chainguard/minio` | AGPL-3.0 (dépôt d'images Chainguard : Apache-2.0) | stockage objet Langfuse |
 | Redis | `redis:7` (7.4.11) | RSALv2 / SSPLv1 | file d'attente Langfuse |
 | Docker Desktop | — | gratuit pour un usage personnel | exécution locale |
+
+## Sources de données externes (pack `recherche`, phase 6)
+Conditions lues le 2026-10-21 ; seules des métadonnées et des résumés sont lus, aucun PDF (D12).
+
+| Source | Accès | Licence des données | Conséquence dans CERVEAU |
+|---|---|---|---|
+| arXiv, API `export.arxiv.org` | sans clé ; une requête toutes les 3 s et une seule connexion, toutes machines confondues ([conditions d'utilisation](https://info.arxiv.org/help/api/tou.html)) | métadonnées sous CC0 1.0 ; texte intégral sous la licence de chaque article, non redistribuable par l'API | plugin `scholarly` : limiteur partagé `var/net/arxiv.*` ; résumé coupé à 2 000 caractères ; texte intégral jamais lu (ADR-044) |
+| Crossref, REST API `api.crossref.org` | pool public sans clé et sans `mailto` (D11) ; en-têtes du 2026-10-21 : 1 requête par seconde, 1 requête simultanée ([accès](https://www.crossref.org/documentation/retrieve-metadata/rest-api/access-and-authentication/)) | métadonnées bibliographiques libres de restriction ; **résumés sous le droit d'auteur** de leurs éditeurs ou auteurs ([licence des métadonnées](https://www.crossref.org/documentation/retrieve-metadata/rest-api/rest-api-metadata-license-information/)) | plugin `scholarly` : limiteur partagé `var/net/crossref.*` ; résumé coupé à 1 000 caractères, montré mais jamais stocké ni mis en cache (ADR-044) |
+| Flux RSS et Atom, liste blanche `flux` de `domain_packs/recherche/knowledge/sources.yaml` | aucun flux au 2026-10-22 (D18) ; chaque flux est ajouté par Lucas après lecture des CGU du site, qui tiennent lieu de robots.txt (R15) | licence notée flux par flux (`licence`) ; `A_VERIFIER` ou `A_DEFINIR` bloque la lecture (R7) | plugin `feeds` : titre, lien, date et résumé coupé à 1 000 caractères ; contenus complets ignorés, liens jamais suivis (ADR-044) |
 
 ## Licences restrictives ou à surveiller
 - **Redis 7.4 (RSALv2 / SSPLv1, depuis le 2024-03-20)** : interdit surtout de revendre Redis comme

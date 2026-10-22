@@ -201,6 +201,7 @@ source = { editable = "." }
 default-groups = ["dev", "research"]
 dependencies = [
     { name = "arch" },
+    { name = "defusedxml" },
     { name = "exchange-calendars" },
     { name = "fastapi" },
     { name = "fr-core-news-md" },
@@ -244,6 +245,7 @@ research = [
 [package.metadata]
 requires-dist = [
     { name = "arch", specifier = "==8.0.0" },
+    { name = "defusedxml", specifier = "==0.7.1" },
     { name = "exchange-calendars", specifier = "==4.13.2" },
     { name = "fastapi", specifier = "==0.156.8" },
     { name = "fr-core-news-md", url = "https://github.com/explosion/spacy-models/releases/download/fr_core_news_md-3.8.0/fr_core_news_md-3.8.0-py3-none-any.whl" },

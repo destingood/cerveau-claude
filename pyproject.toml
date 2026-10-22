@@ -8,6 +8,7 @@ license = { text = "Proprietary - personal use" }
 authors = [{ name = "Lucas" }]
 dependencies = [
     "arch==8.0.0",
+    "defusedxml==0.7.1",
     "exchange-calendars==4.13.2",
     "fastapi==0.156.8",
     "fr-core-news-md==3.8.0",
