@@ -20,8 +20,8 @@ import os
 import re
 from pathlib import Path
 
-from .common import (GRAPH_FILE, STATE_DIR, fold, load_config, log, now_iso, read_json, slugify, write_json,
-                     write_text)
+from .common import (GRAPH_FILE, STATE_DIR, clean_label, fold, load_config, log, now_iso, read_json, slugify,
+                     write_json, write_text)
 
 MARKER = ".cerveau-wiki"
 PAGES, ARCHIVE, RAW = "wiki", "archive", "raw"
@@ -49,6 +49,7 @@ CORE_FM = ("id", "type", "projet", "tags", "importance", "origine", "cree", "maj
 VOLATILE = ("hits", "last_hit", "used", "last_used")
 VOLATILE_META = ("hits0", "mapped")
 LINK_RX = re.compile(r"\[\[([^\]\n|#]{1,160})(#[^\]\n|]*)?(?:\|([^\]\n]{1,160}))?\]\]")
+CODE_RX = re.compile(r"^[ \t]*(`{3,}|~{3,})[^\n]*\n.*?(?:^[ \t]*\1[ \t]*$|\Z)|(`+)[^\n]*?\2", re.M | re.S)
 DATE_RX = re.compile(r"^\d{4}-\d{2}-\d{2}(?:[T ]\d{2}:\d{2}(?::\d{2})?)?$")
 PLAIN_RX = re.compile(r"^[a-z][a-z0-9_\-]*$")
 YAML_WORDS = {"true", "false", "yes", "no", "on", "off", "null", "y", "n"}
@@ -213,7 +214,8 @@ def parse_page(text) -> dict:
 
 
 def links_in(text) -> list:
-    return [m.group(1).strip() for m in LINK_RX.finditer(str(text or ""))]
+    """Cibles des liens [[…]] — comme Obsidian : pas ceux d'un bloc de code ni d'un `code` en ligne (exemples)."""
+    return [m.group(1).strip() for m in LINK_RX.finditer(CODE_RX.sub(" ", str(text or "")))]
 
 
 def first_ref(raw) -> str:
@@ -310,7 +312,7 @@ def build(root, pages, old=None) -> dict:
         while nid in nodes:
             nid = f"{base}-{i}"
             i += 1
-        title = " ".join(str(p["t"] or fm.get("titre") or stem(rel)).split())
+        title = clean_label(p["t"] or fm.get("titre") or stem(rel))
         meta = {}
         for k, v in fm.items():
             if k in CORE_FM or k in FM_REL:

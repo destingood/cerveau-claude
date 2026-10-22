@@ -152,6 +152,7 @@ seulement quand le savoir change.
 | Fichiers liés à un sujet | `files "paiement panier"` |
 | Où est défini X (fonction, classe, variable d'env, route) | `where X` |
 | Fiche d'un fichier ou symbole | `explain <fichier\|symbole>` |
+| Ce qui dépend d'un fichier ou d'une fonction (avant de modifier) | `impact <fichier\|symbole>` |
 | Dépendances | `deps <fichier>` · chemin entre deux fichiers : `path <a> <b>` |
 | Projets connus | `proj` · `proj add <dossier> -T "Nom" -b "description"` |
 

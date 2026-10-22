@@ -93,8 +93,11 @@ def run_pass(cfg=None) -> list:
     brain = Brain.load()
     if root:
         here("index.md", lambda: "réécrit" if wiki.write_index(brain, root) else "")
-        if hooks._auto_sync(brain, cfg) and not session_active():
-            step("synchro du wiki", ["wiki", "sync", "--auto"])
+        if hooks._auto_sync(brain, cfg):
+            if not session_active():
+                step("synchro du wiki", ["wiki", "sync", "--auto"])
+            else:  # session ouverte (elle se ferme rarement dans l'app) : ses commits partent quand même sur GitHub
+                here("envoi du wiki", lambda: wiki.push_pending(root))
     if hooks.garde_due(cfg):
         step("garde de consommation", ["tokens", "--garde"])
     if commun.member():

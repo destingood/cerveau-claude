@@ -5,7 +5,7 @@ centralité (PageRank), modules (propagation de labels), cycles, points d'entré
 Documents aussi : titres Markdown, Word (.docx), feuilles Excel (.xlsx), diapos (.pptx), PDF, CSV.
 
 Sorties dans ~/.claude/brain/projects/<id>/ :
-  map.json     données complètes → requêtes where / deps / explain / path / files
+  map.json     données complètes → requêtes where / deps / explain / impact / path / files
   MAP.md       rapport lisible (structure, fichiers clés, modules, routes, docs, points d'attention)
   DIGEST.md    résumé court injecté automatiquement au démarrage d'une session dans ce projet
   search.json  index de recherche pré-calculé (rappel automatique des fichiers pertinents)
@@ -23,6 +23,7 @@ import os
 import posixpath
 import re
 import sys
+import tempfile
 import time
 import urllib.parse
 import warnings
@@ -35,7 +36,7 @@ from .common import (CLAUDE_HOME, PROJECTS_DIR, FileLock, first_line, fmt_date, 
 from .search import Index
 from .store import Brain
 
-PARSER_VERSION = 3
+PARSER_VERSION = 4
 
 IGNORE_DIRS = {
     "node_modules", "__pycache__", "venv", "env", "virtualenv", "dist", "build", "out", "target", "coverage",
@@ -252,9 +253,14 @@ def parse_python(text, rel):
                 if isinstance(t, ast.Name) and t.id.isupper() and len(t.id) > 2:
                     out["symbols"].append({"n": t.id, "k": "const", "l": node.lineno})
                     consts += 1
+    binds, stars = {}, []  # noms importés (hors bibliothèque standard) → base du graphe d'appels
     for node in ast.walk(tree):
         if isinstance(node, ast.Import):
             out["imports"] += [a.name for a in node.names]
+            for a in node.names:
+                top = a.name.split(".")[0]
+                if top not in STDLIB:
+                    binds[a.asname or top] = ("m", a.name if a.asname else top)
         elif isinstance(node, ast.ImportFrom):
             dots = "." * (node.level or 0)
             mod = node.module or ""
@@ -263,10 +269,191 @@ def parse_python(text, rel):
             for a in node.names[:12]:
                 if a.name != "*":
                     out["imports"].append(dots + (mod + "." if mod else "") + a.name)
+            if dots or mod.split(".")[0] not in STDLIB:
+                for a in node.names:
+                    if a.name == "*":
+                        stars.append(dots + mod)
+                    else:
+                        binds[a.asname or a.name] = ("f", dots + mod, a.name)
     out["env"] = sorted({a or b for a, b in PY_ENV.findall(text)})
     if rel.endswith("urls.py"):
         out["routes"] += [f"PATH /{p} → {v}" for p, v in DJANGO_PATH.findall(text)[:40]]
     out["imports"] = list(dict.fromkeys(out["imports"]))
+    try:
+        out["pyrefs"] = _py_refs(tree, out["symbols"], binds, stars)
+    except Exception:  # graphe d'appels facultatif : jamais au prix des symboles
+        pass
+    out["pystar"] = list(dict.fromkeys(stars))
+    return out
+
+
+# =============================================================================================== graphe d'appels (Python)
+# Façon graphify (« affected ») : qui appelle quoi, pour savoir ce qui casse avant de modifier. Les références sont
+# notées brutes à l'analyse (par fichier : la carte reste incrémentale), puis résolues à la demande sur la carte entière.
+# Règle reprise de graphify : un nom ambigu ne donne aucun lien plutôt qu'un faux.
+MAX_REFS = 1500  # références gardées par fichier
+CALL_NOISE_WORDS = frozenset((
+    "add get set put pop run call start stop open close read write send load dump save join wait poll info debug "
+    "warning error exception log update apply submit result cancel execute commit rollback connect fetch process "
+    "handle check validate parse build create delete remove reset setup render show draw name value data exists "
+    "mkdir glob rglob touch unlink rename acquire release notify emit dispatch trigger refresh reload flush seek tell "
+    "readline readlines writelines headers json text content status raise_for_status iter_content add_argument "
+    "add_parser parse_args set_defaults add_subparsers").split())
+_CALL_NOISE = None
+
+
+def _call_noise():
+    """Noms trop courants pour deviner un appel : builtins, méthodes des types natifs, API usuelles."""
+    global _CALL_NOISE
+    if _CALL_NOISE is None:
+        import builtins
+        import datetime
+        import io
+        kinds = (str, bytes, bytearray, list, dict, set, frozenset, tuple, int, float, complex, object, Path,
+                 io.TextIOWrapper, io.BufferedReader, io.BytesIO, io.StringIO, type(re.compile("")),
+                 type(re.match("", "")), datetime.datetime, datetime.timedelta, deque, Counter, defaultdict)
+        _CALL_NOISE = CALL_NOISE_WORDS.union(dir(builtins), *(dir(k) for k in kinds))
+    return _CALL_NOISE
+
+
+def _locals(fn):
+    """Noms locaux d'une fonction (paramètres, affectations, boucles, with, except, définitions internes) : ils masquent
+    les noms du module. Les imports faits dans la fonction n'en sont pas : ils restent des liens."""
+    names, glob = set(), set()
+    for n in ast.walk(fn):
+        if isinstance(n, (ast.FunctionDef, ast.AsyncFunctionDef, ast.Lambda)):
+            a = n.args
+            names.update(x.arg for x in a.posonlyargs + a.args + a.kwonlyargs)
+            names.update(x.arg for x in (a.vararg, a.kwarg) if x)
+            if n is not fn and not isinstance(n, ast.Lambda):
+                names.add(n.name)
+        elif isinstance(n, ast.ClassDef):
+            names.add(n.name)
+        elif isinstance(n, ast.Name) and isinstance(n.ctx, ast.Store):
+            names.add(n.id)
+        elif isinstance(n, ast.ExceptHandler) and n.name:
+            names.add(n.name)
+        elif isinstance(n, (ast.Global, ast.Nonlocal)):
+            glob.update(n.names)
+    return names - glob
+
+
+def _py_refs(tree, symbols, binds, stars) -> dict:
+    """Références d'un module Python, notées brutes : {appelant: ["ligne relation genre a [b [c]]", …]}.
+    Appelant : « fonction », « Classe.méthode », « Classe » (bases, décorateurs, corps), CONSTANTE, « » (module).
+    Relation : c appel · h héritage · r usage (fonction passée en valeur, table de rappels, constante).
+    Genre : l nom du fichier · i nom importé (module, nom) · m module importé (chemin, attribut) · f nom importé suivi
+    d'attributs (module, chemin, attribut) · s self.attr · p super().attr · * import étoile · a méthode devinée par
+    son seul nom (gardée seulement si un seul candidat)."""
+    noise = _call_noise()
+    local = {s["n"] for s in symbols if "." not in s["n"]}
+    for node in tree.body:
+        if isinstance(node, (ast.Assign, ast.AnnAssign)):
+            for t in node.targets if isinstance(node, ast.Assign) else [node.target]:
+                if isinstance(t, ast.Name) and t.id.isupper():
+                    local.add(t.id)
+    classes = {s["n"] for s in symbols if s["k"] == "class"}
+    out, seen = {}, set()
+
+    def note(caller, line, rel, r):
+        if not r or len(seen) >= MAX_REFS:
+            return
+        k = (caller, rel) + r
+        if k not in seen:
+            seen.add(k)
+            out.setdefault(caller, []).append(" ".join((str(line), rel) + r))
+
+    def ref(e, cls, shadow):
+        if isinstance(e, ast.Name):
+            n = e.id
+            if n in shadow:
+                return None
+            b = binds.get(n)
+            if b:
+                return ("i", b[1], b[2]) if b[0] == "f" else None
+            if n in local:
+                return ("l", n)
+            return ("*", n) if stars and n not in noise else None
+        if not isinstance(e, ast.Attribute):
+            return None
+        attr, chain, v = e.attr, [], e.value
+        while isinstance(v, ast.Attribute):
+            chain.append(v.attr)
+            v = v.value
+        chain.reverse()
+        if isinstance(v, ast.Name):
+            n = v.id
+            if n in ("self", "cls") and cls and not chain:
+                return ("s", cls, attr)
+            if n not in shadow:
+                b = binds.get(n)
+                if b and b[0] == "m":
+                    return ("m", ".".join([b[1]] + chain), attr)
+                if b:
+                    return ("f", b[1], ".".join([b[2]] + chain), attr)
+                if n in classes and not chain:
+                    return ("l", f"{n}.{attr}")
+                return None  # module de la bibliothèque standard, variable globale… : rien à deviner
+        elif isinstance(v, ast.Call) and isinstance(v.func, ast.Name) and v.func.id == "super":
+            return ("p", cls, attr) if cls and not chain else None
+        if attr.startswith("__") or len(attr) < 4 or attr in noise:
+            return None
+        return ("a", attr)
+
+    def scan(nodes, caller, cls, shadow):
+        stack = [(x, cls) for x in reversed(nodes)]
+        while stack:
+            e, c = stack.pop()
+            if isinstance(e, ast.Call):
+                note(caller, e.lineno, "c", ref(e.func, c, shadow))
+                root = e.func
+                while isinstance(root, ast.Attribute):
+                    root = root.value
+                if not isinstance(root, ast.Name):
+                    stack.append((root, c))  # Panier().ajouter(), TABLE[k](x) : l'objet appelé se lit aussi
+                args = list(e.args) + [k.value for k in e.keywords]
+                for a in args:
+                    if isinstance(a, ast.Attribute):
+                        r = ref(a, c, shadow)
+                        if r and r[0] in ("s", "p"):
+                            note(caller, a.lineno, "r", r)  # Thread(target=self.boucle)
+                stack.extend((a, c) for a in reversed(args))
+            elif isinstance(e, ast.Name):
+                if isinstance(e.ctx, ast.Load):
+                    note(caller, e.lineno, "r", ref(e, c, shadow))
+            elif isinstance(e, ast.Attribute):
+                r = ref(e, c, shadow) if isinstance(e.ctx, ast.Load) else None
+                if r and r[0] in ("m", "f", "l"):
+                    note(caller, e.lineno, "r", r)
+                else:
+                    stack.append((e.value, c))
+            else:
+                if isinstance(e, ast.ClassDef):
+                    c = None
+                stack.extend((x, c) for x in reversed(list(ast.iter_child_nodes(e))))
+
+    for node in tree.body:
+        if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef)):
+            scan([node], node.name, None, _locals(node))
+        elif isinstance(node, ast.ClassDef):
+            C = node.name
+            for b in node.bases:
+                r = ref(b, None, ())
+                if r and r[0] != "a":
+                    note(C, node.lineno, "h", r)
+            scan(node.decorator_list + [k.value for k in node.keywords], C, None, set())
+            for sub in node.body:
+                if isinstance(sub, (ast.FunctionDef, ast.AsyncFunctionDef)):
+                    who = C if sub.name.startswith("__") and sub.name != "__init__" else f"{C}.{sub.name}"
+                    scan([sub], who, C, _locals(sub))
+                else:
+                    scan([sub], C, C, set())
+        elif isinstance(node, (ast.Assign, ast.AnnAssign)):
+            targets = node.targets if isinstance(node, ast.Assign) else [node.target]
+            who = next((t.id for t in targets if isinstance(t, ast.Name) and t.id.isupper()), "")
+            scan([x for x in (node.value, getattr(node, "annotation", None)) if x is not None], who, None, set())
+        else:
+            scan([node], "", None, set())
     return out
 
 
@@ -725,6 +912,8 @@ PARSERS = {
     "text": parse_text,
 }
 TODO_RX = re.compile(r"(?:#|//|/\*|<!--|^[ \t]*\*|--|\bREM\b)[ \t]*\b(TODO|FIXME|HACK|XXX)\b[:\s]*(.{0,90})", re.M)
+WHY_RX = re.compile(r"(?:#|//|/\*|<!--|^[ \t]*\*|--)[ \t]*\b(WHY|NOTE|IMPORTANT|POURQUOI|ATTENTION|NB|RAISON)\b"
+                    r"[ \t]*:[ \t]*(.{3,140})", re.M)  # raisons notées dans le code (façon graphify « rationale »)
 NOT_ISOLATED = re.compile(r"(^|/)(__init__\.py|__main__\.py|setup\.py|conftest\.py|manage\.py|[\w.-]+\.config\.[cm]?[jt]s|"
                           r"[\w.-]+\.d\.ts|\.eslintrc\.[cm]?js)$")
 
@@ -801,6 +990,10 @@ def process_file(root, rel, prev, max_bytes, size=None, mtime=None):
         if todos:
             rec["todo"] = len(todos)
             rec["todos"] = todos[:3]
+        why = [(lines.at(m.start()), m.group(1), short(re.sub(r"\s*(\*/|-->)\s*$", "", m.group(2).strip()), 110))
+               for m in itertools.islice(WHY_RX.finditer(text), 6)]
+        if why:
+            rec["why"] = why
     return {k: v for k, v in rec.items() if v not in (None, "", [], {})}, True
 
 
@@ -1392,6 +1585,26 @@ def _ranked(files, pr, langs, limit):
             if files.get(r, {}).get("lang") in langs and not files[r].get("dup")][:limit]
 
 
+def _socle(files, limit=4):
+    """Socle (façon graphify « god nodes ») : fichiers de code importés partout qui n'importent presque rien
+    (utilitaires communs). Montrés à part pour ne pas chasser les vrais fichiers clés du classement."""
+    code = {r for r, f in files.items() if f.get("lang") in CODE and not f.get("dup")}
+    indeg, linked = Counter(), set()
+    for r in code:
+        outs = [t for t in files[r].get("out") or [] if t in code]
+        if outs:
+            linked.add(r)
+            linked.update(outs)
+            if not _is_test(r):
+                indeg.update(outs)
+    if len(linked) < 6:
+        return []
+    need = max(3, -(-len(linked) * 15 // 100))  # importé par au moins 15 % des fichiers reliés
+    cands = [r for r, n in indeg.items()
+             if n >= need and sum(1 for t in files[r].get("out") or [] if t in code) <= 1]
+    return sorted(cands, key=lambda r: (-indeg[r], r))[:limit]
+
+
 def _modules(comms, pr, min_size=2):
     """Modules utiles d'abord ; ceux des dossiers de sauvegarde/export à la fin."""
     mods = [(lab, mem) for lab, mem in comms.items() if len(mem) >= min_size]
@@ -1425,12 +1638,16 @@ def build_report(meta, files, in_edges, pr, comms, sccs) -> str:
         L.append("**Scripts npm :** " + " · ".join(f"`{k}` → {short(v, 60)}" for k, v in list(meta["scripts"].items())[:10]))
     L += ["", "## Structure"] + tree_lines(files)
 
-    ranked = _ranked(files, pr, CODE | {"json", "markdown"}, 15)
+    socle = _socle(files)
+    ranked = [r for r in _ranked(files, pr, CODE | {"json", "markdown"}, 15 + len(socle)) if r not in socle][:15]
     if ranked:
         L += ["", "## Fichiers clés (centralité dans le graphe d'imports/liens)"]
         for i, rel in enumerate(ranked, 1):
             f = files[rel]
             L.append(f"{i}. `{rel}` — {file_desc(f)} · importé par {len(in_edges.get(rel, []))} · importe {len(f.get('out', []))}")
+    if socle:
+        L += ["", "**Socle** (importé partout, n'importe presque rien — utilitaires communs) : "
+              + " · ".join(f"`{r}` (importé par {len(in_edges.get(r, []))})" for r in socle)]
     big = _modules(comms, pr)
     if big:
         L += ["", "## Modules (communautés d'imports)"]
@@ -1498,7 +1715,7 @@ def build_report(meta, files, in_edges, pr, comms, sccs) -> str:
         L += ["", "## Points d'attention"] + [f"- {a}" for a in attn]
     L += ["", "## Utiliser cette carte",
           "`brain files \"sujet\"` · `brain where <symbole>` · `brain explain <fichier>` · `brain deps <fichier>` · "
-          "`brain path <a> <b>` · `brain map .` (mise à jour incrémentale)"]
+          "`brain impact <x>` (avant de modifier) · `brain path <a> <b>` · `brain map .` (mise à jour incrémentale)"]
     return "\n".join(L) + "\n"
 
 
@@ -1515,9 +1732,12 @@ def build_digest(meta, files, pr, comms, pid) -> str:
         parts.append("Entrées : " + ", ".join(f"`{e}`" for e, _ in meta["entries"][:4]))
     if meta.get("scripts"):
         parts.append("Scripts npm : " + ", ".join(f"`{k}`" for k in list(meta["scripts"])[:8]))
-    ranked = _ranked(files, pr, CODE, 6)
+    socle = _socle(files)
+    ranked = [r for r in _ranked(files, pr, CODE, 6 + len(socle)) if r not in socle][:6]
     if ranked:
         parts.append("Fichiers clés : " + " · ".join(f"`{r}` ({short(file_desc(files[r], 2), 48)})" for r in ranked))
+    if socle:
+        parts.append("Socle (importé partout) : " + " · ".join(f"`{r}`" for r in socle))
     mods = _modules(comms, pr, 3)[:5]
     if mods:
         parts.append("Modules : " + " · ".join(f"{_label(lab)} ({len(mem)})" for lab, mem in mods))
@@ -1531,7 +1751,7 @@ def build_digest(meta, files, pr, comms, pid) -> str:
             return f"`{r}`" + (f" « {short(t, 50)} »" if t else "")
         parts.append("Docs récents : " + " · ".join(label(r) for r in docs))
     parts.append(f"→ Avant d'explorer : `brain files \"sujet\"` · `brain where <symbole>` · `brain explain <fichier>` · "
-                 f"carte complète : `{PROJECTS_DIR / pid / 'MAP.md'}`")
+                 f"avant de modifier : `brain impact <x>` · carte complète : `{PROJECTS_DIR / pid / 'MAP.md'}`")
     text = "\n".join(parts)
     return text if len(text) <= 1900 else text[:1899] + "…"
 
@@ -1546,6 +1766,7 @@ def build_search(files) -> dict:
             (" ".join(s["n"] for s in (f.get("symbols") or [])[:120]), 2.0),
             (" ".join([f.get("title") or "", f.get("doc") or ""] + (f.get("headings") or [])[:20] + (f.get("sheets") or [])), 1.4),
             (" ".join(f.get("routes") or []), 1.5),
+            (" ".join(w[2] for w in f.get("why") or []), 1.2),
         ]
         tf = Counter()
         for text, w in fields:
@@ -1571,8 +1792,9 @@ def looks_like_project(path) -> bool:
         if not os.path.isdir(p) or is_scratch(p):
             return False
         home = Path.home()
-        blocked = {norm_path(home)} | {norm_path(home / d) for d in
-                                       ("Desktop", "Documents", "Downloads", "OneDrive", "Pictures", "Music", "Videos", "AppData")}
+        blocked = {norm_path(home), norm_path(tempfile.gettempdir())} | {norm_path(home / d) for d in (
+            "Desktop", "Documents", "Downloads", "OneDrive", "Pictures", "Music", "Videos", "AppData", "AppData/Local",
+            "AppData/Roaming", "AppData/LocalLow")}  # Temp lui-même (session lancée là) : 15 000 fichiers, pas un projet
         if p in blocked or p == norm_path(os.path.splitdrive(p)[0] + os.sep) or path_within(p, CLAUDE_HOME):
             return False
         for var in ("WINDIR", "ProgramFiles", "ProgramFiles(x86)", "ProgramData"):
@@ -1753,13 +1975,26 @@ def deps(m, query):
 
 def explain(m, target):
     files = m["files"]
+    path, name = _split_target(target)
+    if path:  # fichier:symbole
+        cands = find_file(files, path, m["meta"].get("root"))
+        if not cands:
+            return [f"fichier introuvable : {path}"]
+        r = cands[0]
+        syms = _symbols(files, name, r)
+        if not syms:
+            return [f"« {name} » introuvable dans `{r}` (`brain where {name}`) :", ""] + explain(m, r)
+        s = syms[0][1]
+        return [f"Symbole « {s['n']} » : {r}:{s['l']}  {s['k']}"] + _call_lines(m, r, s) + [""] + explain(m, r)
     cands = find_file(files, target, m["meta"].get("root"))
     if not cands:
         hits = [l for l in where(m, target, 12)]
         if not hits:
             return [f"rien trouvé pour « {target} » (essaie `brain files \"{target}\"`)"]
         first = hits[0].split(":")[0]
-        return [f"Symbole « {target} » :"] + hits + [""] + explain(m, first)
+        syms = _symbols(files, target, first) if first in files else []
+        calls = _call_lines(m, first, syms[0][1]) if syms else []
+        return [f"Symbole « {target} » :"] + hits + calls + [""] + explain(m, first)
     rel = cands[0]
     f = files[rel]
     importers = sorted(r for r, g in files.items() if rel in (g.get("out") or []))
@@ -1800,6 +2035,8 @@ def explain(m, target):
         L.append(f"Importé par ({len(importers)}) : " + ", ".join(importers[:40]))
     if f.get("todos"):
         L.append("TODO : " + " · ".join(f"l.{ln} {k} {t}" for ln, k, t in f["todos"]))
+    if f.get("why"):
+        L.append("Raisons notées : " + " · ".join(f"l.{ln} {k} {t}" for ln, k, t in f["why"]))
     if f.get("sensitive"):
         L.append("⚠️ fichier sensible : contenu volontairement jamais lu.")
     return L
@@ -1837,3 +2074,343 @@ def path_between(m, a, b):
     chain.reverse()
     text = f"`{src}`" + "".join(f" {'importe' if d == '→' else 'est importé par'} `{c}`" for d, c in chain)
     return [f"{len(chain)} saut(s) : {text}"]
+
+
+# =============================================================================================== impact (avant de modifier)
+_REL_RANK = {"c": 0, "h": 1, "r": 2, "d": 3}
+VERBS = {"c": "appelle", "h": "hérite de", "r": "utilise", "d": "appelle (déduit)"}
+KIND_LABEL = {"fn": "fonction", "class": "classe", "method": "méthode", "const": "constante"}
+
+
+def call_edges(m) -> list:
+    """Liens d'appel résolus (Python) : [(fichier, appelant, ligne, fichier visé, symbole visé, relation)].
+    Relation : c appel · h héritage · r usage · d appel déduit (méthode au nom unique parmi les fichiers atteignables).
+    Résolution : imports relatifs et absolus, réexports d'un __init__, sous-modules, héritage ; un nom qui reste
+    ambigu ne donne aucun lien."""
+    files = m["files"]
+    py = {r for r, f in files.items() if f.get("lang") == "python" and not f.get("dup")}
+    R = Resolver(files)
+    syms = {r: {s["n"] for s in files[r].get("symbols") or []} | (set(files[r].get("pyrefs") or {}) - {""}) for r in py}
+    meth = defaultdict(list)
+    for r in sorted(py):
+        for s in files[r].get("symbols") or []:
+            if s["k"] == "method":
+                meth[s["n"].rsplit(".", 1)[1]].append((r, s["n"]))
+    memo, reach_memo = {}, {}
+
+    def mod(rel, spec):
+        k = (posixpath.dirname(rel), spec)
+        if k not in memo:
+            try:
+                hit = R.py(rel, spec)[0]
+            except Exception:
+                hit = None
+            memo[k] = hit if hit in py else None
+        return memo[k]
+
+    def origins(f, head):  # « from .prix import total » dans f → module d'où vient « total »
+        n = len(head)
+        for e in files[f].get("imports") or []:
+            if len(e) > n and e.endswith(head) and e[-n - 1] == ".":
+                M = e[:-n]
+                yield M if not M.strip(".") else M[:-1]
+
+    def lookup(rel, M, dotted, hops):
+        if hops > 4:
+            return None
+        parts = dotted.split(".")
+        base = M if M.endswith(".") else M + "."
+        for k in range(len(parts) - 1, 0, -1):  # sous-module le plus long d'abord : from pkg import mod ; mod.f()
+            t = mod(rel, base + ".".join(parts[:k]))
+            hit = member(t, ".".join(parts[k:]), hops + 1) if t else None
+            if hit:
+                return hit
+        return member(mod(rel, M), dotted, hops + 1)
+
+    def member(f, name, hops):
+        if not f or hops > 4:
+            return None
+        if name in syms.get(f, ()):
+            return f, name
+        head, _, rest = name.partition(".")
+        if rest and head in syms.get(f, ()):
+            return inherited(f, head, rest, hops)
+        for M in origins(f, head):
+            hit = lookup(f, M, name, hops + 1)
+            if hit:
+                return hit
+        return None
+
+    def inherited(f, cls, attr, hops):
+        for p in (files[f].get("pyrefs") or {}).get(cls) or []:
+            p = p.split()
+            if len(p) > 3 and p[1] == "h":
+                base = target(f, p[2], p[3:], hops + 1)
+                hit = member(base[0], f"{base[1]}.{attr}", hops + 1) if base else None
+                if hit:
+                    return hit
+        return None
+
+    def reach(rel):  # fichiers atteignables en 3 imports au plus
+        if rel not in reach_memo:
+            seen, frontier = {rel}, [rel]
+            for _ in range(3):
+                nxt = []
+                for x in frontier:
+                    for t in files.get(x, {}).get("out") or []:
+                        if t not in seen:
+                            seen.add(t)
+                            nxt.append(t)
+                frontier = nxt
+            reach_memo[rel] = seen
+        return reach_memo[rel]
+
+    def target(rel, kind, args, hops=0):
+        if kind == "l":
+            return member(rel, args[0], hops)
+        if kind == "i":
+            return lookup(rel, args[0], args[1], hops)
+        if kind == "f":
+            return lookup(rel, args[0], f"{args[1]}.{args[2]}", hops)
+        if kind == "m":
+            hit = member(mod(rel, args[0]), args[1], hops)
+            if not hit and "." in args[0]:
+                head, last = args[0].rsplit(".", 1)
+                hit = member(mod(rel, head), f"{last}.{args[1]}", hops)
+            return hit
+        if kind == "s":
+            return member(rel, f"{args[0]}.{args[1]}", hops)
+        if kind == "p":
+            return inherited(rel, args[0], args[1], hops)
+        if kind == "*":
+            for M in files[rel].get("pystar") or []:
+                hit = lookup(rel, M, args[0], hops)
+                if hit:
+                    return hit
+            return None
+        if kind == "a":
+            cands = [x for x in meth.get(args[0], ()) if x[0] in reach(rel)]
+            return cands[0] if len(cands) == 1 else None
+        return None
+
+    best, done = {}, {}
+    for rel in sorted(py):
+        for caller, refs in (files[rel].get("pyrefs") or {}).items():
+            for s in refs:
+                p = s.split()
+                try:
+                    line, rl, kind, args = int(p[0]), p[1], p[2], tuple(p[3:])
+                    k = (rel, kind) + args
+                    if k not in done:
+                        done[k] = target(rel, kind, args)
+                    hit = done[k]
+                except (ValueError, IndexError, KeyError, RecursionError):
+                    continue
+                if not hit or tuple(hit) == (rel, caller):
+                    continue
+                rl = "d" if kind == "a" else rl
+                key = (rel, caller) + tuple(hit)
+                v = (_REL_RANK.get(rl, 9), line, rl)
+                if key not in best or v < best[key]:
+                    best[key] = v
+    return [(k[0], k[1], v[1], k[2], k[3], v[2]) for k, v in best.items()]
+
+
+def _split_target(t):
+    """« fichier.py:symbole » → (fichier, symbole) ; sinon (None, cible). « C:… » (lecteur Windows) n'en est pas un."""
+    t = str(t).strip().strip("`")
+    mt = re.match(r"^(.+?):([A-Za-z_][\w.]*)$", t)
+    if mt and len(mt.group(1)) > 1:
+        return mt.group(1), mt.group(2)
+    return None, t
+
+
+def _looks_like_path(name) -> bool:
+    return "/" in name or "\\" in name or posixpath.splitext(name.lower())[1] in LANG_BY_EXT
+
+
+def _symbols(files, name, rel=None):
+    """Définitions d'un nom, du plus précis au plus vague : nom complet, fin de nom (méthode), casse ignorée."""
+    q = str(name).strip()
+    ql = q.lower()
+    tiers = ([], [], [])
+    for r in ([rel] if rel else sorted(files)):
+        f = files.get(r) or {}
+        if f.get("dup"):
+            continue
+        for s in f.get("symbols") or []:
+            n = s["n"]
+            tail = n.rsplit(".", 1)[-1]
+            if n == q:
+                tiers[0].append((r, s))
+            elif tail == q:
+                tiers[1].append((r, s))
+            elif ql in (n.lower(), tail.lower()):
+                tiers[2].append((r, s))
+    return next((t for t in tiers if t), [])
+
+
+def impact(m, target, depth=2):
+    """Ce qui dépend d'un fichier ou d'un symbole, à revoir avant de le modifier (façon graphify « affected »).
+    → (lignes, code de sortie) : 0 trouvé · 3 nom ambigu (définitions listées) · 4 introuvable."""
+    files, root = m["files"], m["meta"].get("root")
+    depth = max(1, min(5, int(depth or 2)))
+    stale = any(f.get("lang") == "python" and f.get("v") != PARSER_VERSION for f in files.values())
+    hint = ["(carte d'une version précédente, sans graphe d'appels : lance d'abord `brain map .`)", ""] if stale else []
+    path, name = _split_target(target)
+    if path:
+        cands = find_file(files, path, root)
+        if not cands:
+            return [f"fichier introuvable : {path}"], 4
+        syms = _symbols(files, name, cands[0])
+        if not syms:
+            return [f"« {name} » introuvable dans `{cands[0]}` (`brain where {name}`)"], 4
+    else:
+        cands = find_file(files, name, root) if _looks_like_path(name) else []
+        if cands:
+            return hint + _impact_file(m, cands[0], depth), 0
+        syms = _symbols(files, name)
+        if not syms:
+            cands = find_file(files, name, root)
+            if not cands:
+                return [f"rien trouvé pour « {name} » (essaie `brain where {name}` ou `brain files \"{name}\"`)"], 4
+            return hint + _impact_file(m, cands[0], depth), 0
+    if len(syms) > 1:
+        L = [f"« {name} » est ambigu : {len(syms)} définitions. Précise avec `brain impact fichier:symbole` :"]
+        L += [f"- {r}:{s['n']}  ({KIND_LABEL.get(s['k'], s['k'])}, l.{s['l']})" for r, s in syms[:10]]
+        return L + ([f"… +{len(syms) - 10}"] if len(syms) > 10 else []), 3
+    rel, s = syms[0]
+    if files[rel].get("lang") != "python":
+        return ([f"(graphe d'appels : Python seulement — impact du fichier qui définit « {s['n']} »)", ""]
+                + _impact_file(m, rel, depth)), 0
+    return hint + _impact_symbol(m, rel, s, depth), 0
+
+
+def _impact_symbol(m, rel, s, depth):
+    files = m["files"]
+    rev = defaultdict(list)
+    for src, caller, line, tf, ts, rl in call_edges(m):
+        rev[(tf, ts)].append((src, caller, line, rl))
+    name = s["n"]
+    seeds = {(rel, name)}
+    if s["k"] == "class":
+        seeds |= {(rel, x["n"]) for x in files[rel].get("symbols") or [] if x["n"].startswith(name + ".")}
+    seen, frontier, levels = set(seeds), seeds, []
+    for _ in range(depth):
+        hits = {}
+        for t in frontier:
+            for src, caller, line, rl in rev.get(t, ()):
+                u, v = (src, caller), (_REL_RANK[rl], line, rl, t[1])
+                if u not in seen and (u not in hits or v < hits[u]):
+                    hits[u] = v
+        if not hits:
+            break
+        levels.append(hits)
+        seen |= set(hits)
+        frontier = {u for u in hits if u[1]}  # le niveau module (« ») n'a pas d'appelant
+    L = [f"Impact de « {name} » — {rel}:{s['l']} ({KIND_LABEL.get(s['k'], s['k'])}) · profondeur {depth}"]
+    if not levels:
+        L.append(f"Aucun appel ni usage repéré de « {name} » dans le code Python analysé "
+                 "(les appels dynamiques — getattr, chaînes — ne sont pas visibles).")
+        return L + _impact_footer(files, rel, set())
+    touched, deduced = set(), False
+    for d, hits in enumerate(levels, 1):
+        rows = sorted(hits.items(), key=lambda kv: (kv[0][0], kv[1][1]))
+        L += ["", f"Dépend directement ({len(rows)}) :" if d == 1 else f"Niveau {d} ({len(rows)}) :"]
+        for (src, caller), (_, line, rl, ts) in rows[:40]:
+            L.append(f"- {src}:{line}  {caller or '(niveau module)'} {VERBS[rl]} {ts}")
+            deduced |= rl == "d"
+        if len(rows) > 40:
+            L.append(f"… +{len(rows) - 40}")
+        touched |= {u[0] for u in hits}
+    L += _impact_footer(files, rel, touched)
+    if deduced:
+        L.append("(« déduit » : méthode au nom unique dans le projet, appelée sur un objet : à confirmer)")
+    return L
+
+
+def _impact_file(m, rel, depth):
+    files = m["files"]
+    imp = defaultdict(set)
+    for r, f in files.items():
+        if not f.get("dup"):
+            for t in f.get("out") or []:
+                imp[t].add(r)
+    uses = defaultdict(set)
+    if files[rel].get("lang") == "python":
+        for src, _, _, tf, ts, _ in call_edges(m):
+            if tf == rel and src != rel:
+                uses[src].add(ts)
+    L = [f"Impact du fichier `{rel}` · profondeur {depth}"]
+    seen, frontier, levels = {rel}, [rel], []
+    for _ in range(depth):
+        nxt = {}
+        for x in frontier:
+            for r in sorted(imp.get(x, ())):
+                if r not in seen and r not in nxt:
+                    nxt[r] = x
+        if not nxt:
+            break
+        levels.append(nxt)
+        seen |= set(nxt)
+        frontier = list(nxt)
+    if not levels:
+        return L + ["Aucun fichier du projet ne l'importe."] + _impact_footer(files, rel, set())
+    touched = set()
+    for d, nxt in enumerate(levels, 1):
+        rows = sorted(nxt.items())
+        L += ["", f"Importé directement par ({len(rows)}) :" if d == 1 else f"Niveau {d} ({len(rows)}) :"]
+        for r, via in rows[:40]:
+            if d > 1:
+                L.append(f"- `{r}` via `{via}`")
+                continue
+            u = sorted(uses.get(r, ()))
+            L.append(f"- `{r}`" + (" — utilise : " + ", ".join(u[:8]) + (" …" if len(u) > 8 else "") if u else ""))
+        if len(rows) > 40:
+            L.append(f"… +{len(rows) - 40}")
+        touched |= set(nxt)
+    return L + _impact_footer(files, rel, touched)
+
+
+def _impact_footer(files, rel, touched):
+    tests = sorted({r for r in touched if _is_test(r)}
+                   | {r for r, f in files.items() if _is_test(r) and not f.get("dup") and rel in (f.get("out") or [])})
+    others = sorted(r for r in touched if r != rel and not _is_test(r))
+    L = [""]
+    if others:
+        L.append(f"À revoir : {len(others)} fichier(s) — " + ", ".join(f"`{r}`" for r in others[:12])
+                 + (" …" if len(others) > 12 else ""))
+    L.append("Tests reliés : " + ", ".join(f"`{r}`" for r in tests[:12]) + (" …" if len(tests) > 12 else "")
+             if tests else "Aucun test relié repéré.")
+    return L
+
+
+def _call_lines(m, rel, s, limit=15):
+    """Appelants et appelés d'un symbole Python (fiche `explain`)."""
+    files = m["files"]
+    if (files.get(rel) or {}).get("lang") != "python":
+        return []
+    own = {s["n"]}
+    if s["k"] == "class":
+        own |= {x["n"] for x in files[rel].get("symbols") or [] if x["n"].startswith(s["n"] + ".")}
+    callers, callees = {}, {}
+    for src, caller, line, tf, ts, rl in call_edges(m):
+        from_own, to_own = src == rel and caller in own, tf == rel and ts in own
+        if to_own == from_own:
+            continue
+        side, k = (callers, (src, caller)) if to_own else (callees, (tf, ts))
+        if k not in side or (_REL_RANK[rl], line) < (_REL_RANK[side[k][1]], side[k][0]):
+            side[k] = (line, rl)
+    tag = {"h": "héritage", "r": "usage", "d": "déduit"}
+    L = []
+    if callers:
+        rows = sorted(callers.items(), key=lambda kv: (kv[0][0], kv[1][0]))
+        L.append(f"Appelé par ({len(rows)}) : " + " · ".join(
+            f"{c or '(niveau module)'} ({src}:{line}{', ' + tag[rl] if rl in tag else ''})"
+            for (src, c), (line, rl) in rows[:limit]) + (" …" if len(rows) > limit else ""))
+    if callees:
+        rows = sorted(callees.items(), key=lambda kv: kv[1][0])
+        L.append(f"Appelle ({len(rows)}) : " + " · ".join(
+            f"{ts} (`{tf}`{', ' + tag[rl] if rl in tag else ''})"
+            for (tf, ts), (line, rl) in rows[:limit]) + (" …" if len(rows) > limit else ""))
+    return L or ["Appels : aucun repéré (les appels dynamiques ne sont pas visibles)."]

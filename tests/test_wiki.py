@@ -4,7 +4,6 @@ Lancement : python tests/test_wiki.py   (sortie : « N vérifications OK, M éch
 import json
 import os
 import re
-import shutil
 import subprocess
 import sys
 import tempfile
@@ -23,7 +22,7 @@ WORK.mkdir(parents=True)
 os.chdir(WORK)
 
 from brainkit import wiki, wikistore as ws  # noqa: E402
-from brainkit.common import GRAPH_FILE, write_json  # noqa: E402
+from brainkit.common import GRAPH_FILE, remove_tree, write_json  # noqa: E402
 from brainkit.store import Brain  # noqa: E402
 
 OK, FAIL = [], []
@@ -402,6 +401,11 @@ html = ("<html><head><title>Article de test</title></head><body><nav>menu</nav><
 
 class H(http.server.BaseHTTPRequestHandler):
     def do_GET(self):
+        if self.path == "/r":  # redirection vers un schéma non web : revérifiée, donc refusée même avec --local
+            self.send_response(302)
+            self.send_header("Location", "ftp://127.0.0.1/x")
+            self.end_headers()
+            return
         self.send_response(200)
         self.send_header("Content-Type", "text/html; charset=utf-8")
         self.end_headers()
@@ -415,14 +419,38 @@ srv = http.server.HTTPServer(("127.0.0.1", 0), H)
 threading.Thread(target=srv.serve_forever, daemon=True).start()
 env_np = {k: v for k, v in os.environ.items() if k.lower() not in ("http_proxy", "https_proxy", "all_proxy")}
 env_np["NO_PROXY"] = "127.0.0.1,localhost"
-r = subprocess.run([sys.executable, "-I", "-S", str(CODE / "brain.py"), "wiki", "add", f"http://127.0.0.1:{srv.server_port}/a"],
-                   capture_output=True, cwd=str(WORK), env=env_np, timeout=60)
+code, out = brain("wiki", "add", f"http://127.0.0.1:{srv.server_port}/a")
+check(code != 0 and "adresse locale ou privée refusée" in out and "--local" in out
+      and not list((WIKI / "raw").glob("*Article de test*")), "page web : adresse locale refusée sans --local", out)
+r = subprocess.run([sys.executable, "-I", "-S", str(CODE / "brain.py"), "wiki", "add", f"http://127.0.0.1:{srv.server_port}/r",
+                    "--local"], capture_output=True, cwd=str(WORK), env=env_np, timeout=60)
+out = r.stdout.decode("utf-8", "replace") + r.stderr.decode("utf-8", "replace")
+check(r.returncode != 0 and "ftp://127.0.0.1/x" in out and "http ou https seulement" in out,
+      "page web : redirection revérifiée (schéma non web refusé)", out)
+r = subprocess.run([sys.executable, "-I", "-S", str(CODE / "brain.py"), "wiki", "add", f"http://127.0.0.1:{srv.server_port}/a",
+                    "--local"], capture_output=True, cwd=str(WORK), env=env_np, timeout=60)
 out = r.stdout.decode("utf-8", "replace") + r.stderr.decode("utf-8", "replace")
 srv.shutdown()
 web = [p for p in (WIKI / "raw").glob("*Article de test*.md")]
 wtxt = web[0].read_text(encoding="utf-8") if web else ""
 check(r.returncode == 0 and web and "# Thé vert" in wtxt and "**sencha**" in wtxt and "- Uji" in wtxt and "menu" not in wtxt
       and "pied" not in wtxt, "page web → Markdown (article gardé, menu et pied écartés)", out + wtxt[:400])
+refus = []
+for u in ("http://10.1.2.3/x", "http://192.168.1.1/", "http://169.254.169.254/latest/meta-data", "http://[::1]:8080/",
+          "http://[::ffff:127.0.0.1]/", "http://0.0.0.0/", "file:///etc/passwd", "ftp://example.com/a", "http:///x"):
+    try:
+        wiki.check_url(u)
+    except wiki.UrlRefusee:
+        continue
+    refus.append(u)
+try:
+    wiki.check_url("http://93.184.216.34/page")
+    wiki.check_url("https://127.0.0.1:8443/", allow_local=True)
+    ouvert = True
+except wiki.UrlRefusee as exc:
+    ouvert = exc
+check(not refus and ouvert is True, "check_url : privé, local, métadonnées cloud, schémas non web refusés ; public et --local admis",
+      (refus, ouvert))
 code, out = brain("wiki", "add", "https://www.youtube.com/watch?v=abc")
 check(code != 0 and "transcription" in out, "YouTube : demande la transcription", out)
 
@@ -511,6 +539,20 @@ last = json.loads((STATE / "auto.json").read_text(encoding="utf-8"))
 code, out2 = brain("auto", "--etat")
 check(last.get("le") and any(r["etape"] == "notes du jour" for r in last["etapes"]) and "Dernière passe" in out2
       and "✓ notes du jour" in out2, "veille : compte rendu gardé, lisible par --etat", out2)
+(WIKI / "wiki/Sujets/Thé japonais.md").write_text(page("wiki/Sujets/Thé japonais.md") + "\nCommité en session.\n",
+                                                  encoding="utf-8")
+subprocess.run(["git", "-C", str(WIKI), "-c", "user.name=t", "-c", "user.email=t@example.com", "commit", "-qam",
+                "commit en session"], capture_output=True)
+(WIKI / "wiki/Sujets/Thé japonais.md").write_text(page("wiki/Sujets/Thé japonais.md") + "\nBrouillon en cours.\n",
+                                                  encoding="utf-8")
+code, out = brain("auto")
+head = subprocess.run(["git", "-C", str(REMOTE), "show", "main:wiki/Sujets/Thé japonais.md"],
+                      capture_output=True).stdout.decode("utf-8", "replace")
+st = subprocess.run(["git", "-C", str(WIKI), "-c", "core.quotepath=false", "status", "--porcelain"],
+                    capture_output=True).stdout.decode("utf-8", "replace")
+check("✓ envoi du wiki : 1 commit(s) envoyé(s)" in out and "synchro du wiki" not in out
+      and "Commité en session." in head and "Brouillon en cours." not in head and "japonais" in st,
+      "veille : session ouverte → ses commits partent sur GitHub, sans commit ni pull (brouillon intact)", out + st)
 for f in (STATE / "sessions").glob("*.json"):
     os.utime(f, (time.time() - 3600, time.time() - 3600))
 (WIKI / "wiki/Sujets/Thé japonais.md").write_text(page("wiki/Sujets/Thé japonais.md") + "\nAjout hors session.\n",
@@ -718,5 +760,8 @@ check((CODE3 / "brain.py").is_file() and "Le cerveau vit dans le wiki" in r.stdo
       "lanceur : code du cerveau récupéré au démarrage (git clone)", r.stderr.decode("utf-8", "replace")[-300:])
 
 print(f"\n{len(OK)} vérifications OK, {len(FAIL)} échec(s)")
-(shutil.rmtree(TMP, ignore_errors=True) if not FAIL and not os.environ.get("KEEP") else print(f"(dossier gardé : {TMP})"))
+if FAIL or os.environ.get("KEEP"):
+    print(f"(dossier gardé : {TMP})")
+elif not remove_tree(TMP, wait=60):  # tâches de fond du cerveau testé : on attend qu'elles aient fini d'y écrire
+    print(f"(dossier pas effacé : {TMP})")
 sys.exit(1 if FAIL else 0)

@@ -16,11 +16,10 @@ import shutil
 import subprocess
 import sys
 import tempfile
-import time
 from pathlib import Path
 
 from . import __version__
-from .common import CODE_DIR, load_config, read_json, set_config
+from .common import CODE_DIR, load_config, read_json, remove_tree, set_config
 
 NAME = MARKET = "cerveau"
 KEEP = {".git", "CONTRIBUTORS.md"}  # tenus dans le dépôt lui-même, jamais effacés par la construction
@@ -271,9 +270,10 @@ def smoke(dest: Path) -> list:
     """Premier démarrage chez un « ami » fictif (profil Claude vide, mémoire vide) : hook de démarrage, rappel d'un
     message, serveur MCP. → liste des problèmes (vide = tout va bien)."""
     problems = []
-    # Les hooks lancent des tâches de fond détachées (carte du dossier, synchro du wiki…) qui travaillent dans
-    # ~/.claude/brain, ici dans tmp : sous Windows, tant qu'elles tournent, il ne s'efface pas (WinError 32). On ne
-    # plante pas pour autant (ignore_cleanup_errors), et on retente quelques secondes, le temps qu'elles finissent.
+    # Les hooks lancent des tâches de fond détachées (carte du dossier, synchro du wiki, accès au cerveau commun…) qui
+    # travaillent dans ~/.claude/brain, ici dans tmp : sous Windows, tant qu'elles tournent, il ne s'efface pas (WinError
+    # 32). On ne plante pas pour autant (ignore_cleanup_errors), et on réessaie jusqu'à ce qu'elles aient fini (la
+    # vérification d'accès au cerveau commun, un git ls-remote, peut prendre 30 s).
     with tempfile.TemporaryDirectory(prefix="cerveau-ami-", ignore_cleanup_errors=True) as tmp:
         env = {k: v for k, v in os.environ.items() if k not in ("BRAIN_HOME",)}
         env.update(CLAUDE_CONFIG_DIR=str(Path(tmp) / "claude"), CLAUDE_PLUGIN_ROOT=str(dest), APPDATA=str(Path(tmp) / "app"))
@@ -328,11 +328,7 @@ def smoke(dest: Path) -> list:
         r = subprocess.run(cmd + ["mcp"], input=req.encode(), capture_output=True, env=env, cwd=tmp, timeout=60)
         if "memory_search" not in r.stdout.decode("utf-8", "replace"):
             problems.append(f"serveur MCP : {r.stdout[:200]!r} {r.stderr[:200]!r}")
-    for _ in range(40):
-        if not Path(tmp).exists():
-            break
-        time.sleep(0.5)
-        shutil.rmtree(tmp, ignore_errors=True)
+    remove_tree(tmp, wait=60)
     return problems
 
 

@@ -643,7 +643,7 @@ def cmd_map(a):
     if meta["entries"]:
         print("  Entrées : " + ", ".join(e for e, _ in meta["entries"][:6]))
     print(f"  Rapport : {PROJECTS_DIR / meta['pid'] / 'MAP.md'}")
-    print("  Ensuite : `brain files \"sujet\"` · `brain where <symbole>` · `brain explain <fichier>`")
+    print("  Ensuite : `brain files \"sujet\"` · `brain where <symbole>` · `brain explain <fichier>` · `brain impact <x>`")
 
 
 def cmd_where(a):
@@ -662,6 +662,14 @@ def cmd_explain(a):
     from . import mapper
     _, m = map_for(a)
     print("\n".join(mapper.explain(m, a.target)))
+
+
+def cmd_impact(a):
+    from . import mapper
+    _, m = map_for(a)
+    lines, code = mapper.impact(m, a.target, a.depth)
+    print("\n".join(lines))
+    return code
 
 
 def cmd_path(a):
@@ -1466,7 +1474,8 @@ def cmd_wiki(a):
         if src == "-" and not (text or "").strip():
             die("rien reçu sur l'entrée standard (texte de la source) — ou : brain wiki add <fichier|url>")
         try:
-            info = wiki.add_source(src, title=a.title, fmt=a.format, url=a.url, author=a.author, text=text)
+            info = wiki.add_source(src, title=a.title, fmt=a.format, url=a.url, author=a.author, text=text,
+                                   allow_local=getattr(a, "local", False))
         except RuntimeError as exc:
             die(str(exc))
         print(wiki.ingest_plan(info))
@@ -1806,6 +1815,10 @@ def build_parser():
     s = cmd("explain", cmd_explain, "fiche d'un fichier ou d'un symbole", ["explique"])
     s.add_argument("target")
     s.add_argument("-p", "--project")
+    s = cmd("impact", cmd_impact, "ce qui dépend d'un fichier ou d'une fonction (avant de modifier)", ["impacts"])
+    s.add_argument("target", help="fichier, symbole, ou fichier:symbole")
+    s.add_argument("-d", "--depth", type=int, default=2, help="niveaux d'appelants (1 à 5)")
+    s.add_argument("-p", "--project")
     s = cmd("path", cmd_path, "chemin entre deux souvenirs (graphe de mémoire) ou deux fichiers (imports)", ["chemin"])
     s.add_argument("a")
     s.add_argument("b")
@@ -1939,6 +1952,7 @@ def build_parser():
     s.add_argument("--url", help="add : adresse d'origine (texte reçu par stdin)")
     s.add_argument("--format", help="add : article, pdf, video, podcast, livre, note, conversation, donnees, image, document")
     s.add_argument("--author", "--auteur", dest="author", help="add : auteur")
+    s.add_argument("--local", action="store_true", help="add : autoriser une adresse locale ou privée (127.0.0.1, réseau interne)")
     s.add_argument("-n", type=int, default=12, help="nombre de lignes (lint, pending, log)")
     s.add_argument("--log", action="store_true", help="lint : noter le passage au journal")
     s.add_argument("--no-migrate", action="store_true", help="init : ne pas migrer le cerveau classique")
@@ -2026,6 +2040,8 @@ def build_parser():
 
 def main(argv=None):
     setup_io()
+    if os.environ.get("BRAIN_TASK") == "1" and not BRAIN_DIR.is_dir():
+        return 0  # tâche de fond d'un cerveau effacé depuis son lancement (dossier de test) : surtout ne pas le recréer
     if os.environ.get("BRAIN_BG") == "1":  # tâche de fond lancée par un hook : CPU/disque/mémoire en priorité basse
         try:
             from . import pc

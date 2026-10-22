@@ -9,7 +9,7 @@ import re
 import sys
 import time
 
-from .common import (BRAIN_DIR, GRAPH_FILE, FileLock, days_since, fold, jaccard, log, norm_path, now_iso,
+from .common import (BRAIN_DIR, GRAPH_FILE, FileLock, clean_label, days_since, fold, jaccard, log, norm_path, now_iso,
                      path_within, read_json, slugify, tokenize, write_json)
 
 TYPES = {
@@ -406,7 +406,7 @@ class Brain:
     def add(self, ntype, title, body="", tags=(), project=None, importance=3, source="claude",
             meta=None, nid=None):
         ntype = normalize_type(ntype)
-        title = " ".join(self._guard(title).split())
+        title = clean_label(self._guard(title))
         body = self._guard(body)
         if ntype not in _NO_ABS:
             title, body = _absolutize_new("", title), _absolutize_new("", body)
@@ -440,8 +440,8 @@ class Brain:
                 val = self._guard(val)
                 if n["type"] not in _NO_ABS and val != (n.get(key) or ""):
                     val = _absolutize_new(n.get(key), val)
-                    if key == "title":
-                        val = " ".join(val.split())
+                if key == "title":
+                    val = clean_label(val)
             if key == "type":
                 val = normalize_type(val)
             elif key == "tags":

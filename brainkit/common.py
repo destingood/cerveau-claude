@@ -148,6 +148,36 @@ def write_text(path, text: str) -> None:
     _atomic_write(Path(path), text)
 
 
+def remove_tree(path, wait=0.0) -> bool:
+    """Efface un dossier pour de bon, sous Windows aussi : fichiers en lecture seule (objets git) rendus inscriptibles,
+    sortie du dossier s'il contient le dossier courant du processus, et nouveaux essais pendant `wait` secondes tant
+    qu'un autre processus le tient (tâche de fond qui y travaille encore, antivirus). → True si le dossier n'existe plus."""
+    import shutil
+    import stat
+
+    def force(func, p, _exc):
+        try:
+            os.chmod(p, stat.S_IWRITE)
+            func(p)
+        except OSError:
+            pass  # encore ouvert ailleurs : repris au tour suivant
+
+    path = Path(os.path.abspath(path))  # absolu (sinon « . » viserait le parent après os.chdir) ; un lien n'est pas suivi
+    try:  # Windows : le dossier courant d'un processus ne s'efface pas
+        if Path.cwd().resolve().is_relative_to(path.resolve()):
+            os.chdir(path.parent)
+    except OSError:
+        pass
+    end = time.time() + wait
+    kw = {"onexc": force} if sys.version_info >= (3, 12) else {"onerror": force}
+    while path.exists():
+        shutil.rmtree(path, **kw)
+        if not path.exists() or time.time() >= end:
+            break
+        time.sleep(0.5)
+    return not path.exists()
+
+
 def read_stdin_json() -> dict:
     try:
         raw = sys.stdin.buffer.read()
@@ -365,6 +395,17 @@ def first_line(text, n=140) -> str:
         if line:
             return short(line, n)
     return ""
+
+
+_LABEL_SPACE = re.compile("[\x00-\x1f\x7f-\x9f\u2028\u2029]")
+_LABEL_DROP = re.compile("[\u00ad\u061c\u180e\u200b\u200e\u200f\u202a-\u202e\u2060-\u2064\u2066-\u206f\ufeff\ufff9-\ufffb]")
+
+
+def clean_label(text) -> str:
+    """Titre sûr (façon graphify sanitize_label) : caractères de contrôle → espace ; invisibles et caractères de
+    direction (qui retournent l'affichage) retirés ; espaces resserrés. Garde les liants d'emoji (ZWJ/ZWNJ)."""
+    s = _LABEL_DROP.sub("", _LABEL_SPACE.sub(" ", str(text or "")))
+    return " ".join(s.split())
 
 
 def est_tokens(text) -> int:

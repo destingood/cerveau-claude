@@ -781,6 +781,9 @@ if DEPOT:
           == install.SKILL.replace(install.CMD, 'python "$HOME/.claude/brain/brain.py"'),
           "skills/brain/SKILL.md identique à install.SKILL")
 
-shutil.rmtree(TMP, ignore_errors=True)
+from brainkit.common import remove_tree  # noqa: E402
+
+if not remove_tree(TMP, wait=60):  # tâches de fond du cerveau testé : on attend qu'elles aient fini d'y écrire
+    print(f"(dossier pas effacé : {TMP})")
 print(f"\n{len(OK)} vérifications OK, {len(FAIL)} échec(s)")
 sys.exit(1 if FAIL else 0)

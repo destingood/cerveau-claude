@@ -108,13 +108,14 @@ def settings() -> dict:
     return c
 
 
-def member() -> str:
+def member(etat="membre") -> str:
     """Nom de membre si ce cerveau a rejoint le cerveau commun (et que le dossier est là), sinon "".
-    Appelé à chaque chargement du cerveau : une seule lecture de config.json pour qui n'est pas membre."""
+    Appelé à chaque chargement du cerveau : une seule lecture de config.json pour qui n'est pas membre.
+    etat="depart" : le nom de qui a quitté sans que le retrait de ses pages ait encore pu être envoyé."""
     if os.environ.get("CLAUDE_CODE_REMOTE"):
         return ""
     c = load_config().get("commun") or {}
-    if c.get("etat") != "membre" or not c.get("nom"):
+    if c.get("etat") != etat or not c.get("nom"):
         return ""
     if not (Path(c.get("path") or BRAIN_DIR / "commun") / ".git").exists():
         return ""
@@ -570,7 +571,10 @@ def sync(pull=True, push=True, auto=False) -> list:
             from .common import days_since
             from .store import Brain
             failed = False
-            for _ in range(4):
+            gone = member() != me  # parti (brain commun quitter) pendant l'attente du verrou : rien n'est republié
+            if gone:
+                out.append("· plus membre du cerveau commun : rien n'est envoyé")
+            for _ in range(0 if gone else 4):
                 _unstick(path)  # à chaque tour : un verrou abandonné pendant qu'une synchro tourne ne bloque pas la suite
                 push = push or bool(state().get("push_pending"))
                 save_state(pending=False, push_pending=False)
@@ -626,9 +630,9 @@ def sync(pull=True, push=True, auto=False) -> list:
     return out or ["✓ à jour"]
 
 
-def spawn(args):
-    """`brain.py <args>` en arrière-plan (sans fenêtre, priorité basse) → le processus (False si échec) ;
-    BRAIN_COMMUN_FG=1 : tout de suite (tests)."""
+def spawn(args, low=True):
+    """`brain.py <args>` en arrière-plan (sans fenêtre ; priorité basse, sauf low=False quand un message attend le
+    résultat) → le processus (False si échec) ; BRAIN_COMMUN_FG=1 : tout de suite (tests)."""
     if os.environ.get("BRAIN_COMMUN_FG") == "1":
         import contextlib
         from . import cli
@@ -642,10 +646,14 @@ def spawn(args):
         exe = Path(sys.executable)
         if os.name == "nt" and exe.name.lower() == "pythonw.exe" and (exe.parent / "python.exe").exists():
             exe = exe.parent / "python.exe"  # sans console (pythonw), git se bloque : voir creationflags
+        env = {k: v for k, v in os.environ.items() if k != "BRAIN_BG"}
+        env["BRAIN_TASK"] = "1"  # comme hooks.spawn_background : rien si le cerveau a été effacé entre-temps
+        if low:
+            env["BRAIN_BG"] = "1"  # cli.main : CPU, disque et mémoire en priorité basse
         kw = dict(stdin=subprocess.DEVNULL, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, close_fds=True,
-                  cwd=str(BRAIN_DIR), env={**os.environ, "BRAIN_BG": "1"})
+                  cwd=str(BRAIN_DIR), env=env)
         if os.name == "nt":
-            kw["creationflags"] = 0x08000000 | 0x00000200 | 0x00004000  # comme hooks.spawn_background
+            kw["creationflags"] = 0x08000000 | 0x00000200 | (0x00004000 if low else 0)  # comme hooks.spawn_background
         else:
             kw["start_new_session"] = True
         return subprocess.Popen([str(exe), "-I", "-S", str(BRAIN_PY), *args], **kw)
@@ -698,12 +706,13 @@ def maybe_pull(wait=0.0) -> None:
         return
     stale = days_since(st.get("pulled")) * 86400 > FRESH
     save_state(pull_asked=now_iso())
-    proc = spawn(["commun", "sync", "--auto", "--no-push"])
-    if wait and stale and hasattr(proc, "wait"):
+    waits = bool(wait and stale)
+    proc = spawn(["commun", "sync", "--auto", "--no-push"], low=not waits)  # un message l'attend : priorité normale
+    if waits and hasattr(proc, "wait"):
         try:
             proc.wait(timeout=wait)
         except subprocess.TimeoutExpired:
-            pass
+            log(f"commun : récupération plus longue que {wait:g} s, poursuivie en arrière-plan sans l'attendre")
 
 
 # ------------------------------------------------------------------------------------------ adhésion
@@ -849,21 +858,42 @@ def decline() -> str:
 
 
 def leave(keep=False) -> list:
-    me = member()
+    """Sans keep : mes pages sont retirées du dépôt commun. Tant que ce retrait n'est pas envoyé (réseau, accès),
+    l'état reste « depart » : plus aucune synchro, nouvel essai à chaque démarrage (notice) ou à la relance. Dossier
+    local du cerveau commun disparu entre-temps (effacé, autre PC) : récupéré à nouveau pour envoyer le retrait."""
+    c = settings()
+    me = member() or member("depart")
+    lost = not me and c.get("etat") == "depart" and bool(c.get("nom"))
+    if lost:
+        me = c["nom"]
     if not me:
         return ["· pas membre du cerveau commun"]
-    path = Path(settings()["path"])
+    set_config("commun.etat", "parti" if keep else "depart")  # tout de suite : une synchro en attente ne republie rien
     out = []
     if not keep:
+        path = Path(c["path"])
         with FileLock(GIT_LOCK, timeout=30, stale=600):
-            git(path, "rm", "-r", "-q", "--", f"{MEMBERS}/{me}")
-            git(path, "-c", f"user.name={me}", "-c", f"user.email={me}@cerveau.invalid", "commit", "-q", "-m",
-                f"cerveau commun : {me} s'en va")
-            err = _pull(path, me)
-            code, txt = git(path, "push", timeout=120)
-            out.append("✓ tes pages sont retirées du cerveau commun (elles restent dans son historique git)" if code == 0
-                       else f"✗ retrait non envoyé : {short(err or txt, 200)} — relance `brain commun quitter`")
-    set_config("commun.etat", "parti")
+            code, txt = 0, ""
+            if lost:  # tâche de fond : jamais de fenêtre de connexion
+                path.parent.mkdir(parents=True, exist_ok=True)
+                code, txt = git(None, "clone", "-q", repo_url(c.get("repo")) or "", str(path), timeout=300,
+                                interactive=os.environ.get("BRAIN_TASK") != "1")
+            if code == 0:
+                _unstick(path)
+                code, txt = git(path, "rm", "-r", "-q", "--ignore-unmatch", "--", f"{MEMBERS}/{me}")
+            if code == 0 and git(path, "diff", "--cached", "--quiet")[0]:  # sinon déjà commité (relance)
+                code, txt = git(path, "-c", f"user.name={me}", "-c", f"user.email={me}@cerveau.invalid", "commit", "-q",
+                                "-m", f"cerveau commun : {me} s'en va", timeout=60)
+            if code == 0:
+                err = _pull(path, me)
+                code, txt = git(path, "push", "-u", "origin", "HEAD", timeout=120)
+                txt = err or txt
+            if code:
+                out.append(f"✗ retrait non envoyé : {short(txt, 200)} — tes pages restent chez les amis jusque-là : "
+                           "nouvel essai à chaque démarrage, ou relance `brain commun quitter`")
+            else:
+                set_config("commun.etat", "parti")
+                out.append("✓ tes pages sont retirées du cerveau commun (elles restent dans son historique git)")
     out.append("✓ tu ne reçois plus les pages des amis ; ton cerveau reste intact")
     return out
 
@@ -892,6 +922,9 @@ def status(brain=None) -> str:
     me = member()
     if not me:
         etat = c.get("etat")
+        if etat == "depart":
+            return (f"🤝 Cerveau commun ({c.get('repo')}) : départ pas encore envoyé, tes pages restent chez les amis — "
+                    "nouvel essai à chaque démarrage, ou `brain commun quitter`")
         hint = {"refuse": "refusé", "parti": "quitté"}.get(etat, "pas encore rejoint")
         return (f"🤝 Cerveau commun ({c.get('repo') or 'non configuré'}) : {hint} — `brain commun apercu` montre ce qui "
                 "partirait ; `brain commun rejoindre --oui` pour entrer")
@@ -909,7 +942,8 @@ def status(brain=None) -> str:
 
 
 def notice(brain) -> str:
-    """Ligne du démarrage : l'état du cerveau commun pour un membre, ou (une fois par jour) la proposition d'y entrer."""
+    """Ligne du démarrage : l'état du cerveau commun pour un membre, ou (une fois par jour) la proposition d'y entrer.
+    Départ dont le retrait n'est pas encore envoyé : nouvel essai en arrière-plan, à chaque démarrage."""
     me = member()
     if me:
         amis = (brain.data.get("commun") or {}).get("amis") or []
@@ -923,6 +957,10 @@ def notice(brain) -> str:
     if os.environ.get("CLAUDE_CODE_REMOTE"):
         return ""
     c = settings()
+    if c.get("etat") == "depart":  # retrait de mes pages pas encore envoyé (réseau, accès) : nouvel essai
+        spawn(["commun", "quitter"])
+        return ("🤝 Cerveau commun : ton départ n'a pas encore pu être envoyé (tes pages restent chez les amis) — nouvel "
+                "essai en arrière-plan ; `brain commun` dit où il en est.")
     if c.get("etat") in ("refuse", "parti") or not c.get("repo"):
         return ""
     st = state()

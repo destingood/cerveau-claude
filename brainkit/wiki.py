@@ -426,6 +426,28 @@ def sync(root=None, push=True, pull=True, auto=False) -> list:
     return out
 
 
+def push_pending(root) -> str:
+    """Envoie sur GitHub les commits déjà faits, sans commit ni pull : les fichiers ne sont pas touchés, donc sans
+    risque pendant qu'une session écrit dans le wiki (veille). → compte rendu, "" s'il n'y a rien à envoyer."""
+    root = Path(root)
+    if not is_repo(root) or not remote(root):
+        return ""
+    try:
+        with FileLock(GIT_LOCK, timeout=2, stale=600):
+            code, txt = git(root, "rev-list", "--count", "@{u}..HEAD", timeout=20)
+            ahead = int(txt) if code == 0 and txt.isdigit() else 0
+            if not ahead:
+                return ""
+            code, txt = git(root, "push", "origin", "HEAD", timeout=120)
+    except TimeoutError:
+        return ""  # une synchro est en cours : elle envoie elle-même
+    if code == 0:
+        return f"{ahead} commit(s) envoyé(s) sur GitHub (session ouverte : ni commit ni pull)"
+    if re.search(r"rejected|fetch first|non-fast-forward", txt):
+        return "en attente : GitHub a des nouveautés, récupérées à la prochaine synchro complète"
+    raise RuntimeError(f"push : {short(txt, 200)}")
+
+
 # ------------------------------------------------------------------------------------------ index.md et log.md
 def _summary(n, chars=130) -> str:
     """Résumé d'une page : sa propriété `resume`, sinon sa première ligne de texte (pas un intertitre)."""
@@ -526,7 +548,8 @@ def log_entries(root=None, n=10) -> list:
 
 # ------------------------------------------------------------------------------------------ sources brutes
 def raw_files(root) -> list:
-    """Sources brutes (chemins relatifs POSIX), hors raw/assets/ et fichiers cachés."""
+    """Sources brutes (chemins relatifs POSIX), hors raw/assets/, fichiers cachés, fichiers vides et vues Bases
+    d'Obsidian (.base) : un « Sans titre » créé dans raw/ par Obsidian n'est pas une source à ingérer."""
     base = Path(root) / ws.RAW
     out = []
     if not base.is_dir():
@@ -535,6 +558,11 @@ def raw_files(root) -> list:
         rel = p.relative_to(root).as_posix()
         parts = rel.split("/")
         if not p.is_file() or any(x[:1] in "._" for x in parts[1:]) or (len(parts) > 2 and parts[1] == "assets"):
+            continue
+        try:
+            if p.suffix.lower() == ".base" or not p.stat().st_size:
+                continue
+        except OSError:
             continue
         out.append(rel)
     return sorted(out)
@@ -721,12 +749,49 @@ def html_to_md(html, base_url="") -> tuple:
     return " ".join((p.og or p.title or "").split()), text
 
 
-def fetch(url) -> tuple:
-    """URL → (titre, contenu en octets, extension). HTML converti en Markdown ; PDF et autres gardés tels quels."""
+class UrlRefusee(ValueError):
+    """Adresse refusée avant tout envoi (schéma non web, ou hôte local/privé sans --local)."""
+
+
+def check_url(url, allow_local=False):
+    """Façon graphify (validate_url) : http(s) seulement, et jamais une adresse locale ou privée (127.0.0.1, 10.x,
+    192.168.x, 169.254.x des métadonnées cloud…) sauf --local : une adresse lue dans une page ne doit pas faire sonder
+    le réseau interne. Revérifiée à chaque redirection."""
+    import ipaddress
+    import socket
+    import urllib.parse
+    p = urllib.parse.urlsplit(str(url))
+    if p.scheme.lower() not in ("http", "https") or not p.hostname:
+        raise UrlRefusee(f"adresse refusée : {short(str(url), 80)} (http ou https seulement)")
+    if allow_local:
+        return
+    try:
+        infos = socket.getaddrinfo(p.hostname, p.port or (443 if p.scheme.lower() == "https" else 80),
+                                   proto=socket.IPPROTO_TCP)
+    except (OSError, UnicodeError, ValueError):
+        return  # nom introuvable : le téléchargement échouera de lui-même
+    for info in infos:
+        ip = ipaddress.ip_address(str(info[4][0]).split("%", 1)[0])
+        ip = getattr(ip, "ipv4_mapped", None) or ip
+        if not ip.is_global:
+            raise UrlRefusee(f"adresse locale ou privée refusée : {p.hostname} ({ip}) — "
+                             "`brain wiki add … --local` pour l'autoriser")
+
+
+def fetch(url, allow_local=False) -> tuple:
+    """URL → (titre, contenu en octets, extension). HTML converti en Markdown ; PDF et autres gardés tels quels.
+    Adresse vérifiée avant l'envoi et à chaque redirection (check_url)."""
     import urllib.request
+
+    class _Redirect(urllib.request.HTTPRedirectHandler):
+        def redirect_request(self, req, fp, code, msg, headers, newurl):
+            check_url(newurl, allow_local)
+            return super().redirect_request(req, fp, code, msg, headers, newurl)
+
+    check_url(url, allow_local)
     req = urllib.request.Request(url, headers={"User-Agent": "Mozilla/5.0 (cerveau-wiki)",
                                                "Accept": "text/html,application/xhtml+xml,application/pdf,*/*"})
-    with urllib.request.urlopen(req, timeout=30) as r:
+    with urllib.request.build_opener(_Redirect).open(req, timeout=30) as r:
         ctype = (r.headers.get("Content-Type") or "").lower()
         raw = r.read(20 * 1024 * 1024)
         final = r.geturl()
@@ -808,9 +873,10 @@ def candidates(brain, text, k=10) -> list:
     return [(e, c) for e, c in counts.most_common(40) if c >= 2 and e not in have][:k]
 
 
-def add_source(src, title=None, fmt=None, url=None, author=None, text=None) -> dict:
+def add_source(src, title=None, fmt=None, url=None, author=None, text=None, allow_local=False) -> dict:
     """Range une source dans raw/ (copie d'un fichier, page web téléchargée, texte reçu) et crée sa page Sources à
-    remplir. Une source déjà présente (même contenu) n'est pas dupliquée. → {raw, page, text, created}."""
+    remplir. Une source déjà présente (même contenu) n'est pas dupliquée. Adresse locale ou privée refusée sauf
+    allow_local. → {raw, page, text, created}."""
     from .store import Brain
     root = ws.root()
     if not root:
@@ -830,7 +896,9 @@ def add_source(src, title=None, fmt=None, url=None, author=None, text=None) -> d
                                f"puis `brain wiki add - -T \"Titre\" --url {src} --format video` (texte par l'entrée "
                                "standard)")
         try:
-            t, content, ext = fetch(src)
+            t, content, ext = fetch(src, allow_local=allow_local)
+        except UrlRefusee as exc:
+            raise RuntimeError(str(exc)) from None
         except Exception as exc:
             raise RuntimeError(f"téléchargement impossible ({short(str(exc), 160)}) : enregistre la page avec Obsidian "
                                f"Web Clipper dans raw/, ou passe le texte : `brain wiki add - -T \"Titre\" --url {src}`")

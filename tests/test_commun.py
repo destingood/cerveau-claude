@@ -4,7 +4,6 @@ Le plus important : rien de privé n'entre JAMAIS dans le dépôt commun (tout s
 Lancement : python tests/test_commun.py   (sortie : « N vérifications OK, M échec(s) »)"""
 import json
 import os
-import shutil
 import subprocess
 import sys
 import tempfile
@@ -60,6 +59,15 @@ def bare_history():
     """Tout ce qui est jamais entré dans le dépôt commun : contenu de chaque version de chaque fichier."""
     r = subprocess.run(["git", "-C", str(BARE), "log", "--all", "-p", "--no-color"], capture_output=True)
     return r.stdout.decode("utf-8", "replace")
+
+
+def quiet(who):
+    """Attend (60 s au plus) qu'aucune synchro de `who` ne tienne le verrou git : les tâches de fond des étapes
+    précédentes finissent d'abord."""
+    glock = TMP / who / "brain" / "state" / "commun-git.lock"
+    t = time.time()
+    while time.time() - t < 60 and glock.exists():
+        time.sleep(0.3)
 
 
 def graph(who):
@@ -254,6 +262,7 @@ check(sent + got < 120, f"temps réel : moins de 2 minutes de bout en bout ({sen
 
 
 def bob_state(**kw):
+    quiet(B)  # une synchro de fond de bob encore en cours réécrirait son état par-dessus
     st = json.loads(cstate.read_text(encoding="utf-8"))
     st.update(kw)
     cstate.write_text(json.dumps(st), encoding="utf-8")
@@ -268,13 +277,25 @@ def alice_sends(title, body):
     return f
 
 
-# bob revient après une pause : son message attend la récupération (brève) et voit déjà la nouveauté d'alice
+# bob revient après une pause : son message attend la récupération (2,5 s au plus) et voit déjà la nouveauté d'alice ;
+# machine saturée : le message part sans l'attendre (noté dans le journal) et la nouveauté est là au message suivant
 f = alice_sends("Tailler les hortensias en mars", "Juste au-dessus des bourgeons.")
 bob_state(pull_asked=None, pulled="2020-01-01T00:00:00")
+blog = TMP / B / "brain" / "state" / "brain.log"
+n0 = len(blog.read_text(encoding="utf-8").splitlines()) if blog.exists() else 0
+ask = {"session_id": "b4", "cwd": str(TMP / B / "work"), "prompt": "quand faut-il tailler les hortensias ?"}
 t3 = time.time()
-o = hook(B, "prompt", {"session_id": "b4", "cwd": str(TMP / B / "work"), "prompt": "quand faut-il tailler les hortensias ?"}, fg=False)
+o = hook(B, "prompt", ask, fg=False)
+took = time.time() - t3
+late = any("récupération plus longue" in line for line in blog.read_text(encoding="utf-8").splitlines()[n0:])
+if late and "Tailler les hortensias en mars" not in o:
+    t = time.time()
+    while time.time() - t < 60 and not (TMP / B / "brain" / "commun" / f).exists():
+        time.sleep(0.3)
+    o = hook(B, "prompt", ask, fg=False)
 check("🤝 alice" in o and "Tailler les hortensias en mars" in o,
-      f"temps réel : après une pause, le message voit déjà la nouveauté ({time.time() - t3:.1f} s)", o)
+      f"temps réel : après une pause, le message voit déjà la nouveauté ({took:.1f} s"
+      + (" ; machine saturée : au message suivant)" if late else ")"), o)
 # fin de tour : récupération en arrière-plan pendant que l'utilisateur lit (sortie du hook : JSON valide ou rien)
 f = alice_sends("Pailler les fraisiers", "Garde l'humidité.")
 bob_state(pull_asked=None)
@@ -305,6 +326,7 @@ check(f in bare_files() and "Astuce du fournisseur" not in bare_history() and "P
       "envoi différé : gardé privé juste après l'ajout → jamais parti ; l'ajout suivant part avec le lot", "\n".join(bare_files()))
 
 # ------------------------------------------------------------------ 5. retirer, devenir sensible, projet redevenu privé
+quiet(A)  # les synchros de fond de l'étape 4 finissent d'abord (sinon l'une d'elles reprend ces changements, plus tard)
 code, out = brain(A, "edit", "les-robots-faussent-les-stats-shopify", "--commun", "non")
 check("membres/alice/wiki/Apprentissages/Les robots faussent les stats Shopify.md" not in bare_files(),
       "marqué privé après coup → retiré du dépôt commun", out)
@@ -345,10 +367,7 @@ check("membres/alice/wiki/Apprentissages/Changer l'eau des vases.md" in bare_fil
       "verrou git abandonné : retiré, la synchro passe", out)
 
 # ------------------------------------------------------------------ 6c. envoi raté (git occupé) : jamais compté comme parti, repris
-glock = TMP / A / "brain" / "state" / "commun-git.lock"
-t2 = time.time()  # les synchros de fond des étapes précédentes finissent d'abord
-while time.time() - t2 < 60 and glock.exists():
-    time.sleep(0.5)
+quiet(A)  # les synchros de fond des étapes précédentes finissent d'abord
 lock.write_text("", encoding="utf-8")  # un autre git tourne (verrou récent, pas abandonné) : rien ne peut partir
 code, out = brain(A, "add", "-t", "learning", "-T", "Recouper les tiges", "-b", "Un centimètre tous les trois jours.", "-p", "none")
 page = "membres/alice/wiki/Apprentissages/Recouper les tiges.md"
@@ -379,8 +398,27 @@ check(page in bare_files() and not lock.exists() and "envoyé" in out,
       "envoi raté repris à la récupération suivante, verrou abandonné en route retiré au tour suivant", out)
 
 # ------------------------------------------------------------------ 7. quitter
-code, out = brain(B, "commun", "quitter")
-check(code == 0 and not any(f.startswith("membres/bob/") for f in bare_files()), "bob quitte : ses pages sont retirées", out)
+# une synchro de bob l'a vu membre juste avant son départ et n'obtient le verrou git qu'après : elle ne republie rien
+QUITTE_EN_ROUTE = r"""
+import sys
+sys.path.insert(0, sys.argv[1])
+from brainkit import cli, commun
+real, n = commun.FileLock, []
+def lock(path, *a, **k):
+    if path == commun.GIT_LOCK and not n:
+        n.append(1)
+        cli.main(["commun", "quitter"])
+    return real(path, *a, **k)
+commun.FileLock = lock
+print("\n".join(commun.sync()))
+"""
+quiet(B)
+r = subprocess.run([sys.executable, "-I", "-S", "-c", QUITTE_EN_ROUTE, str(CODE)], capture_output=True,
+                   cwd=str(TMP / B / "work"), env=env(B), timeout=180)
+out = r.stdout.decode("utf-8", "replace") + r.stderr.decode("utf-8", "replace")
+check(r.returncode == 0 and "pages sont retirées" in out and not any(f.startswith("membres/bob/") for f in bare_files()),
+      "bob quitte : ses pages sont retirées", out)
+check("plus membre" in out, "départ pendant qu'une synchro attend le verrou : elle ne republie rien", out)
 code, out = brain(B, "q", "couper les tiges en biais")
 check("🤝" not in out, "bob ne reçoit plus les pages des amis", out)
 code, out = brain(B, "show", "Bob, cuisinier")
@@ -435,13 +473,70 @@ check("cerveau commun" not in o.lower(), "accès pas vérifié : plus rien ensui
 code, out = brain(D, "commun", "rejoindre", "--oui")
 check(code != 0 and "invitation" in out and "Traceback" not in out, "rejoindre sans accès : message clair", out)
 
+# ------------------------------------------------------------------ 8b. départ dont l'envoi échoue (réseau, accès)
+quiet(A)
+clone = TMP / A / "brain" / "commun"
+url = subprocess.run(["git", "-C", str(clone), "remote", "get-url", "origin"], capture_output=True,
+                     text=True).stdout.strip()
+subprocess.run(["git", "-C", str(clone), "remote", "set-url", "origin", str(TMP / "absent.git")], check=True)
+
+
+def bare_head():
+    return subprocess.run(["git", "-C", str(BARE), "rev-parse", "HEAD"], capture_output=True, text=True).stdout.strip()
+
+
+code, out = brain(A, "commun", "quitter")
+check("✗ retrait non envoyé" in out and "nouvel essai à chaque démarrage" in out
+      and any(f.startswith("membres/alice/") for f in bare_files()), "départ pas envoyé : dit, pages encore là", out)
+head = bare_head()
+code, out = brain(A, "commun", "quitter")
+check("✗ retrait non envoyé" in out and "pas membre" not in out, "départ pas envoyé : la relance réessaie", out)
+code, out = brain(A, "commun")
+check("départ pas encore envoyé" in out, "départ pas envoyé : `brain commun` le dit", out)
+subprocess.run(["git", "-C", str(clone), "remote", "set-url", "origin", url], check=True)
+code, out = brain(A, "add", "-t", "learning", "-T", "Tailler les glycines en août", "-b", "Après la floraison.", "-p", "none")
+code, out = brain(A, "commun", "sync")
+check(bare_head() == head and "Tailler les glycines" not in bare_history(),
+      "départ pas envoyé : aucune synchro ne republie", out)
+o = hook(A, "session-start", {"session_id": "a-depart", "cwd": str(TMP / A / "work")})
+code, out = brain(A, "commun")
+check("ton départ n'a pas encore pu être envoyé" in o and "quitté" in out
+      and not any(f.startswith("membres/alice/") for f in bare_files()) and "Tailler les glycines" not in bare_history(),
+      "départ pas envoyé : repris tout seul au démarrage suivant", o[-400:] + "\n" + out + "\n" + "\n".join(bare_files()))
+
+# ------------------------------------------------------------------ 8c. départ en attente, dossier local disparu
+sys.path.insert(0, str(CODE))
+from brainkit.common import remove_tree  # noqa: E402
+
+F = "fanny"
+code, out = brain(F, "add", "-t", "learning", "-T", "Semer les radis en mars", "-b", "En pleine terre.", "-p", "none")
+code, out = brain(F, "config", "commun.repo", str(BARE))
+code, out = brain(F, "commun", "rejoindre", "--oui", "--nom", "fanny")
+fclone = TMP / F / "brain" / "commun"
+subprocess.run(["git", "-C", str(fclone), "remote", "set-url", "origin", str(TMP / "absent.git")], check=True)
+code, out = brain(F, "commun", "quitter")
+check("✗ retrait non envoyé" in out and any(f.startswith("membres/fanny/") for f in bare_files()),
+      "fanny : départ pas envoyé, pages encore là", out)
+quiet(F)
+gone = remove_tree(fclone, wait=30)  # effacé, ou cerveau passé sur un autre PC sans lui
+code, out = brain(F, "commun", "quitter")
+code2, out2 = brain(F, "commun")
+check(gone and "✓ tes pages sont retirées" in out and "quitté" in out2
+      and not any(f.startswith("membres/fanny/") for f in bare_files()),
+      "départ en attente, dossier local disparu : récupéré, retrait envoyé", out + "\n" + out2)
+
 # ------------------------------------------------------------------ 9. bilan vie privée sur tout l'historique
 hist = bare_history()
 for word in PRIVATE + ["Vit à Nantes", "Torréfier", "Greffer", "Contrat de location", "XyZ123", "drive.google.com", "Carnet de Bob",
                        "recettes de famille", "Plan de repas", "Loyer"]:
     check(word not in hist, f"bilan : « {word} » absent de tout l'historique du dépôt commun")
+check(not any(f.startswith("membres/bob/") for f in bare_files()), "bilan : rien de bob n'est revenu après son départ",
+      "\n".join(bare_files()))
 
 print("\n".join(f"  {label}" for label in OK if label.startswith(("temps réel", "fin de tour"))))
 print(f"\n{len(OK)} vérifications OK, {len(FAIL)} échec(s)")
-(shutil.rmtree(TMP, ignore_errors=True) if not FAIL and not os.environ.get("KEEP") else print(f"(dossier gardé : {TMP})"))
+if FAIL or os.environ.get("KEEP"):
+    print(f"(dossier gardé : {TMP})")
+elif not remove_tree(TMP, wait=60):  # tâches de fond du cerveau testé : on attend qu'elles aient fini d'y écrire
+    print(f"(dossier pas effacé : {TMP})")
 sys.exit(1 if FAIL else 0)

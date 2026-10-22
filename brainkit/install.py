@@ -19,7 +19,7 @@ CLAUDE_BLOCK = f"""<!-- BRAIN:START (géré par ~/.claude/brain — `brain insta
 # 🧠 Cerveau persistant (`~/.claude/brain`)
 Injecté tout seul : index + fiche du projet au démarrage, souvenirs/fichiers pertinents à chaque message (blocs 🧠/📁).
 S'en servir AVANT d'explorer ou de redemander. Outil : `{CMD} <cmd>` (Bash/PowerShell) — détail : skill `/brain`.
-`q "sujet"` · `add -t <type> -T "titre" -b "fait + pourquoi + comment"` · `edit`/`show <id>` · `todo` · `files`/`where`/`explain <x>` · `map .` · `wiki add <source>` · `commun` (cerveau des amis)
+`q "sujet"` · `add -t <type> -T "titre" -b "fait + pourquoi + comment"` · `edit`/`show <id>` · `todo` · `files`/`where`/`explain`/`impact <x>` · `map .` · `wiki add <source>` · `commun` (cerveau des amis)
 1. Projet : carte (MAP.md) et `files`/`where`/`explain` avant tout Glob/Grep/Read en masse ; pas de carte → `map .`.
 2. Mémoriser aussitôt le durable — feedback (préférence, correction), user, decision, fact (travail en cours),
    learning (piège, solution), reference, todo (`--due`) — après un `q` anti-doublon.
@@ -183,6 +183,7 @@ seulement quand le savoir change.
 | Fichiers liés à un sujet | `files "paiement panier"` |
 | Où est défini X (fonction, classe, variable d'env, route) | `where X` |
 | Fiche d'un fichier ou symbole | `explain <fichier\\|symbole>` |
+| Ce qui dépend d'un fichier ou d'une fonction (avant de modifier) | `impact <fichier\\|symbole>` |
 | Dépendances | `deps <fichier>` · chemin entre deux fichiers : `path <a> <b>` |
 | Projets connus | `proj` · `proj add <dossier> -T "Nom" -b "description"` |
 

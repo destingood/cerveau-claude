@@ -7,7 +7,6 @@ import datetime as dt
 import http.server
 import json
 import os
-import shutil
 import subprocess
 import sys
 import tempfile
@@ -301,6 +300,9 @@ check("semaine du 12/10" in txt(5) and len(shop_file()["kpi"]) == 4, "MCP : bout
 check("Site : pages lues" in txt(6), "MCP : boutique_audit avec pages du sitemap", txt(6)[-400:])
 
 srv.shutdown()
-shutil.rmtree(TMP, ignore_errors=True)
+from brainkit.common import remove_tree  # noqa: E402
+
+if not remove_tree(TMP, wait=60):  # tâches de fond du cerveau testé : on attend qu'elles aient fini d'y écrire
+    print(f"(dossier pas effacé : {TMP})")
 print(f"\n{len(OK)} vérifications OK, {len(FAIL)} échec(s)")
 sys.exit(1 if FAIL else 0)

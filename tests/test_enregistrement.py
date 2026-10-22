@@ -314,6 +314,9 @@ check(len(bloc) <= 6 and "Python 3.10" in page and "la commande `python`" in pag
       and 'ln -sf "$(command -v python3)" ~/.local/bin/python' in page and "Add python.exe to PATH" in page
       and "doctor" in page and "brain.py journal" in page, "README : prérequis (Python 3.10+, `python`, vérification), court", bloc)
 
-shutil.rmtree(TMP, ignore_errors=True)
+from brainkit.common import remove_tree  # noqa: E402
+
+if not remove_tree(TMP, wait=60):  # tâches de fond du cerveau testé : on attend qu'elles aient fini d'y écrire
+    print(f"(dossier pas effacé : {TMP})")
 print(f"\n{len(OK)} vérifications OK, {len(FAIL)} échec(s)")
 sys.exit(1 if FAIL else 0)

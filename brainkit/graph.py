@@ -22,7 +22,7 @@ from .common import _CAMEL, STATE_DIR, STOPWORDS, days_since, fold, now_iso, rea
 from .store import TYPES, Brain
 
 ANALYSIS_FILE = STATE_DIR / "analysis.json"
-VERSION = 8
+VERSION = 9
 W_EXPLICIT, W_MEMBER, W_INFERRED = 1.0, 0.6, 1.6
 MIN_SIM, TOP_K, DUP_SIM = 0.16, 3, 0.5
 WORD = re.compile(r"[^\W_]+", re.UNICODE)
@@ -379,6 +379,10 @@ def analyze(brain) -> dict:
         c["id"] = cid
         for i in c["members"]:
             comm_of[i] = cid
+        if c["size"] > 1:  # cohésion (façon graphify) : part des paires de membres directement reliées
+            mem = c["members"]
+            inner = sum(1 for j, x in enumerate(mem) for y in mem[j + 1:] if y in adj.get(x, {}))
+            c["coh"] = round(inner / (len(mem) * (len(mem) - 1) / 2), 2)
 
     deg = Counter()
     for a, b, _ in explicit:
@@ -432,6 +436,11 @@ def analyze(brain) -> dict:
             questions.append(f"Que regroupe la communauté « {c['label']} » ({c['size']} souvenirs) ? "
                              f"Sa fiche de synthèse : `brain fiche {c['words'][0] if c['words'] else c['id']}`.")
             break
+    loose = [c for c in comms if not c["project"] and c["size"] >= 6 and c.get("coh", 1) < 0.15]
+    if loose:
+        c = min(loose, key=lambda x: x["coh"])
+        questions.append(f"La communauté « {c['label']} » ({c['size']} souvenirs) est peu soudée (cohésion {c['coh']}) : "
+                         "la scinder, ou relier ses souvenirs (`brain link`) ?")
     if isolated:
         questions.append(f"« {short(by_id[isolated[0]]['title'], 60)} » n'est relié à rien : à rattacher (`brain link`) ou à archiver ?")
 
@@ -590,7 +599,8 @@ def report(brain, an) -> str:
         if c["size"] < 2:
             continue
         mem = ", ".join(f"{short(t(i), 42)}" for i in c["members"][:4])
-        lines.append(f"- **{c['label']}** ({c['size']}) — {mem}" + (" …" if c["size"] > 4 else ""))
+        coh = f" · cohésion {c['coh']}" if c.get("coh") is not None else ""
+        lines.append(f"- **{c['label']}** ({c['size']}){coh} — {mem}" + (" …" if c["size"] > 4 else ""))
     singles = sum(1 for c in an["communities"] if c["size"] < 2)
     if singles:
         lines.append(f"- _{singles} souvenir(s) seul(s) dans leur communauté_")

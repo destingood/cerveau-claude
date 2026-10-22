@@ -958,6 +958,9 @@ st = eco.status()
 check("Plugins du compte claude.ai jamais utilisés" in st and "- kindle ≈" in st and "2 serveur(s) MCP" in st
       and "- sert" not in st, "brain eco : plugins du compte inutilisés, à retirer dans l'app", st[-600:])
 
-shutil.rmtree(TMP, ignore_errors=True)
+from brainkit.common import remove_tree  # noqa: E402
+
+if not remove_tree(TMP, wait=60):  # tâches de fond du cerveau testé : on attend qu'elles aient fini d'y écrire
+    print(f"(dossier pas effacé : {TMP})")
 print(f"\n{len(OK)} vérifications OK, {len(FAIL)} échec(s)")
 sys.exit(1 if FAIL else 0)
