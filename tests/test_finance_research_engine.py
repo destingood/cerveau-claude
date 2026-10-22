@@ -621,3 +621,9 @@ def test_the_cash_is_rounded_down_to_the_cent() -> None:
     assert replace(FREE, rounding="none").balance(100.009) == 100.009
     sold = schedule([Order("A", -1, -10.007)], 0.0, {"A": 10.007}, FREE)
     assert sold.cash == 10.0  # the nearest cent would have been 10.01
+    # Two amounts near 71 million euros leave 0.38 a unit of theirs short, more than 1e-6 of a
+    # cent: measured on 0.38 alone, the drift lost a cent (property test of the book, phase 6).
+    costs = Costs("fictifs", 0.001, 2.0, 0.0005)
+    bought = schedule([Order("A", 4172475, 0.0)], 71038508.96, {"A": 17.0}, costs)
+    assert (bought.cuts, bought.cash) == ([], 0.38)
+    assert FREE.balance(71038508.96 - 71038508.58000001) == 0.37  # the sum alone: drift unseen

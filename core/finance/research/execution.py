@@ -84,19 +84,23 @@ class Costs:
             rounding=rounding,
         )
 
-    def balance(self, cash: float) -> float:
-        """``cash`` as a broker holds it: to the cent in ``cent`` mode, so that no float drift
-        between two fills cuts a buy that fits to the cent; as computed otherwise.
+    def balance(self, cash: float, flow: float = 0.0) -> float:
+        """``cash + flow`` as a broker holds it: to the cent in ``cent`` mode, so that no float
+        drift between two fills cuts a buy that fits to the cent; as computed otherwise.
 
         The cent is the one below, never the nearest: a price with more than two decimals then
-        never overstates the cash (B246). Only the float's drift is absorbed, a few units in its
-        last place and at least 1e-6 of a cent: 12.34 held as 12.339999999999 stays 12.34, and so
-        does 268172403.16 held one unit below, where 1e-6 of a cent is less than that unit."""
+        never overstates the cash (B246). Only the float's drift is absorbed, a few units in the
+        last place of the largest of ``cash``, ``flow`` and their sum, and at least 1e-6 of a
+        cent: 12.34 held as 12.339999999999 stays 12.34, so does 268172403.16 held one unit below,
+        and so does 0.38 left by two amounts near 71 million euros, which drift by a unit of theirs,
+        not of 0.38."""
+        total = cash + flow
         if self.rounding != "cent":
-            return cash
-        cents = cash * 100
+            return total
+        cents = total * 100
         nearest = round(cents)
-        if abs(cents - nearest) <= max(1e-6, 16 * math.ulp(cents)):  # the float's drift
+        largest = max(abs(cash), abs(flow), abs(total)) * 100
+        if abs(cents - nearest) <= max(1e-6, 16 * math.ulp(largest)):  # the float's drift
             return nearest / 100  # an int over 100: never -0.0
         return math.floor(cents) / 100
 
@@ -185,7 +189,7 @@ def affordable(quantity: int, price: float, cash: float, costs: Costs) -> int:
         raise ValueError("un achat porte sur une quantité positive")
 
     def fits(shares: int) -> bool:
-        return costs.balance(cash + costs.fill("", shares, price).cash) >= 0
+        return costs.balance(cash, costs.fill("", shares, price).cash) >= 0
 
     if fits(quantity):
         return quantity
@@ -213,12 +217,12 @@ def schedule(
         quantity = order.quantity
         if quantity > 0:
             quantity = affordable(quantity, price, cash, costs)
-        elif costs.balance(cash + costs.fill(order.instrument_id, quantity, price).cash) < 0:
+        elif costs.balance(cash, costs.fill(order.instrument_id, quantity, price).cash) < 0:
             quantity = 0
         if quantity != order.quantity:
             cuts.append(Cut(order, quantity))
         if quantity:
             fill = costs.fill(order.instrument_id, quantity, price)
-            cash = costs.balance(cash + fill.cash)
+            cash = costs.balance(cash, fill.cash)
             fills.append(fill)
     return Schedule(fills, cuts, cash)
