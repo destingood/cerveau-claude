@@ -360,6 +360,7 @@ GOLDEN_FLOORS: Mapping[str, float] = MappingProxyType(
         "generaliste_golden_min_score": 0.80,
         "finance_golden_min_score": 0.85,
         "recherche_golden_min_score": 0.80,
+        "code_golden_min_score": 0.80,
     }
 )
 # The highest level each domain may ever reach, from the table of section 9.2 (ADR-043). The
@@ -385,6 +386,7 @@ class EvalThresholds(_Strict):
     generaliste_golden_min_score: Score | Marker
     finance_golden_min_score: Score | Marker
     recherche_golden_min_score: Score | Marker
+    code_golden_min_score: Score | Marker
     behavior_suites_R1_to_R5_pass_rate: Score
     regression_block_delta: float | Marker
 
@@ -712,6 +714,96 @@ class InterfacesConfig(_Strict):
     ntfy: NtfySettings
 
 
+# --- code.yaml (P3 of phase 6, ADR-047, ADR-048) ----------------------------------------------
+
+# The CERVEAU checkout itself: no code tool may read it or run its tests (ADR-047).
+CERVEAU_ROOT = Path(__file__).resolve().parents[2]
+# A Docker image pinned by content: its local ID, or a name followed by its registry digest (E4).
+IMAGE_REF = r"^(?:[a-z0-9][a-z0-9._/:-]*@)?sha256:[0-9a-f]{64}$"
+# owner/name of a GitHub repository.
+GITHUB_REPO = r"^[A-Za-z0-9-]{1,39}/[A-Za-z0-9._-]{1,100}$"
+# Bounds of one check container that Lucas set (E5). The configuration may lower them, never
+# raise them (R9): only an ADR moves them.
+CHECKS_CEILINGS: Mapping[str, float] = MappingProxyType(
+    {"cpus": 2, "memory_mb": 2048, "pids": 256, "timeout_seconds": 300}
+)
+
+
+class CodeRepository(_Strict):
+    id: Annotated[str, Field(pattern=r"^[a-z0-9][a-z0-9-]{0,39}$")]
+    path: Path
+    # owner/name of its GitHub mirror, read by code_ci without a token (E6).
+    github: Annotated[str, Field(pattern=GITHUB_REPO)] | None = None
+    # pytest runs only in an environment Lucas prepared for this repository (E3), never after an
+    # install inside the check container.
+    pytest: Annotated[bool, Field(strict=True)] = False
+    image: Annotated[str, Field(pattern=IMAGE_REF)] | None = None
+
+    @field_validator("path")
+    @classmethod
+    def _absolute(cls, value: Path) -> Path:
+        if not value.is_absolute():
+            raise ValueError(f"{value} : chemin absolu attendu")
+        return value
+
+    @field_validator("github")
+    @classmethod
+    def _no_dot_name(cls, value: str | None) -> str | None:
+        # "." and ".." would climb the API path.
+        if value is not None and value.split("/")[1] in (".", ".."):
+            raise ValueError(f"{value} : nom de dépôt GitHub invalide")
+        return value
+
+
+class CodeChecks(_Strict):
+    image: Annotated[str, Field(pattern=IMAGE_REF)] | Marker
+    cpus: Annotated[float, Field(gt=0, strict=True, allow_inf_nan=False)]
+    memory_mb: Annotated[int, Field(strict=True, ge=1)]
+    pids: Annotated[int, Field(strict=True, ge=1)]
+    timeout_seconds: Annotated[int, Field(strict=True, ge=1)]
+
+    @model_validator(mode="after")
+    def _within_e5(self) -> CodeChecks:
+        errors = [
+            f"{name} : {getattr(self, name)} dépasse le plafond {ceiling}"
+            for name, ceiling in CHECKS_CEILINGS.items()
+            if getattr(self, name) > ceiling
+        ]
+        if errors:
+            raise ValueError("; ".join(errors) + " (E5 ; seule une ADR les change)")
+        return self
+
+
+class CodeConfig(_Strict):
+    repositories: list[CodeRepository] | Marker
+    checks: CodeChecks
+
+    @model_validator(mode="after")
+    def _unique(self) -> CodeConfig:
+        if isinstance(self.repositories, str):
+            return self
+        ids = [repo.id for repo in self.repositories]
+        if len(set(ids)) != len(ids):
+            raise ValueError("identifiants de dépôt en double")
+        return self
+
+
+def _overlaps(first: Path, second: Path) -> bool:
+    return first == second or first.is_relative_to(second) or second.is_relative_to(first)
+
+
+def _code_errors(directory: Path, code: CodeConfig) -> list[str]:
+    """A listed repository may neither be, nor hold, nor sit inside CERVEAU (ADR-047)."""
+    if isinstance(code.repositories, str):
+        return []
+    roots = {CERVEAU_ROOT, directory.resolve().parent}
+    return [
+        f"code.yaml › repositories.{repo.id}.path : recouvre le dépôt CERVEAU (ADR-047)"
+        for repo in code.repositories
+        if any(_overlaps(repo.path.resolve(), root) for root in roots)
+    ]
+
+
 FILES: dict[str, tuple[str, type[BaseModel]]] = {
     "models": ("models.yaml", ModelsConfig),
     "autonomy": ("autonomy.yaml", AutonomyConfig),
@@ -728,6 +820,7 @@ FILES: dict[str, tuple[str, type[BaseModel]]] = {
     "research": ("research.yaml", ResearchConfig),
     "committee": ("committee.yaml", CommitteeConfig),
     "interfaces": ("interfaces.yaml", InterfacesConfig),
+    "code": ("code.yaml", CodeConfig),
 }
 
 
@@ -815,6 +908,10 @@ FEATURES: dict[str, Feature] = {
         "Seuil du golden set Recherche",
         ("evals:thresholds.recherche_golden_min_score", "evals:thresholds.regression_block_delta"),
     ),
+    "evals.gate.code": Feature(
+        "Seuil du golden set Code",
+        ("evals:thresholds.code_golden_min_score", "evals:thresholds.regression_block_delta"),
+    ),
     "finance.market_risk": Feature(
         "Mesures de risque de marché (VaR, CVaR, Kupiec, stress hypothétiques)",
         (
@@ -868,6 +965,12 @@ FEATURES: dict[str, Feature] = {
             "models:tiers.standard",
             "models:tiers.deep",
         ),
+    ),
+    # The allow list of repositories (E2) and the pinned image with its bounds (E4, E5).
+    "code.repositories": Feature("Lecture des dépôts de la liste blanche", ("code:repositories",)),
+    "code.checks": Feature(
+        "Contrôles ruff et pytest dans un conteneur sans réseau",
+        ("code:repositories", "code:checks"),
     ),
 }
 
@@ -941,6 +1044,7 @@ class Config:
     research: ResearchConfig
     committee: CommitteeConfig
     interfaces: InterfacesConfig
+    code: CodeConfig
     markers: tuple[MarkerHit, ...]
     digest: str
 
@@ -1093,6 +1197,7 @@ def load_config(directory: Path) -> Config:
                 errors.append(f"{filename} › {loc} : {err['msg']}")
     if not errors:
         errors.extend(_cross_file_errors(parsed))
+        errors.extend(_code_errors(directory, parsed["code"]))  # type: ignore[arg-type]
     if errors:
         raise ConfigError("\n".join(errors))
     return Config(
@@ -1112,6 +1217,7 @@ def load_config(directory: Path) -> Config:
         research=parsed["research"],  # type: ignore[arg-type]
         committee=parsed["committee"],  # type: ignore[arg-type]
         interfaces=parsed["interfaces"],  # type: ignore[arg-type]
+        code=parsed["code"],  # type: ignore[arg-type]
         markers=tuple(markers),
         digest=config_digest(directory),
     )

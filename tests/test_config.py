@@ -62,6 +62,9 @@ def test_every_marker_dependent_feature_is_blocked_by_default() -> None:
         "kill_switch.data_loss",
         "evals.gate.generaliste",
         "evals.gate.recherche",
+        "evals.gate.code",
+        "code.repositories",
+        "code.checks",
         "compliance.fiscal",
         "guardrails.pii",
         "finance.historical_stress",
@@ -267,10 +270,12 @@ def test_the_domain_caps_are_those_of_section_9_2() -> None:
     assert tuple(DOMAIN_MAX_LEVELS) == DOMAINS
     domains = load_config(REPO_ROOT / "config").autonomy.domains
     assert (domains["recherche"].level, domains["recherche"].max_level) == ("N0", "N1")  # D3
+    assert (domains["code"].level, domains["code"].max_level) == ("N0", "N2")  # D3
 
 
 @pytest.mark.parametrize(
-    ("domain", "max_level"), [("generaliste", "N2"), ("recherche", "N2"), ("recherche", "N4")]
+    ("domain", "max_level"),
+    [("generaliste", "N2"), ("recherche", "N2"), ("recherche", "N4"), ("code", "N3")],
 )
 def test_a_max_level_above_section_9_2_is_refused(
     config_dir: Path, domain: str, max_level: str
@@ -286,9 +291,9 @@ def test_a_max_level_above_section_9_2_is_refused(
 def test_a_cap_cannot_be_raised_for_a_domain_not_yet_configured(config_dir: Path) -> None:
     edit_yaml(
         config_dir / "autonomy.yaml",
-        lambda d: d["domains"].update(code={"level": "N0", "max_level": "N3"}),
+        lambda d: d["domains"].update(cyber={"level": "N0", "max_level": "N3"}),
     )
-    with pytest.raises(ConfigError, match=re.escape("domains.code.max_level : N3 dépasse")):
+    with pytest.raises(ConfigError, match=re.escape("domains.cyber.max_level : N3 dépasse")):
         load_config(config_dir)
 
 
@@ -332,6 +337,7 @@ def test_every_golden_gate_has_its_floor() -> None:
         "generaliste_golden_min_score": 0.80,
         "finance_golden_min_score": 0.85,
         "recherche_golden_min_score": 0.80,
+        "code_golden_min_score": 0.80,
     }
 
 
@@ -694,7 +700,12 @@ def test_a_missing_golden_gate_blocks_the_promotion(config_dir: Path) -> None:
 @pytest.mark.parametrize("value", [float("nan"), -1.0, 1.5, True])
 @pytest.mark.parametrize(
     "field",
-    ["generaliste_golden_min_score", "finance_golden_min_score", "recherche_golden_min_score"],
+    [
+        "generaliste_golden_min_score",
+        "finance_golden_min_score",
+        "recherche_golden_min_score",
+        "code_golden_min_score",
+    ],
 )
 def test_a_golden_gate_is_a_score_in_0_1(config_dir: Path, field: str, value: object) -> None:
     edit_yaml(config_dir / "evals.yaml", lambda d: d["thresholds"].update({field: value}))
@@ -708,6 +719,7 @@ def test_a_golden_gate_is_a_score_in_0_1(config_dir: Path, field: str, value: ob
         ("generaliste_golden_min_score", 0.79),
         ("finance_golden_min_score", 0.84),
         ("recherche_golden_min_score", 0.79),
+        ("code_golden_min_score", 0.79),
     ],
 )
 def test_the_golden_gates_cannot_go_below_their_floor(
