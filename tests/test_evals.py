@@ -20,7 +20,7 @@ from core.config.loader import load_config
 from core.evals.cases import (
     BEHAVIOR_DIR,
     GOLDEN_FILE,
-    PACK_BEHAVIOR_FILES,
+    REDTEAM_DIR,
     WEB_FIXTURES,
     Case,
     CaseError,
@@ -28,8 +28,11 @@ from core.evals.cases import (
     Expect,
     Offline,
     cached_cases,
+    golden_files,
     load_cases,
     load_web,
+    pack_behavior_files,
+    pack_redteam_dirs,
     suite_files,
 )
 from core.evals.checks import Outcome, prompt_ngrams, r5_breaches, run_checks, sourcing_ok
@@ -91,7 +94,7 @@ def test_each_principle_has_its_behaviour_suite() -> None:
         assert any(name.startswith(prefix) for name in names), prefix
     assert {"format_7_3", "auto_controle"} <= set(names)
     files = suite_files("behaviors")
-    assert len(files) == len(names) + len(PACK_BEHAVIOR_FILES)  # and the packs' own behaviours
+    assert len(files) == len(names) + len(pack_behavior_files())  # and the packs' own behaviours
     for file in files:
         assert len(file.cases) >= 5, file.group
         assert file.pass_rate == 1.0, file.group
@@ -141,6 +144,19 @@ def test_the_finance_golden_gate_rises_to_the_promotion_score() -> None:
     )
     assert golden_threshold(raised, "finance") == Decimal("0.9")  # D16: never a pass it refuses
     assert golden_threshold(raised, "generaliste") == Decimal("0.8")
+
+
+@pytest.mark.parametrize("marker", ["A_DEFINIR", "A_VERIFIER"])
+def test_a_golden_gate_not_yet_decided_blocks_the_campaign(marker: str) -> None:
+    config = load_config(REPO_ROOT / "config")
+    thresholds = config.evals.thresholds.model_copy(update={"recherche_golden_min_score": marker})
+    undecided = dataclasses.replace(
+        config, evals=config.evals.model_copy(update={"thresholds": thresholds})
+    )
+    with pytest.raises(ValueError, match=f"pack recherche non défini \\({marker}\\)"):
+        golden_threshold(undecided, "recherche")
+    with pytest.raises(ValueError, match="pack sans seuil de golden set : cyber"):
+        golden_threshold(config, "cyber")
 
 
 FINANCE_THEMES = {  # plan of phase 2, section 9: at least 5 cases each
@@ -229,6 +245,33 @@ def tiny_root(tmp_path: Path) -> Path:
 def _golden_line(case_id: str, url: str) -> str:
     hit = {"title": "Page", "url": url}
     return json.dumps({"id": case_id, "description": "d", "question": "q ?", "hits": [hit]})
+
+
+def test_the_suites_of_each_pack_are_found_by_its_directory() -> None:
+    evals = [Path("domain_packs") / pack / "evals" for pack in ("generaliste", "finance")]
+    assert golden_files()[:2] == [place / "golden.jsonl" for place in evals]
+    assert pack_behavior_files()[:2] == [place / "behaviors.yaml" for place in evals]
+    assert REDTEAM_DIR / "injection_finance" in pack_redteam_dirs()  # required (R5, ADR-043)
+    groups = {case.group for case in load_cases("golden")}
+    assert {"generaliste", "finance"} <= groups
+
+
+def test_a_pack_without_its_golden_set_behaviours_or_red_team_is_refused(tiny_root: Path) -> None:
+    (tiny_root / GOLDEN_FILE).write_text("", encoding="utf-8")
+    pack = tiny_root / "domain_packs" / "recherche"
+    pack.mkdir()
+    (pack / "manifest.yaml").write_text("id: recherche\n", encoding="utf-8")
+    assert golden_files(tiny_root)[1] == Path("domain_packs/recherche/evals/golden.jsonl")
+    with pytest.raises(CaseError, match="golden set absent"):
+        load_cases("golden", tiny_root)
+    with pytest.raises(CaseError, match=r"behaviors\.yaml : illisible"):
+        suite_files("behaviors", tiny_root)
+    for _ in range(2):  # no directory, then a directory without a case file
+        with pytest.raises(CaseError, match="injection_recherche : red team absente"):
+            suite_files("injection", tiny_root)
+        (tiny_root / REDTEAM_DIR / "injection_recherche").mkdir(parents=True, exist_ok=True)
+    (tiny_root / REDTEAM_DIR / "injection_recherche" / "a.yaml").write_text("", encoding="utf-8")
+    assert pack_redteam_dirs(tiny_root) == [REDTEAM_DIR / "injection_recherche"]
 
 
 def test_a_duplicate_case_id_is_refused(tiny_root: Path) -> None:

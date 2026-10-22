@@ -32,15 +32,11 @@ from core.config.loader import Config
 from core.evals.cases import PACKS_DIR, REPO_ROOT, Case
 from core.guardrails.input import mark_untrusted
 from core.models.router import ModelRouter
+from core.orchestrator.packs import golden_threshold_name
 from core.orchestrator.prompts import strip_header
 from core.orchestrator.structured import ask_json
 
 GENERAL_PACK = "generaliste"
-# The judge score a pack's golden set must reach: config/evals.yaml, never lowered here (R9).
-GOLDEN_THRESHOLDS = {
-    "generaliste": "generaliste_golden_min_score",
-    "finance": "finance_golden_min_score",
-}
 
 
 def rubric_path(pack: str = GENERAL_PACK) -> Path:
@@ -111,9 +107,14 @@ def golden_threshold(config: Config, pack: str) -> Decimal:
     finance pack when that rule sets one (D16): a live report never shows as passed a score the
     promotion would refuse.
     """
-    if pack not in GOLDEN_THRESHOLDS:
+    # The pack's own threshold in config/evals.yaml, never lowered here (R9, ADR-043).
+    name = golden_threshold_name(pack)
+    if name not in type(config.evals.thresholds).model_fields:
         raise ValueError(f"pack sans seuil de golden set : {pack}")
-    threshold = Decimal(str(getattr(config.evals.thresholds, GOLDEN_THRESHOLDS[pack])))
+    value = getattr(config.evals.thresholds, name)
+    if isinstance(value, str):  # a marker: no score can pass a floor not yet decided (R7)
+        raise ValueError(f"seuil de golden set du pack {pack} non défini ({value})")
+    threshold = Decimal(str(value))
     if pack == "finance":
         promotion = config.autonomy.promotion.finance.N0_to_N1.golden_min_score
         if not isinstance(promotion, str):

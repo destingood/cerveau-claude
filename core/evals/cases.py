@@ -39,6 +39,7 @@ from core.config.loader import Allow, PaperRiskLimits, TradingCosts
 from core.execution.intent import IntentOrigin
 from core.execution.kill_switch import Trigger
 from core.execution.states import OrderState
+from core.orchestrator.packs import DEFAULT_DOMAIN, pack_ids
 from core.orchestrator.state import (
     MAX_CLAIM_CHARS,
     ActionClass,
@@ -55,19 +56,16 @@ from plugins.web_research.fetcher import _extract  # the plugin's own extraction
 
 REPO_ROOT = Path(__file__).resolve().parents[2]
 PACKS_DIR = Path("domain_packs")
-PACK_DIR = PACKS_DIR / "generaliste"
-GOLDEN_FILE = PACK_DIR / "evals" / "golden.jsonl"
-PACK_BEHAVIORS = PACK_DIR / "evals" / "behaviors.yaml"
-FINANCE_PACK_DIR = PACKS_DIR / "finance"
-FINANCE_GOLDEN = FINANCE_PACK_DIR / "evals" / "golden.jsonl"
-FINANCE_BEHAVIORS = FINANCE_PACK_DIR / "evals" / "behaviors.yaml"
-GOLDEN_FILES = (GOLDEN_FILE, FINANCE_GOLDEN)  # the group of a case is its pack
-PACK_BEHAVIOR_FILES = (PACK_BEHAVIORS, FINANCE_BEHAVIORS)
+# Each pack of domain_packs/ brings its golden set and its behaviours, both required, and may
+# bring its red team in evals/redteam/injection_<id>/ (ADR-043). The general golden set is
+# required even without a manifest: it is the fallback pack's.
+GOLDEN_FILE = PACKS_DIR / DEFAULT_DOMAIN / "evals" / "golden.jsonl"
 BEHAVIOR_DIR = Path("evals") / "behaviors"
-INJECTION_DIR = Path("evals") / "redteam" / "injection_base"
-FINANCE_INJECTION_DIR = Path("evals") / "redteam" / "injection_finance"
-EXECUTION_INJECTION_DIR = Path("evals") / "redteam" / "injection_execution"
-APPROVAL_INJECTION_DIR = Path("evals") / "redteam" / "injection_approbation"
+REDTEAM_DIR = Path("evals") / "redteam"
+INJECTION_DIR = REDTEAM_DIR / "injection_base"
+# The red teams of an action, whatever the pack (ADR-030, ADR-035): read after the packs' own.
+EXECUTION_INJECTION_DIR = REDTEAM_DIR / "injection_execution"
+APPROVAL_INJECTION_DIR = REDTEAM_DIR / "injection_approbation"
 WEB_FIXTURES = Path("evals") / "fixtures" / "web.yaml"
 CASE_ID = r"^[a-z0-9][a-z0-9-]{2,63}$"
 TOOL_NAME = r"^[a-z][a-z0-9_]{1,63}$"
@@ -555,13 +553,38 @@ def load_web(root: Path = REPO_ROOT) -> dict[str, PageFixture]:
     return by_url
 
 
+def golden_files(root: Path = REPO_ROOT) -> list[Path]:
+    """The golden set of each pack, in the order of section 9.2; the group of a case is its pack."""
+    others = [pack for pack in pack_ids(root / PACKS_DIR) if pack != DEFAULT_DOMAIN]
+    return [GOLDEN_FILE, *(PACKS_DIR / pack / "evals" / "golden.jsonl" for pack in others)]
+
+
+def pack_behavior_files(root: Path = REPO_ROOT) -> list[Path]:
+    """The behaviours of each pack, in the order of section 9.2."""
+    return [PACKS_DIR / pack / "evals" / "behaviors.yaml" for pack in pack_ids(root / PACKS_DIR)]
+
+
+def pack_redteam_dirs(root: Path = REPO_ROOT) -> list[Path]:
+    """The red team of each pack, in the order of section 9.2; a missing one is an error.
+
+    The general pack's injections are the suite's own (``INJECTION_DIR``); every other pack reads
+    other sources and brings its own (ADR-043).
+    """
+    packs = [pack for pack in pack_ids(root / PACKS_DIR) if pack != DEFAULT_DOMAIN]
+    places = [REDTEAM_DIR / f"injection_{pack}" for pack in packs]
+    for place in places:
+        if not any((root / place).glob("*.yaml")):
+            raise CaseError(f"{root / place} : red team absente (ADR-043)")
+    return places
+
+
 def load_golden(root: Path = REPO_ROOT) -> list[Case]:
-    """The golden sets of the packs: the general one is required, another pack's is optional."""
+    """The golden sets of the packs; a pack's missing golden set is an error."""
     cases = []
-    for relative in GOLDEN_FILES:
+    for relative in golden_files(root):
         path = root / relative
-        if relative != GOLDEN_FILE and not path.is_file():
-            continue
+        if not path.is_file():
+            raise CaseError(f"{path} : golden set absent (ADR-043)")
         group = relative.parent.parent.name
         for number, line in enumerate(path.read_text(encoding="utf-8").splitlines(), start=1):
             if not line.strip():
@@ -588,12 +611,12 @@ def load_suite_files(root: Path, directory: Path, *extra: Path) -> list[SuiteFil
 
 def suite_files(suite: Suite, root: Path = REPO_ROOT) -> list[SuiteFile]:
     if suite == "behaviors":
-        return load_suite_files(root, BEHAVIOR_DIR, *PACK_BEHAVIOR_FILES)
+        return load_suite_files(root, BEHAVIOR_DIR, *pack_behavior_files(root))
     if suite == "injection":
         return load_suite_files(
             root,
             INJECTION_DIR,
-            FINANCE_INJECTION_DIR,
+            *pack_redteam_dirs(root),
             EXECUTION_INJECTION_DIR,
             APPROVAL_INJECTION_DIR,
         )
