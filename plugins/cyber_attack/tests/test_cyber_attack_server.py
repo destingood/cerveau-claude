@@ -20,7 +20,8 @@ from core.cyber.fetch import SOURCES_FILE, record_sha256
 from core.evals.attack_sample import BUILT_AT, COMMIT, VERSION, build, bundle, sha256_of
 from core.registry.manifest import validate_plugin
 from plugins.cyber_attack import server as server_module
-from plugins.cyber_attack.search import ORDER, ORDER_ID
+from plugins.cyber_attack.models import MAX_RESULTS
+from plugins.cyber_attack.search import ORDER, ORDER_ID, Catalogue, QueryError
 from plugins.cyber_attack.server import (
     DESCRIPTIONS,
     INVALID_CONFIG,
@@ -192,6 +193,13 @@ def _disable(home: Path) -> None:
     path.write_bytes(data.replace(old, b"    enabled: false", 1))
 
 
+def _edit(home: Path, old: bytes, new: bytes) -> None:
+    path = home / "config" / SOURCES_FILE
+    data = path.read_bytes()
+    assert data.count(old) == 1
+    path.write_bytes(data.replace(old, new))
+
+
 def _alter(home: Path) -> None:
     path = index_path(home, VERSION)
     path.write_text(path.read_text(encoding="utf-8").replace('"T1059"', '"X1059"', 1), "utf-8")
@@ -204,8 +212,16 @@ def _alter(home: Path) -> None:
         (_disable, "source « attack » absente ou désactivée (R7)"),
         (_alter, "illisible ou altéré"),
         (lambda home: (home / "config" / SOURCES_FILE).write_text("[", "utf-8"), INVALID_CONFIG),
+        (
+            lambda home: _edit(home, b'version: "20.0"', b'version: "latest"'),
+            "source « attack » sans version valide (R7)",
+        ),
+        (
+            lambda home: _edit(home, b'version: "20.0"', b'version: "20.0"\n    terms: A_DEFINIR'),
+            "fonction bloquée « data.attack » : ",
+        ),
     ],
-    ids=["no-index", "disabled", "altered", "config"],
+    ids=["no-index", "disabled", "altered", "config", "version", "blocked"],
 )
 def test_the_tool_needs_the_index_the_configuration_designates(
     tmp_path: Path, prepare: Callable[[Path], object], message: str
@@ -213,6 +229,12 @@ def test_the_tool_needs_the_index_the_configuration_designates(
     home = _home(tmp_path)
     prepare(home)
     assert message in error_text(call(_server(home), {"query": "T1059"}))
+
+
+@pytest.mark.parametrize("count", [0, MAX_RESULTS + 1], ids=["none", "too-many"])
+def test_the_catalogue_bounds_the_number_of_results(count: int) -> None:
+    with pytest.raises(QueryError, match=f"^max_results : 1 à {MAX_RESULTS}$"):
+        Catalogue(build()[0]).lookup("T1059", max_results=count)
 
 
 def test_an_unknown_digest_names_the_command(tmp_path: Path) -> None:

@@ -133,13 +133,32 @@ def test_a_page_outside_attack_mitre_org_is_dropped() -> None:
         obj("course-of-action", "M9999", "No mitre reference", external_references=[]),
         technique("TA0099", "Technique with a tactic id"),
         {**technique("T1999", "No STIX id"), "id": 7},
+        {**obj("course-of-action", "M9999", "Name"), "name": 5},
     ],
-    ids=["wrong-id", "no-name", "no-ref", "wrong-tech", "no-stix"],
+    ids=["wrong-id", "no-name", "no-ref", "wrong-tech", "no-stix", "name-type"],
 )
 def test_an_object_without_a_fitting_identifier_is_skipped(bad: dict[str, Any]) -> None:
     index, report = build([*SAMPLE, bad])
     assert report.skipped == 1
     assert len(index.objects) == len(build()[0].objects)
+
+
+def test_references_of_other_sources_are_passed_over() -> None:
+    cited = technique("T1105", "Ingress Tool Transfer", "command-and-control")
+    cited["external_references"][:0] = [
+        "text",
+        {"source_name": "capec", "external_id": "CAPEC-1", "url": "https://capec.mitre.org/"},
+    ]
+    found = by_id([*SAMPLE, cited])["T1105"]
+    assert found.url == "https://attack.mitre.org/techniques/T1105"
+
+
+def test_labels_that_are_not_text_are_dropped() -> None:
+    odd = {
+        **technique("T1105", "Ingress Tool Transfer"),
+        "x_mitre_platforms": ["Windows", 7, None, "Windows"],
+    }
+    assert by_id([*SAMPLE, odd])["T1105"].platforms == ["Windows"]
 
 
 def test_objects_of_unknown_types_are_ignored() -> None:
@@ -212,6 +231,12 @@ def test_a_bundle_without_collection_keeps_its_requested_version() -> None:
     assert (index.version, index.collection_version) == (VERSION, None)
 
 
+@pytest.mark.parametrize("found", ["v20", 20], ids=["text", "number"])
+def test_a_collection_without_a_valid_version_is_not_read(found: object) -> None:
+    index, _ = build([{**collection(), "x_mitre_version": found}, *SAMPLE[1:]])
+    assert (index.version, index.collection_version) == (VERSION, None)
+
+
 def test_a_bundle_without_technique_is_refused() -> None:
     with pytest.raises(AttackError, match="sans technique"):
         build([collection(), EXECUTION, PREVENTION])
@@ -277,6 +302,13 @@ def test_a_missing_index_names_the_command(tmp_path: Path) -> None:
     assert str(caught.value) == (
         "index ATT&CK 20.0 absent : lancer `cerveau cyber attack-fetch --version 20.0` (Lucas)"
     )
+
+
+def test_an_index_that_cannot_be_opened_is_refused(tmp_path: Path) -> None:
+    path = index_path(tmp_path, VERSION)
+    path.mkdir(parents=True)
+    with pytest.raises(AttackError, match=r"^index ATT&CK illisible$"):
+        read_index(path, VERSION)
 
 
 @pytest.mark.parametrize(

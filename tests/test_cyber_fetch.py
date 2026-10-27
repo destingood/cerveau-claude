@@ -258,6 +258,22 @@ def test_an_invalid_digest_is_refused(tmp_path: Path) -> None:
     assert (config / SOURCES_FILE).read_bytes() == before
 
 
+def test_a_failed_write_keeps_the_file_and_no_temporary_file(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    config = copy_config(tmp_path)
+    before = (config / SOURCES_FILE).read_bytes()
+
+    def broken(*_: object) -> None:
+        raise OSError("disk full")
+
+    monkeypatch.setattr(fetch.os, "replace", broken)
+    with pytest.raises(OSError, match="disk full"):
+        record_sha256(config, DIGEST)
+    assert (config / SOURCES_FILE).read_bytes() == before
+    assert [p.name for p in config.iterdir() if p.name.startswith(".tmp-")] == []
+
+
 def test_a_digest_not_read_back_restores_the_file(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
