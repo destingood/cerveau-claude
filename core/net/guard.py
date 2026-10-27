@@ -19,6 +19,7 @@ import re
 import socket
 from collections.abc import Awaitable, Callable, Sequence
 from ipaddress import IPv4Address, IPv6Address, ip_address, ip_network
+from typing import Literal
 
 import httpx
 
@@ -107,16 +108,27 @@ async def pin(url: httpx.URL, resolver: Resolver) -> str:
 
 
 def pinned_request(
-    client: httpx.AsyncClient, url: httpx.URL, address: str, headers: dict[str, str]
+    client: httpx.AsyncClient,
+    url: httpx.URL,
+    address: str,
+    headers: dict[str, str],
+    *,
+    method: Literal["GET", "POST"] = "GET",
+    content: bytes | None = None,
 ) -> httpx.Request:
-    """GET on ``address`` with the original name for ``Host``, SNI and certificate."""
+    """A request (GET unless told) on ``address`` with the original name for ``Host``, SNI and
+    certificate; ``content`` is the body of a POST (the Légifrance API, ADR-059). The readers
+    have no other method: none of them can change anything at a third party (R5)."""
+    if method not in ("GET", "POST") or (method == "GET" and content is not None):
+        raise FetchError("requête refusée : lecture (GET) ou POST de l'API Légifrance seulement")
     host = host_of(url)
     netloc = f"[{host}]" if ":" in host else host
     if url.port is not None:
         netloc = f"{netloc}:{url.port}"
     return client.build_request(
-        "GET",
+        method,
         url.copy_with(host=address),
+        content=content,
         headers={**headers, "Host": netloc},
         extensions={"sni_hostname": host},
     )

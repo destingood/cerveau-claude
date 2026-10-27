@@ -1,0 +1,65 @@
+# Manifeste du plugin legifrance (Annexe C.1, ADR-059). Deux outils de LECTURE sur l'API
+# Légifrance de la DILA, servie par PISTE : recherche et lecture d'article daté. Aucun outil
+# d'action, aucune entrée d'hôte, d'adresse ou d'URL ; tout texte renvoyé est une donnée externe
+# non fiable (R5). Seules les publications du Journal officiel font foi (CGU PISTE V1.1).
+id: legifrance
+version: 0.1.0
+domain: juridique_fr
+kind: tool
+transport: mcp-stdio
+# Champs de l'API recopiés tels quels, mais sélection, troncature et contrôle de version propres
+# au plugin.
+parity_label: "[Approximation]"
+environments: [dev]
+max_autonomy_level: N1
+tools:
+  - name: legi_search
+    description: >-
+      Recherche dans Légifrance (API officielle de la DILA) : codes ou lois et règlements,
+      version en vigueur (fonds *_ETAT) ou historique (fonds *_DATE). 10 résultats au plus :
+      identifiants LEGIARTI et LEGITEXT, titre du texte, numéro, état, dates de version, extrait
+      tronqué et, calculé par le code, si la version couvre la date de référence. Jamais de texte
+      complet : lire l'article avec legi_article avant de le citer.
+    action_class: LECTURE
+    annotations:
+      readOnlyHint: true
+      idempotentHint: true
+      destructiveHint: false
+      openWorldHint: true
+    input_schema: schemas/legi_search.in.json
+    output_schema: schemas/legi_search.out.json
+  - name: legi_article
+    description: >-
+      Lit un article de Légifrance, soit par son identifiant de version LEGIARTI, soit par son
+      texte LEGITEXT et son numéro (version en vigueur), à une date de référence (aujourd'hui par
+      défaut). Rend le texte tronqué à 6 000 caractères, l'état, les dates de début et de fin de
+      vigueur, si la version couvre la date (calcul déterministe), les avertissements (version
+      future, terminée, différée ou abrogée), l'URL et la date de lecture.
+    action_class: LECTURE
+    annotations:
+      readOnlyHint: true
+      idempotentHint: true
+      destructiveHint: false
+      openWorldHint: true
+    input_schema: schemas/legi_article.in.json
+    output_schema: schemas/legi_article.out.json
+tests: tests/
+evals:
+  questions: evals/questions.xml
+  golden: evals/golden.jsonl
+slo:
+  # Provisoire, à confirmer par Lucas après les premières mesures.
+  success_rate_min: 0.9
+  p95_latency_ms: A_DEFINIR
+# mcp (MIT), Pydantic (MIT), PyYAML (MIT), httpx (BSD-3-Clause) : docs/licences.md.
+dependencies_licences: [MIT, BSD-3-Clause]
+# Démarrage (ADR-015). PISTE_CLIENT_ID et PISTE_CLIENT_SECRET (H4) ne partent que dans la demande
+# de jeton OAuth, jamais dans un journal, un cache ou une sortie ; CERVEAU_HOME désigne le projet
+# servi (configuration). Aucun outil payant. Une requête par seconde partagée dans var/net/
+# (H10), cache sous var/juridique/ (H9). Délai : jeton, version en vigueur puis version datée,
+# à 20 s chacun au plus, tiennent dans 90 s.
+runtime:
+  module: plugins.legifrance
+  env: [PISTE_CLIENT_ID, PISTE_CLIENT_SECRET, CERVEAU_HOME]
+  priced_tools: {}
+  tool_timeout_s: 90

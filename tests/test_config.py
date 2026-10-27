@@ -1227,3 +1227,21 @@ def test_the_legal_domain_reads_its_verified_sites_and_waits_for_its_piste_host(
     assert legifrance.enabled and legifrance.url == "A_DEFINIR"
     assert "Licence Ouverte 2.0" in (legifrance.licence or "")
     assert sources.web_allowlist("recherche") is None  # every other domain is unchanged
+
+
+def test_the_legifrance_source_waits_for_lucas_to_choose_the_piste_host(config_dir: Path) -> None:
+    """H4: until ``url`` names sandbox or production, the reader stays blocked (R7)."""
+    assert load_config(REPO_ROOT / "config").blockers("data.legifrance") == [
+        "data_sources.yaml › sources.legifrance.url = A_DEFINIR"
+    ]
+    url = "https://sandbox-api.piste.gouv.fr/dila/legifrance/lf-engine-app"
+    edit_yaml(
+        config_dir / "data_sources.yaml", lambda d: d["sources"]["legifrance"].update(url=url)
+    )
+    load_config(config_dir).require("data.legifrance")
+    edit_yaml(
+        config_dir / "data_sources.yaml",
+        lambda d: d["sources"]["legifrance"].update(enabled=False),
+    )
+    with pytest.raises(BlockedFeatureError):
+        load_config(config_dir).require("data.legifrance")

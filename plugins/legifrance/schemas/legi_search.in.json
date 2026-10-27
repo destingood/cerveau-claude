@@ -1,0 +1,51 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "type": "object",
+  "properties": {
+    "query": {
+      "description": "Mots recherchés",
+      "maxLength": 200,
+      "minLength": 1,
+      "title": "Query",
+      "type": "string"
+    },
+    "fond": {
+      "default": "CODE_ETAT",
+      "description": "CODE_ETAT ou LODA_ETAT : version en vigueur ; CODE_DATE ou LODA_DATE : toutes les versions",
+      "enum": [
+        "CODE_DATE",
+        "CODE_ETAT",
+        "LODA_DATE",
+        "LODA_ETAT"
+      ],
+      "title": "Fond",
+      "type": "string"
+    },
+    "date": {
+      "anyOf": [
+        {
+          "maxLength": 10,
+          "minLength": 10,
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "description": "Date de référence AAAA-MM-JJ, aujourd'hui par défaut",
+      "title": "Date"
+    },
+    "max_results": {
+      "default": 10,
+      "maximum": 10,
+      "minimum": 1,
+      "title": "Max Results",
+      "type": "integer"
+    }
+  },
+  "required": [
+    "query"
+  ],
+  "title": "legi_searchArguments"
+}

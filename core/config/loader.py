@@ -984,6 +984,9 @@ FEATURES: dict[str, Feature] = {
     "data.attack": Feature(
         "Copie figée d'ATT&CK Enterprise", ("data_sources:sources.attack",), "attack"
     ),
+    "data.legifrance": Feature(
+        "Source Légifrance (API PISTE)", ("data_sources:sources.legifrance",), "legifrance"
+    ),
     "data.quality_gate": Feature(
         "Contrôle qualité des données au-delà de N1", ("data_sources:quality",)
     ),

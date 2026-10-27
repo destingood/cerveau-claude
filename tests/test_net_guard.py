@@ -225,6 +225,26 @@ def test_pinned_request_targets_the_address_and_keeps_the_name() -> None:
     assert request.url.raw_path == b"/a?b=1"
     assert request.headers["host"] == "example.org"
     assert request.extensions["sni_hostname"] == "example.org"
+    assert request.method == "GET"
+    asyncio.run(client.aclose())
+
+
+def test_pinned_request_only_reads_or_posts() -> None:
+    client = httpx.AsyncClient()
+    target = check_url("https://example.org/a")
+    with pytest.raises(FetchError, match="requête refusée"):
+        pinned_request(client, target, PUBLIC_V4, {}, method="DELETE")  # type: ignore[arg-type]
+    with pytest.raises(FetchError, match="requête refusée"):
+        pinned_request(client, target, PUBLIC_V4, {}, content=b"x")
+    asyncio.run(client.aclose())
+
+
+def test_pinned_request_carries_the_method_and_body_of_a_post() -> None:
+    client = httpx.AsyncClient()
+    target = check_url("https://example.org/search")
+    request = pinned_request(client, target, PUBLIC_V4, {}, method="POST", content=b'{"a":1}')
+    assert (request.method, request.content) == ("POST", b'{"a":1}')
+    assert request.headers["host"] == "example.org"
     asyncio.run(client.aclose())
 
 
