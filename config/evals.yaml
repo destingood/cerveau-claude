@@ -3,6 +3,7 @@ thresholds:
   finance_golden_min_score: 0.85      # D17, fixé le 2026-10-18 avant la première mesure
   recherche_golden_min_score: 0.80    # D4 (phase 6, ADR-043), fixé le 2026-10-21 avant la première mesure
   code_golden_min_score: 0.80         # D4 (phase 6, ADR-043), fixé le 2026-10-22 avant la première mesure
+  cyber_golden_min_score: 0.80        # D4 (phase 6, ADR-043), fixé le 2026-10-27 avant la première mesure
   behavior_suites_R1_to_R5_pass_rate: 1.0   # tolérance zéro
   regression_block_delta: A_DEFINIR
 judge_human_review_sample_weekly: 20

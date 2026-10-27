@@ -63,6 +63,8 @@ def test_every_marker_dependent_feature_is_blocked_by_default() -> None:
         "evals.gate.generaliste",
         "evals.gate.recherche",
         "evals.gate.code",
+        "evals.gate.cyber",
+        "data.attack",
         "code.repositories",
         "code.checks",
         "compliance.fiscal",
@@ -271,11 +273,18 @@ def test_the_domain_caps_are_those_of_section_9_2() -> None:
     domains = load_config(REPO_ROOT / "config").autonomy.domains
     assert (domains["recherche"].level, domains["recherche"].max_level) == ("N0", "N1")  # D3
     assert (domains["code"].level, domains["code"].max_level) == ("N0", "N2")  # D3
+    assert (domains["cyber"].level, domains["cyber"].max_level) == ("N0", "N1")  # D3
 
 
 @pytest.mark.parametrize(
     ("domain", "max_level"),
-    [("generaliste", "N2"), ("recherche", "N2"), ("recherche", "N4"), ("code", "N3")],
+    [
+        ("generaliste", "N2"),
+        ("recherche", "N2"),
+        ("recherche", "N4"),
+        ("code", "N3"),
+        ("cyber", "N2"),
+    ],
 )
 def test_a_max_level_above_section_9_2_is_refused(
     config_dir: Path, domain: str, max_level: str
@@ -291,9 +300,9 @@ def test_a_max_level_above_section_9_2_is_refused(
 def test_a_cap_cannot_be_raised_for_a_domain_not_yet_configured(config_dir: Path) -> None:
     edit_yaml(
         config_dir / "autonomy.yaml",
-        lambda d: d["domains"].update(cyber={"level": "N0", "max_level": "N3"}),
+        lambda d: d["domains"].update(juridique_fr={"level": "N0", "max_level": "N3"}),
     )
-    with pytest.raises(ConfigError, match=re.escape("domains.cyber.max_level : N3 dépasse")):
+    with pytest.raises(ConfigError, match=re.escape("domains.juridique_fr.max_level : N3 dépasse")):
         load_config(config_dir)
 
 
@@ -307,7 +316,12 @@ def test_a_max_level_may_be_lowered(config_dir: Path) -> None:
 
 @pytest.mark.parametrize(
     ("domain", "level", "entry"),
-    [("recherche", "N1", "N0"), ("code", "N1", "N0"), ("generaliste", "N2", "N1")],
+    [
+        ("recherche", "N1", "N0"),
+        ("code", "N1", "N0"),
+        ("cyber", "N1", "N0"),
+        ("generaliste", "N2", "N1"),
+    ],
 )
 def test_a_domain_without_promotion_stays_at_its_entry_level(
     config_dir: Path, domain: str, level: str, entry: str
@@ -338,6 +352,7 @@ def test_every_golden_gate_has_its_floor() -> None:
         "finance_golden_min_score": 0.85,
         "recherche_golden_min_score": 0.80,
         "code_golden_min_score": 0.80,
+        "cyber_golden_min_score": 0.80,
     }
 
 
@@ -705,6 +720,7 @@ def test_a_missing_golden_gate_blocks_the_promotion(config_dir: Path) -> None:
         "finance_golden_min_score",
         "recherche_golden_min_score",
         "code_golden_min_score",
+        "cyber_golden_min_score",
     ],
 )
 def test_a_golden_gate_is_a_score_in_0_1(config_dir: Path, field: str, value: object) -> None:
@@ -720,6 +736,7 @@ def test_a_golden_gate_is_a_score_in_0_1(config_dir: Path, field: str, value: ob
         ("finance_golden_min_score", 0.84),
         ("recherche_golden_min_score", 0.79),
         ("code_golden_min_score", 0.79),
+        ("cyber_golden_min_score", 0.79),
     ],
 )
 def test_the_golden_gates_cannot_go_below_their_floor(
@@ -754,6 +771,37 @@ def test_finance_read_only_features_are_available() -> None:
     for feature in ("finance.market_risk", "finance.performance", "data.ecb"):
         config.require(feature)
     assert config.data_sources.sources["yfinance"].enabled is False  # R15, ADR-013
+
+
+def test_the_cyber_sources_are_available_but_the_attack_copy_waits_for_its_digest() -> None:
+    config = load_config(REPO_ROOT / "config")
+    for feature in ("data.nvd", "data.cisa_kev", "data.epss"):
+        config.require(feature)  # G1, G2
+    assert config.blockers("data.attack") == [
+        "data_sources.yaml › sources.attack.sha256 = A_VERIFIER"  # written by attack-fetch (G5)
+    ]
+    assert config.data_sources.sources["attack"].version == "20.0"
+
+
+def test_a_written_attack_digest_unblocks_the_frozen_copy(config_dir: Path) -> None:
+    digest = "0" * 63 + "f"
+    edit_yaml(
+        config_dir / "data_sources.yaml",
+        lambda d: d["sources"]["attack"].update(sha256=digest),
+    )
+    config = load_config(config_dir)
+    config.require("data.attack")
+    assert config.data_sources.sources["attack"].sha256 == digest
+
+
+@pytest.mark.parametrize("value", ["F" * 64, "0" * 63, "0" * 65, "sha256:" + "0" * 64, 7])
+def test_an_attack_digest_is_64_lowercase_hex_digits(config_dir: Path, value: object) -> None:
+    edit_yaml(
+        config_dir / "data_sources.yaml",
+        lambda d: d["sources"]["attack"].update(sha256=value),
+    )
+    with pytest.raises(ConfigError, match="sha256"):
+        load_config(config_dir)
 
 
 def test_the_quality_gate_waits_for_the_two_check_cut_offs() -> None:

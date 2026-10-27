@@ -156,8 +156,8 @@ def test_a_golden_gate_not_yet_decided_blocks_the_campaign(marker: str) -> None:
     )
     with pytest.raises(ValueError, match=f"pack recherche non défini \\({marker}\\)"):
         golden_threshold(undecided, "recherche")
-    with pytest.raises(ValueError, match="pack sans seuil de golden set : cyber"):
-        golden_threshold(config, "cyber")
+    with pytest.raises(ValueError, match="pack sans seuil de golden set : business"):
+        golden_threshold(config, "business")
 
 
 FINANCE_THEMES = {  # plan of phase 2, section 9: at least 5 cases each

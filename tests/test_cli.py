@@ -108,12 +108,12 @@ def test_config_check_fails_on_a_pack_the_configuration_lacks(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     packs = dict(load_packs())
-    packs["cyber"] = Pack(id="cyber", statut="experimental", plugins=("web_research",))
+    packs["business"] = Pack(id="business", statut="experimental", plugins=("web_research",))
     monkeypatch.setattr(cli_main, "load_packs", lambda _packs_dir: packs)
     result = runner.invoke(app, ["config", "check", "--config-dir", str(REPO_ROOT / "config")])
     assert result.exit_code == 1
-    assert "· cyber : expérimental, domaine absent" in result.output
-    assert "✗ pack « cyber » : seuil cyber_golden_min_score absent" in result.output
+    assert "· business : expérimental, domaine absent" in result.output
+    assert "✗ pack « business » : seuil business_golden_min_score absent" in result.output
 
 
 def test_config_check_fails_on_an_invalid_pack(monkeypatch: pytest.MonkeyPatch) -> None:

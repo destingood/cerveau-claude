@@ -17,6 +17,60 @@ sources:
       rendement, par exemple) est signalée ; l'€STR est publié sans frais ni licence ; les cours
       de référence sont donnés à titre d'information seulement
       (ecb.europa.eu/services/using-our-site/disclaimer et page €STR, vérifiées le 2026-10-18).
+  # Pack cyber (phase 6, P4). Lus par cyber_cve et cyber_attack ; leurs débits sont fixés dans le
+  # code (G4) et rappelés ici. Faits lus le 2026-10-22 et le 2026-10-27 (plan P4, §1).
+  nvd:
+    enabled: true                     # G1
+    url: https://services.nvd.nist.gov/rest/json/cves/2.0
+    categories: [cve]
+    usage: personnel
+    licence: >-
+      Service du NIST ; les descriptions des CVE suivent les conditions d'utilisation du programme
+      CVE : licence gratuite, mondiale et irrévocable de MITRE, à condition de reproduire sa
+      mention de copyright et la licence
+    terms: >-
+      Mention exigée : « This product uses the NVD API but is not endorsed or certified by the
+      NVD. » ; un contenu modifié ne s'attribue pas au NVD ; la clé est personnelle et ne se
+      partage pas (nvd.nist.gov/developers/terms-of-use, lue le 2026-10-22)
+    rate: >-
+      1 requête par 6 s sans clé, 1 par 0,6 s avec la clé facultative NVD_API_KEY (G3, G4), sous
+      les 5 et 50 requêtes par 30 s glissantes publiées
+    # Restent à lire à la source : les débits sur la page officielle (rendue en JavaScript) et le
+    # texte exact de la mention de copyright du programme CVE (cve.org/Legal/TermsOfUse).
+  cisa_kev:
+    enabled: true                     # G2
+    url: https://www.cisa.gov/sites/default/files/feeds/known_exploited_vulnerabilities.json
+    categories: [kev]
+    usage: personnel
+    licence: CC0 1.0, sans le logo de la CISA ni aval de la CISA ou du DHS
+    terms: >-
+      Catalogue des vulnérabilités exploitées connues (cisa.gov/known-exploited-vulnerabilities-catalog
+      et licence du flux, lues le 2026-10-22)
+    rate: 1 lecture du flux par 24 h, gardée en cache sous var/cyber/ (G4)
+  epss:
+    enabled: true                     # G1
+    url: https://api.first.org/data/v1/epss
+    categories: [epss]
+    usage: personnel
+    licence: >-
+      Scores publiés librement, sans inscription ; attribution demandée dans les publications et
+      les produits (first.org/epss/faq, lue le 2026-10-22)
+    rate: 1 requête par seconde (G4, hypothèse) ; aucun débit publié
+  attack:
+    enabled: true                     # G5
+    url: https://github.com/mitre-attack/attack-stix-data
+    categories: [enterprise]
+    usage: personnel
+    version: "20.0"
+    # Empreinte du bundle Enterprise, inscrite par `cerveau cyber attack-fetch` que Lucas lance
+    # (G5) ; tant qu'elle manque, cyber_attack ne répond pas.
+    sha256: A_VERIFIER
+    licence: >-
+      Licence de MITRE, non exclusive et gratuite ; toute copie reproduit « © 2026 The MITRE
+      Corporation. This work is reproduced and distributed with the permission of The MITRE
+      Corporation. » et la licence ; ATT&CK est une marque déposée de MITRE
+      (attack.mitre.org/resources/legal-and-branding/terms-of-use/, lue le 2026-10-22)
+    rate: une lecture par commande attack-fetch, jamais automatique (G5)
 quality:
   max_staleness_sessions: 1           # D12 : données de clôture
   min_quality_score_above_N1: 0.90    # D12

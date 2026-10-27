@@ -347,6 +347,12 @@ class DataSource(_Strict):
     categories: list[str] | None = None
     terms: str | None = None
     usage: str | None = None
+    licence: str | None = None
+    # The pace of the plugin that reads it, as prose: the value itself lives in its code (G4 of P4).
+    rate: str | None = None
+    # A frozen copy (the ATT&CK bundle, G5 of P4): its version and the SHA-256 of its file.
+    version: str | None = None
+    sha256: Annotated[str, Field(pattern=r"^[0-9a-f]{64}$")] | Marker | None = None
 
 
 class DataQuality(_Strict):
@@ -373,6 +379,7 @@ GOLDEN_FLOORS: Mapping[str, float] = MappingProxyType(
         "finance_golden_min_score": 0.85,
         "recherche_golden_min_score": 0.80,
         "code_golden_min_score": 0.80,
+        "cyber_golden_min_score": 0.80,
     }
 )
 # The highest level each domain may ever reach, from the table of section 9.2 (ADR-043). The
@@ -399,6 +406,7 @@ class EvalThresholds(_Strict):
     finance_golden_min_score: Score | Marker
     recherche_golden_min_score: Score | Marker
     code_golden_min_score: Score | Marker
+    cyber_golden_min_score: Score | Marker
     behavior_suites_R1_to_R5_pass_rate: Score
     regression_block_delta: float | Marker
 
@@ -941,6 +949,16 @@ FEATURES: dict[str, Feature] = {
     "data.yfinance": Feature("Source yfinance", ("data_sources:sources.yfinance",), "yfinance"),
     "data.fred": Feature("Source FRED", ("data_sources:sources.fred",), "fred"),
     "data.ecb": Feature("Source BCE", ("data_sources:sources.ecb",), "ecb"),
+    "data.nvd": Feature("Source NVD (fiches CVE)", ("data_sources:sources.nvd",), "nvd"),
+    "data.cisa_kev": Feature(
+        "Source CISA KEV (vulnérabilités exploitées)",
+        ("data_sources:sources.cisa_kev",),
+        "cisa_kev",
+    ),
+    "data.epss": Feature("Source EPSS (FIRST)", ("data_sources:sources.epss",), "epss"),
+    "data.attack": Feature(
+        "Copie figée d'ATT&CK Enterprise", ("data_sources:sources.attack",), "attack"
+    ),
     "data.quality_gate": Feature(
         "Contrôle qualité des données au-delà de N1", ("data_sources:quality",)
     ),
@@ -962,6 +980,10 @@ FEATURES: dict[str, Feature] = {
     "evals.gate.code": Feature(
         "Seuil du golden set Code",
         ("evals:thresholds.code_golden_min_score", "evals:thresholds.regression_block_delta"),
+    ),
+    "evals.gate.cyber": Feature(
+        "Seuil du golden set Cyber",
+        ("evals:thresholds.cyber_golden_min_score", "evals:thresholds.regression_block_delta"),
     ),
     "finance.market_risk": Feature(
         "Mesures de risque de marché (VaR, CVaR, Kupiec, stress hypothétiques)",
