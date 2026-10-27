@@ -47,6 +47,14 @@ from core.config.loader import AutonomyConfig
 from core.mcp.spend import MAX_TASKS_PER_REQUEST, IsolatedTask, charge
 from core.mcp.time_limit import DEFAULT_TOOL_TIMEOUT_S, time_limit_meta
 from core.models.meter import LlmCall, Meter, SearchCall
+from core.net.allowlist import (
+    ALLOWLIST_ENV,
+    LISTED_TOOLS,
+    OFF_LIST_REFUSAL,
+    READ_TOOLS,
+    to_env,
+    url_allowed,
+)
 from core.policy.engine import PolicyDecision, decide, kill_switch_engaged
 from core.registry.manifest import PluginManifest, ToolSpec, validate_plugin
 
@@ -91,6 +99,8 @@ class RequestScope:
     live_enabled: bool  # an enabled live configuration refuses every call (R3, ADR-030)
     # The code agent's task (ADR-054): set only for a request classed EXECUTION_ISOLEE.
     isolation: IsolatedTask | None = None
+    # The domain's closed list of web hosts (ADR-058), normalised; ``None``: the web is open.
+    web_allowlist: frozenset[str] | None = None
 
 
 def patch_digest(result: Any) -> str | None:
@@ -107,6 +117,16 @@ def server_environment(names: Sequence[str], environ: Mapping[str, str]) -> dict
     The SDK adds its own short list of non-secret system variables (PATH, SYSTEMROOT, TEMP…).
     """
     return {name: environ[name] for name in names if environ.get(name)}
+
+
+def scoped_environment(environ: Mapping[str, str], scope: RequestScope) -> dict[str, str]:
+    """``environ`` with the request's web list in ``ALLOWLIST_ENV`` (ADR-058): set from the
+    configuration, never inherited, so that only the orchestrator decides it. A plugin receives it
+    only if its manifest declares the variable in ``runtime.env``."""
+    source = {name: value for name, value in environ.items() if name != ALLOWLIST_ENV}
+    if scope.web_allowlist is not None:
+        source[ALLOWLIST_ENV] = to_env(scope.web_allowlist) or ","  # an empty list stays a list
+    return source
 
 
 def _published_annotations(tool: Tool) -> dict[str, Any] | None:
@@ -152,13 +172,23 @@ class McpPlugin:
             )
         self.directory = directory
         runtime = self.manifest.runtime
+        unbound = LISTED_TOOLS & {tool.name for tool in self.manifest.tools}
+        if (
+            scope.web_allowlist is not None
+            and unbound
+            and (runtime is None or ALLOWLIST_ENV not in runtime.env)
+        ):  # ADR-058: its server would follow redirections and search off the list
+            raise McpAdapterError(
+                f"plugin « {self.manifest.id} » : {sorted(unbound)} sans {ALLOWLIST_ENV} "
+                "dans runtime.env, refusé pour un domaine à liste de sites (ADR-058)"
+            )
         self._priced_tools: Mapping[str, str] = runtime.priced_tools if runtime else {}
         if target is None:
             if runtime is None:
                 raise McpAdapterError(
                     f"plugin « {self.manifest.id} » : démarrage inconnu (bloc runtime absent)"
                 )
-            source = os.environ if environ is None else environ
+            source = scoped_environment(os.environ if environ is None else environ, scope)
             target = StdioServerParameters(
                 command=sys.executable,
                 args=["-m", runtime.module],
@@ -347,6 +377,14 @@ class McpPlugin:
         if decision.effect != "executer":
             self._journal(spec, shown, status="refuse", policy=decision.to_payload())
             raise ToolRefusedError(decision)
+        allowlist = self._scope.web_allowlist
+        if (
+            allowlist is not None
+            and spec.name in READ_TOOLS
+            and not url_allowed(str(arguments.get("url", "")), allowlist)
+        ):  # ADR-058: refused before the call, never sent
+            self._journal(spec, shown, status="hors_liste", error=OFF_LIST_REFUSAL)
+            raise ToolException(f"{spec.name} : {OFF_LIST_REFUSAL}")
         isolated = isolation if spec.action_class == ISOLATED else None
         if isolated is not None and isolated.sent >= MAX_TASKS_PER_REQUEST:
             self._journal(spec, shown, status="budget_depasse", limit="isolated_tasks")

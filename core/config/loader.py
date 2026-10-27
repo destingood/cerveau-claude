@@ -28,6 +28,8 @@ from pydantic import (
     model_validator,
 )
 
+from core.net.allowlist import HostError, normalise_list
+
 MARKERS = ("A_DEFINIR", "A_VERIFIER")
 Marker = Literal["A_DEFINIR", "A_VERIFIER"]
 Level = Literal["N0", "N1", "N2", "N3", "N4"]
@@ -368,6 +370,27 @@ class DataQuality(_Strict):
 class DataSourcesConfig(_Strict):
     sources: dict[str, DataSource]
     quality: DataQuality
+    # Closed lists of hosts for a domain's web reading (ADR-058): a domain listed here reads the
+    # web on these hosts and their subdomains only; a domain absent keeps an open web.
+    web_allowlists: dict[str, list[str]] = Field(default_factory=dict)
+
+    @model_validator(mode="after")
+    def _allowlists_are_hosts(self) -> DataSourcesConfig:
+        for domain, hosts in self.web_allowlists.items():
+            if domain not in DOMAIN_MAX_LEVELS:
+                raise ValueError(f"web_allowlists.{domain} : domaine inconnu")
+            if not hosts:
+                raise ValueError(f"web_allowlists.{domain} : liste vide")
+            try:
+                normalise_list(hosts)
+            except HostError as exc:
+                raise ValueError(f"web_allowlists.{domain} : {exc}") from None
+        return self
+
+    def web_allowlist(self, domain: str) -> frozenset[str] | None:
+        """The domain's hosts, normalised; ``None`` when the domain has no list."""
+        hosts = self.web_allowlists.get(domain)
+        return None if hosts is None else normalise_list(hosts)
 
 
 # The golden thresholds Lucas set (D6, D17; D4 of phase 6 for each new pack). The configuration

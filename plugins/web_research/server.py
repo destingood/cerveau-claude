@@ -3,7 +3,9 @@
 The server has no action tool. It reads ``BRAVE_SEARCH_API_KEY`` from its own environment (the
 MCP adapter passes it through a whitelist) and never logs or returns it; without the key,
 ``web_search`` answers with an error and ``web_read`` still works. Which URLs may be read is
-decided by the orchestrator (search results or Lucas's question), not here.
+decided by the orchestrator (search results or Lucas's question), not here. When the orchestrator
+sets ``CERVEAU_WEB_ALLOWLIST`` (ADR-058), the search drops the results off that list and the
+reader refuses any hop off it, redirections included.
 
 No ``from __future__ import annotations`` here: the MCP SDK reads the tool signatures at runtime.
 """
@@ -16,6 +18,7 @@ from mcp.server.mcpserver.exceptions import ToolError
 from mcp.types import ToolAnnotations
 from pydantic import Field
 
+from core.net.allowlist import ALLOWLIST_ENV, parse_env, url_allowed
 from core.net.guard import FetchError
 from plugins.web_research import __version__
 from plugins.web_research.fetcher import WebReader
@@ -50,7 +53,12 @@ class Reader(Protocol):
     async def read(self, raw_url: str) -> PageText: ...
 
 
-def build_server(provider: SearchProvider | None, reader: Reader) -> MCPServer:
+def build_server(
+    provider: SearchProvider | None,
+    reader: Reader,
+    allowlist: frozenset[str] | None = None,
+) -> MCPServer:
+    """The server; with ``allowlist``, only the results whose host is on it are returned."""
     server = MCPServer("web_research", version=__version__, instructions=INSTRUCTIONS)
 
     @server.tool(
@@ -69,10 +77,13 @@ def build_server(provider: SearchProvider | None, reader: Reader) -> MCPServer:
     ) -> SearchResults:
         if provider is None:
             raise ToolError(f"recherche indisponible : {API_KEY_ENV} absente")
+        asked = max_results if allowlist is None else MAX_RESULTS  # some will be dropped
         try:
-            hits = await provider.search(query, max_results)
+            hits = await provider.search(query, asked)
         except SearchError as exc:
             raise ToolError(str(exc)) from None
+        if allowlist is not None:
+            hits = [hit for hit in hits if url_allowed(hit.url, allowlist)]
         results = [
             SearchHit(rank=i, title=h.title, url=h.url, snippet=h.snippet, age=h.age)
             for i, h in enumerate(hits[:max_results], start=1)
@@ -101,4 +112,5 @@ def build_server(provider: SearchProvider | None, reader: Reader) -> MCPServer:
 def main() -> None:
     key = os.environ.get(API_KEY_ENV, "").strip()
     provider = BraveSearchProvider(key) if key else None
-    build_server(provider, WebReader()).run()
+    allowlist = parse_env(os.environ.get(ALLOWLIST_ENV))
+    build_server(provider, WebReader(allowlist=allowlist), allowlist).run()

@@ -24,6 +24,7 @@ from datetime import UTC, datetime, timedelta
 import httpx
 from trafilatura import bare_extraction
 
+from core.net.allowlist import OFF_LIST_REFUSAL, url_allowed
 from core.net.body import read_body
 from core.net.guard import (
     FetchError,
@@ -111,6 +112,8 @@ class WebReader:
     clock: Callable[[], datetime] = _utcnow
     extract: Extractor = _extract
     robots_ttl: timedelta = ROBOTS_TTL
+    # The routed domain's closed list of hosts (ADR-058); ``None``: any public host.
+    allowlist: frozenset[str] | None = None
     # origin → (fetched at, policy); only answers from the site are kept.
     _robots: dict[str, tuple[datetime, RobotsPolicy]] = field(
         default_factory=dict, init=False, repr=False
@@ -179,6 +182,8 @@ class WebReader:
     ) -> tuple[httpx.URL, httpx.Response]:
         """Final URL and open response; every hop is checked, and its ``robots.txt`` if asked."""
         for _ in range(self.max_redirects + 1):
+            if self.allowlist is not None and not url_allowed(str(url), self.allowlist):
+                raise FetchError(f"URL refusée : {OFF_LIST_REFUSAL}")  # the first hop too, its port
             address = await pin(url, self.resolver)
             if robots and not await self._allowed(client, url):
                 raise FetchError("le robots.txt du site interdit cette page (R15)")

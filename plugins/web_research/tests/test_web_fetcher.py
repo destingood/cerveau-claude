@@ -328,3 +328,41 @@ def test_long_text_is_truncated_and_flagged(web: FakeWeb, dns: FakeDns) -> None:
 def test_unknown_names_are_refused_before_any_request(web: FakeWeb, dns: FakeDns) -> None:
     refused(make_reader(web, dns), "https://unknown.example/", "introuvable")
     assert web.requests == []
+
+
+ALLOWLIST = frozenset({"example.org"})
+
+
+def test_a_host_off_the_list_is_refused_before_any_request(web: FakeWeb, dns: FakeDns) -> None:
+    web.page("other.example", "/page", ARTICLE)
+    reader = make_reader(web, dns, allowlist=ALLOWLIST)
+    refused(reader, "https://other.example/page", "hors de la liste")
+    assert web.requests == [] and dns.queries == []  # neither resolved nor fetched
+
+
+def test_a_redirect_off_the_list_is_refused_not_followed(web: FakeWeb, dns: FakeDns) -> None:
+    web.redirect(SITE, "/out", "https://other.example/page")
+    web.page("other.example", "/page", ARTICLE)
+    refused(make_reader(web, dns, allowlist=ALLOWLIST), "https://example.org/out", "hors de la")
+    assert all(r.headers["host"] == SITE for r in web.requests)
+
+
+def test_a_subdomain_of_an_entry_is_read_and_may_redirect_within_the_list(
+    web: FakeWeb, dns: FakeDns
+) -> None:
+    dns.names["www.example.org"] = [PUBLIC_V4]
+    web.redirect("www.example.org", "/old", "https://example.org/article")
+    web.page(SITE, "/article", ARTICLE)
+    page = read(make_reader(web, dns, allowlist=ALLOWLIST), "https://WWW.Example.org/old")
+    assert page.final_url == "https://example.org/article"
+
+
+def test_an_empty_list_reads_nothing(web: FakeWeb, dns: FakeDns) -> None:
+    web.page(SITE, "/article", ARTICLE)
+    refused(make_reader(web, dns, allowlist=frozenset()), "https://example.org/article", "liste")
+
+
+def test_a_redirect_to_a_listed_host_on_another_port_is_refused(web: FakeWeb, dns: FakeDns) -> None:
+    web.redirect(SITE, "/go", "http://example.org:443/page")
+    refused(make_reader(web, dns, allowlist=ALLOWLIST), "https://example.org/go", "hors de la")
+    assert [r.url.path for r in web.requests] == ["/robots.txt", "/go"]  # never "/page"

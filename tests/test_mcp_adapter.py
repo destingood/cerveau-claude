@@ -37,12 +37,14 @@ from core.mcp.adapter import (
     McpPlugin,
     RequestScope,
     ToolRefusedError,
+    scoped_environment,
     server_environment,
 )
 from core.mcp.spend import IsolatedTask
 from core.mcp.time_limit import TIME_LIMIT_META_KEY
 from core.models import CostCalculator, Meter
 from core.models.meter import CEILING_TIER
+from core.net.allowlist import ALLOWLIST_ENV, OFF_LIST_REFUSAL
 from core.net.guard import FetchError
 from core.orchestrator.runtime import LazyPlugin, _Holder
 from core.policy.engine import KILL_SWITCH_FILE
@@ -50,7 +52,7 @@ from plugins.finance_risk.server import build_server as build_risk_server
 from plugins.web_research.models import PageText, SearchResults
 from plugins.web_research.search import Hit
 from plugins.web_research.server import ANNOTATIONS, DESCRIPTIONS, build_server
-from tests.conftest import agent_manifest
+from tests.conftest import agent_manifest, base_manifest
 
 REPO = Path(__file__).resolve().parents[1]
 PLUGIN = REPO / "plugins" / "web_research"
@@ -469,6 +471,105 @@ def test_only_declared_variables_reach_the_server(scope: RequestScope) -> None:
     assert isinstance(target, StdioServerParameters)
     assert (target.command, target.args) == (sys.executable, ["-m", "plugins.web_research"])
     assert target.env == {"BRAVE_SEARCH_API_KEY": "test-key-not-a-secret"}
+
+
+LEGAL = frozenset({"legifrance.gouv.fr", "service-public.gouv.fr"})
+
+
+def test_the_list_reaches_the_server_only_from_the_scope(scope: RequestScope) -> None:
+    """ADR-058: the orchestrator sets the variable; an inherited value never reaches a server."""
+    environ = {ALLOWLIST_ENV: "evil.example", "BRAVE_SEARCH_API_KEY": "test-key-not-a-secret"}
+    assert ALLOWLIST_ENV not in scoped_environment(environ, scope)
+    target = McpPlugin(PLUGIN, scope, environ=environ)._target
+    assert target.env == {"BRAVE_SEARCH_API_KEY": "test-key-not-a-secret"}
+    listed = replace(scope, web_allowlist=LEGAL)
+    target = McpPlugin(PLUGIN, listed, environ=environ)._target
+    assert target.env[ALLOWLIST_ENV] == "legifrance.gouv.fr,service-public.gouv.fr"
+    empty = replace(scope, web_allowlist=frozenset())
+    assert scoped_environment({}, empty) == {ALLOWLIST_ENV: ","}  # set, and allows nothing
+
+
+def test_a_plugin_that_does_not_declare_the_variable_never_receives_it(
+    scope: RequestScope, make_plugin: Callable[..., Path]
+) -> None:
+    root = make_plugin(
+        manifest={**base_manifest("demo_plugin"), "runtime": {"module": "plugins.demo_plugin"}}
+    )
+    target = McpPlugin(root, replace(scope, web_allowlist=LEGAL), environ={})._target
+    assert target.env == {}
+
+
+def test_a_web_plugin_that_does_not_declare_the_variable_is_refused_for_a_listed_domain(
+    scope: RequestScope, make_plugin: Callable[..., Path]
+) -> None:
+    """ADR-058: without the list, its server would follow redirections and search off it."""
+    manifest = {**base_manifest("demo_plugin"), "runtime": {"module": "plugins.demo_plugin"}}
+    manifest["tools"] = [{**manifest["tools"][0], "name": "web_read"}]
+    root = make_plugin(manifest=manifest)
+    with pytest.raises(McpAdapterError, match="sans CERVEAU_WEB_ALLOWLIST"):
+        McpPlugin(root, replace(scope, web_allowlist=LEGAL), environ={})
+    assert McpPlugin(root, scope, environ={})._target.env == {}  # no list: unchanged
+
+
+def test_the_kill_switch_comes_before_the_list(scope: RequestScope, tmp_path: Path) -> None:
+    listed = replace(scope, web_allowlist=LEGAL)
+
+    async def engage_then_read(plugin: McpPlugin) -> Any:
+        (tmp_path / KILL_SWITCH_FILE).parent.mkdir(parents=True)
+        (tmp_path / KILL_SWITCH_FILE).write_text("", encoding="utf-8")
+        return await plugin.call(spec(plugin, "web_read"), {"url": "https://evil.example/"})
+
+    with pytest.raises(ToolRefusedError, match="kill switch"):
+        session(listed, engage_then_read)
+    assert entries(listed)[0]["payload"]["status"] == "refuse"  # not "hors_liste"
+
+
+@pytest.mark.parametrize(
+    ("url", "status"),
+    [
+        ("https://www.legifrance.gouv.fr/codes/id/LEGITEXT000006070721", "ok"),
+        ("https://legifrance.gouv.fr.evil.example/", "hors_liste"),
+        ("https://example.org/a", "hors_liste"),
+    ],
+)
+def test_a_read_off_the_list_is_refused_before_the_call(
+    scope: RequestScope, url: str, status: str
+) -> None:
+    listed = replace(scope, web_allowlist=LEGAL)
+
+    async def go(plugin: McpPlugin) -> Any:
+        return await plugin.call(spec(plugin, "web_read"), {"url": url})
+
+    if status == "ok":
+        session(listed, go)
+    else:
+        with pytest.raises(ToolException, match=r"web_read : adresse hors de la liste"):
+            session(listed, go)
+    [entry] = entries(listed)
+    assert entry["payload"]["status"] == status
+    assert entry["payload"]["arguments"] == {"url": url}
+    if status == "hors_liste":
+        assert entry["payload"]["error"] == OFF_LIST_REFUSAL
+        assert listed.budget.tool_calls == 0  # never sent, never counted
+
+
+def test_without_a_list_every_public_address_may_be_asked(scope: RequestScope) -> None:
+    async def go(plugin: McpPlugin) -> Any:
+        return await plugin.call(spec(plugin, "web_read"), {"url": "https://example.org/a"})
+
+    session(scope, go)
+    assert entries(scope)[0]["payload"]["status"] == "ok"
+
+
+def test_a_search_is_never_checked_against_the_list_by_the_adapter(scope: RequestScope) -> None:
+    """The server drops the results off the list; the adapter checks the reads only."""
+    listed = replace(scope, web_allowlist=LEGAL)
+
+    async def go(plugin: McpPlugin) -> Any:
+        return await plugin.call(spec(plugin, "web_search"), {"query": "bail"})
+
+    session(listed, go)
+    assert entries(listed)[0]["payload"]["status"] == "ok"
 
 
 def test_the_real_server_over_stdio(scope: RequestScope) -> None:

@@ -255,6 +255,7 @@ class Run:
     callbacks: tuple[BaseCallbackHandler, ...] = ()
     url_map: dict[str, str] = field(default_factory=dict, repr=False)  # as shown → as given
     toolbox: PluginSet | None = None
+    toolbox_domain: str | None = None
     models_used: dict[str, str] = field(default_factory=dict)  # role (or seat label) → model id
     audited: bool = False  # the DECISION entry of node 8 is written
     last_state: Any = field(default=None, repr=False)  # the state the running node was given
@@ -314,7 +315,11 @@ class Run:
         """The plugins' tools, once per request; one that fails is skipped. A ``LazyPlugin``
         starts at its first call (B98), any other opener at once, side by side."""
         if self.toolbox is not None:
+            # one routed domain per request: its web list (ADR-058) is the toolbox's
+            if self.toolbox_domain not in (None, domain):  # None: a toolbox given by a caller
+                raise RuntimeError("open_tools : un seul domaine par requête (ADR-058)")
             return self.toolbox
+        self.toolbox_domain = domain
         scope = RequestScope(
             request_id=self.request_id,
             domain=domain,
@@ -325,6 +330,7 @@ class Run:
             project_root=self.project_root,
             live_enabled=self.config.live.enabled,
             isolation=self.isolation,
+            web_allowlist=self.config.data_sources.web_allowlist(domain),  # ADR-058
         )
 
         async def open_one(plugin: str) -> Toolbox | str:

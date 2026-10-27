@@ -825,3 +825,11 @@ def test_the_committee_budget_is_blocked_while_marked(config_dir: Path) -> None:
     router = ModelRouter(config, factory=lambda request: None)  # type: ignore[arg-type,return-value]
     with pytest.raises(BlockedFeatureError):
         RequestBudget.for_committee(config, router.new_meter(), feature="finance.committee")
+
+
+def test_a_request_s_toolbox_serves_its_routed_domain_only(rig: Rig) -> None:
+    """ADR-058: the plugins' web list is the first routed domain's; another one is refused."""
+    rig.run.toolbox_domain = "finance"
+    assert asyncio.run(rig.run.open_tools("finance", [])) is rig.run.toolbox
+    with pytest.raises(RuntimeError, match="un seul domaine par requête"):
+        asyncio.run(rig.run.open_tools("juridique_fr", []))

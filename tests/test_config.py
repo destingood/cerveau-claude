@@ -1165,3 +1165,44 @@ def test_interfaces_refuse_a_secret_field(config_dir: Path) -> None:
     edit_yaml(config_dir / "interfaces.yaml", lambda d: d["ntfy"].update({"token": "x"}))
     with pytest.raises(ConfigError, match="token"):
         load_config(config_dir)
+
+
+# --- closed lists of web hosts (ADR-058) -------------------------------------------------------
+
+
+def test_a_domain_without_a_list_keeps_an_open_web(config_dir: Path) -> None:
+    sources = load_config(config_dir).data_sources
+    assert sources.web_allowlist("generaliste") is None
+
+
+def test_a_list_is_normalised_for_its_domain(config_dir: Path) -> None:
+    edit_yaml(
+        config_dir / "data_sources.yaml",
+        lambda d: d.setdefault("web_allowlists", {}).update(
+            juridique_fr=["Legifrance.gouv.fr.", "service-public.gouv.fr"]
+        ),
+    )
+    sources = load_config(config_dir).data_sources
+    assert sources.web_allowlist("juridique_fr") == {"legifrance.gouv.fr", "service-public.gouv.fr"}
+    assert sources.web_allowlist("cyber") is None
+
+
+@pytest.mark.parametrize(
+    ("lists", "message"),
+    [
+        ({"droit": ["legifrance.gouv.fr"]}, r"web_allowlists\.droit : domaine inconnu"),
+        ({"juridique_fr": []}, r"web_allowlists\.juridique_fr : liste vide"),
+        ({"juridique_fr": ["*.gouv.fr"]}, r"web_allowlists\.juridique_fr : hôte invalide"),
+        ({"juridique_fr": ["https://legifrance.gouv.fr"]}, "hôte invalide"),
+        ({"juridique_fr": ["192.0.2.1"]}, "hôte invalide"),
+        ({"juridique_fr": ["A_DEFINIR"]}, "hôte invalide"),
+        ({"juridique_fr": "A_DEFINIR"}, "juridique_fr"),
+        ({"juridique_fr": ["gouv.fr.."]}, "hôte invalide"),
+    ],
+)
+def test_a_malformed_list_stops_the_configuration(
+    config_dir: Path, lists: dict[str, object], message: str
+) -> None:
+    edit_yaml(config_dir / "data_sources.yaml", lambda d: d.update(web_allowlists=lists))
+    with pytest.raises(ConfigError, match=message):
+        load_config(config_dir)

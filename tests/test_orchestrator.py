@@ -1110,6 +1110,22 @@ def test_a_reading_in_the_code_pack_is_not_isolated(tmp_path: Path, config_dir: 
     rig.ask("Que contient le dernier commit de mon dépôt ?")
     [scope] = seen
     assert scope.isolation is None
+    assert scope.web_allowlist is None  # no list for code: the web stays open (ADR-058)
+
+
+def test_the_routed_domain_s_web_list_reaches_the_plugins_scope(
+    tmp_path: Path, config_dir: Path
+) -> None:
+    path = config_dir / "data_sources.yaml"
+    data = yaml.safe_load(path.read_text(encoding="utf-8"))
+    data["web_allowlists"] = {"code": ["Docs.Python.org."], "cyber": ["attack.mitre.org"]}
+    path.write_text(yaml.safe_dump(data, allow_unicode=True), encoding="utf-8")
+    reading = {"decision": "ok", "classe_action": "LECTURE", "raison": "lecture du dépôt"}
+    rig, seen = _code_rig(tmp_path, _config(config_dir), reading)
+    rig.brain.planner = [final()]
+    rig.ask("Que contient le dernier commit de mon dépôt ?")
+    [scope] = seen
+    assert scope.web_allowlist == frozenset({"docs.python.org"})  # its own domain's list only
 
 
 def test_a_code_agent_task_routed_outside_code_is_refused(rig: Rig) -> None:

@@ -14,11 +14,12 @@ import yaml
 from mcp import Client
 from mcp.types import CallToolResult
 
+from core.net.allowlist import ALLOWLIST_ENV
 from core.net.guard import FetchError
 from core.registry.manifest import validate_plugin
 from plugins.web_research import server as server_module
 from plugins.web_research.fetcher import WebReader
-from plugins.web_research.models import PageText
+from plugins.web_research.models import MAX_RESULTS, PageText
 from plugins.web_research.search import Hit, SearchError
 from plugins.web_research.server import build_server
 
@@ -184,11 +185,13 @@ def test_main_reads_the_key_from_the_environment(monkeypatch: pytest.MonkeyPatch
         def run(self) -> None:
             built.append("run")
 
-    def fake_build(provider: Any, reader: Any) -> Stub:
+    def fake_build(provider: Any, reader: Any, allowlist: Any = None) -> Stub:
         built.append(provider)
+        assert allowlist is None and reader.allowlist is None  # no list: the web stays open
         return Stub()
 
     monkeypatch.setattr(server_module, "build_server", fake_build)
+    monkeypatch.delenv(ALLOWLIST_ENV, raising=False)
     monkeypatch.setenv(server_module.API_KEY_ENV, " test-key-not-a-secret ")
     server_module.main()
     monkeypatch.delenv(server_module.API_KEY_ENV)
@@ -196,3 +199,41 @@ def test_main_reads_the_key_from_the_environment(monkeypatch: pytest.MonkeyPatch
     provider, _, missing, _ = built
     assert provider.api_key == "test-key-not-a-secret"
     assert missing is None
+
+
+def test_main_hands_the_list_of_the_environment_to_the_search_and_the_reader(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    built: list[Any] = []
+
+    class Stub:
+        def run(self) -> None:
+            pass
+
+    def fake_build(provider: Any, reader: Any, allowlist: Any = None) -> Stub:
+        built.append((allowlist, reader.allowlist))
+        return Stub()
+
+    monkeypatch.setattr(server_module, "build_server", fake_build)
+    monkeypatch.setenv(ALLOWLIST_ENV, "legifrance.gouv.fr,*.bad,service-public.gouv.fr")
+    server_module.main()
+    expected = frozenset({"legifrance.gouv.fr", "service-public.gouv.fr"})
+    assert built == [(expected, expected)]
+
+
+def test_web_search_with_a_list_drops_the_results_off_it() -> None:
+    hits = [
+        Hit("Hors liste", "https://blog.example/code-civil", ""),
+        Hit("Article", "https://www.legifrance.gouv.fr/codes/article_lc/LEGIARTI000006419292", ""),
+        Hit("Usurpateur", "https://legifrance.gouv.fr.evil.example/", ""),
+        Hit("Fiche", "https://www.service-public.gouv.fr/particuliers/vosdroits/F1", ""),
+    ]
+    provider = FakeProvider(hits)
+    allowlist = frozenset({"legifrance.gouv.fr", "service-public.gouv.fr"})
+    server = build_server(provider, FakeReader(), allowlist)
+    result = call(server, "web_search", {"query": "bail", "max_results": 1})
+    assert provider.calls == [("bail", MAX_RESULTS)]  # more asked, since some are dropped
+    titles = [r["title"] for r in result.structured_content["results"]]
+    assert titles == ["Article"]
+    result = call(server, "web_search", {"query": "bail"})
+    assert [r["rank"] for r in result.structured_content["results"]] == [1, 2]
