@@ -28,6 +28,10 @@ The scholarly and feeds servers run for real too, on the case's records and on t
 own allow-list. A deep research (``--approfondi``, ADR-045) runs the real engine: the scripted
 planner proposes the case's sub-questions, the reader returns the extracts of the pages and
 abstracts, and the writer cites the checked extracts it is shown, plus what the case adds.
+
+The legifrance server runs for real too, on the case's fake Légifrance API
+(``core/evals/legifrance_fixtures.py``); the honest planner cites each article as the tool read
+it, identifier, state and dates, and computes nothing (H8, ADR-060).
 """
 
 from __future__ import annotations
@@ -66,6 +70,7 @@ from core.evals.cases import (
     CodeAgentFixture,
     CommitteeTurn,
     CyberFixture,
+    LegalFixture,
     PageFixture,
     QualityFixture,
     RecordFixture,
@@ -88,6 +93,7 @@ from core.evals.code_fixtures import (
     code_repositories,
 )
 from core.evals.cyber_fixtures import attack_reader, cyber_config, cyber_sources
+from core.evals.legifrance_fixtures import legal_config, legal_sources
 from core.finance.fixtures import REFERENCE_FETCHED_AT, REFERENCE_READ_AT, reference_store
 from core.finance.portfolio import PortfolioError, import_transactions
 from core.finance.providers.base import ProviderError
@@ -120,6 +126,7 @@ from plugins.finance_portfolio.server import build_server as finance_portfolio_s
 from plugins.finance_report.server import build_server as finance_report_server
 from plugins.finance_research.server import build_server as finance_research_server
 from plugins.finance_risk.server import build_server as finance_risk_server
+from plugins.legifrance.server import build_server as legifrance_server
 from plugins.scholarly.common import ScholarError
 from plugins.scholarly.models import ScholarRecord, Update
 from plugins.scholarly.server import build_server as scholarly_server
@@ -236,6 +243,21 @@ CYBER_STEPS = (
 )
 CYBER_UNAVAILABLE = "L'outil « {tool} » n'est pas disponible : CERVEAU n'agit sur aucun système."
 CYBER_SOURCES = {"cisa_kev": "KEV de la CISA", "epss": "EPSS de FIRST"}
+LEGAL_TOOLS = frozenset({"legi_search", "legi_article"})  # read, never act
+LEGAL_UNSURE = "Je ne sais pas : aucun outil juridique n'a rendu de résultat exploitable."
+LEGAL_PADDING = "Chaque identifiant, état et date de cette réponse vient de l'outil cité."
+LEGAL_COUNTER = (
+    "Un article lu ne tranche pas une situation : la jurisprudence, les textes d'application "
+    "et les faits propres à chaque cas peuvent changer la réponse."
+)
+LEGAL_STEPS = (
+    "Relire l'article et sa version sur Légifrance ; seules les publications du Journal "
+    "officiel font foi.",
+    "Pour une situation personnelle, consulter un professionnel du droit : CERVEAU ne donne "
+    "pas de conseil juridique (R16).",
+)
+LEGAL_UNAVAILABLE = "L'outil « {tool} » n'est pas disponible : CERVEAU lit le droit sans agir."
+MAX_SEARCH_HEAD = 3  # articles a search names in its headline; the details list them all
 MAX_WATCH_HEAD = 3  # identifiers a watch names in its headline; the details list them all
 CODE_UNSURE = "Je ne sais pas : aucun outil de code n'a rendu de résultat exploitable."
 CODE_PADDING = "Chaque compte et chaque citation de cette réponse viennent de l'outil cité."
@@ -356,7 +378,10 @@ def fixture_toolbox(case: Case, log: WebLog, root: Path = REPO_ROOT) -> ToolboxO
 
     @asynccontextmanager
     async def open_toolbox(scope: RequestScope) -> AsyncIterator[Toolbox]:
-        server = build_server(FixtureSearch(case, log), FixtureReader(case, log, root))
+        # The domain's closed list of sites filters the results, as the real server does.
+        server = build_server(
+            FixtureSearch(case, log), FixtureReader(case, log, root), scope.web_allowlist
+        )
         async with McpPlugin(WEB_PLUGIN, scope, target=server) as plugin:
             yield McpToolbox(plugin)
 
@@ -643,7 +668,7 @@ def finance_toolboxes(
 
 def uses_finance(case: Case) -> bool:
     """A case whose run reads the reference store, so is dated when the store is read."""
-    if case.code is not None or uses_cyber(case):  # these packs never read the store
+    if case.code is not None or uses_cyber(case) or uses_legal(case):  # never the store
         return False
     computed = [call for call in case.offline.calls if call.tool not in RESEARCH_TOOLS]
     return case.group == "finance" or bool(computed or case.expect.tools or case.store is not None)
@@ -653,6 +678,12 @@ def uses_cyber(case: Case) -> bool:
     """A case of the cyber pack's tools, answered from what they read."""
     tools = {call.tool for call in case.offline.calls} | set(case.expect.tools)
     return case.cyber is not None or bool(tools & CYBER_TOOLS)
+
+
+def uses_legal(case: Case) -> bool:
+    """A case of the legal pack's Légifrance tools, answered from what they read."""
+    tools = {call.tool for call in case.offline.calls} | set(case.expect.tools)
+    return case.legal is not None or bool(tools & LEGAL_TOOLS)
 
 
 def _opener(name: str, factory: Callable[[], MCPServer]) -> ToolboxOpener:
@@ -737,6 +768,24 @@ def cyber_toolboxes(
         "cyber_attack": lambda: attack_server(attack_reader(fixture, folder, config())),
     }
     return {name: _opener(name, factory) for name, factory in factories.items()}
+
+
+def legal_toolboxes(
+    case: Case, home: Path, config_dir: Path, now: Callable[[], datetime]
+) -> dict[str, ToolboxOpener]:
+    """The legal pack's real legifrance server on the case's fake Légifrance API
+    (core/evals/legifrance_fixtures.py), with a copy of ``config_dir`` naming the case's PISTE
+    environment: a case without versions gets an API that finds nothing, and no request leaves
+    the machine (ADR-060)."""
+    fixture = case.legal or LegalFixture()
+    folder = home / "juridique"
+
+    def server() -> MCPServer:
+        folder.mkdir(parents=True, exist_ok=True)
+        config = legal_config(config_dir, folder, fixture)
+        return legifrance_server(legal_sources(fixture, folder, config, now))
+
+    return {"legifrance": _opener("legifrance", server)}
 
 
 # --- scripted models ---------------------------------------------------------------------------
@@ -931,6 +980,8 @@ class Pilot:
             answer = _from_code(views, complex_=complex_)
         elif uses_cyber(self.case) and not self.case.expect.figures:
             answer = _from_cyber(views, complex_=complex_)
+        elif uses_legal(self.case) and not self.case.expect.figures:
+            answer = _from_legal(views, complex_=complex_)
         elif computed or self.case.expect.figures:
             answer = _from_figures(self.case, self.finance, views, complex_=complex_)
         else:
@@ -1788,6 +1839,125 @@ def _from_cyber(views: Sequence[str], *, complex_: bool) -> dict[str, Any]:
         "contre_arguments": CYBER_COUNTER if complex_ else "",
         "confiance": confidence,
         "prochaines_etapes": list(CYBER_STEPS) if complex_ else [],
+    }
+
+
+def _span(data: Mapping[str, Any]) -> str:
+    start, end = data.get("start"), data.get("end")
+    if not start:
+        return "dates de vigueur non données"
+    return f"du {_line(start)} au {_line(end)}" if end else f"depuis le {_line(start)}"
+
+
+def _article_facts(data: Mapping[str, Any]) -> CodeFacts:
+    """One version as legi_article read it: identifier, state and dates as it wrote them (R1),
+    every warning said, and no date computed (H3, H8)."""
+    ident, num = _line(data.get("id")), _line(data.get("num") or "sans numéro")
+    title = _line(data.get("text_title") or data.get("text_id") or "texte non nommé")
+    state = _line(data.get("legal_status") or "non donné")
+    day = _line(data.get("reference_date"))
+    head = f"Article {num} ({title}), version {ident}, état {state}, {_span(data)} (legi_article)."
+    lines = [head, f"  Texte lu : {_line(data.get('text_id'))} ; date de référence : {day}."]
+    covers = data.get("covers_reference_date")
+    lines.append(f"  Cette version {'couvre' if covers else 'ne couvre pas'} la date de référence.")
+    if data.get("version_for_date"):
+        lines.append(f"  Version qui s'applique à cette date : {_line(data['version_for_date'])}.")
+    warned = _texts(data, "warnings")
+    lines += [f"  Avertissement de l'outil : {warning}." for warning in warned]
+    if data.get("text"):
+        lines.append("  Texte de l'article, tel que Légifrance le publie :")
+        lines += _quoted(str(data["text"]))
+    if data.get("text_truncated"):
+        lines.append("  Texte coupé à la limite de l'outil : lire la suite sur Légifrance.")
+    lines.append(f"  Lu le {_line(data.get('retrieved_at'))[:10]}.")
+    return head, lines, "partial" if warned or not covers else "none"
+
+
+def _search_facts(data: Mapping[str, Any]) -> CodeFacts:
+    query, day = _line(data.get("query")), _line(data.get("reference_date"))
+    items = _items(data, "items")
+    lines = []
+    for item in items:
+        what = _line(item.get("article_id") or item.get("text_id"))
+        num = f"article {_line(item['num'])}, " if item.get("num") else ""
+        title = _line(item.get("text_title") or "texte non nommé")
+        state = _line(item.get("legal_status") or "état non donné")
+        force = {True: "en vigueur", False: "pas en vigueur"}.get(item.get("in_force_on_date"))
+        tail = f", {force} à la date de référence" if force else ""
+        lines.append(f"- {num}{title} ({what}) : {state}, {_span(item)}{tail}.")
+        if item.get("extract"):
+            lines.append(f"  Extrait : « {_line(item['extract'])} »")
+    lines.append(f"Résultats annoncés par Légifrance selon legi_search : {data.get('total')}.")
+    lines.append(f"Date de référence de la recherche : {day}.")
+    if not items:
+        return f"Légifrance ne trouve rien pour « {query} » (legi_search).", lines, "total"
+    shown = [
+        f"article {_line(i['num'])}" if i.get("num") else _line(i.get("article_id") or "")
+        for i in items[:MAX_SEARCH_HEAD]
+    ]
+    more = " et d'autres" if len(items) > MAX_SEARCH_HEAD else ""
+    head = f"Recherche Légifrance « {query} » : {', '.join(shown)}{more} (legi_search)."
+    return head, lines, "none"
+
+
+LEGAL_FACTS: dict[str, Callable[[Mapping[str, Any]], CodeFacts]] = {
+    "legi_article": _article_facts,
+    "legi_search": _search_facts,
+}
+
+
+def _from_legal(views: Sequence[str], *, complex_: bool) -> dict[str, Any]:
+    """The answer of an honest planner on the Légifrance tools' results: identifiers, states and
+    dates as the tools wrote them (R1), no delay or amount computed (H8), every failure said
+    (R12), and « je ne sais pas » when no tool read anything (ADR-060)."""
+    heads: list[str] = []
+    details: list[str] = []
+    problems: list[str] = []
+    tools: list[str] = []
+    shortfalls: list[Shortfall] = []
+    for view in views:
+        if (unavailable := _UNAVAILABLE.match(view)) is not None:
+            problems.append(LEGAL_UNAVAILABLE.format(tool=unavailable.group(1)))
+            continue
+        if (problem := _code_problem(view)) is not None:
+            problems.append(problem)
+            continue
+        found = _CODE_RESULT.match(view)
+        if found is None or found.group(1) not in LEGAL_FACTS:
+            continue
+        tool = found.group(1)
+        try:
+            data = json.loads(found.group(2))
+        except ValueError:
+            continue
+        if not isinstance(data, Mapping):
+            continue
+        head, lines, shortfall = LEGAL_FACTS[tool](data)
+        heads.append(head if sentence_count(head) == 1 else RESULT.format(tool=tool))
+        details += lines
+        tools.append(tool)
+        shortfalls.append(shortfall)
+    low, high = (3, 5) if complex_ else (1, 3)
+    unsure = not heads or set(shortfalls) == {"total"}
+    sentences = [LEGAL_UNSURE, *heads, *problems] if unsure else [*heads, *problems]
+    sentences = sentences[: high - 1]
+    sentences += [LEGAL_PADDING] * max(0, low - len(sentences))
+    names = ", ".join(dict.fromkeys(tools))
+    if heads and not problems and set(shortfalls) == {"none"}:
+        confidence = {"niveau": "eleve", "justification": f"Textes lus par {names}."}
+    elif heads and not unsure:
+        confidence = {
+            "niveau": "moyen",
+            "justification": f"Textes lus par {names}, avec les limites signalées.",
+        }
+    else:
+        confidence = {"niveau": "faible", "justification": "Aucun texte lu par les outils."}
+    return {
+        "synthese": " ".join(sentences),
+        "developpement": "\n".join([*details, *problems]) or "Aucun texte lu par les outils.",
+        "contre_arguments": LEGAL_COUNTER if complex_ else "",
+        "confiance": confidence,
+        "prochaines_etapes": list(LEGAL_STEPS) if complex_ else [],
     }
 
 

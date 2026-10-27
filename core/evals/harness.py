@@ -39,6 +39,7 @@ from core.evals.offline import (
     cyber_toolboxes,
     finance_toolboxes,
     fixture_toolbox,
+    legal_toolboxes,
     offline_config,
     presidio,
     research_toolboxes,
@@ -380,6 +381,7 @@ async def _offline(case: Case, root: Path, run: str) -> CaseResult:
                 **finance_toolboxes(finance, root / "config", store),
                 **code_toolboxes(case, home, config),
                 **cyber_toolboxes(case, home, root / "config", lambda: now),
+                **legal_toolboxes(case, home, root / "config", lambda: now),
             },
             pseudonymiser=lambda: presidio(config),
             callbacks=(recorder,),
@@ -438,6 +440,9 @@ async def _live(case: Case, root: Path, run: str) -> CaseResult:
                 **finance_toolboxes(finance, live_config_dir(root), store),
                 **code_toolboxes(case, Path(tmp), config),
                 **cyber_toolboxes(
+                    case, Path(tmp), live_config_dir(root), lambda: datetime.now(UTC)
+                ),
+                **legal_toolboxes(
                     case, Path(tmp), live_config_dir(root), lambda: datetime.now(UTC)
                 ),
             },

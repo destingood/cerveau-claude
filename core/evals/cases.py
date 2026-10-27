@@ -23,6 +23,10 @@ as Lucas would, with the one-time codes of a test key (``core/evals/paper.py``).
 A cyber case (``cyber``) gives the records the fake NVD, KEV and EPSS serve to the real cyber_cve
 server and the state of the ATT&CK index the real cyber_attack server reads, built from a
 synthetic bundle in the run's temporary home (ADR-057); a source may be down or answer too much.
+
+A legal case (``legal``) gives the article versions and searches the fake Légifrance API serves
+to the real legifrance server, the PISTE environment of its configuration copy and whether it has
+stand-in credentials; the API may be down, answer too much or send another article (ADR-060).
 """
 
 from __future__ import annotations
@@ -784,6 +788,60 @@ class CyberFixture(_Data):
         return self
 
 
+LEGI_ARTICLE = r"^LEGIARTI[0-9]{12}$"
+LEGI_TEXT = r"^LEGITEXT[0-9]{12}$"
+
+
+class LegiVersionFixture(_Data):
+    """One version of an article as Légifrance publishes it; versions sharing ``text_id`` and
+    ``num`` are the versions of one article, each listing the others (``articleVersions``)."""
+
+    id: str = Field(pattern=LEGI_ARTICLE)
+    num: str = Field(min_length=1, max_length=40)
+    text_id: str = Field(pattern=LEGI_TEXT)
+    title: str = Field(min_length=1, max_length=200)  # « Code civil »
+    code: bool = True  # a code (CODE) or another text (LODA)
+    state: str = Field(default="VIGUEUR", pattern=r"^[A-Z_]{2,30}$")
+    start: date
+    end: date | None = None  # None: open (Légifrance writes 2999-01-01)
+    text: str = Field(min_length=1, max_length=4000)
+
+    @model_validator(mode="after")
+    def _ordered(self) -> LegiVersionFixture:
+        if self.end is not None and self.end < self.start:
+            raise ValueError(f"{self.id} : fin avant le début")
+        return self
+
+
+class LegalFixture(_Data):
+    """The fake Légifrance API of a legal case, served to the real legifrance server
+    (``core/evals/legifrance_fixtures.py``): no request leaves the machine, no cache is kept.
+
+    A version may start after the run's day: Légifrance publishes deferred versions before they
+    apply, and the plugin must say so (H3); nothing else in the case is dated after it (R10)."""
+
+    versions: tuple[LegiVersionFixture, ...] = ()
+    searches: dict[str, tuple[str, ...]] = Field(default_factory=dict)  # keyword → version ids
+    environment: Literal["sandbox", "production", "A_DEFINIR"] = "sandbox"  # sources.legifrance
+    credentials: bool = True  # stand-in PISTE credentials: never in an answer or a log (R6)
+    down: bool = False  # the API answers HTTP 503 (the token endpoint still answers)
+    oversized: bool = False  # the API answers one byte more than the plugin reads
+    swapped: dict[str, str] = Field(default_factory=dict)  # asked version id → the one sent back
+
+    @model_validator(mode="after")
+    def _consistent(self) -> LegalFixture:
+        ids = [v.id for v in self.versions]
+        if len(set(ids)) != len(ids):
+            raise ValueError("versions : identifiant en double")
+        known = set(ids)
+        for keyword, found in self.searches.items():
+            if missing := sorted(set(found) - known):
+                raise ValueError(f"searches[{keyword}] : absent de versions : {', '.join(missing)}")
+        if missing := sorted(set(self.swapped.values()) - known):
+            raise ValueError(f"swapped : absent de versions : {', '.join(missing)}")
+        return self
+
+
 class Case(_Data):
     id: str = Field(pattern=CASE_ID)
     suite: Suite
@@ -801,6 +859,7 @@ class Case(_Data):
     paper: PaperFixture | None = None  # a run of the paper loop instead of a question's run
     code: CodeFixture | None = None  # the repository the code tools read (pack code)
     cyber: CyberFixture | None = None  # the sources the cyber tools read (pack cyber)
+    legal: LegalFixture | None = None  # the Légifrance API the legal tools read
     expect: Expect = Expect()
 
     @model_validator(mode="after")
