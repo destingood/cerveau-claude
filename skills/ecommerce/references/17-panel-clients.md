@@ -71,8 +71,10 @@ donnent des avis plus variés qu'un seul.
 consigne du lot, et écris les fichiers ; ou `--lots 1`. Le panel sera plus homogène : dis-le dans le rapport.
 
 Règles pour l'orchestrateur : ne corrige jamais les réponses des personas, ne les « améliore » pas ; une réponse
-illisible se relance. Coût : de l'ordre de 100 000 tokens pour 24 personas, 2 variantes et 2 tours [HYPOTHÈSE :
-estimation, dépend du modèle et de la longueur des textes] ; annonce-le avant un gros panel.
+illisible se relance. Coût : environ 70 000 tokens par sous-agent et par tour, surtout le coût fixe d'un sous-agent
+[FAIT : mesuré le 27/10/2026, lot de 4 personas × 2 variantes], soit de l'ordre de 550 000 tokens pour 4 lots et 2
+tours. Pour économiser : moins de lots plus gros (`--lots 2`), un seul tour, un modèle plus léger. Annonce le coût
+avant un gros panel.
 
 ## 4. Tour « réseau » et événement
 
