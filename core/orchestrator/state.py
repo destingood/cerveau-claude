@@ -150,6 +150,7 @@ class Draft(_Node):  # node 4
     pages: dict[int, str] = Field(default_factory=dict)  # stored page text, by source number
     search_texts: tuple[str, ...] = ()  # titles and snippets of the search results
     tool_outputs: tuple[ToolOutput, ...] = ()  # the figures and texts of the other tool calls
+    data_sources: tuple[str, ...] = ()  # sources of the tool results kept, for their notices (G9)
     searches: int = 0
     refused_urls: int = 0  # web_read refused: URL from neither a search nor the question
     masked_urls: int = 0  # search results whose address reads as an instruction (B68)
@@ -281,6 +282,7 @@ class Answer(_Node):  # node 6: format 7.3
     questions: tuple[str, ...] = ()
     message: str = ""  # refusal, clarification or partial answer notice
     comite: CommitteeView | None = None
+    mentions: tuple[str, ...] = ()  # notices the sources require, written by the code (G9)
     links_removed: int = 0
 
 

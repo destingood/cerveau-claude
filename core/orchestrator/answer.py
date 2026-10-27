@@ -26,6 +26,7 @@ from core.committee.schemas import HORIZONS
 from core.guardrails.injection import injection_signals
 from core.guardrails.pii import PSEUDONYM
 from core.orchestrator.intake import KILL_MESSAGE, LIVE_MESSAGE
+from core.orchestrator.notices import notices, page_sources
 from core.orchestrator.packs import experimental_note
 from core.orchestrator.planner import LIMIT_TEXT, MAX_PLANNER_TURNS
 from core.orchestrator.runtime import Run
@@ -55,6 +56,7 @@ KIND_SHOWN = {  # Crossref does not say whether an article was peer reviewed (AD
     "article": "article publié",
 }
 UNVERIFIED = "Points non vérifiés"
+MENTIONS = "Mentions des sources"
 MASKED_UNVERIFIED = "(affirmation retirée masquée : formulation d'instruction)"
 CLARIFICATION = "Une précision est nécessaire avant d'analyser"
 DEFAULT_QUESTION = "Peux-tu préciser ce que tu cherches exactement ?"
@@ -341,7 +343,9 @@ async def output_node(run: Run, state: CerveauState) -> dict[str, Any]:
     if state.committee is not None:
         context, guarded = required(state.context, "contexte"), required(state.guarded, "garde")
         route = required(state.route, "routage")
-        return {"answer": committee_answer(context, guarded, route, state.committee)}
+        answer = committee_answer(context, guarded, route, state.committee)
+        pages = page_sources(source.final_url for source in state.committee.sources)
+        return {"answer": answer.model_copy(update={"mentions": notices(pages)})}
     guarded = required(state.guarded, "garde")
     route, draft = required(state.route, "routage"), required(state.draft, "planificateur")
     report = required(state.verification, "vérification")
@@ -374,7 +378,12 @@ async def output_node(run: Run, state: CerveauState) -> dict[str, Any]:
     notes = signals(guarded, route, draft, links)  # after the last link filter
     if research is not None:
         notes += research_notes(research)
-    update = {"signalements": tuple(notes), "non_verifies": unverified}
+    pages = page_sources(source.final_url for source in draft.sources)
+    update = {
+        "signalements": tuple(notes),
+        "non_verifies": unverified,
+        "mentions": notices([*draft.data_sources, *pages]),  # by the code, never a model (G9)
+    }
     return {"answer": answer.model_copy(update=update | {"links_removed": links.removed})}
 
 
@@ -409,6 +418,7 @@ def map_texts(answer: Answer, fn: Callable[[str], str]) -> Answer:
             "questions": tuple(fn(q) for q in answer.questions),
             "message": fn(answer.message),
             "comite": view,
+            "mentions": tuple(fn(text) for text in answer.mentions),
         }
     )
 
@@ -477,6 +487,9 @@ def render_markdown(answer: Answer) -> str:
     parts += ["", "## Optimisation & Prochaines Étapes", ""]
     steps = [f"{n}. {step}" for n, step in enumerate(answer.prochaines_etapes, start=1)]
     parts += steps or ["Aucune étape proposée."]
+    if answer.mentions:  # the notices the sources require, under the answer (G9)
+        parts += ["", f"## {MENTIONS}", ""]
+        parts += [f"- {text}" for text in answer.mentions]
     return "\n".join(parts).rstrip() + "\n"
 
 

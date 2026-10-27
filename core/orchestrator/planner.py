@@ -36,6 +36,7 @@ from core.budget.gate import RequestBudgetExceeded
 from core.guardrails.injection import injection_signals
 from core.guardrails.input import mark_untrusted
 from core.mcp.adapter import McpAdapterError, ToolRefusedError
+from core.orchestrator.notices import tool_sources
 from core.orchestrator.reader import Page, Reading, extracts_view, read_page
 from core.orchestrator.runtime import KillSwitchEngaged, Run, Toolbox
 from core.orchestrator.state import (
@@ -127,6 +128,7 @@ class Session:
     reader_failures: int = 0
     tool_outputs: list[ToolOutput] = field(default_factory=list)  # for the R1 trace
     tool_counts: dict[str, int] = field(default_factory=dict)  # tool → calls kept
+    data_sources: list[str] = field(default_factory=list)  # whose notices the answer shows (G9)
     call_prefix: str = ""  # "<member>:" in a committee, so that call ids stay unique (ADR-028)
 
     def draft(self, answer: DraftAnswer, **extra: Any) -> Draft:
@@ -136,6 +138,7 @@ class Session:
             pages=dict(self.pages),
             search_texts=tuple(self.search_texts),
             tool_outputs=tuple(self.tool_outputs),
+            data_sources=tuple(self.data_sources),
             searches=self.searches,
             refused_urls=self.refused_urls,
             masked_urls=self.masked_urls,
@@ -409,6 +412,7 @@ async def _compute(session: Session, toolbox: Toolbox, name: str, arguments: dic
         return OUTPUT_REFUSED.format(name=name)
     session.tool_counts[name] = number
     session.tool_outputs.append(output)  # whole: the R1 trace keeps what the view leaves out
+    session.data_sources += [s for s in tool_sources(name, result) if s not in session.data_sources]
     session.bounded_outputs += int(bounded)
     return mark_untrusted(view, source=output.call)
 
