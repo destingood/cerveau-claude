@@ -1,0 +1,24 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "type": "object",
+  "properties": {
+    "query": {
+      "description": "Identifiant ATT&CK (T1059.001, M1038, G0007...) ou mots-clés anglais",
+      "maxLength": 200,
+      "minLength": 1,
+      "title": "Query",
+      "type": "string"
+    },
+    "max_results": {
+      "default": 5,
+      "maximum": 10,
+      "minimum": 1,
+      "title": "Max Results",
+      "type": "integer"
+    }
+  },
+  "required": [
+    "query"
+  ],
+  "title": "attack_lookupArguments"
+}

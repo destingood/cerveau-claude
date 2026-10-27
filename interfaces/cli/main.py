@@ -42,6 +42,7 @@ from interfaces.cli.common import (
 from interfaces.cli.common import blocked as _blocked
 from interfaces.cli.common import fail as _fail
 from interfaces.cli.common import load as _load
+from interfaces.cli.cyber import cyber_app
 from interfaces.cli.finance import finance_app
 from interfaces.cli.kill_switch import kill_command, rearm_command
 from interfaces.cli.paper import paper_app, status_command
@@ -62,6 +63,7 @@ app.add_typer(audit_app, name="audit")
 app.add_typer(config_app, name="config")
 app.add_typer(registry_app, name="registry")
 app.add_typer(finance_app, name="finance")
+app.add_typer(cyber_app, name="cyber")
 app.add_typer(portfolio_app, name="portfolio")
 app.add_typer(strategy_app, name="strategy")
 app.add_typer(committee_app, name="committee")
