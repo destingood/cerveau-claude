@@ -403,6 +403,7 @@ GOLDEN_FLOORS: Mapping[str, float] = MappingProxyType(
         "recherche_golden_min_score": 0.80,
         "code_golden_min_score": 0.80,
         "cyber_golden_min_score": 0.80,
+        "juridique_fr_golden_min_score": 0.80,
     }
 )
 # The highest level each domain may ever reach, from the table of section 9.2 (ADR-043). The
@@ -430,6 +431,7 @@ class EvalThresholds(_Strict):
     recherche_golden_min_score: Score | Marker
     code_golden_min_score: Score | Marker
     cyber_golden_min_score: Score | Marker
+    juridique_fr_golden_min_score: Score | Marker
     behavior_suites_R1_to_R5_pass_rate: Score
     regression_block_delta: float | Marker
 
@@ -1007,6 +1009,13 @@ FEATURES: dict[str, Feature] = {
     "evals.gate.cyber": Feature(
         "Seuil du golden set Cyber",
         ("evals:thresholds.cyber_golden_min_score", "evals:thresholds.regression_block_delta"),
+    ),
+    "evals.gate.juridique_fr": Feature(
+        "Seuil du golden set Juridique FR",
+        (
+            "evals:thresholds.juridique_fr_golden_min_score",
+            "evals:thresholds.regression_block_delta",
+        ),
     ),
     "finance.market_risk": Feature(
         "Mesures de risque de marché (VaR, CVaR, Kupiec, stress hypothétiques)",

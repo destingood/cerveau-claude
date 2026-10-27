@@ -71,6 +71,34 @@ sources:
       Corporation. » et la licence ; ATT&CK est une marque déposée de MITRE
       (attack.mitre.org/resources/legal-and-branding/terms-of-use/, lue le 2026-10-22)
     rate: une lecture par commande attack-fetch, jamais automatique (G5)
+  # Pack Juridique FR (phase 6, P5). Lu par le plugin legifrance (ADR-059) ; identifiants PISTE en
+  # variables d'environnement de Lucas (PISTE_CLIENT_ID, PISTE_CLIENT_SECRET), jamais ici (R6).
+  legifrance:
+    enabled: true                     # H1
+    # Environnement à choisir par Lucas (H4) : bac à sable https://sandbox-api.piste.gouv.fr ou
+    # production https://api.piste.gouv.fr, chemin /dila/legifrance/lf-engine-app. Tant qu'il
+    # manque, le plugin répond « source officielle indisponible » (R7).
+    url: A_DEFINIR
+    categories: [codes, lois_reglements]
+    usage: personnel
+    licence: >-
+      Licence Ouverte 2.0 (etalab-2.0) : citer « Légifrance (DILA) » et la date de dernière mise à
+      jour, sans laisser croire à un aval officiel ; seules les publications du Journal officiel
+      font foi (CGU de l'API Légifrance V1.1 du 04/08/2020, lues le 2026-10-27)
+    terms: >-
+      Jeton OAuth à chaque requête ; API en bêta ; clés réinitialisées et DILA prévenue en cas de
+      compromission. A_VERIFIER : version des CGU en vigueur sur PISTE, durée de vie du jeton,
+      quotas (consultables seulement dans PISTE)
+    rate: 1 requête par seconde (H10, hypothèse) ; cache sous var/juridique/ (H9)
+# ADR-058 : un domaine listé ne lit le web que sur ces hôtes et leurs sous-domaines ; chaque
+# entrée a sa licence vérifiée (H5, lue le 2026-10-27, détail dans docs/licences.md).
+web_allowlists:
+  juridique_fr:
+    - legifrance.gouv.fr              # etalab-2.0
+    - service-public.gouv.fr          # etalab-2.0, dont entreprendre.service-public.gouv.fr
+    - impots.gouv.fr                  # Licence Ouverte 2.0 ; BOFiP : source et date de publication
+    - cnil.fr                         # CC BY-ND 4.0 FR : source, lien, date, sans modification
+    - conseil-etat.fr                 # réutilisation libre, sans altération, source et date
 quality:
   max_staleness_sessions: 1           # D12 : données de clôture
   min_quality_score_above_N1: 0.90    # D12

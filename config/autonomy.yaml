@@ -4,6 +4,7 @@ domains:
   recherche:   { level: N0, max_level: N1 }   # D3 (ADR-043) : un nouveau domaine entre à N0
   code:        { level: N0, max_level: N2 }   # D3 (ADR-043) ; N2 seulement avec code_agent (P3b)
   cyber:       { level: N0, max_level: N1 }   # D3 (ADR-043) ; défensif seulement (R15, D20)
+  juridique_fr: { level: N0, max_level: N1 }  # D3 (ADR-043) ; lecture seule, aucun conseil (R16)
 matrix:
   LECTURE:               { N0: auto,  N1: auto,        N2: auto,      N3: auto,        N4: auto }
   CALCUL:                { N0: auto,  N1: auto,        N2: auto,      N3: auto,        N4: auto }

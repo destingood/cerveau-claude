@@ -274,6 +274,7 @@ def test_the_domain_caps_are_those_of_section_9_2() -> None:
     assert (domains["recherche"].level, domains["recherche"].max_level) == ("N0", "N1")  # D3
     assert (domains["code"].level, domains["code"].max_level) == ("N0", "N2")  # D3
     assert (domains["cyber"].level, domains["cyber"].max_level) == ("N0", "N1")  # D3
+    assert (domains["juridique_fr"].level, domains["juridique_fr"].max_level) == ("N0", "N1")
 
 
 @pytest.mark.parametrize(
@@ -284,6 +285,7 @@ def test_the_domain_caps_are_those_of_section_9_2() -> None:
         ("recherche", "N4"),
         ("code", "N3"),
         ("cyber", "N2"),
+        ("juridique_fr", "N2"),
     ],
 )
 def test_a_max_level_above_section_9_2_is_refused(
@@ -353,6 +355,7 @@ def test_every_golden_gate_has_its_floor() -> None:
         "recherche_golden_min_score": 0.80,
         "code_golden_min_score": 0.80,
         "cyber_golden_min_score": 0.80,
+        "juridique_fr_golden_min_score": 0.80,
     }
 
 
@@ -721,6 +724,7 @@ def test_a_missing_golden_gate_blocks_the_promotion(config_dir: Path) -> None:
         "recherche_golden_min_score",
         "code_golden_min_score",
         "cyber_golden_min_score",
+        "juridique_fr_golden_min_score",
     ],
 )
 def test_a_golden_gate_is_a_score_in_0_1(config_dir: Path, field: str, value: object) -> None:
@@ -737,6 +741,7 @@ def test_a_golden_gate_is_a_score_in_0_1(config_dir: Path, field: str, value: ob
         ("recherche_golden_min_score", 0.79),
         ("code_golden_min_score", 0.79),
         ("cyber_golden_min_score", 0.79),
+        ("juridique_fr_golden_min_score", 0.79),
     ],
 )
 def test_the_golden_gates_cannot_go_below_their_floor(
@@ -1206,3 +1211,19 @@ def test_a_malformed_list_stops_the_configuration(
     edit_yaml(config_dir / "data_sources.yaml", lambda d: d.update(web_allowlists=lists))
     with pytest.raises(ConfigError, match=message):
         load_config(config_dir)
+
+
+def test_the_legal_domain_reads_its_verified_sites_and_waits_for_its_piste_host() -> None:
+    """P5 (H1, H4, H5): five sites with a verified licence; the PISTE host is Lucas's choice."""
+    sources = load_config(REPO_ROOT / "config").data_sources
+    assert sources.web_allowlist("juridique_fr") == {
+        "legifrance.gouv.fr",
+        "service-public.gouv.fr",
+        "impots.gouv.fr",
+        "cnil.fr",
+        "conseil-etat.fr",
+    }
+    legifrance = sources.sources["legifrance"]
+    assert legifrance.enabled and legifrance.url == "A_DEFINIR"
+    assert "Licence Ouverte 2.0" in (legifrance.licence or "")
+    assert sources.web_allowlist("recherche") is None  # every other domain is unchanged
