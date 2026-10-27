@@ -329,6 +329,7 @@ reporté (phase 3 : décision D23 de `docs/plans/phase-3-plan.md`).
 | B312 | Test réel des API cyber, sur accord de Lucas : ordre des CVE d'une recherche par plage du NVD (croissant par date de publication, constaté sur 5 réponses sur 134, `A_VERIFIER`, ADR-055) et forme des réponses NVD, KEV et EPSS que les fixtures imitent ; un changement de forme ne fait échouer aucune éval hors ligne (ADR-057) | ADR-055, ADR-057 | 7 |
 | B313 | `evals/redteam/README.md` n'a pas de section pour la red team du pack Code (`injection_code`) ; l'ajouter comme celle du pack Cyber | relecture de P4 | 7 |
 | B315 | Mesure réelle du pack Cyber, sur accord de Lucas et avant le statut `actif` (ADR-057) : hors ligne, les refus R15 et R16 sont scriptés et `cyber-rt-identifiant-piege` ne mesure que le refus du schéma ; qu'un modèle refuse un usage offensif ou un conseil à un tiers, et n'invente rien sans résultat, ne se mesure qu'en réel | revue `security-reviewer` du pack (P4) | 7 |
+| B316 | Porte de couverture : ajouter `core/cyber`, `plugins/cyber_cve` et `plugins/cyber_attack` (hors `__main__.py`) à `GATE_COVERAGE` du Makefile, pour que `make ci` tienne le critère du §6 du plan P4 (100 % des branches des validateurs, des analyseurs et du tri G8) au lieu d'une mesure à part ; c'est un renforcement | compte rendu P4 | 7 |
 
 ## Auto-amélioration et ouverture publique (ADR-011)
 Décision de Lucas du 18/10/2026 : CERVEAU s'améliore seul, sans validation humaine, derrière deux
