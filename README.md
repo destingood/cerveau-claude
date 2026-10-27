@@ -38,6 +38,13 @@ décisions et de ce qu'il a appris, d'une session à l'autre.
   relecture des textes avant publication (allégations interdites, fausse urgence), comparaison des marges entre ta
   boutique, Etsy, Vinted ou TikTok Shop, modèles de textes prêts à adapter.
 
+- **Nouveau — le panel de clients simulés** (l'idée de MiroFish, sans clé d'API) : avant de publier une fiche, un
+  prix, une idée de produit ou une accroche vidéo, Claude la fait juger par 24 personas variées (âge, budget, méfiance,
+  canal) jouées par ses sous-agents en parallèle, puis leur fait lire les avis des autres pour voir ce qui se propage.
+  Tu obtiens les objections, les questions à traiter sur la page, les segments chauds et froids, et la variante la plus
+  solide. C'est une hypothèse, jamais présentée comme de vrais avis : une fois la variante en ligne, les chiffres de la
+  semaine disent si le panel avait vu juste (`brain boutique panel`).
+
 Tout reste chez toi, dans `~/.claude/brain` — ou dans ton wiki, sur ton PC et, si tu le choisis, dans ton dépôt
 GitHub privé. Rien n'est envoyé ailleurs, sauf ta part publique si tu rejoins le cerveau commun ; chacun garde sa
 propre mémoire.
@@ -92,8 +99,9 @@ Rien à faire : parle normalement à Claude. Pour aller plus loin, demande-lui �
 le cerveau e-commerce avec ses fiches et ses outils, et tes boutiques suivies).
 
 Pour une boutique : « fais décoller ma boutique », « trouve-moi des clients sans pub », « audite mon site », « quel
-produit vendre ? », « fais le point de la semaine » — le cerveau e-commerce prend le relais tout seul (ou tape
-`/cerveau:ecommerce`) et tient le suivi de chaque boutique (« où en est ma boutique ? »).
+produit vendre ? », « teste ma fiche avant de la publier », « fais le point de la semaine » — le cerveau e-commerce
+prend le relais tout seul (ou tape `/cerveau:ecommerce`) et tient le suivi de chaque boutique (« où en est ma
+boutique ? »).
 
 Avec un wiki : « ingère cet article », « range cette réponse dans le wiki », « fais le point sur le wiki » (contrôle de
 santé : pages à créer, sources en attente, pages dépassées). Le schéma que suit Claude est dans le `CLAUDE.md` du wiki :
@@ -122,4 +130,4 @@ invite tes amis (Settings → Collaborators → Add people), puis rejoins-le le 
 
 `/plugin uninstall cerveau@cerveau`. Tes souvenirs restent dans `~/.claude/brain` (supprime ce dossier pour tout effacer).
 
-Version 8.12.0.
+Version 8.13.0.

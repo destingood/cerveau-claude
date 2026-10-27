@@ -120,7 +120,8 @@ suivie par le cerveau : données privées (jamais dans le cerveau commun), compr
 | Plan décollage en à-faire datés (72 h, 14 jours, 30-60-90, adapté au type), rappelés au démarrage | `boutique plan <boutique> [--debut 20/10] [--court] [--force]` |
 | Chiffres d'une semaine complète → taux, test statistique contre les semaines d'avant, marge par heure par canal, goulot probable | `boutique kpi <boutique> --sessions … --ajouts … [--checkouts …] --commandes … [--ca …] [--heures …] [--canal nom:sessions:commandes[:heures]] [--semaine 12/10] [--note "…"]` |
 | Audit SEO/GEO gardé en historique (corrigé, nouveau) ; conformité légale, pages du sitemap, vitesse | `boutique audit <boutique\|url> [--conformite] [--pages 10] [--vitesse] [--complet] [--rapport audit.md]` |
-| Revue (chiffres, plan, audits, trois priorités) · réglages | `boutique bilan <boutique> [--md bilan.md]` · `boutique regler <boutique> url=… marge=… seuil.ajout=6` |
+| Revue (chiffres, plan, audits, panels, trois priorités) · réglages | `boutique bilan <boutique> [--md bilan.md]` · `boutique regler <boutique> url=… marge=… seuil.ajout=6` |
+| Panel de clients simulés (skill, module 17) gardé dans le suivi · variante mise en ligne → les relevés disent si le panel avait vu juste | `boutique panel <boutique> [--importer <dossier>]` · `boutique panel <boutique> --applique S1 [--variante B] [--le 02/11]` |
 
 Fiche « Boutique <nom> — fiche contexte » : `q "boutique <nom>"` ; décisions et apprentissages en `add` (chiffres en
 `--commun non`).

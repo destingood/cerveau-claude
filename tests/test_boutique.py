@@ -265,6 +265,82 @@ html_vide = (TMP / "cerveau-sans-boutique" / "cerveau.html").read_text(encoding=
 check("Aucune boutique suivie pour l'instant" in html_vide and "Cerveau e-commerce" in html_vide,
       "menu des vues sans boutique suivie : il dit où elle apparaîtra", out[-300:])
 
+# ------------------------------------------------------------------ 6 ter. panels de clients simulés
+PANEL = CODE / "skills" / "ecommerce" / "scripts" / "panel_clients.py"
+PD = TMP / "panel"
+PD.mkdir()
+(PD / "a.md").write_text("Bougie 180 g — 24,90 €.", encoding="utf-8")
+(PD / "b.md").write_text("Bougie 180 g, 40 h, livraison offerte dès 35 €.", encoding="utf-8")
+
+
+def panel_script(*args):
+    r = subprocess.run([sys.executable, str(PANEL), *map(str, args)], capture_output=True, timeout=60)
+    return r.returncode, r.stdout.decode("utf-8", "replace") + r.stderr.decode("utf-8", "replace")
+
+
+panel_script("preparer", "--nom", "Bougie", "--stimulus", PD / "a.md", "--variante", PD / "b.md", "--nb", "8",
+             "--lots", "1", "--graine", "5", "--dossier", PD / "p")
+pj = json.loads((PD / "p" / "panel.json").read_text(encoding="utf-8"))
+(PD / "p" / "t1-lot1.json").write_text(json.dumps([
+    {"id": p["id"], "variante": v, "intention": 2 if v == "A" else 4,
+     "objections": ["livraison"] if v == "A" else (["confiance"] if k % 2 else []), "question": "Quelle durée ?"}
+    for k, p in enumerate(pj["personas"]) for v in "AB"]), encoding="utf-8")
+panel_script("reponses", PD / "p")
+c, out = brain("boutique", "panel", "atelier")
+check(c == 0 and "Aucun panel simulé" in out, "panel : aucun pour l'instant, la marche à suivre est donnée", out)
+c, out = brain("boutique", "panel", "atelier", "--importer", PD / "p")
+s = shop_file()
+check(c == 0 and "panel S1 gardé" in out and "B devant A" in out and "--applique S1 --variante B" in out
+      and "Quelle durée ?" in out, "panel importé (synthèse recalculée depuis le dossier) : verdict et suite", out)
+check(len(s.get("panels") or []) == 1 and s["panels"][0]["gagnante"] == "B" and s["panels"][0]["metrique"] == "ajout"
+      and s["panels"][0]["objections"] == [["confiance", 50]], "panel gardé dans le suivi (privé)", s.get("panels"))
+panel_script("synthese", PD / "p")
+c, out = brain("boutique", "panel", "atelier", "--importer", PD / "p" / "synthese.json")
+check(c == 0 and "panel S1 mis à jour" in out and len(shop_file()["panels"]) == 1,
+      "panel réimporté (synthese.json) : même identifiant, pas de doublon", out)
+c, out = brain("boutique", "panel", "atelier", "--applique", "1", "--le", "2026-10-05")
+check(c == 0 and "S1 : variante B en ligne depuis le 05/10" in out and "attend une semaine complète" in out,
+      "panel : variante mise en ligne (la semaine du 05/10 n'a pas d'ajouts relevés → on attend)", out)
+c, out = brain("boutique", "panel", "atelier", "--applique", "S7")
+check(c != 0 and "panel inconnu" in out, "panel : identifiant inconnu refusé", out)
+c, out = brain("boutique", "panel", "atelier", "--applique", "S1", "--variante", "Z")
+check(c != 0 and "--variante" in out, "panel : variante inconnue refusée", out)
+c, out = brain("boutique", "panel", "atelier", "--importer", TMP / "rien.json")
+check(c != 0 and "ni dossier de panel" in out, "panel : fichier qui n'est pas un panel refusé", out)
+c, out = brain("boutique", "bilan", "atelier")
+check(c == 0 and "## Panels simulés" in out and "S1 (" in out, "bilan : section des panels simulés", out[-800:])
+c, out = brain("boutique", "liste")
+check(c == 0 and "1 panel(s) simulé(s)" in out, "liste : nombre de panels", out)
+
+rec = {"applique": "B", "applique_le": "2026-10-12", "actuelle": "A", "metrique": "ajout",
+       "variantes": {"A": {"moyenne": 2.0}, "B": {"moyenne": 3.5}}}
+
+
+def semaines(*xs):
+    return {"kpi": [{"semaine": w, "sessions": n, "ajouts": a} for w, n, a in xs]}
+
+
+AVANT = (("2026-09-28", 1000, 30), ("2026-10-05", 1000, 30))
+verdict = lambda shop, r=rec: boutique.verdict_panel(shop, r)  # noqa: E731
+juste = verdict(semaines(*AVANT, ("2026-10-12", 1000, 55)))
+check(juste[0] == "juste" and "3,00 % → 5,50 %" in juste[1] and "p < 0,001" in juste[1],
+      "verdict : ajouts au panier 3 % → 5,5 %, le panel voyait B devant A → vu juste", juste)
+check(verdict(semaines(*AVANT, ("2026-10-12", 1000, 12)))[0] == "faux", "verdict : baisse réelle → contredit")
+check(verdict(semaines(*AVANT, ("2026-10-12", 1000, 33)))[0] == "bruit", "verdict : 3 % → 3,3 % → pas encore tranché")
+check(verdict(semaines(*AVANT))[0] == "attente", "verdict : pas encore de semaine après la mise en ligne")
+check(verdict(semaines(("2026-10-12", 1000, 55)))[0] == "attente", "verdict : pas de semaine avant → pas de base")
+check(verdict(semaines(*AVANT, ("2026-10-12", 1000, 55)), dict(rec, applique_le="2026-10-14"))[0] == "attente",
+      "verdict : la semaine coupée par la mise en ligne ne compte ni avant ni après")
+check(verdict(semaines(*AVANT, ("2026-10-12", 1000, 55)), dict(rec, applique="A"))[0] == "na",
+      "verdict : version actuelle gardée → rien à comparer")
+check(verdict(semaines(*AVANT, ("2026-10-12", 1000, 55)), dict(rec, metrique=None))[0] == "na",
+      "verdict : idée de produit ou contenu → pas de mesure automatique")
+plat = dict(rec, variantes={"A": {"moyenne": 2.0}, "B": {"moyenne": 2.1}})
+check(verdict(semaines(*AVANT, ("2026-10-12", 1000, 55)), plat)[0] == "faux",
+      "verdict : le panel ne voyait pas d'écart, il y en a un → contredit")
+fiab = boutique.fiabilite(dict(semaines(*AVANT, ("2026-10-12", 1000, 55)), panels=[rec, plat]))
+check(fiab and "1 vu juste sur 2 vérifiés" in fiab, "fiabilité du panel : 1 vu juste sur 2", fiab)
+
 # ------------------------------------------------------------------ 7. sauvegarde et restauration
 c, out = brain("backup", "--to", TMP / "sauvegardes")
 zips = sorted((TMP / "sauvegardes").glob("cerveau-*.zip"))
