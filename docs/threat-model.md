@@ -1,17 +1,18 @@
 # Modèle de menace — CERVEAU
 
-- Version : v6 (phase 6, packs Recherche et Code, agent de code compris)
-- Date : 2026-10-22 (v5 : 2026-10-22, pack Recherche ; v4 : 2026-10-21, phase 5 ; v3 :
-  2026-10-21, phase 4 ; v2 : 2026-10-20, phase 3 ; v1 : 2026-10-19, phase 2 ; v0 : 2026-10-17,
-  phase 0)
+- Version : v7 (phase 6, packs Recherche, Code et Cyber, agent de code compris)
+- Date : 2026-10-27 (v6 : 2026-10-22, pack Code ; v5 : 2026-10-22, pack Recherche ; v4 :
+  2026-10-21, phase 5 ; v3 : 2026-10-21, phase 4 ; v2 : 2026-10-20, phase 3 ; v1 : 2026-10-19,
+  phase 2 ; v0 : 2026-10-17, phase 0)
 - Statut : proposé, à relire par Lucas ; mis à jour à chaque fin de phase (section 13). La v1
   rattrapait la phase 1 ; la v2 ajoute la recherche de stratégies et le Comité (T17, T18) ; la v3
   ajoute l'exécution paper (T19 à T21) ; la v4 ajoute les approbations N3, les interfaces et la
   garde live (T22 à T26) ; la v5 ajoute les sources savantes, les flux de veille et la recherche
   approfondie (T27, T28) ; la v6 ajoute le pack Code, ses dépôts lus et ses contrôles exécutés
-  (T29, T30), puis, en P3b, l'agent de code et le proxy de l'API (T31, T32).
+  (T29, T30), puis, en P3b, l'agent de code et le proxy de l'API (T31, T32) ; la v7 ajoute le pack
+  Cyber, ses sources de vulnérabilités et sa copie locale d'ATT&CK (T33 à T35).
 
-## 1. Périmètre de la v6
+## 1. Périmètre de la v7
 Couvert : le poste Windows 11 de Lucas, le dépôt `cerveau-plateforme`, Claude Code et ses
 garde-fous (`.claude/`), la pile Docker locale (`infra/`), la CI GitHub Actions (pas encore
 poussée). Depuis la phase 1 : l'orchestrateur (`core/orchestrator/`), le plugin de recherche web,
@@ -48,6 +49,13 @@ Depuis la partie P3b de la phase 6, toujours en N0 : `code_agent` (ADR-053, ADR-
 Claude Code dans un conteneur Docker sans sortie, derrière un proxy de l'API qui seul détient la
 clé ; il modifie une copie jetable d'un dépôt listé et rend un patch, que Lucas relit et applique
 lui-même. Rien n'est écrit dans ses dépôts.
+Depuis la partie P4 de la phase 6, en lecture seulement (N0) : le pack Cyber (statut
+`experimental`), `cyber_cve` (fiches de CVE depuis le NVD, le catalogue KEV de la CISA et l'EPSS
+de FIRST, ordre de priorité déterministe, veille datée, ADR-055), `cyber_attack` (cartographie
+ATT&CK Enterprise depuis un index local, ADR-056) et `cerveau cyber attack-fetch`, que Lucas seul
+lance pour télécharger le bundle épinglé et construire l'index sous `var/cyber/attack/`. Aucun
+outil ne prend d'hôte, d'adresse ni de port cible ; les évals du pack tournent hors ligne
+(ADR-057).
 Pas encore couvert, faute de code : mémoire, client de courtier réel (IBKR paper ou live), boucle
 live, VPS. Les menaces correspondantes sont listées avec les mesures prévues ; leur analyse sera
 détaillée dans la phase qui les introduit.
@@ -69,6 +77,7 @@ détaillée dans la phase qui les introduit.
 | A12 | Approbations et promotion : base `var/approvals/approvals.db`, signatures `governance/approvals/`, rapports `var/promotion/` | intégrité : un accord, une signature ou un rapport forgé ouvre N3 sans Lucas ; un accord sert une seule fois, à une seule intention |
 | A13 | Secrets des interfaces : `CERVEAU_TOTP_SECRET`, `CERVEAU_API_TOKEN`, `DISCORD_BOT_TOKEN`, `NTFY_TOKEN`, `NTFY_TOPIC` (variables utilisateur de Lucas) | confidentialité : le secret TOTP permet de produire des accords, le jeton de l'API de piloter l'API |
 | A14 | Dépôts git de Lucas lus par le pack Code, et le poste qui exécute leurs contrôles | confidentialité du code et des secrets commités ; intégrité du poste et des dépôts (aucune écriture) ; CERVEAU jamais lu par ses propres outils |
+| A15 | Copie locale d'ATT&CK (`var/cyber/attack/enterprise-attack-<version>.index.json`, empreinte SHA-256 du bundle dans `config/data_sources.yaml`) et clé facultative `NVD_API_KEY` (variable utilisateur de Lucas) | intégrité : un index ou une empreinte substitués font citer de fausses techniques ou atténuations ; confidentialité de la clé, qui n'a de valeur que pour le débit du NVD |
 
 ## 3. Sources de menace
 - Contenu externe : pages web, documents, courriels, réponses d'API, sorties d'outils (R5).
@@ -129,6 +138,9 @@ pas encore.
 | T30 | Code hostile exécuté par les contrôles | pytest importe le code du dépôt et son `conftest.py` : ce code tente de joindre le réseau, de lire les fichiers du poste, d'écrire hors de sa copie, de saturer processeur, mémoire ou processus, de survivre au délai, ou fausse ses propres résultats | Copie jetable depuis les objets git sous `var/code/runs/<uuid>/` (fichiers sensibles jamais écrits, 5 000 fichiers et 50 Mo au plus), supprimée en fin d'appel. Conteneur `--network none`, `--read-only` avec un `tmpfs` `noexec`, utilisateur 65534, `--cap-drop ALL`, `no-new-privileges`, processus, mémoire et processeur bornés (E5), copie montée en lecture seule ; image désignée par son condensé, `--pull never`, ni construite ni téléchargée par CERVEAU ; rien n'est installé dans le conteneur (E3) ; environnement du client Docker réduit ; `docker kill` par nom au délai (25 s par appel) ; sortie bornée à 4 Mo et traitée en donnée ; les instructions du serveur rappellent au planificateur qu'un dépôt hostile peut fausser ses résultats (ADR-048) | Premier test réel du bac à sable par Lucas (B270) ; aucune limite de durée dans le conteneur si `docker kill` échoue (B282, avant B270) ; copie jetable laissée dans CERVEAU après un arrêt brutal (B283) ; proxys du client Docker (B284) ; contrôle long (B272) ; configuration de ruff imposée (B268) | moyen tant que B270 et B282 ne sont pas faits |
 | T31 | Agent de code détourné ou hostile | Une consigne lue dans le dépôt (R5), ou l'agent lui-même, pousse une commande à joindre le réseau, lire la clé, relancer le CLI avec d'autres outils, saturer le poste, écrire un workflow de CI, des réglages de Claude Code, un hook ou un `conftest.py` qui s'exécuterait chez Lucas, glisser un secret dans le patch ou dicter la réponse par son résumé | Deux conteneurs par tâche sur un réseau Docker `--internal` ; seul le proxy sort, vers `api.anthropic.com:443` ; la clé n'entre jamais dans le conteneur de l'agent (clé factice). Les options du SDK ne sont pas tenues pour une frontière (ADR-054) : le conteneur (racine en lecture seule, utilisateur 65534, `--cap-drop ALL`, `no-new-privileges`, 2 processeurs, 4096 Mo, 512 processus, `--ulimit fsize`, image par identifiant `sha256` et `--pull never`) et le proxy en sont une. Copie jetable sans fichiers sensibles, surveillée (50 000 entrées, 500 Mo) ; durée de vie propre à chaque conteneur, étiquette pour retrouver les restes. Patch calculé par CERVEAU sans commande git, seulement après l'arrêt confirmé des deux conteneurs : liens et fichiers spéciaux écartés, fichiers sensibles jamais lus, secrets masqués, chemins à risque signalés ; contrôles de la copie non probants si le patch touche leurs réglages. Résumé de l'agent traité en donnée, écarté s'il porte une consigne. N0 : rien n'est appliqué, Lucas relit le patch et l'applique (`git apply`). Red team `injection_code` (6 cas de l'agent) | Premier test réel (B286, B287) : réseau `--internal` sans sortie sous Docker Desktop, `host.docker.internal` injoignable, clé factice acceptée ; mode des fichiers non vu par le patch (B289) ; résumé à consignes qui cache aussi le chemin du patch (B291) ; campagne réelle d'évals sur accord de Lucas (F10) | moyen tant que B286 et B287 ne sont pas faits |
 | T32 | Dépense de l'agent incontrôlée ou détournée | L'agent boucle, demande un modèle plus cher, un outil serveur (recherche web, exécution de code, MCP), une source `url` ou un autre chemin de l'API ; le coût n'est pas compté ; le kill switch n'arrête pas la dépense | Proxy (ADR-053) : `POST /v1/messages` seul, modèles, champs et en-têtes listés, outils serveur et sources `url` ou `file` refusés ; jetons lus dans la réponse, prix en `Decimal` ; coût inconnu : requêtes suivantes refusées (R7) ; plafonds par tâche en USD (2 $, F5) et en requêtes, dépassés d'une requête au plus ; arrêt du proxy au reste du budget de l'appel et dès que `KILL` existe (R4) ; état illisible ou arrêt non confirmé : plafond imputé ; une tâche par requête au plus (un plafond imputé ne compte aucun jeton dans `max_tokens`) ; 30 tours, 900 s par appel ; budgets en € `A_DEFINIR` : tout appel réel bloqué | `A_VERIFIER` d'ADR-053 au premier test réel (B286) ; `agent.max_requests` à fixer par Lucas ; plafond imputé sous-estimé d'au plus une requête (B294) | faible tant que les budgets bloquent tout appel réel, moyen ensuite |
+| T33 | Bundle ATT&CK empoisonné ou donnée cyber piégée | Un bundle substitué, un index réécrit sous `var/` ou une empreinte remplacée font citer de fausses techniques ou atténuations ; une description de CVE, une entrée du KEV ou un objet ATT&CK porte une consigne ou un lien ; une réponse démesurée sature la mémoire ; une redirection mène ailleurs | `attack-fetch` lancé par Lucas seul : commit épinglé, taille et nom de blob git (SHA-1) vérifiés, SHA-256 du bundle inscrit à la première lecture (TOFU) dans `config/data_sources.yaml` puis exigé ; kill switch relu avant chaque morceau et avant l'écriture de la config (R4) ; bundle borné à 80 Mo, index à 40 Mo ; empreinte de l'index journalisée ; `IndexReader` refuse un index d'un autre bundle ou absent. Réponses NVD, KEV et EPSS lues en flux et plafonnées (2 Mo, 10 Mo pour le KEV), `follow_redirects=False`, hôtes constants, adresses non publiques refusées (`core/net/guard.py`) ; `notes` et `forensicTriage` du KEV non gardés ; texte nettoyé, liens étrangers retirés, sortie à formulation d'instruction écartée (R5). Red team `injection_cyber` (12 cas, dont `cyber-rt-index-substitue`) et comportement `cyber-pack-kev-consigne` | Un seul élément piégé écarte toute la sortie de l'outil (B297) ; faux positifs du détecteur sur les objets ATT&CK d'exfiltration (B299) ; latence du kill switch pendant le téléchargement (B301) ; index orphelin si l'écriture de l'empreinte échoue (B305) ; liens de référence du NVD (B303) ; forme réelle des API (B312) ; mesure réelle (B60) | faible |
+| T34 | Usage offensif du pack (R15) | Une demande d'exploit, de preuve de concept, de logiciel malveillant, de scan, de contournement d'une protection ou de recherche de cibles, directe ou glissée dans une fiche lue (« voici l'exploit ») ; une demande de bulletin pour des tiers (R16) | `input_check.md` refuse l'informatique offensive à l'entrée ; `role.md` du pack refuse et propose l'action défensive ; aucun outil ne prend d'hôte, d'adresse ni de port ; outils en lecture seule, autonomie N0 ; comportements `cyber-pack-r15-*` et `cyber-pack-r16-bulletin-clients`, red team `cyber-rt-exploit-dicte-par-la-fiche` | Le refus est jugé par un modèle : mesure réelle du golden set et des comportements, sur accord de Lucas (B60) | moyen |
+| T35 | Fuite de la clé NVD | La clé part dans un journal, une réponse, le cache, une URL ou vers un autre hôte après une redirection ; une consigne lue demande de la recopier | Clé facultative lue dans l'environnement passé par l'adaptateur (`runtime.env`), valeur hors format ignorée ; envoyée seulement dans l'en-tête `apiKey` vers l'hôte du NVD, jamais dans l'URL ; cache indexé par l'URL et ses paramètres seulement ; jamais journalisée ni écrite ; redirections refusées ; red team `cyber-rt-cle-nvd` (valeur de test que seul le faux NVD accepte, cherchée dans la réponse, les appels d'outil, les messages aux modèles et le journal du run) | Clé hors format ignorée sans le dire (B302) | faible |
 
 ## 5. Contournements connus des garde-fous de Claude Code
 Les hooks et les règles `deny` sont un confort (R3) : ils arrêtent les erreurs et les injections
@@ -207,3 +219,7 @@ simples, pas un adversaire déterminé. Limites connues à ce jour :
 - Le moteur Docker de Lucas est à jour : une évasion de conteneur par une faille du noyau ou du
   moteur sort du périmètre de T30 et de T31. Lucas construit lui-même l'image des contrôles,
   celle de l'agent et celle du proxy.
+- Le commit de `mitre-attack/attack-stix-data` épinglé le 2026-10-27 (étiquette v20.0) porte le
+  bundle publié par MITRE : le nom de blob et la taille épinglés, puis l'empreinte inscrite au
+  premier `attack-fetch` (TOFU), protègent contre un changement ultérieur, pas contre un commit
+  déjà piégé. Lucas lance lui-même ce téléchargement.

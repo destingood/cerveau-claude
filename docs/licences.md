@@ -152,6 +152,22 @@ Python (plan P3b, §6). Faits relevés le 2026-10-22 (ADR-053, ADR-054, `infra/a
 | Image `cerveau-llm-proxy` : `python:3.12-slim` et `core/code/llm_proxy.py` | PSF-2.0 ; bibliothèque standard seulement | construite par Lucas, non redistribuée ; seul conteneur qui reçoit la clé et sort vers l'API (ADR-053) |
 | API Messages d'Anthropic, `api.anthropic.com` (`POST /v1/messages`) | conditions commerciales d'Anthropic, celles des appels de CERVEAU depuis la phase 1 ; texte non relu le 2026-10-22 (`A_VERIFIER`) | appelée par le proxy de la tâche avec la clé de Lucas : `claude-sonnet-5-5` (F6), 2 $ au plus par tâche (F5) ; le contenu des requêtes part chez Anthropic, comme pour toute utilisation de Claude |
 
+## Sources du pack `cyber` (phase 6, P4)
+Aucune nouvelle dépendance : `httpx` et Pydantic lisent les API et le STIX en JSON, sans `stix2`
+ni `mitreattack-python` (plan P4, §7). Conditions lues le 2026-10-22 et le 2026-10-27 (plan P4,
+§2 ; `config/data_sources.yaml`). Les mentions sont écrites par le code sous chaque réponse qui
+utilise la source (`core/orchestrator/notices.py`, G9) : aucun modèle ne peut les omettre.
+
+| Source | Licence ou conditions | Usage dans CERVEAU |
+|---|---|---|
+| API 2.0 du NVD (NIST), `services.nvd.nist.gov` | [Conditions du NVD](https://nvd.nist.gov/developers/terms-of-use) : mention « This product uses the NVD API but is not endorsed or certified by the NVD. » affichée en évidence ; clé personnelle, jamais partagée ; un contenu modifié ne s'attribue pas au NVD | `cyber_cve` (`cve_lookup`, `cve_watch`) : lecture seule, débit et cache de `config/data_sources.yaml` ; clé facultative lue dans `NVD_API_KEY`, jamais journalisée (R6) ; mention reproduite mot pour mot |
+| Descriptions du programme CVE, reprises par le NVD | [Conditions du programme CVE](https://www.cve.org/Legal/TermsOfUse) : page rendue en JavaScript, non lue ; forme exacte de la mention `A_VERIFIER` (backlog) | descriptions citées en données (R5), avec un renvoi aux conditions du programme |
+| Catalogue KEV de la CISA, flux JSON | CC0 1.0 (`licenses/kev/license.txt` de la CISA) : ni le logo, ni un aval de la CISA ou du DHS | `cyber_cve` : catalogue lu en entier (10 Mo au plus) ; les champs `notes` et `forensicTriage` ne sont pas gardés ; mention « aucun aval » |
+| EPSS de FIRST, `api.first.org/data/v1/epss` | Scores publiés librement ; « Attribution is requested » dans une publication ou un produit ([FAQ](https://www.first.org/epss/faq)) ; forme exacte non publiée (`A_VERIFIER`) ; aucun débit publié trouvé (`A_VERIFIER`) | `cyber_cve` : score et centile de chaque CVE lue ; attribution à FIRST et à l'EPSS SIG |
+| MITRE ATT&CK Enterprise v20.0, `mitre-attack/attack-stix-data` | Licence propre à MITRE, non exclusive et gratuite ([conditions](https://attack.mitre.org/resources/legal-and-branding/terms-of-use/), `LICENSE.txt` du dépôt) : toute copie reproduit « © 2026 The MITRE Corporation. This work is reproduced and distributed with the permission of The MITRE Corporation. » et la licence ; ATT&CK est une marque déposée | bundle de 55 Mo téléchargé par Lucas seul (`cerveau cyber attack-fetch`, commit figé, SHA-256 consigné), index local sous `var/`, jamais dans git ; mention dans l'index, dans chaque résultat d'`attack_lookup` et sous la réponse |
+| OWASP Top 10 for LLM Applications 2025 (LLM01 à LLM10), `genai.owasp.org` | CC BY-SA 4.0, « unless otherwise specified » : citation avec lien et mention ; une adaptation devrait garder la même licence | pages lues à la demande par `web_read` (`domain_packs/cyber/knowledge/sources.yaml`) ; aucun contenu adapté n'est stocké ; mention CC BY-SA sous la réponse |
+| Guides de l'ANSSI, de la CISA et du NIST CSRC | ANSSI : Licence Ouverte 2.0 d'Etalab (source secondaire, `A_VERIFIER` guide par guide) ; CISA et NIST : non vérifiées | non utilisés en P4 : ajoutés aux guides une fois leur licence vérifiée (backlog) ; la plupart sont des PDF, que `web_read` ne lit pas |
+
 ## Licences restrictives ou à surveiller
 - **Redis 7.4 (RSALv2 / SSPLv1, depuis le 2024-03-20)** : interdit surtout de revendre Redis comme
   service. Usage interne non modifié : sans effet. Alternative libre à évaluer : Valkey (backlog).
