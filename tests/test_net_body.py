@@ -40,6 +40,20 @@ def test_a_declared_length_over_the_limit_is_refused_before_reading() -> None:
         _read(b"", 10, cut=False, content_length="11")
 
 
+def test_an_interrupt_stops_the_read_between_chunks() -> None:
+    seen: list[int] = []
+
+    def interrupt() -> None:
+        seen.append(1)
+        if len(seen) == 3:
+            raise RuntimeError("stop")
+
+    response = httpx.Response(200, content=chunks(b"x" * 10, 2))
+    with pytest.raises(RuntimeError, match="stop"):
+        asyncio.run(read_body(response, 100, cut=False, interrupt=interrupt))
+    assert len(seen) == 3
+
+
 def test_a_declared_length_does_not_stop_a_cut_read() -> None:
     assert _read(b"abc", 10, cut=True, content_length="11") == b"abc"
 

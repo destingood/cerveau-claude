@@ -2,19 +2,27 @@
 
 The body is read as a stream and stopped at the limit: compressed and decompressed sizes are
 both counted, so a small gzip bomb cannot grow past it. Only ``identity`` and ``gzip`` are
-accepted; any other encoding is refused.
+accepted; any other encoding is refused. ``interrupt`` runs before each chunk: it raises to stop
+a long download, for instance when the kill switch is engaged (R4).
 """
 
 from __future__ import annotations
 
 import zlib
+from collections.abc import Callable
 
 import httpx
 
 from core.net.guard import FetchError, shown
 
 
-async def read_body(response: httpx.Response, limit: int, *, cut: bool) -> bytes:
+async def read_body(
+    response: httpx.Response,
+    limit: int,
+    *,
+    cut: bool,
+    interrupt: Callable[[], None] | None = None,
+) -> bytes:
     """Body of at most ``limit`` bytes; beyond it, ``cut`` truncates, otherwise it refuses."""
     encoding = response.headers.get("content-encoding", "identity").strip().lower() or "identity"
     if encoding not in ("identity", "gzip"):
@@ -27,6 +35,8 @@ async def read_body(response: httpx.Response, limit: int, *, cut: bool) -> bytes
     body = bytearray()
     received = 0
     async for chunk in response.aiter_raw():
+        if interrupt is not None:
+            interrupt()
         received += len(chunk)
         try:
             # max_length is never 0 (0 would mean "no limit"): len(body) <= limit here.

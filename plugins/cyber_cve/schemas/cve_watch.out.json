@@ -1,0 +1,266 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$defs": {
+    "Cvss": {
+      "additionalProperties": false,
+      "properties": {
+        "version": {
+          "enum": [
+            "4.0",
+            "3.1",
+            "3.0",
+            "2.0"
+          ],
+          "title": "Version",
+          "type": "string"
+        },
+        "base_score": {
+          "description": "Score de base publié, non recalculé",
+          "maximum": 10,
+          "minimum": 0,
+          "title": "Base Score",
+          "type": "number"
+        },
+        "severity": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "description": "Sévérité publiée avec le score",
+          "title": "Severity"
+        },
+        "vector": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "description": "Vecteur CVSS publié",
+          "title": "Vector"
+        },
+        "source": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "description": "Auteur du score (NVD ou l'autorité CNA)",
+          "title": "Source"
+        },
+        "primary": {
+          "description": "Score principal (NVD) ou secondaire (CNA)",
+          "title": "Primary",
+          "type": "boolean"
+        }
+      },
+      "required": [
+        "version",
+        "base_score",
+        "severity",
+        "vector",
+        "source",
+        "primary"
+      ],
+      "title": "Cvss",
+      "type": "object"
+    },
+    "WatchItem": {
+      "additionalProperties": false,
+      "properties": {
+        "id": {
+          "title": "Id",
+          "type": "string"
+        },
+        "date": {
+          "description": "Date d'ajout au KEV ou de publication au NVD",
+          "title": "Date",
+          "type": "string"
+        },
+        "title": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "description": "Nom KEV ou début de la description NVD",
+          "title": "Title"
+        },
+        "vendor": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Vendor"
+        },
+        "product": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Product"
+        },
+        "cvss": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/Cvss"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "description": "Score CVSS le plus récent (NVD)"
+        },
+        "status": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "description": "Statut NVD",
+          "title": "Status"
+        },
+        "ransomware": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "description": "Usage connu par un rançongiciel (KEV)",
+          "title": "Ransomware"
+        },
+        "due_date": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "description": "Échéance (KEV)",
+          "title": "Due Date"
+        }
+      },
+      "required": [
+        "id",
+        "date",
+        "title",
+        "vendor",
+        "product",
+        "cvss",
+        "status",
+        "ransomware",
+        "due_date"
+      ],
+      "title": "WatchItem",
+      "type": "object"
+    }
+  },
+  "additionalProperties": false,
+  "properties": {
+    "source": {
+      "enum": [
+        "kev",
+        "nvd"
+      ],
+      "title": "Source",
+      "type": "string"
+    },
+    "since": {
+      "title": "Since",
+      "type": "string"
+    },
+    "until": {
+      "title": "Until",
+      "type": "string"
+    },
+    "keywords": {
+      "description": "Mots-clés envoyés ou filtrés, dans l'ordre",
+      "items": {
+        "type": "string"
+      },
+      "title": "Keywords",
+      "type": "array"
+    },
+    "total": {
+      "description": "Entrées trouvées dans la plage avant la limite",
+      "minimum": 0,
+      "title": "Total",
+      "type": "integer"
+    },
+    "items": {
+      "items": {
+        "$ref": "#/$defs/WatchItem"
+      },
+      "maxItems": 20,
+      "title": "Items",
+      "type": "array"
+    },
+    "more_available": {
+      "description": "Le NVD annonce plus d'entrées que celles lues",
+      "title": "More Available",
+      "type": "boolean"
+    },
+    "order": {
+      "title": "Order",
+      "type": "string"
+    },
+    "retrieved_at": {
+      "title": "Retrieved At",
+      "type": "string"
+    },
+    "version": {
+      "anyOf": [
+        {
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "description": "Version du catalogue KEV lu",
+      "title": "Version"
+    }
+  },
+  "required": [
+    "source",
+    "since",
+    "until",
+    "keywords",
+    "total",
+    "items",
+    "more_available",
+    "order",
+    "retrieved_at",
+    "version"
+  ],
+  "title": "CveWatch",
+  "type": "object"
+}

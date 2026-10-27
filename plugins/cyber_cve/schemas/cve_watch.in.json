@@ -1,0 +1,64 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "type": "object",
+  "properties": {
+    "source": {
+      "description": "kev : ajouts au catalogue de la CISA ; nvd : CVE publiées",
+      "enum": [
+        "kev",
+        "nvd"
+      ],
+      "title": "Source",
+      "type": "string"
+    },
+    "since": {
+      "description": "AAAA-MM-JJ",
+      "maxLength": 10,
+      "minLength": 10,
+      "title": "Since",
+      "type": "string"
+    },
+    "until": {
+      "anyOf": [
+        {
+          "maxLength": 10,
+          "minLength": 10,
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "description": "AAAA-MM-JJ, aujourd'hui par défaut",
+      "title": "Until"
+    },
+    "keyword": {
+      "anyOf": [
+        {
+          "maxLength": 100,
+          "minLength": 1,
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "description": "Éditeur ou produit (KEV), mot-clé (NVD) ; sinon produits_suivis",
+      "title": "Keyword"
+    },
+    "max_results": {
+      "default": 20,
+      "maximum": 20,
+      "minimum": 1,
+      "title": "Max Results",
+      "type": "integer"
+    }
+  },
+  "required": [
+    "source",
+    "since"
+  ],
+  "title": "cve_watchArguments"
+}
