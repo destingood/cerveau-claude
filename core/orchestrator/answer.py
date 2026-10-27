@@ -26,7 +26,7 @@ from core.committee.schemas import HORIZONS
 from core.guardrails.injection import injection_signals
 from core.guardrails.pii import PSEUDONYM
 from core.orchestrator.intake import KILL_MESSAGE, LIVE_MESSAGE
-from core.orchestrator.notices import notices, page_sources
+from core.orchestrator.notices import domain_sources, notices, page_sources
 from core.orchestrator.packs import experimental_note
 from core.orchestrator.planner import LIMIT_TEXT, MAX_PLANNER_TURNS
 from core.orchestrator.runtime import Run
@@ -344,8 +344,9 @@ async def output_node(run: Run, state: CerveauState) -> dict[str, Any]:
         context, guarded = required(state.context, "contexte"), required(state.guarded, "garde")
         route = required(state.route, "routage")
         answer = committee_answer(context, guarded, route, state.committee)
-        pages = page_sources(source.final_url for source in state.committee.sources)
-        return {"answer": answer.model_copy(update={"mentions": notices(pages)})}
+        pages = page_sources(state.committee.sources)
+        mentions = notices([*pages, *domain_sources(route.domain)])
+        return {"answer": answer.model_copy(update={"mentions": mentions})}
     guarded = required(state.guarded, "garde")
     route, draft = required(state.route, "routage"), required(state.draft, "planificateur")
     report = required(state.verification, "vérification")
@@ -378,11 +379,12 @@ async def output_node(run: Run, state: CerveauState) -> dict[str, Any]:
     notes = signals(guarded, route, draft, links)  # after the last link filter
     if research is not None:
         notes += research_notes(research)
-    pages = page_sources(source.final_url for source in draft.sources)
+    pages = page_sources(draft.sources)
+    keys = [*draft.data_sources, *pages, *domain_sources(route.domain)]
     update = {
         "signalements": tuple(notes),
         "non_verifies": unverified,
-        "mentions": notices([*draft.data_sources, *pages]),  # by the code, never a model (G9)
+        "mentions": notices(keys),  # by the code, never a model (G9, H7)
     }
     return {"answer": answer.model_copy(update=update | {"links_removed": links.removed})}
 
