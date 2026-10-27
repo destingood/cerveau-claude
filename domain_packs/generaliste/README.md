@@ -14,7 +14,7 @@ mesure réelle du golden set (section 9.3).
 | `prompts/rubric.md` | Grille du juge des évals : 5 critères notés 0, 1 ou 2 ; le score est calculé par le code (R1) |
 | `knowledge/sources.yaml` | Corpus RAG autorisé : vide en phase 1 |
 | `evals/golden.jsonl` | Golden set : 37 cas (objectif 300), seuil 0,80 (`config/evals.yaml`) |
-| `evals/behaviors.yaml` | 5 cas : un domaine sans pack (juridique, code, cyber, cuisine, business) est signalé, jamais simulé ; la finance et la recherche ont leur pack (ADR-021, ADR-046) |
+| `evals/behaviors.yaml` | 5 cas : un domaine sans pack (juridique, jardinage, astronomie, cuisine, business) est signalé, jamais simulé ; la finance, la recherche, le code et la cyber ont leur pack (ADR-021, ADR-046, ADR-050, ADR-057) |
 
 Les pages web des cas hors ligne sont dans `evals/fixtures/web.yaml` ; les suites communes à tous
 les packs dans `evals/behaviors/` (principes de l'Annexe D, format 7.3, auto-contrôle) et

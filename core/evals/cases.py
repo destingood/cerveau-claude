@@ -19,6 +19,10 @@ A paper case (``paper``) runs the daily paper loop on a synthetic market of fict
 instruments, with no model: its source proposes target orders and the drafter, the policy and the
 Risk Gate decide, over a copy of the configuration; at N3, the case answers the approval requests
 as Lucas would, with the one-time codes of a test key (``core/evals/paper.py``).
+
+A cyber case (``cyber``) gives the records the fake NVD, KEV and EPSS serve to the real cyber_cve
+server and the state of the ATT&CK index the real cyber_attack server reads, built from a
+synthetic bundle in the run's temporary home (ADR-057); a source may be down or answer too much.
 """
 
 from __future__ import annotations
@@ -533,6 +537,9 @@ class Expect(_Data):
     sourced: bool = False  # sources cited in the synthesis and the development, none invalid
     min_sources: int = 0
     canaries: tuple[str, ...] = ()  # words a page asks to repeat: never in the answer or a tool
+    # Values the run holds (a stand-in key): never in the answer, a tool call, a message sent to
+    # a model or the run's journal (R6).
+    secrets: tuple[str, ...] = ()
     forbidden_hosts: tuple[str, ...] = ()  # hosts a page asks to contact or to link to
     pii: tuple[str, ...] = ()  # raw personal data of the question: never sent to a model or tool
     notes: tuple[str, ...] = ()  # substrings of the signalements, in both modes
@@ -547,6 +554,7 @@ class Expect(_Data):
     figures: tuple[ExpectedFigure, ...] = ()  # recomputed by their tool and cited in the answer
     mentions: tuple[str, ...] = ()  # substrings of the answer, case and spaces ignored
     absent: tuple[str, ...] = ()  # never in the answer, case and spaces ignored
+    notices: tuple[str, ...] = ()  # substrings of the notices the code appends (G9, R14)
     refused_imports: int = Field(default=0, ge=0, le=2)  # files of `store` the import refuses (R5)
     committee: ExpectCommittee | None = None  # the session of the pack's Committee
     paper: ExpectPaper | None = None  # what the paper loop shows (the case's ``paper``)
@@ -669,6 +677,113 @@ class CodeFixture(_Data):
     agent: CodeAgentFixture = CodeAgentFixture()  # what agent_task's containers would do
 
 
+CVE_ID = r"^CVE-[0-9]{4}-[0-9]{4,19}$"
+NVD_TIMESTAMP = r"^[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}(\.[0-9]{1,3})?$"
+SCORE = r"^(0(\.[0-9]{1,9})?|1(\.0{1,9})?)$"  # EPSS writes its scores as decimal strings
+ATTACK_TECHNIQUE = r"^T[0-9]{4}(\.[0-9]{3})?$"
+CYBER_DAY = date(2026, 10, 18)  # the day of the offline runs (offline.FIXTURE_NOW): none after
+CyberSource = Literal["nvd", "kev", "epss"]
+
+
+class CvssFixture(_Data):
+    """One published CVSS score; its vector is the one of a network flaw of its version."""
+
+    version: Literal["2.0", "3.0", "3.1", "4.0"] = "3.1"
+    score: float = Field(default=9.8, ge=0, le=10)
+    severity: str = "CRITICAL"
+    source: str = "nvd@nist.gov"
+    primary: bool = True
+
+
+class CveReferenceFixture(_Data):
+    url: str = Field(pattern=r"^https?://")
+    tags: tuple[str, ...] = ()
+
+
+class CveFixture(_Data):
+    """One NVD record, shaped like the API's answer of 2026-10-27; its texts are invented."""
+
+    id: str = Field(pattern=CVE_ID)
+    published: str = Field(default="2021-12-10T10:15:09.143", pattern=NVD_TIMESTAMP)
+    last_modified: str = Field(default="2025-02-04T15:15:13.773", pattern=NVD_TIMESTAMP)
+    status: str = "Analyzed"
+    assigner: str = "security@example.org"
+    description: str = Field(min_length=1)
+    cvss: tuple[CvssFixture, ...] = (CvssFixture(),)
+    cwes: tuple[str, ...] = ()
+    references: tuple[CveReferenceFixture, ...] = ()
+
+
+class KevFixture(_Data):
+    """One entry of the CISA KEV catalogue; its texts are invented."""
+
+    id: str = Field(pattern=CVE_ID)
+    vendor: str = Field(min_length=1)
+    product: str = Field(min_length=1)
+    name: str = Field(min_length=1)
+    date_added: date
+    due_date: date
+    description: str = Field(min_length=1)
+    required_action: str = "Apply updates per vendor instructions."
+    ransomware: Literal["Known", "Unknown"] = "Unknown"
+    notes: str = ""
+    cwes: tuple[str, ...] = ()
+
+
+class EpssFixture(_Data):
+    id: str = Field(pattern=CVE_ID)
+    epss: str = Field(pattern=SCORE)
+    percentile: str = Field(pattern=SCORE)
+    day: date = date(2026, 10, 17)  # the API's "date" field
+
+
+class AttackObjectFixture(_Data):
+    """A technique added to the synthetic ATT&CK bundle (``core/evals/attack_sample.py``)."""
+
+    id: str = Field(pattern=ATTACK_TECHNIQUE)
+    name: str = Field(min_length=1)
+    tactic: str = "execution"
+    description: str = Field(min_length=1)
+
+
+class CyberFixture(_Data):
+    """The fake NVD, KEV and EPSS of a cyber case and the state of its ATT&CK index, served to
+    the real cyber_cve and cyber_attack servers (``core/evals/cyber_fixtures.py``): no request
+    leaves the machine and nothing is written under ``var/`` of the repository."""
+
+    nvd: tuple[CveFixture, ...] = ()
+    searches: dict[str, tuple[str, ...]] = Field(default_factory=dict)  # keyword → ids, oldest 1st
+    kev: tuple[KevFixture, ...] = ()  # an empty catalogue is refused by the plugin, as it should
+    kev_version: str = "2026.10.17"
+    epss: tuple[EpssFixture, ...] = ()
+    down: tuple[CyberSource, ...] = ()  # answer HTTP 503
+    oversized: tuple[CyberSource, ...] = ()  # answer one byte more than the plugin reads
+    attack: Literal["present", "absent", "altered"] = "present"  # altered: another bundle's digest
+    techniques: tuple[AttackObjectFixture, ...] = ()
+    products: tuple[str, ...] = ()  # produits_suivis of the case's own sources file
+    nvd_key: bool = False  # the NVD client sends a stand-in key: never in an answer or log (R6)
+
+    @model_validator(mode="after")
+    def _consistent(self) -> CyberFixture:
+        for name, ids in (
+            ("nvd", [c.id for c in self.nvd]),
+            ("kev", [k.id for k in self.kev]),
+            ("epss", [e.id for e in self.epss]),
+            ("techniques", [t.id for t in self.techniques]),
+        ):
+            if len(set(ids)) != len(ids):
+                raise ValueError(f"{name} : identifiant en double")
+        known = {c.id for c in self.nvd}
+        for keyword, ids in self.searches.items():
+            if missing := sorted(set(ids) - known):
+                raise ValueError(f"searches[{keyword}] : absent de nvd : {', '.join(missing)}")
+        days = [date.fromisoformat(c.published[:10]) for c in self.nvd]
+        days += [k.date_added for k in self.kev] + [e.day for e in self.epss]
+        if any(day > CYBER_DAY for day in days):  # R10: nothing after the run's date
+            raise ValueError(f"date postérieure au {CYBER_DAY.isoformat()} (R10)")
+        return self
+
+
 class Case(_Data):
     id: str = Field(pattern=CASE_ID)
     suite: Suite
@@ -685,6 +800,7 @@ class Case(_Data):
     store: StoreFixture | None = None  # added to the case's copy of the reference store
     paper: PaperFixture | None = None  # a run of the paper loop instead of a question's run
     code: CodeFixture | None = None  # the repository the code tools read (pack code)
+    cyber: CyberFixture | None = None  # the sources the cyber tools read (pack cyber)
     expect: Expect = Expect()
 
     @model_validator(mode="after")

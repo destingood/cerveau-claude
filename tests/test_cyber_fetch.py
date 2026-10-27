@@ -24,7 +24,7 @@ from core.cyber.fetch import (
     record_sha256,
     verify,
 )
-from tests.attack_bundle import COMMIT, VERSION, bundle
+from core.evals.attack_sample import COMMIT, VERSION, bundle
 from tests.net_doubles import PUBLIC_V4, FakeDns, FakeWeb
 
 ROOT = Path(__file__).resolve().parents[1]

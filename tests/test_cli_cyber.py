@@ -18,11 +18,11 @@ from core.config.loader import load_config
 from core.cyber import fetch
 from core.cyber.attack import index_path, read_index
 from core.cyber.fetch import BUNDLE_HOST, SOURCES_FILE, Pin, git_blob_sha1, record_sha256
+from core.evals.attack_sample import COMMIT, SAMPLE_RELATIONSHIPS, VERSION, bundle
 from core.policy.engine import KILL_SWITCH_FILE
 from interfaces.cli import cyber as cyber_cli
 from interfaces.cli.common import EXIT_BLOCKED, EXIT_ERROR
 from interfaces.cli.main import app
-from tests.attack_bundle import COMMIT, SAMPLE_RELATIONSHIPS, VERSION, bundle
 from tests.net_doubles import PUBLIC_V4, FakeDns, FakeWeb, chunks
 
 ROOT = Path(__file__).resolve().parents[1]

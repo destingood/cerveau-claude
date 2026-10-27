@@ -19,7 +19,7 @@ from core.cyber.attack import (
     read_index,
     write_index,
 )
-from tests.attack_bundle import (
+from core.evals.attack_sample import (
     APT,
     COMMIT,
     DUMPING,

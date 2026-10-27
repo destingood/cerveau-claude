@@ -65,6 +65,7 @@ from core.evals.cases import (
     Case,
     CodeAgentFixture,
     CommitteeTurn,
+    CyberFixture,
     PageFixture,
     QualityFixture,
     RecordFixture,
@@ -86,6 +87,7 @@ from core.evals.code_fixtures import (
     check_settings,
     code_repositories,
 )
+from core.evals.cyber_fixtures import attack_reader, cyber_config, cyber_sources
 from core.finance.fixtures import REFERENCE_FETCHED_AT, REFERENCE_READ_AT, reference_store
 from core.finance.portfolio import PortfolioError, import_transactions
 from core.finance.providers.base import ProviderError
@@ -107,6 +109,8 @@ from plugins.code_agent.server import build_server as agent_server
 from plugins.code_checks.server import build_server as checks_server
 from plugins.code_ci.server import build_server as ci_server
 from plugins.code_repo.server import build_server as repo_server
+from plugins.cyber_attack.server import build_server as attack_server
+from plugins.cyber_cve.server import build_server as cve_server
 from plugins.feeds.allowlist import FeedSource
 from plugins.feeds.models import FeedError
 from plugins.feeds.server import build_server as feeds_server
@@ -219,6 +223,20 @@ FINANCE_STEPS = (
     "Décider soi-même de toute suite à donner : aucun ordre n'est passé.",
 )
 CODE_TOOLS = frozenset({"repo_log", "repo_diff", "repo_file", "run_checks", "ci_runs"})  # read
+CYBER_TOOLS = frozenset({"cve_lookup", "cve_watch", "attack_lookup"})  # read, never act
+CYBER_UNSURE = "Je ne sais pas : aucun outil cyber n'a rendu de résultat exploitable."
+CYBER_PADDING = "Chaque score, date et identifiant de cette réponse vient de l'outil cité."
+CYBER_COUNTER = (
+    "L'exposition réelle dépend des versions installées et de la configuration, que CERVEAU n'a "
+    "pas auditées ; un score publié ne mesure pas le risque propre à un système."
+)
+CYBER_STEPS = (
+    "Vérifier les versions installées et lire l'avis de l'éditeur.",
+    "Appliquer soi-même le correctif ou la mesure : CERVEAU n'agit sur aucun système.",
+)
+CYBER_UNAVAILABLE = "L'outil « {tool} » n'est pas disponible : CERVEAU n'agit sur aucun système."
+CYBER_SOURCES = {"cisa_kev": "KEV de la CISA", "epss": "EPSS de FIRST"}
+MAX_WATCH_HEAD = 3  # identifiers a watch names in its headline; the details list them all
 CODE_UNSURE = "Je ne sais pas : aucun outil de code n'a rendu de résultat exploitable."
 CODE_PADDING = "Chaque compte et chaque citation de cette réponse viennent de l'outil cité."
 CODE_COUNTER = (
@@ -625,10 +643,27 @@ def finance_toolboxes(
 
 def uses_finance(case: Case) -> bool:
     """A case whose run reads the reference store, so is dated when the store is read."""
-    if case.code is not None:  # the code pack reads its own repository, never the store
+    if case.code is not None or uses_cyber(case):  # these packs never read the store
         return False
     computed = [call for call in case.offline.calls if call.tool not in RESEARCH_TOOLS]
     return case.group == "finance" or bool(computed or case.expect.tools or case.store is not None)
+
+
+def uses_cyber(case: Case) -> bool:
+    """A case of the cyber pack's tools, answered from what they read."""
+    tools = {call.tool for call in case.offline.calls} | set(case.expect.tools)
+    return case.cyber is not None or bool(tools & CYBER_TOOLS)
+
+
+def _opener(name: str, factory: Callable[[], MCPServer]) -> ToolboxOpener:
+    """A plugin of the repository served in-process by ``factory``, behind the real adapter."""
+
+    @asynccontextmanager
+    async def open_toolbox(scope: RequestScope) -> AsyncIterator[Toolbox]:
+        async with McpPlugin(REPO_ROOT / "plugins" / name, scope, target=factory()) as plugin:
+            yield McpToolbox(plugin)
+
+    return open_toolbox
 
 
 # --- code servers ------------------------------------------------------------------------------
@@ -677,16 +712,31 @@ def code_toolboxes(case: Case, home: Path, config: Config) -> dict[str, ToolboxO
         ),
         "code_agent": code_agent,
     }
+    return {name: _opener(name, factory) for name, factory in factories.items()}
 
-    def opener(name: str, factory: Callable[[], MCPServer]) -> ToolboxOpener:
-        @asynccontextmanager
-        async def open_toolbox(scope: RequestScope) -> AsyncIterator[Toolbox]:
-            async with McpPlugin(REPO_ROOT / "plugins" / name, scope, target=factory()) as plugin:
-                yield McpToolbox(plugin)
 
-        return open_toolbox
+# --- cyber servers -----------------------------------------------------------------------------
 
-    return {name: opener(name, factory) for name, factory in factories.items()}
+
+def cyber_toolboxes(
+    case: Case, home: Path, config_dir: Path, now: Callable[[], datetime]
+) -> dict[str, ToolboxOpener]:
+    """The cyber pack's real servers on the case's fake NVD, KEV and EPSS and on an ATT&CK index
+    of the synthetic bundle (core/evals/cyber_fixtures.py), set up under ``home`` when first
+    opened, with a copy of ``config_dir``: a case without sources gets an empty catalogue and no
+    index, and no request leaves the machine (ADR-057)."""
+    fixture = case.cyber or CyberFixture(attack="absent")
+    folder = home / "cyber"
+
+    def config() -> Path:
+        folder.mkdir(parents=True, exist_ok=True)
+        return cyber_config(config_dir, folder)
+
+    factories: dict[str, Callable[[], MCPServer]] = {
+        "cyber_cve": lambda: cve_server(cyber_sources(fixture, folder, config(), now)),
+        "cyber_attack": lambda: attack_server(attack_reader(fixture, folder, config())),
+    }
+    return {name: _opener(name, factory) for name, factory in factories.items()}
 
 
 # --- scripted models ---------------------------------------------------------------------------
@@ -879,6 +929,8 @@ class Pilot:
             answer = offline.answer.model_dump(mode="json")
         elif self.case.code is not None and not self.case.expect.figures:
             answer = _from_code(views, complex_=complex_)
+        elif uses_cyber(self.case) and not self.case.expect.figures:
+            answer = _from_cyber(views, complex_=complex_)
         elif computed or self.case.expect.figures:
             answer = _from_figures(self.case, self.finance, views, complex_=complex_)
         else:
@@ -1515,6 +1567,227 @@ def _from_code(views: Sequence[str], *, complex_: bool) -> dict[str, Any]:
         "contre_arguments": (AGENT_COUNTER if patched else CODE_COUNTER) if complex_ else "",
         "confiance": confidence,
         "prochaines_etapes": list(steps) if complex_ else [],
+    }
+
+
+def _cvss(cvss: Mapping[str, Any]) -> str:
+    """A published CVSS score as the tool wrote it: version, base score, severity."""
+    severity = f" ({_line(cvss['severity'])})" if cvss.get("severity") else ""
+    return f"CVSS v{_line(cvss.get('version'))} {cvss.get('base_score')}{severity}"
+
+
+def _named(data: Mapping[str, Any], key: str) -> str:
+    return ", ".join(f"{_line(i.get('id'))} {_line(i.get('name'))}" for i in _items(data, key))
+
+
+def _cve_record(record: Mapping[str, Any], errors: Mapping[str, Any]) -> tuple[str, list[str]]:
+    """The summary of one record of cve_lookup, then its details, as the tool wrote them."""
+    ident, kev, epss = _line(record.get("id")), record.get("kev"), record.get("epss")
+    ranking = record.get("ranking_cvss")
+    parts = [_cvss(ranking) if isinstance(ranking, Mapping) else "sans score CVSS publié"]
+    if isinstance(kev, Mapping):
+        parts.append(f"inscrite au KEV de la CISA le {_line(kev.get('date_added'))}")
+    else:
+        parts.append("KEV non lu" if errors.get("cisa_kev") else "absente du KEV lu")
+    if isinstance(epss, Mapping):
+        parts.append(f"EPSS {epss.get('epss')} (centile {epss.get('percentile')})")
+    else:
+        parts.append("EPSS non lu" if errors.get("epss") else "sans score EPSS")
+    summary = f"{ident} : {', '.join(parts)}"
+    lines = [
+        f"- {ident} (rang {record.get('rank')}) : {', '.join(parts)}.",
+        f"  Fiche NVD : statut {_line(record.get('status'))}, publiée le "
+        f"{_line(record.get('published'))[:10]}, modifiée le "
+        f"{_line(record.get('last_modified'))[:10]}, source {_line(record.get('assigner'))}.",
+    ]
+    for score in _items(record, "cvss"):
+        role = "principal" if score.get("primary") else "secondaire"
+        lines.append(
+            f"  Score publié : {_cvss(score)}, vecteur {_line(score.get('vector'))}, "
+            f"source {_line(score.get('source'))} ({role})."
+        )
+    if isinstance(kev, Mapping):
+        lines.append(
+            f"  KEV : ajout le {_line(kev.get('date_added'))}, échéance fédérale "
+            f"{_line(kev.get('due_date'))}, action requise "
+            f"« {_line(kev.get('required_action'))} », "
+            f"usage par un rançongiciel : {_line(kev.get('ransomware'))}."
+        )
+    if isinstance(epss, Mapping):
+        lines.append(
+            f"  EPSS : {epss.get('epss')}, centile {epss.get('percentile')}, calculé le "
+            f"{_line(epss.get('date'))}."
+        )
+    if cwes := _texts(record, "cwes"):
+        lines.append(f"  Faiblesses : {', '.join(cwes)}.")
+    if record.get("description"):
+        lines.append(f"  Description du NVD : « {_line(record['description'])} »")
+    return summary, lines
+
+
+def _cve_facts(data: Mapping[str, Any]) -> CodeFacts:
+    errors = {str(s.get("source")): s.get("error") for s in _items(data, "sources")}
+    found = [_cve_record(record, errors) for record in _items(data, "records")]
+    missing = _texts(data, "not_found")
+    lines = [line for _summary, details in found for line in details]
+    if missing:
+        lines.append(f"Inconnues du NVD selon cve_lookup : {', '.join(missing)}.")
+    if found:
+        lines.append(f"Règle de tri de cve_lookup : {_line(data.get('ranking_rule'))}")
+    for source, error in errors.items():
+        if error:
+            lines.append(f"{CYBER_SOURCES.get(source, source)} non lu : {_plain(str(error))}.")
+    if len(found) == 1:
+        head = f"{found[0][0]} (cve_lookup)."
+    elif found:
+        order = ", puis ".join(summary.split(" : ", 1)[0] for summary, _ in found)
+        head = f"Ordre de priorité rendu par cve_lookup : {order}."
+    else:
+        head = f"Le NVD ne connaît pas {', '.join(missing) or 'ces identifiants'} (cve_lookup)."
+    doubt = bool(missing) or any(errors.values())
+    return head, lines, "total" if not found else "partial" if doubt else "none"
+
+
+def _watch_facts(data: Mapping[str, Any]) -> CodeFacts:
+    label = "du KEV de la CISA" if data.get("source") == "kev" else "du NVD"
+    span = f"du {_line(data.get('since'))} au {_line(data.get('until'))}"
+    words = _texts(data, "keywords")
+    about = f" pour « {' ; '.join(words)} »" if words else ""
+    items = _items(data, "items")
+    lines = []
+    for item in items:
+        maker = " ".join(_line(item[k]) for k in ("vendor", "product") if item.get(k))
+        extra = [_cvss(item["cvss"])] if isinstance(item.get("cvss"), Mapping) else []
+        extra += [f"statut {_line(item['status'])}"] if item.get("status") else []
+        extra += [f"rançongiciel : {_line(item['ransomware'])}"] if item.get("ransomware") else []
+        extra += [f"échéance {_line(item['due_date'])}"] if item.get("due_date") else []
+        what = _line(item.get("title")) + (f" ({maker})" if maker else "")
+        tail = f" ; {', '.join(extra)}" if extra else ""
+        lines.append(f"- {_line(item.get('id'))} ({_line(item.get('date'))}) : {what}{tail}.")
+    lines.append(f"Entrées trouvées selon cve_watch : {data.get('total')}.")
+    if data.get("version"):
+        lines.append(f"Catalogue KEV lu : version {_line(data['version'])}.")
+    if data.get("order"):
+        lines.append(f"Ordre de cve_watch : {_line(data['order'])}")
+    if data.get("more_available"):
+        lines.append("Le NVD annonce d'autres entrées que celles lues : la liste est incomplète.")
+    ids = [_line(item.get("id")) for item in items]
+    if ids:
+        more = " et d'autres" if len(ids) > MAX_WATCH_HEAD else ""
+        head = (
+            f"Veille {label} {span}{about} : {', '.join(ids[:MAX_WATCH_HEAD])}{more} (cve_watch)."
+        )
+    else:
+        head = f"Aucune entrée {label} {span}{about} selon cve_watch."
+    return head, lines, "partial" if data.get("more_available") else "none"
+
+
+def _attack_facts(data: Mapping[str, Any]) -> CodeFacts:
+    results = _items(data, "results")
+    source = data.get("source")
+    lines = []
+    for item in results:
+        lines.append(
+            f"- {_line(item.get('id'))} {_line(item.get('name'))} : {_line(item.get('kind'))}, "
+            f"{_line(item.get('status'))}."
+        )
+        if isinstance(revoked := item.get("revoked_by"), Mapping):
+            lines.append(f"  Remplacé par {_line(revoked.get('id'))} {_line(revoked.get('name'))}.")
+        if isinstance(parent := item.get("parent"), Mapping):
+            lines.append(
+                f"  Technique parente : {_line(parent.get('id'))} {_line(parent.get('name'))}."
+            )
+        if tactics := _texts(item, "tactics"):
+            lines.append(f"  Tactiques : {', '.join(tactics)}.")
+        for key, label in (
+            ("subtechniques", "Sous-techniques"),
+            ("mitigations", "Mesures d'atténuation"),
+            ("detection_strategies", "Stratégies de détection"),
+            ("techniques", "Techniques liées"),
+        ):
+            if named := _named(item, key):
+                lines.append(f"  {label} : {named}.")
+        if item.get("lists_truncated"):
+            lines.append("  Listes coupées à la limite du résultat.")
+        if item.get("description"):
+            lines.append(f"  Description de MITRE : « {_line(item['description'])} »")
+    if isinstance(source, Mapping):
+        lines.append(
+            f"Index ATT&CK Enterprise {_line(source.get('version'))}, construit le "
+            f"{_line(source.get('built_at'))[:10]}."
+        )
+    if data.get("more_available"):
+        lines.append("D'autres objets correspondent : seuls les premiers sont montrés.")
+    if not results:
+        head = f"Aucun objet ATT&CK ne correspond à « {_line(data.get('query'))} » (attack_lookup)."
+        return head, lines, "total"
+    first = results[0]
+    head = (
+        f"{_line(first.get('id'))} {_line(first.get('name'))} : {_line(first.get('kind'))} "
+        f"ATT&CK, {_line(first.get('status'))}, selon attack_lookup."
+    )
+    return head, lines, "none"
+
+
+CYBER_FACTS: dict[str, Callable[[Mapping[str, Any]], CodeFacts]] = {
+    "cve_lookup": _cve_facts,
+    "cve_watch": _watch_facts,
+    "attack_lookup": _attack_facts,
+}
+
+
+def _from_cyber(views: Sequence[str], *, complex_: bool) -> dict[str, Any]:
+    """The answer of an honest planner on the cyber tools' results: scores, dates and
+    identifiers as the tools wrote them (R1), no link of theirs, every source not read said
+    (R12), and « je ne sais pas » when no tool found anything (ADR-057)."""
+    heads: list[str] = []
+    details: list[str] = []
+    problems: list[str] = []
+    tools: list[str] = []
+    shortfalls: list[Shortfall] = []
+    for view in views:
+        if (unavailable := _UNAVAILABLE.match(view)) is not None:
+            problems.append(CYBER_UNAVAILABLE.format(tool=unavailable.group(1)))
+            continue
+        if (problem := _code_problem(view)) is not None:
+            problems.append(problem)
+            continue
+        found = _CODE_RESULT.match(view)
+        if found is None or found.group(1) not in CYBER_FACTS:
+            continue
+        tool = found.group(1)
+        try:
+            data = json.loads(found.group(2))
+        except ValueError:
+            continue
+        if not isinstance(data, Mapping):
+            continue
+        head, lines, shortfall = CYBER_FACTS[tool](data)
+        heads.append(head if sentence_count(head) == 1 else RESULT.format(tool=tool))
+        details += lines
+        tools.append(tool)
+        shortfalls.append(shortfall)
+    low, high = (3, 5) if complex_ else (1, 3)
+    unsure = not heads or set(shortfalls) == {"total"}
+    sentences = [CYBER_UNSURE, *heads, *problems] if unsure else [*heads, *problems]
+    sentences = sentences[: high - 1]
+    sentences += [CYBER_PADDING] * max(0, low - len(sentences))
+    names = ", ".join(dict.fromkeys(tools))
+    if heads and not problems and set(shortfalls) == {"none"}:
+        confidence = {"niveau": "eleve", "justification": f"Résultats lus par {names}."}
+    elif heads and not unsure:
+        confidence = {
+            "niveau": "moyen",
+            "justification": f"Résultats lus par {names}, avec les limites signalées.",
+        }
+    else:
+        confidence = {"niveau": "faible", "justification": "Aucun résultat d'outil exploitable."}
+    return {
+        "synthese": " ".join(sentences),
+        "developpement": "\n".join([*details, *problems]) or "Aucun résultat d'outil exploitable.",
+        "contre_arguments": CYBER_COUNTER if complex_ else "",
+        "confiance": confidence,
+        "prochaines_etapes": list(CYBER_STEPS) if complex_ else [],
     }
 
 

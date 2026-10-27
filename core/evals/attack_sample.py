@@ -1,8 +1,10 @@
-"""Synthetic ATT&CK Enterprise STIX bundle for the offline tests of the Cyber pack (ADR-056).
+"""Synthetic ATT&CK Enterprise STIX bundle for the offline tests and evals of the Cyber pack
+(ADR-056, ADR-057).
 
 Identifiers, names and links imitate the shape of ATT&CK; descriptions are made up for the
 tests. Nothing here is a fact about ATT&CK: the real bundle is only read by
-`cerveau cyber attack-fetch`, which Lucas runs.
+`cerveau cyber attack-fetch`, which Lucas runs. The evals build their index from it in the run's
+temporary home, never in ``var/``.
 """
 
 from __future__ import annotations
@@ -15,12 +17,13 @@ from typing import Any
 from core.cyber.attack import AttackIndex, BuildReport, build_index
 
 VERSION = "20.0"
-COMMIT = "20664a889568dce884a1dac0ec7b12ae3a199f51"
+# A fictitious commit: the synthetic bundle never passes for the one core/cyber/fetch.py pins.
+COMMIT = "0" * 40
 SOURCE_URL = (
     "https://raw.githubusercontent.com/mitre-attack/attack-stix-data/"
     f"{COMMIT}/enterprise-attack/enterprise-attack-{VERSION}.json"
 )
-BUILT_AT = "2026-10-27T09:30:00+00:00"
+BUILT_AT = "2026-10-17T09:30:00+00:00"  # before the date of the offline runs (R10)
 SPEC = "3.3.0"
 MODIFIED = "2025-04-15T19:58:03.000Z"
 _PAGES = {

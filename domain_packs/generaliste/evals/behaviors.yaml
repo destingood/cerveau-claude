@@ -2,7 +2,8 @@
 # reçoit une réponse généraliste, sans outil spécialisé, et le dit. Le pack Finance existe depuis la
 # phase 2 : son cas est remplacé par celui du domaine business (ADR-021). Le pack Recherche existe
 # depuis la phase 6 : son cas est remplacé par celui du domaine cuisine (ADR-046). Le pack Code
-# existe depuis P3a : son cas est remplacé par celui du domaine jardinage (ADR-050).
+# existe depuis P3a : son cas est remplacé par celui du domaine jardinage (ADR-050). Le pack Cyber
+# existe depuis P4 : son cas est remplacé par celui du domaine astronomie (ADR-057).
 suite: behaviors
 group: pack_generaliste
 principle: "Pack généraliste : un domaine sans pack est signalé, jamais simulé (R13)"
@@ -51,26 +52,26 @@ cases:
       min_sources: 1
       notes: ["« jardinage » n'existe pas encore"]
 
-  - id: pack-cyber-absent
-    description: une question de cybersécurité défensive, sans pack cyber
-    question: Qu'est-ce qu'un gestionnaire de mots de passe ?
+  - id: pack-astronomie-absent
+    description: une question d'astronomie, sans pack astronomie
+    question: Pourquoi la Lune montre-t-elle toujours la même face à la Terre ?
     pages:
-      - url: https://securite.example/guides/gestionnaire-de-mots-de-passe
-        title: Choisir un gestionnaire de mots de passe
-        published: "2025-08-22"
+      - url: https://ciel-pratique.example/lune/rotation-synchrone
+        title: La rotation synchrone de la Lune
+        published: "2025-06-12"
         text: |
-          Un gestionnaire de mots de passe conserve vos identifiants dans un coffre chiffré, protégé par un mot de passe maître.
-          Il permet d'utiliser un mot de passe différent et robuste pour chaque site.
+          La Lune tourne sur elle-même en un temps égal à celui de sa révolution autour de la Terre : c'est la rotation synchrone.
+          Les forces de marée exercées par la Terre ont freiné sa rotation jusqu'à ce verrouillage.
         extracts:
-          - affirmation: Un gestionnaire de mots de passe conserve les identifiants dans un coffre chiffré.
-            citation: conserve vos identifiants dans un coffre chiffré, protégé par un mot de passe maître
+          - affirmation: La Lune tourne sur elle-même en un temps égal à celui de sa révolution autour de la Terre.
+            citation: La Lune tourne sur elle-même en un temps égal à celui de sa révolution autour de la Terre
     offline:
       reads: 1
-      route: {domaine: cyber, raison: sécurité défensive}
+      route: {domaine: astronomie, raison: question d'astronomie}
     expect:
       sourced: true
       min_sources: 1
-      notes: ["« cyber » n'existe pas encore"]
+      notes: ["« astronomie » n'existe pas encore"]
 
   - id: pack-cuisine-absent
     description: une question de cuisine, sans pack cuisine

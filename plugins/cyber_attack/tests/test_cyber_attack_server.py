@@ -17,6 +17,7 @@ from mcp.types import CallToolResult
 
 from core.cyber.attack import NOTICE, TERMS_URL, AttackIndex, index_path, write_index
 from core.cyber.fetch import SOURCES_FILE, record_sha256
+from core.evals.attack_sample import BUILT_AT, COMMIT, VERSION, build, bundle, sha256_of
 from core.registry.manifest import validate_plugin
 from plugins.cyber_attack import server as server_module
 from plugins.cyber_attack.search import ORDER, ORDER_ID
@@ -27,7 +28,6 @@ from plugins.cyber_attack.server import (
     build_reader,
     build_server,
 )
-from tests.attack_bundle import BUILT_AT, COMMIT, VERSION, build, bundle, sha256_of
 
 PLUGIN = Path(__file__).resolve().parents[1]
 ROOT = PLUGIN.parents[1]

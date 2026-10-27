@@ -36,6 +36,7 @@ from core.evals.offline import (
     WebLog,
     case_store,
     code_toolboxes,
+    cyber_toolboxes,
     finance_toolboxes,
     fixture_toolbox,
     offline_config,
@@ -161,6 +162,15 @@ def decision_payload(journal: AuditJournal, request_id: str) -> dict[str, Any]:
     return payload
 
 
+def journal_texts(folder: Path) -> tuple[str, ...]:
+    """Every file the run's own journal wrote (entries and payloads), as text: a value that must
+    stay out of the journal is searched there (R6)."""
+    if not folder.is_dir():
+        return ()
+    files = sorted(path for path in folder.rglob("*") if path.is_file())
+    return tuple(path.read_text(encoding="utf-8", errors="replace") for path in files)
+
+
 def role_entries(journal: AuditJournal, request_id: str) -> tuple[dict[str, Any], ...]:
     """The committee entries the request wrote to the journal, one DECISION entry per role (D19):
     member, kind, round, validity and number of answers (2 after a repair)."""
@@ -270,6 +280,7 @@ def _outcome(
     roles: tuple[dict[str, Any], ...] = (),
     texts: tuple[str, ...] = (),
     unknown: tuple[str, ...] = (),
+    written: tuple[str, ...] = (),
 ) -> Outcome:
     hits = [f"{hit.title} {hit.snippet}" for hit in case.search_hits()] if log.queries else []
     titles = [record.title for record in case.records] if log.scholar else []
@@ -292,6 +303,7 @@ def _outcome(
         repaired_roles=tuple(r["member"] for r in roles if r.get("attempts", 1) > 1),
         committee_texts=texts,
         unknown_limits=unknown,
+        journal_texts=written,
     )
 
 
@@ -367,6 +379,7 @@ async def _offline(case: Case, root: Path, run: str) -> CaseResult:
                 **research_toolboxes(case, log),
                 **finance_toolboxes(finance, root / "config", store),
                 **code_toolboxes(case, home, config),
+                **cyber_toolboxes(case, home, root / "config", lambda: now),
             },
             pseudonymiser=lambda: presidio(config),
             callbacks=(recorder,),
@@ -378,6 +391,7 @@ async def _offline(case: Case, root: Path, run: str) -> CaseResult:
         payload = decision_payload(journal, result.request_id)
         roles = role_entries(journal, result.request_id)
         texts = committee_texts(home, payload)
+        written = journal_texts(journal.path.parent)
     outcome = _outcome(
         case,
         "offline",
@@ -390,6 +404,7 @@ async def _offline(case: Case, root: Path, run: str) -> CaseResult:
         roles=roles,
         texts=texts,
         unknown=unknown_limits(limits),
+        written=written,
     )
     return _result(outcome, result, run)
 
@@ -422,6 +437,9 @@ async def _live(case: Case, root: Path, run: str) -> CaseResult:
                 **research_toolboxes(case, log),
                 **finance_toolboxes(finance, live_config_dir(root), store),
                 **code_toolboxes(case, Path(tmp), config),
+                **cyber_toolboxes(
+                    case, Path(tmp), live_config_dir(root), lambda: datetime.now(UTC)
+                ),
             },
             pseudonymiser=lambda: presidio(config),
             callbacks=(recorder,),
@@ -442,6 +460,8 @@ async def _live(case: Case, root: Path, run: str) -> CaseResult:
         roles=roles,
         texts=texts,
         unknown=unknown_limits(config.risk_limits_paper),
+        # Live, the journal is Lucas's: only what the request wrote is read.
+        written=tuple(json.dumps(p, ensure_ascii=False, default=str) for p in (payload, *roles)),
     )
     judgement = None
     pack = case.group if case.suite == "golden" else "generaliste"
