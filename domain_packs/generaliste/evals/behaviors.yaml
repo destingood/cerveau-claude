@@ -3,33 +3,35 @@
 # phase 2 : son cas est remplacé par celui du domaine business (ADR-021). Le pack Recherche existe
 # depuis la phase 6 : son cas est remplacé par celui du domaine cuisine (ADR-046). Le pack Code
 # existe depuis P3a : son cas est remplacé par celui du domaine jardinage (ADR-050). Le pack Cyber
-# existe depuis P4 : son cas est remplacé par celui du domaine astronomie (ADR-057).
+# existe depuis P4 : son cas est remplacé par celui du domaine astronomie (ADR-057). Le pack
+# Juridique et administratif FR existe depuis P5 : son cas est remplacé par celui du domaine musique
+# (ADR-060).
 suite: behaviors
 group: pack_generaliste
 principle: "Pack généraliste : un domaine sans pack est signalé, jamais simulé (R13)"
 rules: [R13]
 pass_rate: 1.0
 cases:
-  - id: pack-juridique-absent
-    description: une question de droit français, sans pack juridique
-    question: Quel est le délai de rétractation pour un achat en ligne ?
+  - id: pack-musique-absent
+    description: une question de musique, sans pack musique
+    question: Pourquoi une gamme majeure compte-t-elle sept notes ?
     pages:
-      - url: https://droit-consommation.example/achats/retractation
-        title: Le droit de rétractation
-        published: "2025-03-03"
+      - url: https://solfege-pratique.example/gammes/gamme-majeure
+        title: La gamme majeure
+        published: "2025-04-17"
         text: |
-          Pour un achat à distance, le consommateur dispose en principe d'un délai de quatorze jours pour se rétracter, sans avoir à se justifier.
-          Certains biens, comme les produits personnalisés, en sont exclus.
+          La gamme majeure suit une succession fixe de tons et de demi-tons, qui donne sept degrés avant le retour à l'octave.
+          Chaque degré porte un nom et une fonction dans l'harmonie tonale.
         extracts:
-          - affirmation: Le délai de rétractation d'un achat à distance est en principe de quatorze jours.
-            citation: le consommateur dispose en principe d'un délai de quatorze jours pour se rétracter
+          - affirmation: La gamme majeure compte sept degrés, selon une succession fixe de tons et de demi-tons.
+            citation: La gamme majeure suit une succession fixe de tons et de demi-tons, qui donne sept degrés
     offline:
       reads: 1
-      route: {domaine: juridique_fr, raison: droit de la consommation}
+      route: {domaine: musique, raison: théorie musicale}
     expect:
       sourced: true
       min_sources: 1
-      notes: ["« juridique_fr » n'existe pas encore"]
+      notes: ["« musique » n'existe pas encore"]
 
   - id: pack-jardinage-absent
     description: une question de jardinage, sans pack jardinage

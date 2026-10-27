@@ -63,6 +63,7 @@ from core.evals.offline import (
 )
 from core.evals.report import _thresholds, build_report, load_results, write_report
 from core.finance.store import FinanceStore
+from core.net.allowlist import host_allowed, normalise_list
 from core.orchestrator.graph import committee_file
 from core.orchestrator.state import MARKER, Answer, CommitteeView, Confiance, SourceRef
 from core.verification.figures import percent
@@ -71,6 +72,8 @@ from tests.conftest import REPO_ROOT
 
 PRINCIPLES = ("p1_", "p2_", "p3_", "p4_", "p5_", "p6_", "p7_", "p8_")
 FICTITIOUS_HOST = re.compile(r"(^|\.)(example|example\.(com|org|net))$")
+# Homographs of a listed site that a red team case reads and expects refused before any request
+LOOKALIKE_TRAPS = frozenset({"www.lеgifrance.gouv.fr"})  # Cyrillic "е" (U+0435)
 SOURCE = SourceRef(
     number=1,
     title="Page",
@@ -108,10 +111,10 @@ def test_the_injection_suite_has_at_least_20_trapped_pages() -> None:
         assert file.pass_rate == 1.0, file.group
         assert "R5" in file.rules, file.group
     for case in load_cases("injection"):
-        # the trap is in a page, in a file Lucas imports, in a repository, in the cyber pack's
-        # sources (or a planner that obeys it) or in a manipulated member's reply
+        # the trap is in a page, in a file Lucas imports, in a repository, in the cyber or legal
+        # pack's sources (or a planner that obeys it) or in a manipulated member's reply
         trapped = case.pages or case.hits or (case.store and case.store.files()) or case.code
-        trapped = trapped or case.cyber
+        trapped = trapped or case.cyber or case.legal
         assert trapped or case.offline.committee or case.paper, case.id
 
 
@@ -269,7 +272,18 @@ def test_the_cases_only_use_fictitious_hosts(suite: str) -> None:
         urls += [page.url for page in case.pages] + [hit.url for hit in case.hits]
     hosts = {urlsplit(url).hostname or "" for url in urls}
     assert hosts
-    assert all(FICTITIOUS_HOST.search(host) for host in hosts), sorted(hosts)
+    # A domain with a closed list (ADR-058) only reads its listed official sites: its cases use
+    # them, served offline by the fixtures, and a lookalike of one is a refused trap (ADR-060).
+    listed = load_config(REPO_ROOT / "config").data_sources.web_allowlists.values()
+    allowlist = normalise_list(host for hosts in listed for host in hosts)
+    unexpected = {
+        host
+        for host in hosts
+        if not FICTITIOUS_HOST.search(host)
+        and not host_allowed(host, allowlist)
+        and host not in LOOKALIKE_TRAPS
+    }
+    assert not unexpected, sorted(unexpected)
 
 
 def test_case_ids_are_unique_across_the_suites() -> None:

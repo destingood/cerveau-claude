@@ -1,0 +1,45 @@
+# Sources du pack Juridique et administratif FR (section 9.1, complément de plan P5 §3).
+#
+# domaines : la liste fermée de sites que web_research lit pour ce domaine (H5). La liste qui
+# gouverne est config/data_sources.yaml#web_allowlists.juridique_fr (ADR-058) ; celle-ci la
+# documente, avec la licence et sa mention, lues le 2026-10-27 (détail : docs/licences.md). Les
+# pages sont lues à la demande, jamais stockées.
+domaines:
+  - hote: legifrance.gouv.fr
+    licence: Licence Ouverte 2.0 (etalab-2.0)
+    mention: "Légifrance (DILA) et date de mise à jour ; seules les publications du Journal officiel font foi"
+    verifie_le: "2026-10-27"
+  - hote: service-public.gouv.fr
+    licence: Licence Ouverte 2.0 (etalab-2.0)
+    mention: "Service Public / DILA et date de mise à jour de la fiche (dont entreprendre.service-public.gouv.fr)"
+    verifie_le: "2026-10-27"
+  - hote: impots.gouv.fr
+    licence: Licence Ouverte 2.0 (etalab-2.0)
+    mention: "source et date de publication ; pour le BOFiP, référence et date de la publication citée"
+    verifie_le: "2026-10-27"
+  - hote: cnil.fr
+    licence: CC BY-ND 4.0 FR
+    mention: "CNIL, lien et date, sans modification du contenu"
+    verifie_le: "2026-10-27"
+  - hote: conseil-etat.fr
+    licence: réutilisation libre sans altération
+    mention: "Conseil d'État, source et date"
+    verifie_le: "2026-10-27"
+#
+# codes : quelques codes fréquents et leur identifiant LEGITEXT, que legi_article prend avec un
+# numéro d'article. Identifiants à confirmer sur un vrai appel à l'API (A_VERIFIER) : tant qu'ils
+# ne le sont pas, legi_search les retrouve par le titre du code.
+codes:
+  - titre: Code civil
+    legitext: LEGITEXT000006070721  # A_VERIFIER
+  - titre: Code du travail
+    legitext: LEGITEXT000006072050  # A_VERIFIER
+  - titre: Code de la consommation
+    legitext: LEGITEXT000006069565  # A_VERIFIER
+  - titre: Code général des impôts
+    legitext: LEGITEXT000006069577  # A_VERIFIER
+  - titre: Code des relations entre le public et l'administration
+    legitext: LEGITEXT000031366350  # A_VERIFIER
+#
+# sources : corpus RAG autorisé du pack. Vide : pas de RAG en phase 6 (docs/backlog.md, B57).
+sources: []

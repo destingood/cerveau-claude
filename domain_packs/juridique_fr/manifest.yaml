@@ -1,0 +1,59 @@
+# Manifeste du pack Juridique et administratif FR (section 9.1, complément de plan P5 §3).
+# Déclaratif : les valeurs qui gouvernent (autonomie, sources, environnement PISTE, liste fermée de
+# sites, débits, cache) restent dans config/*.yaml et ne sont pas recopiées ici.
+id: juridique_fr
+version: 0.1.0
+# « expérimental » tant que le golden set n'a pas atteint son seuil en mesure réelle (section 9.3) ;
+# seul Lucas passe le pack en « actif », au vu du rapport d'évals (D2).
+statut: experimental
+perimetre:
+  - Article d'un code ou d'une loi lu sur Légifrance — identifiant LEGIARTI, état, dates de vigueur
+    et texte tels que l'API les rend, version applicable à une date donnée, version future,
+    modifiée ou abrogée signalée (legi_article, ADR-059, H3).
+  - Recherche d'articles ou de textes par mots-clés dans les fonds de Légifrance, à une date
+    (legi_search).
+  - Démarches administratives et questions fiscales ou sociales par des pages officielles d'une
+    liste fermée de sites (service-public.gouv.fr, legifrance.gouv.fr, impots.gouv.fr, cnil.fr,
+    conseil-etat.fr), lues à la demande (web_research, ADR-058, H5, H6).
+  - Délais et montants cités avec l'article ou la fiche et sa version, jamais calculés (R1, H8).
+  - Renvoi vers le professionnel compétent (avocat, notaire, administration) pour une situation
+    précise ; Lucas agit lui-même (N0).
+hors_perimetre:
+  - Conseil juridique personnalisé (« dois-je signer », « vais-je gagner »), stratégie
+    contentieuse (R16).
+  - Rédaction d'un acte, d'un contrat, d'une mise en demeure ou de conclusions.
+  - Calcul d'un impôt, d'une indemnité ou d'un délai appliqué à un cas réel (R1, H8).
+  - Contournement de la loi ou fraude (R15).
+  - Démarche effectuée à la place de Lucas ; aucun outil n'écrit, ne dépose ni n'envoie rien.
+  - Jurisprudence (Judilibre, H2), Journal officiel, BOFiP par API, corpus RAG (docs/backlog.md).
+  - Conseil à des tiers (R16), CERVEAU restant un outil personnel d'aide à la décision.
+# Ordre des outils du planificateur, coupé à config/models.yaml#routing.max_tools_to_planner.
+plugins:
+  - legifrance
+  - web_research
+autonomie:
+  # Niveau courant N0, niveau maximal N1 : config/autonomy.yaml, domains.juridique_fr (D3). Seul
+  # Lucas promeut le pack, à la main, au vu du rapport.
+  source: config/autonomy.yaml#domains.juridique_fr
+sources_autorisees:
+  # API Légifrance de la DILA par PISTE, en lecture seule (legifrance) ; environnement sandbox ou
+  # production : A_DEFINIR, choisi par Lucas ; identifiants PISTE_CLIENT_ID et PISTE_CLIENT_SECRET
+  # passés par runtime.env, jamais écrits (H4, R6).
+  legifrance: config/data_sources.yaml#sources.legifrance
+  # Pages des seuls sites de la liste fermée du domaine, recontrôlée à chaque redirection (H6).
+  web: config/data_sources.yaml#web_allowlists.juridique_fr
+  # Codes fréquents et sites de la liste, avec licence et date de vérification.
+  reperes: knowledge/sources.yaml
+  # Corpus RAG : vide en phase 6 (knowledge/sources.yaml, B57).
+  rag: knowledge/sources.yaml#sources
+prompts:
+  role: prompts/role.md      # inséré dans le prompt système (core/orchestrator/prompts.py)
+  rubric: prompts/rubric.md  # prompt système du juge des évals (core/evals/judge.py)
+evals:
+  golden: evals/golden.jsonl
+  # Seuil du score moyen du juge : config/evals.yaml, thresholds.juridique_fr_golden_min_score (D4).
+  golden_seuil: config/evals.yaml#thresholds.juridique_fr_golden_min_score
+  behaviors: evals/behaviors.yaml
+  # Red team du pack : evals/redteam/injection_juridique_fr/ (R5). Suites communes à tous les
+  # packs : evals/behaviors/ (principes de l'Annexe D) et evals/redteam/injection_base/ (R5).
+  # Commande : make eval.
