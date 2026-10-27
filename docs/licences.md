@@ -168,6 +168,23 @@ utilise la source (`core/orchestrator/notices.py`, G9) : aucun modèle ne peut l
 | OWASP Top 10 for LLM Applications 2025 (LLM01 à LLM10), `genai.owasp.org` | CC BY-SA 4.0, « unless otherwise specified » : citation avec lien et mention ; une adaptation devrait garder la même licence | pages lues à la demande par `web_read` (`domain_packs/cyber/knowledge/sources.yaml`) ; aucun contenu adapté n'est stocké ; mention CC BY-SA sous la réponse |
 | Guides de l'ANSSI, de la CISA et du NIST CSRC | ANSSI : Licence Ouverte 2.0 d'Etalab (source secondaire, `A_VERIFIER` guide par guide) ; CISA et NIST : non vérifiées | non utilisés en P4 : ajoutés aux guides une fois leur licence vérifiée (backlog) ; la plupart sont des PDF, que `web_read` ne lit pas |
 
+## Sources du pack `juridique_fr` (phase 6, P5)
+Aucune nouvelle dépendance : `httpx` et Pydantic lisent l'API Légifrance ; `pylegifrance` (MIT)
+n'a servi qu'à lire la spécification et n'est pas ajouté (plan P5, §8). Conditions lues le
+2026-10-27 (`config/data_sources.yaml`, `domain_packs/juridique_fr/knowledge/sources.yaml`). Les
+mentions et l'avertissement « pas un conseil juridique » sont écrits par le code sous chaque
+réponse qui utilise la source (`core/orchestrator/notices.py`, H7) : aucun modèle ne peut les
+omettre.
+
+| Source | Licence ou conditions | Usage dans CERVEAU |
+|---|---|---|
+| API Légifrance de la DILA, par PISTE | Licence Ouverte 2.0 (etalab-2.0) : citer « Légifrance (DILA) » et la date de dernière mise à jour, sans laisser croire à un aval officiel ; seules les publications du Journal officiel font foi (non-opposabilité) ; CGU de l'API Légifrance V1.1 du 04/08/2020 : jeton OAuth à chaque requête, API en bêta, clés réinitialisées et DILA prévenue en cas de compromission. Version des CGU en vigueur sur PISTE, durée de vie du jeton et quotas `A_VERIFIER` (lisibles seulement dans PISTE) | `legifrance` (`legi_search`, `legi_article`, ADR-059) : lecture seule, 1 requête par seconde (H10), cache sous `var/juridique/` (H9) ; identifiants `PISTE_CLIENT_ID` et `PISTE_CLIENT_SECRET` lus dans l'environnement de Lucas, jamais journalisés (R6) ; environnement PISTE `A_DEFINIR` ; mention datée par article (version applicable, jour de lecture) |
+| `legifrance.gouv.fr` (pages) | Licence Ouverte 2.0 (etalab-2.0), même mention | pages lues à la demande par `web_read` (liste fermée, ADR-058) ; jamais stockées |
+| `service-public.gouv.fr`, dont `entreprendre.service-public.gouv.fr` | Licence Ouverte 2.0 (etalab-2.0) : « Service Public / DILA » et date de mise à jour de la fiche ; logos et marques exclus de la licence | fiches lues à la demande par `web_read` ; mention avec la date lue sur la fiche ; aucun logo repris |
+| `impots.gouv.fr` | Licence Ouverte 2.0 : source et date de publication ; pour le BOFiP, référence et date de la publication citée | pages lues à la demande ; les PDF ne sont pas lus (backlog) |
+| `cnil.fr` | CC BY-ND 4.0 FR : source, lien et date, sans modification du contenu | pages citées, jamais adaptées ni stockées |
+| `conseil-etat.fr` | Réutilisation libre sans altération, avec la source et la date | pages citées, jamais adaptées ni stockées ; la jurisprudence (Judilibre, décisions administratives) reste au backlog (H2) |
+
 ## Licences restrictives ou à surveiller
 - **Redis 7.4 (RSALv2 / SSPLv1, depuis le 2024-03-20)** : interdit surtout de revendre Redis comme
   service. Usage interne non modifié : sans effet. Alternative libre à évaluer : Valkey (backlog).
