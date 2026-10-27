@@ -1,26 +1,31 @@
-"""Réflexes de skills : le cerveau connaît les skills personnelles (~/.claude/skills/*/SKILL.md) et souffle la bonne
-au bon moment.
+"""Réflexes de skills : le cerveau connaît les skills personnelles (~/.claude/skills/*/SKILL.md) et celles des plugins
+actifs (installés par Claude Code : « plugin:skill »), et souffle la bonne au bon moment.
 
 Pourquoi : Claude Code tronque la liste des skills quand il y en a beaucoup (la plupart n'y figurent plus que par leur
 nom) → une skill perso risque de ne jamais se déclencher seule. Ici : index des déclencheurs (phrases « … » de la
 description, nom, mots distinctifs), reconnaissance tolérante aux fautes et à l'écriture phonétique, partie « Ne pas
-utiliser » respectée, au plus une ligne « 🧩 » par skill et par session.
+utiliser » respectée, au plus une ligne « 🧩 » par skill et par session. Une skill de plugin (souvent décrite en anglais,
+SKILL.md réécrit à chaque mise à jour) reçoit ses déclencheurs dans la config : `brain skill trig <nom> "…"`.
 Aussi : une méthode ou un prompt collé (long texte structuré) → en faire une skill, ou mettre à jour celle qui lui
 ressemble. Suivi soufflée / réellement chargée (outil Skill) dans state/skills.json → `brain skill ls`."""
 from __future__ import annotations
 
+import json
 import math
 import re
 from collections import Counter
 from pathlib import Path
 
-from .common import CLAUDE_HOME, STATE_DIR, FileLock, fold, now_iso, read_json, short, tokenize, write_json
+from .common import (CLAUDE_HOME, STATE_DIR, FileLock, fold, load_config, now_iso, read_json, short, tokenize,
+                     write_json)
 from .lexicon import phon, root, within_one
 
 SKILLS_DIR = CLAUDE_HOME / "skills"
+PLUGINS_FILE = CLAUDE_HOME / "plugins" / "installed_plugins.json"
+OWN_PLUGIN = "cerveau"  # ses skills (/cerveau:brain…) servent le cerveau lui-même : jamais soufflées
 CACHE_FILE = STATE_DIR / "skills_index.json"
 STATS_FILE = STATE_DIR / "skills.json"
-CACHE_V = 2
+CACHE_V = 3
 
 FM_RE = re.compile(r"\A﻿?---[ \t]*\r?\n(.*?)\r?\n---[ \t]*(?:\r?\n|\Z)", re.S)
 NEG_RE = re.compile(r"\b(?:ne (?:pas |jamais )(?:l')?utiliser|ne l'utilise[rz]? pas|do not use|don't use|not for|never use)\b",
@@ -127,18 +132,21 @@ def _entities(text) -> set:
     return out
 
 
-def parse(path) -> dict | None:
+def parse(path, plugin="") -> dict | None:
+    """SKILL.md → fiche de la skill ; `plugin` : nom du plugin qui la fournit (la skill s'appelle alors « plugin:nom »,
+    comme dans l'outil Skill)."""
     path = Path(path)
     try:
         text = path.read_text(encoding="utf-8", errors="replace")
     except OSError:
         return None
     meta, body = frontmatter(text)
-    name = (meta.get("name") or path.parent.name).strip()
+    base = (meta.get("name") or path.parent.name).strip()
+    name = f"{plugin}:{base}" if plugin else base
     desc = " ".join((meta.get("description") or "").split())
     pos, neg = split_desc(desc)
     triggers = quoted(pos)
-    name_toks = tokenize(name.replace("-", " ").replace("_", " ").replace(":", " "))
+    name_toks = tokenize(base.replace("-", " ").replace("_", " ").replace(":", " "))
     trig_toks = {t for p in triggers for t in tokenize(_norm(p))}
     ents = _entities(pos)
     kw = {}
@@ -154,8 +162,8 @@ def parse(path) -> dict | None:
           and (len(t) >= 3 or t in name_toks or t in trig_toks)}
     pos_set = set(kw) | set(tokenize(_norm(pos)))
     neg_only = sorted({t for t in tokenize(_norm(neg)) if len(t) >= 4 and t not in pos_set and t not in DESC_STOP})
-    return {"name": name, "path": str(path), "description": desc, "meta": {k: v for k, v in meta.items()
-                                                                            if k not in ("name", "description")},
+    return {"name": name, "plugin": plugin, "path": str(path), "description": desc,
+            "meta": {k: v for k, v in meta.items() if k not in ("name", "description")},
             "triggers": [{"text": p, "groups": g} for p in triggers for g in [phrase_groups(p)] if usable(g)],
             "vague": [p for p in triggers if not usable(phrase_groups(p))],
             "neg_triggers": [{"text": p, "groups": g} for p in quoted(neg) for g in [phrase_groups(p)] if usable(g)],
@@ -166,17 +174,69 @@ def parse(path) -> dict | None:
             "links": sorted(set(LINK_RE.findall(body)))}
 
 
-def _files(cwd=None) -> list:
-    roots = [SKILLS_DIR]
+def _enabled(cwd=None) -> dict:
+    """enabledPlugins de Claude Code : réglages de l'utilisateur, puis ceux du projet (le projet l'emporte)."""
+    out = {}
+    paths = [CLAUDE_HOME / "settings.json"]
+    if cwd:
+        paths += [Path(cwd) / ".claude" / "settings.json", Path(cwd) / ".claude" / "settings.local.json"]
+    for p in paths:
+        try:
+            data = json.loads(p.read_text(encoding="utf-8-sig") or "{}")
+        except (OSError, ValueError):
+            continue
+        ep = data.get("enabledPlugins") if isinstance(data, dict) else None
+        if isinstance(ep, dict):
+            out.update(ep)
+    return out
+
+
+def _inside(cwd, project) -> bool:
+    try:
+        here, proj = Path(cwd).resolve(), Path(project).resolve()
+    except (OSError, TypeError, ValueError):
+        return False
+    return here == proj or proj in here.parents
+
+
+def plugin_roots(cwd=None, want=True) -> list:
+    """[(plugin, dossier skills/)] des plugins installés par Claude Code (plugins/installed_plugins.json) et actifs ici :
+    pas à false dans enabledPlugins, portée « user » ou projet qui contient `cwd`. Jamais le cerveau lui-même ni les
+    plugins synchronisés depuis claude.ai (absents de ce registre). `want` : True = tous, liste = seulement ceux-là."""
+    if not want or want == "off":
+        return []
+    data = read_json(PLUGINS_FILE, {}) or {}
+    plugins = data.get("plugins") if isinstance(data, dict) else None
+    if not isinstance(plugins, dict):
+        return []
+    enabled, out = _enabled(cwd), []
+    for key, entries in sorted(plugins.items()):
+        name = str(key).partition("@")[0]
+        if name == OWN_PLUGIN or enabled.get(key) is False or (isinstance(want, list) and name not in want):
+            continue
+        entries = [entries] if isinstance(entries, dict) else entries if isinstance(entries, list) else []
+        for e in entries:
+            if not isinstance(e, dict) or not e.get("installPath"):
+                continue
+            if e.get("scope", "user") != "user" and not (cwd and e.get("projectPath") and _inside(cwd, e["projectPath"])):
+                continue
+            out.append((name, Path(e["installPath"]) / "skills"))
+            break
+    return out
+
+
+def _files(cwd=None, plugins=True) -> list:
+    roots = [("", SKILLS_DIR)]
     if cwd:
         local = Path(cwd) / ".claude" / "skills"
         try:
             if local.is_dir() and local.resolve() != SKILLS_DIR.resolve():
-                roots.append(local)
+                roots.append(("", local))
         except OSError:
             pass
+    roots += plugin_roots(cwd, plugins)
     out = []
-    for r in roots:
+    for plugin, r in roots:
         try:
             entries = sorted(r.iterdir())
         except OSError:
@@ -187,27 +247,50 @@ def _files(cwd=None) -> list:
                 s = f.stat()
             except OSError:
                 continue
-            out.append([str(f), s.st_mtime_ns, s.st_size])
+            out.append([str(f), s.st_mtime_ns, s.st_size, plugin])
     return out
 
 
-def index(cwd=None) -> list:
-    """Skills perso analysées, en cache tant qu'aucun SKILL.md n'a bougé (relu en ~1 ms sinon)."""
-    sig = _files(cwd)
+def with_triggers(skills, extra) -> list:
+    """Greffe les déclencheurs ajoutés dans la config (skills.triggers : {nom: [phrases]}) : le seul moyen d'en donner à
+    une skill de plugin, dont le SKILL.md est réécrit à chaque mise à jour (ou d'en ajouter sans toucher une skill)."""
+    if not isinstance(extra, dict) or not extra:
+        return skills
+    out = []
+    for s in skills:
+        add = [p.strip() for p in dict.fromkeys(extra.get(s["name"]) or []) if isinstance(p, str) and p.strip()]
+        if add:
+            have = {fold(p["text"]) for p in s["triggers"]}
+            s = {**s, "triggers": s["triggers"] + [{"text": p, "groups": g, "added": True} for p in add
+                                                   for g in [phrase_groups(p)] if usable(g) and fold(p) not in have],
+                 "vague": s.get("vague", []) + [p for p in add if not usable(phrase_groups(p))]}
+        out.append(s)
+    return out
+
+
+def index(cwd=None, kc=None) -> list:
+    """Skills perso et skills des plugins actifs, analysées ; en cache tant qu'aucun SKILL.md n'a bougé (relu en ~1 ms
+    sinon). `kc` : config « skills » (relue si absente) — `plugins` (True, liste de noms ou False) et `triggers`."""
+    kc = (load_config().get("skills") or {}) if kc is None else kc
+    sig = _files(cwd, kc.get("plugins", True))
     cache = read_json(CACHE_FILE, {}) or {}
     if cache.get("v") == CACHE_V and cache.get("sig") == sig:
-        return cache.get("skills", [])
-    skills = [s for s in (parse(f) for f, _, _ in sig) if s]
-    n = len(skills)
-    df = Counter(k[0] for s in skills for k in s["kw"])
-    for s in skills:  # poids = importance du mot × rareté parmi les skills (un mot présent partout ne départage rien)
-        for k in s["kw"]:
-            k[3] = round(k[3] * math.log((n + 1) / (df[k[0]] + 0.5)), 3) if n > 1 else float(k[3])
+        return with_triggers(cache.get("skills", []), kc.get("triggers"))
+    skills = [s for s in (parse(f, plugin) for f, _, _, plugin in sig) if s]
+    sources = {}
+    for s in skills:
+        sources.setdefault(s["plugin"], []).append(s)
+    for group in sources.values():  # rareté comptée par source (skills perso, chaque plugin) : un plugin ajouté ne
+        n = len(group)              # change pas le poids des mots des skills perso
+        df = Counter(k[0] for s in group for k in s["kw"])
+        for s in group:  # poids = importance du mot × rareté parmi les skills (un mot présent partout ne départage rien)
+            for k in s["kw"]:
+                k[3] = round(k[3] * math.log((n + 1) / (df[k[0]] + 0.5)), 3) if n > 1 else float(k[3])
     try:
         write_json(CACHE_FILE, {"v": CACHE_V, "sig": sig, "skills": skills})
     except OSError:
         pass
-    return skills
+    return with_triggers(skills, kc.get("triggers"))
 
 
 # ------------------------------------------------------------------------------------------ reconnaissance
@@ -295,7 +378,8 @@ def match(text, skills, exclude=(), min_score=4.0, long_chars=500) -> list:
         if any(phrase_hit(p["groups"], q) for p in s.get("neg_triggers", [])):
             continue
         why = None
-        if len(s["name"]) >= 5 and re.search(rf"(?<![\w-]){re.escape(fold(s['name']))}(?![\w-])", q.text):
+        cited = s["name"].partition(":")[2] if s.get("plugin") else s["name"]  # « brainstorming » suffit pour plugin:…
+        if len(cited) >= 5 and re.search(rf"(?<![\w-]){re.escape(fold(cited))}(?![\w-])", q.text):
             why = "nom cité"
         for p in s["triggers"]:
             if why:
@@ -426,13 +510,29 @@ def record_usage(st, tx) -> list:
 
 
 # ------------------------------------------------------------------------------------------ contrôle
-def check(skills=None) -> list:
-    """Problèmes qui empêchent une skill de se déclencher seule ou de bien marcher → [(niveau, skill, message)]."""
+def check(skills=None, exclude=()) -> list:
+    """Problèmes qui empêchent une skill de se déclencher seule ou de bien marcher → [(niveau, skill, message)]. Skill de
+    plugin : seulement ses déclencheurs (son SKILL.md n'est pas à nous) ; écartée du réflexe (`exclude`) : rien."""
     skills = index() if skills is None else skills
+    exclude = set(exclude)
     out = []
     for s in skills:
         name, path, desc = s["name"], Path(s["path"]), s["description"]
         folder = path.parent.name
+        if s.get("plugin"):
+            if name in exclude:
+                continue
+            if not s["triggers"]:
+                out.append(("ℹ️", name, f"skill du plugin {s['plugin']} sans déclencheur : le réflexe ne marche qu'aux "
+                                        f"mots de sa description — en ajouter : `brain skill trig {name} \"…\"`"))
+            for v in s.get("vague", []):
+                out.append(("ℹ️", name, f"déclencheur « {v} » trop vague (un seul mot court) : ignoré par le réflexe"))
+            for p in s["triggers"]:
+                got = match(p["text"], skills, exclude=exclude)
+                if not got or got[0]["name"] != name:
+                    out.append(("⚠️", name, f"le déclencheur « {p['text']} » mène à "
+                                            f"{got[0]['name'] if got else 'aucune skill'}"))
+            continue
         if not desc:
             out.append(("❌", name, "pas de description : Claude ne saura jamais quand la charger"))
             continue
@@ -459,12 +559,14 @@ def check(skills=None) -> list:
             if not (path.parent / link).exists():
                 out.append(("❌", name, f"lien cassé : {link}"))
         for p in s["triggers"]:  # chaque déclencheur doit mener à sa propre skill
-            got = match(p["text"], skills)
+            got = match(p["text"], skills, exclude=exclude)
             if not got or got[0]["name"] != name:
                 other = got[0]["name"] if got else "aucune skill"
                 out.append(("⚠️", name, f"le déclencheur « {p['text']} » mène à {other}"))
     seen = {}
     for s in skills:
+        if s["name"] in exclude:
+            continue
         for p in s["triggers"]:
             key = fold(p["text"])
             if key in seen and seen[key] != s["name"]:

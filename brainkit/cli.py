@@ -14,7 +14,8 @@ from . import index as idx
 from . import journal, search
 from .common import (BRAIN_DIR, CLAUDE_HOME, CMD, CONFIG_FILE, EXPORT_FILE, GRAPH_FILE, INDEX_FILE, JOURNAL_FILE,
                      LOG_FILE, PROJECTS_DIR, REPORT_FILE, VIZ2D_FILE, VIZ_FILE, budget_chars, days_since, est_tokens, fmt_date,
-                     fold, load_config, log, now_iso, set_config, setup_io, short, slugify, write_text)
+                     fold, load_config, log, now_iso, set_config, setup_io, short, slugify, update_config,
+                     write_text)
 from .store import GLOBAL_REFS, TYPES, Brain, bump_hits, clean_tags, normalize_type, priority
 
 
@@ -1270,20 +1271,46 @@ def cmd_skill(a):
     from . import skills
     cwd, kc = os.getcwd(), load_config().get("skills", {})
     act, args = (a.action or "ls"), list(a.args)
+    exclude = set(kc.get("exclude", []))
     if act in ("ls", "list"):
-        cat, stats = skills.index(cwd), skills.load_stats()
+        cat, stats = skills.index(cwd, kc), skills.load_stats()
         if not cat:
             print(f"Aucune skill perso dans {skills.SKILLS_DIR}.")
         for s in cat:
             n = stats.get(s["name"], {})
-            print(f"- {s['name']} — {len(s['triggers'])} déclencheur(s) · soufflée {n.get('hinted', 0)} fois · chargée "
-                  f"{n.get('used', 0)} fois (dont {n.get('used_after_hint', 0)} juste après)")
+            src = (f" (plugin {s['plugin']}" + (", écartée du réflexe)" if s["name"] in exclude else ")")
+                   if s.get("plugin") else "")
+            print(f"- {s['name']}{src} — {len(s['triggers'])} déclencheur(s) · soufflée {n.get('hinted', 0)} fois · "
+                  f"chargée {n.get('used', 0)} fois (dont {n.get('used_after_hint', 0)} juste après)")
             print(f"    {short(s['description'], 170)}")
+    elif act == "trig":
+        if not args:
+            die('usage : brain skill trig <nom> ["déclencheur" …] [--force : remplacer la liste ; seul, la vider]')
+        name, phrases = args[0], [p.strip() for p in args[1:] if p.strip()]
+        names = {s["name"] for s in skills.index(cwd, kc)}
+        if name not in names:
+            near = sorted(n for n in names if name in n)[:5]
+            die(f"skill inconnue : {name}" + (f" — voulais-tu : {', '.join(near)} ?" if near else " (liste : `brain skill ls`)"))
+        if phrases or a.force:
+            def change(cfg):
+                trig = cfg.setdefault("skills", {}).setdefault("triggers", {})
+                cur = [] if a.force else list(trig.get(name, []))
+                cur += [p for p in phrases if p not in cur]
+                if cur:
+                    trig[name] = cur
+                else:
+                    trig.pop(name, None)
+            update_config(change)
+            kc = load_config().get("skills", {})
+        got = (kc.get("triggers") or {}).get(name, [])
+        print(f"{name} : " + (" · ".join(f"« {p} »" for p in got) if got else "aucun déclencheur ajouté"))
+        for lvl, n, m in skills.check(skills.index(cwd, kc), exclude=exclude):
+            if n == name:
+                print(f"  {lvl} {m}")
     elif act == "test":
         msg = " ".join(args) or die('usage : brain skill test "message tel que tu le taperais"')
-        cat = skills.index(cwd)
-        found = skills.match(journal.clean_prompt(msg, 2000), cat, exclude=set(kc.get("exclude", [])),
-                             min_score=kc.get("min_score", 4.0))
+        cat = skills.index(cwd, kc)
+        found = skills.match(journal.clean_prompt(msg, 2000), cat, exclude=exclude, min_score=kc.get("min_score", 4.0))
         for r in found[:3]:
             print(skills.hint_line(r) + f"   [score {r['score']}]")
         pl = skills.paste_line(msg, {**kc, "paste": kc.get("paste") if kc.get("paste") != "off" else "propose"}, cat)
@@ -1292,7 +1319,7 @@ def cmd_skill(a):
         if not found and not pl:
             print("Aucune skill ne se déclencherait sur ce message.")
     elif act == "check":
-        probs = skills.check(skills.index(cwd))
+        probs = skills.check(skills.index(cwd, kc), exclude=exclude)
         for lvl, n, m in probs:
             print(f"{lvl} {n} : {m}")
         if not any(lvl != "ℹ️" for lvl, _, _ in probs):
@@ -1318,7 +1345,7 @@ def cmd_skill(a):
                              "skills du cerveau) ; tester : `brain skill test \"…\"`.", tags=["skill", name])
             print(f"✓ fiche dans le cerveau : `{node['id']}`")
     else:
-        die("usage : brain skill [ls | test \"message\" | check | new <nom> -d \"…\"]")
+        die("usage : brain skill [ls | test \"message\" | check | new <nom> -d \"…\" | trig <nom> \"déclencheur\" …]")
 
 
 def cmd_pc(a):
@@ -1925,14 +1952,15 @@ def build_parser():
     s.add_argument("--skills", action="store_true", help="chercher des skills plutôt que des prompts")
     s.add_argument("-n", type=int, default=8)
     s.add_argument("--hook", metavar="MESSAGE", help="simuler le rappel automatique sur ce message")
-    s = cmd("skill", cmd_skill, "skills perso : ls (+ stats), test \"message\" (laquelle se déclencherait), check, "
-            "new <nom> -d \"description\" [--body-file f]", ["skills"])
-    s.add_argument("action", nargs="?", choices=["ls", "list", "test", "check", "new"])
+    s = cmd("skill", cmd_skill, "skills perso et des plugins : ls (+ stats), test \"message\" (laquelle se "
+            "déclencherait), check, new <nom> -d \"description\" [--body-file f], trig <nom> \"déclencheur\" … "
+            "(en ajouter sans toucher la skill)", ["skills"])
+    s.add_argument("action", nargs="?", choices=["ls", "list", "test", "check", "new", "trig"])
     s.add_argument("args", nargs="*")
     s.add_argument("-d", "--description", default="")
     s.add_argument("-b", "--body", default="")
     s.add_argument("--body-file")
-    s.add_argument("--force", action="store_true", help="remplacer une skill existante")
+    s.add_argument("--force", action="store_true", help="remplacer une skill existante (trig : la liste)")
     s.add_argument("--no-memory", action="store_true", help="ne pas créer de fiche dans le cerveau")
     s = cmd("pc", cmd_pc, "RAM/CPU/GPU + ce qu'on peut libérer (sessions, serveurs MCP) — --clean, --history, --all", ["ram"])
     s.add_argument("--all", action="store_true", help="tout détailler, sans troncature")

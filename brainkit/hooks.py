@@ -906,7 +906,7 @@ def skill_reflex(raw, st, cfg, cwd=None) -> tuple:
         return [], []
     try:
         from . import skills
-        catalog = skills.index(cwd)
+        catalog = skills.index(cwd, kc)
         if not catalog:
             return [], []
         lines, names = [], []
