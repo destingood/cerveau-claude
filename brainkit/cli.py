@@ -1594,13 +1594,16 @@ def cmd_boutique(a):
                                    pages=pages, vitesse=a.vitesse or a.complet, rapport=a.rapport)
         elif act in ("bilan", "revue", "point"):
             lines = boutique.bilan(args[0] if args else None, semaines=a.semaines, md=a.md)
+        elif act in ("panel", "panels", "simulation", "simuler"):
+            lines = boutique.panel(args[0] if args else None, importer=a.importer, applique=a.applique,
+                                   variante=a.variante, le=a.le)
         elif act in ("regler", "reglage", "set"):
             if len(args) < 2:
                 die("brain boutique regler <boutique> cle=valeur … (url, plateforme, nom, chemin, type, marge, "
                     "seuil.sessions|ajout|paiement|panier_commande)")
             lines = boutique.regler(args[0], args[1:])
         else:
-            die(f"action inconnue : {a.action} (liste, ajouter, plan, kpi, audit, bilan, regler)")
+            die(f"action inconnue : {a.action} (liste, ajouter, plan, kpi, audit, bilan, panel, regler)")
     except (LookupError, ValueError, RuntimeError) as exc:
         die(str(exc))
     for line in lines:
@@ -1996,8 +1999,8 @@ def build_parser():
                    help="reposer la tâche si elle a disparu ou pointe vers un Python absent (jamais après --retirer)")
     s.add_argument("--dry-run", action="store_true", help="avec --installer : montrer la tâche sans la poser")
     s = cmd("boutique", cmd_boutique, "boutiques en ligne suivies (données privées) : liste · ajouter \"Nom\" · plan · "
-            "kpi (semaine) · audit · bilan · regler", ["boutiques", "shop"])
-    s.add_argument("action", nargs="?", help="liste (défaut), ajouter, plan, kpi, audit, bilan, regler")
+            "kpi (semaine) · audit · bilan · panel (clients simulés) · regler", ["boutiques", "shop"])
+    s.add_argument("action", nargs="?", help="liste (défaut), ajouter, plan, kpi, audit, bilan, panel, regler")
     s.add_argument("args", nargs="*", help="la boutique (slug ou nom) ; ajouter : son nom ; regler : cle=valeur …")
     s.add_argument("--url", help="ajouter : adresse de la boutique")
     s.add_argument("--plateforme", help="ajouter : shopify, woocommerce, prestashop, site statique, marketplace…")
@@ -2025,6 +2028,10 @@ def build_parser():
     s.add_argument("--vitesse", action="store_true", help="audit : Core Web Vitals (PageSpeed Insights, mobile)")
     s.add_argument("--complet", action="store_true", help="audit : conformité + 10 pages + vitesse")
     s.add_argument("--rapport", help="audit : écrire aussi le rapport dans ce fichier Markdown")
+    s.add_argument("--importer", help="panel : dossier d'un panel simulé (ou son synthese.json) à garder dans le suivi")
+    s.add_argument("--applique", help="panel : le panel (S1…) dont une variante vient d'être mise en ligne")
+    s.add_argument("--variante", help="panel : la variante mise en ligne (défaut : celle que le panel préférait)")
+    s.add_argument("--le", help="panel : date de la mise en ligne (défaut aujourd'hui ; 02/11, hier…)")
     s = cmd("commun", cmd_commun, "cerveau commun avec les amis (jamais rien de privé) : etat · apercu · rejoindre --oui · "
             "non · quitter · projet <id> · sync · liste", ["partage"])
     s.add_argument("action", nargs="?", help="etat (défaut), apercu, rejoindre, non, quitter, projet, sync, liste")

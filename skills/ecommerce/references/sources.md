@@ -53,6 +53,13 @@ adaptés au droit français. Les chiffres et règles volatils portent leur date 
 | Dolibarr/dolibarr | GPL-3.0 | Logique de réassort (min-max), option de gestion libre |
 | anthropics/skills et la spécification Agent Skills | — | Format SKILL.md, chargement progressif |
 
+**Simulation de clients (lus le 27/10/2026)**
+
+| Dépôt | Licence | Ce qui en est repris |
+|---|---|---|
+| 666ghj/MiroFish | AGPL-3.0 | La chaîne seulement (graine → personas → interactions sur un réseau simulé → injection d'une variable « vue de Dieu » → rapport) ; aucun code : ni serveur, ni clé d'API, ni Zep Cloud (module 17) |
+| camel-ai/oasis | Apache-2.0 | L'idée d'un fil recommandé (proximité, avis marqués) et de personas qui changent d'avis en lisant les autres |
+
 ## Recherche
 
 - Aggarwal et al., *GEO: Generative Engine Optimization*, KDD 2024 (arXiv:2311.09735).
@@ -60,6 +67,12 @@ adaptés au droit français. Les chiffres et règles volatils portent leur date 
   Wan et al. 2024 (arXiv:2402.11782).
 - Pew Research Center, comportement de clic face aux résumés IA (22/07/2025).
 - Monolith, ByteDance (arXiv:2209.07663).
+- Argyle et al., « Out of One, Many: Using Language Models to Simulate Human Samples », Political Analysis 31,
+  337-351 (21/02/2023, doi:10.1017/pan.2023.2).
+- Brand, Israeli et Ngwe, « Using GPT for Market Research », document de travail Harvard Business School 23-062
+  (version du 07/07/2023).
+- Bisbee et al., « Synthetic Replacements for Human Survey Data? The Perils of Large Language Models », Political
+  Analysis 32, 401-416 (17/05/2024, doi:10.1017/pan.2024.5).
 
 ## Documentation officielle et textes
 
@@ -114,6 +127,7 @@ accès Standard Pinterest pour un outil personnel, clause des conditions de l'AP
 | 2.0.0 | 18/10/2026 | Intégré au cerveau (mémoire de chaque boutique, livré à tous par le plugin, générique) ; nouveaux modules 00 (décollage), 13 (boutique à 0 €), 14 (navigateur), 15 (recherche produit), 16 (marketplaces) ; algorithmes prouvés par le code (X 2026, Monolith, Reddit) ; Aperçus IA et Mode IA en France, contrôle « IA générative », livraison et retours en Search Console ; commerce agentique (ACP, UCP, AP2 : États-Unis seulement) ; conformité 2026 (bouton de rétractation, allégations environnementales, avis harmonisé, influence art. 5-2, mention CIBS) ; valeurs 2026 de la micro-entreprise ; scripts Python (marge corrigée : cotisations nettes des remboursements, port facturé, ventes pour se payer ; audit SEO/GEO express) |
 | 2.1.0 | 18/10/2026 | Des outils qui produisent des résultats : suivi de chaque boutique dans le cerveau (`brain boutique` : plan daté de J0 à J90, relevé hebdomadaire avec test statistique, goulot, marge par heure par canal, audits en historique, bilan) ; `audit_site.py` étendu (conformité légale, pages du sitemap, Core Web Vitals via PageSpeed Insights, rapport Markdown) ; `audit_catalogue.py` (tout le catalogue, flux Merchant Center) ; `relire_texte.py` (allégations interdites, fausse urgence, partenariats) ; `unit_economics.py` (comparaison des canaux, prix testés) ; modèles de textes ; frais 2026 vérifiés (Stripe, Shopify, Etsy, Vinted Pro, Leboncoin, eBay, TikTok Shop, Amazon) ; références juridiques précisées (L121-4 10°, 13°, 21°, 27°, 28° ; L310-3 et L442-5 ; L223-1 ; art. 5-2 et 8 de la loi influence ; D221-5) |
 | 2.2.0 | 18/10/2026 | Autonomie : le cerveau agit puis rend compte sur les outils du marchand (journal avant → après, retour arrière), ne pose de questions que pour l'introuvable (hypothèses écrites), publie par API officielle branchée une fois, après un « oui » sur le lot de la semaine (`publier.py` : page Facebook programmable, Instagram professionnel, fichier d'import en masse Pinterest ; YouTube et Shopify par leurs connecteurs ; TikTok exclu : API fermée aux outils personnels) ; niveaux 🟢🤖🟠👤🔴 |
+| 2.3.0 | 27/10/2026 | Panel de clients simulés (module 17, `panel_clients.py`) : la méthode de MiroFish sans clé d'API — personas tirées par quotas, sous-agents de Claude en parallèle, tour « réseau » et événement, synthèse (intention par variante et segment, test du signe, objections, questions, prix acceptés) ; `brain boutique panel` garde chaque panel et dit, à partir des relevés de la semaine, s'il avait vu juste |
 
 ## Protocole de mise à jour
 

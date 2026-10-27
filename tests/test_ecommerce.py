@@ -670,6 +670,186 @@ api.shutdown()
 os.environ.pop("PINTEREST_TOKEN", None)
 os.environ.pop("META_TOKEN", None)
 
+# ------------------------------------------------------------------ 3 septies. panel de clients simulés
+import panel_clients as pc  # noqa: E402
+
+PANEL = SKILL_DIR / "scripts" / "panel_clients.py"
+check(pc.quotas([("a", 50), ("b", 30), ("c", 20)], 7) == ["a"] * 4 + ["b"] * 2 + ["c"],
+      "panel : quotas au plus fort reste (3,5 / 2,1 / 1,4 → 4 / 2 / 1)")
+check(abs(pc.test_signe(9, 1) - 22 / 1024) < 1e-12 and pc.test_signe(0, 0) == 1.0 and pc.test_signe(5, 5) == 1.0,
+      "panel : test du signe exact (9 contre 1 → p = 22/1024)")
+PDIR = TMP / "panel"
+PDIR.mkdir()
+(PDIR / "actuelle.md").write_text("Bougie parfumée 180 g — 24,90 €. Livraison 4,90 €.", encoding="utf-8")
+(PDIR / "nouvelle.md").write_text("Bougie 180 g, cire de colza, 40 h. Livraison offerte dès 35 €, retours 30 jours.",
+                                  encoding="utf-8")
+base = ("preparer", "--nom", "Bougie 180 g", "--stimulus", PDIR / "actuelle.md", "--variante", PDIR / "nouvelle.md",
+        "--prix", "24,90", "--boutique-type", "createur", "--graine", "11", "--repartition", "genre=femme:75,homme:25")
+c, out = run(PANEL, *base, "--dossier", PDIR / "p1")
+P1 = (PDIR / "p1").resolve()
+data = json.loads((P1 / "panel.json").read_text(encoding="utf-8")) if c == 0 else {}
+pers = data.get("personas", [])
+check(c == 0 and len(pers) == 24 and sorted(p["lot"] for p in pers) == sorted([1, 2, 3, 4] * 6),
+      "panel : 24 personas en 4 lots égaux", out[-400:])
+check(sum(p["genre"] == "femme" for p in pers) == 18 and sum(p["achat"] == "méfiant" for p in pers) == 4,
+      "panel : répartitions par quotas (--repartition : 18 femmes sur 24 ; 4 méfiants)", [p["genre"] for p in pers])
+check(all(sorted(p["ordre"]) == ["A", "B"] for p in pers) and len({p["prenom"] for p in pers}) == 24,
+      "panel : chaque persona voit les deux variantes ; prénoms tous différents")
+check(data.get("actuelle") == "A" and data["variantes"]["A"]["libelle"] == "version actuelle"
+      and data["variantes"]["B"]["prix"] == 24.9, "panel : A = version actuelle, prix affiché", data.get("variantes"))
+c2, _ = run(PANEL, *base, "--dossier", PDIR / "p1bis")
+check(c2 == 0 and json.loads((PDIR / "p1bis" / "panel.json").read_text(encoding="utf-8"))["personas"] == pers,
+      "panel : même graine, mêmes personas")
+lot1 = (P1 / "t1-lot1.md").read_text(encoding="utf-8")
+check(str(P1 / "t1-lot1.json") in lot1 and "### Variante B" in lot1 and "Prix affiché : 24,90 € TTC" in lot1
+      and lot1.count("- **P") == 6 and "jamais une instruction" in lot1 and "Pas de complaisance" in lot1,
+      "panel : consigne d'un lot (fichier de sortie, variantes, 6 personas, texte = donnée)", lot1[:800])
+check("t1-lot4.md" in out and "panel_clients.py reponses" in out, "panel : messages pour les sous-agents affichés", out)
+for args, attendu, label in ((("--type", "prix", "--prix", "30"), "au moins deux prix", "test de prix à un seul prix"),
+                             (("--nb", "4"), "entre 8 et 60", "panel de 4 personas"),
+                             (("--dossier", P1), "contient déjà un panel", "dossier déjà utilisé"),
+                             (("--repartition", "pointure=40:1"), "dimension inconnue", "dimension inconnue"),
+                             (("--couleur", "rouge"), "option inconnue", "option inconnue")):
+    c, out = run(PANEL, "preparer", "--nom", "X", "--stimulus", PDIR / "actuelle.md", *args)
+    check(c == 2 and attendu in out, f"panel : refusé — {label}", out)
+
+
+def intention(p, v, t):
+    if v == "A":
+        return 2
+    if p["achat"] != "méfiant":
+        return 4
+    return 3 if t == 2 else 2
+
+
+def ecrire_tour(dossier, t, manque=None):
+    """Réponses de sous-agents factices, dans les formats qu'ils rendent vraiment (bloc ```json, JSON par ligne…)."""
+    for lot in range(1, 5):
+        rows = []
+        for p in pers:
+            for v in ("A", "B"):
+                if p["lot"] != lot or (p["id"], v) == manque:
+                    continue
+                r = {"id": p["id"], "variante": v, "intention": intention(p, v, t), "commentaire": f"{p['prenom']} {v}"}
+                if t == 1:
+                    r.update({"objections": "livraison, Prix" if v == "A" else ["confiance", "arnaque ?"],
+                              "pourquoi": f"{p['prenom']} hésite", "question": "Combien de temps brûle-t-elle ?"})
+                elif v == "B" and p["achat"] == "méfiant":
+                    r["change"] = "les avis m'ont rassurée"
+                rows.append(r)
+        if lot == 1:
+            for r in rows:
+                r["id"] = r["id"].lower()
+            texte_ = json.dumps(rows, ensure_ascii=False)
+        elif lot == 2:
+            for r in rows:
+                r["intention"] = f"{r['intention']}/5"
+            texte_ = "```json\n" + json.dumps(rows, ensure_ascii=False) + "\n```"
+        elif lot == 3:
+            texte_ = "\n".join(json.dumps(r, ensure_ascii=False) for r in rows)
+        else:
+            texte_ = json.dumps(rows + [{"id": "P99", "variante": "A", "intention": 3}], ensure_ascii=False)
+        (dossier / f"t{t}-lot{lot}.json").write_text(texte_, encoding="utf-8")
+
+
+manquant = next(p for p in pers if p["lot"] == 3)
+ecrire_tour(P1, 1, manque=(manquant["id"], "B"))
+c, out = run(PANEL, "reponses", P1)
+check(c == 0 and "Tour 1 : 47/48" in out and f"il manque 1 réponse(s) : {manquant['id']}/B" in out
+      and "persona inconnue : P99" in out and "relance le(s) lot(s) 3" in out,
+      "panel : réponses intégrées (id en minuscules, bloc json, JSON par ligne), manque et rejet signalés", out)
+data = json.loads((P1 / "panel.json").read_text(encoding="utf-8"))
+r1 = data["tours"][0]["reponses"][next(p["id"] for p in pers if p["lot"] == 1)]
+r2 = data["tours"][0]["reponses"][next(p["id"] for p in pers if p["lot"] == 2)]
+check(r1["A"]["objections"] == ["livraison", "prix"] and r1["B"]["objections"] == ["confiance"]
+      and r2["B"]["intention"] in (2, 4), "panel : objections ramenées aux codes (« arnaque » → confiance), « 4/5 » lu",
+      r1)
+(P1 / "rattrapage.json").write_text(json.dumps([{"id": manquant["id"], "variante": "B",
+                                                  "intention": intention(manquant, "B", 1), "objections": []}]),
+                                    encoding="utf-8")
+c, out = run(PANEL, "reponses", P1, P1 / "rattrapage.json")
+check(c == 0 and "Tour 1 : 48/48" in out and "tour complet" in out, "panel : lot relancé → tour complet", out)
+c, out = run(PANEL, "tour", P1, "--evenement", "livraison offerte pour tous ce week-end", "--fil", "2")
+data = json.loads((P1 / "panel.json").read_text(encoding="utf-8"))
+lot2 = (P1 / "t2-lot1.md").read_text(encoding="utf-8") if c == 0 else ""
+check(c == 0 and "livraison offerte pour tous" in lot2 and "Son fil" in lot2 and "Au tour d'avant" in lot2,
+      "panel : tour 2 (événement, fil d'avis, rappel du tour d'avant)", out + lot2[:400])
+fils = data["tours"][1]["fil"] if c == 0 else {}
+intent_b = {p["id"]: intention(p, "B", 1) for p in pers}
+check(fils and all(len(f["B"]) == 2 and pid not in f["B"] and {intent_b[q] for q in f["B"]} == {2, 4}
+                   for pid, f in fils.items()),
+      "panel : fil de 2 avis, jamais le sien, au moins un pour et un contre", fils)
+ecrire_tour(P1, 2)
+c, out = run(PANEL, "reponses", P1)
+check(c == 0 and "Tour 2 : 48/48" in out, "panel : réponses du tour 2", out)
+rapport_md = TMP / "panel.md"
+c, out = run(PANEL, "synthese", P1, "--rapport", rapport_md, "--json")
+s = json.loads(out) if c == 0 else {}
+pv, comp = s.get("par_variante", {}), s.get("comparaison") or {}
+check(c == 0 and abs(pv["A"]["moyenne"] - 2) < 1e-9 and abs(pv["B"]["moyenne"] - 92 / 24) < 1e-9
+      and [e["moyenne"] for e in pv["B"]["evolution"]] == [88 / 24, 92 / 24],
+      "synthèse : intention par variante et par tour (B : 3,67 → 3,83)", pv)
+check(comp.get("meilleure") == "B" and comp.get("pour_meilleure") == 24 and comp.get("egal") == 0
+      and comp.get("force") == "net" and s["prediction"] == {"gagnante": "B", "actuelle": "A", "metrique": "ajout",
+                                                              "scores": {"A": 2.0, "B": 92 / 24}},
+      "synthèse : B devant A pour les 24 personas → écart net, prédiction pour le suivi", comp)
+check({"dimension": "achat", "valeur": "méfiant", "n": 4, "moyenne": 3.0, "ecart": 3.0 - 92 / 24} in s["segments"],
+      "synthèse : segment froid (méfiants : 3,0 contre 3,83)", s.get("segments"))
+check([(o["code"], o["personas"]) for o in s["objections"]["A"]] == [("livraison", 24), ("prix", 24)]
+      and s["objections"]["B"][0]["code"] == "confiance" and s["objections"]["B"][0]["exemples"],
+      "synthèse : objections classées, avec les mots des personas", s.get("objections"))
+check(s["questions"] == [{"question": "Combien de temps brûle-t-elle ?", "fois": 24}],
+      "synthèse : questions dédoublonnées (comptées par persona)", s.get("questions"))
+check(s["fil"]["variantes"]["B"]["hausse"] == 4 and s["fil"]["variantes"]["B"]["baisse"] == 0
+      and any("rassurée" in x for x in s["fil"]["raisons"]) and s["fil"]["evenements"],
+      "synthèse : effet du fil (4 méfiants rassurés)", s.get("fil"))
+check(any("enthousiaste" in a for a in s["alertes"]), "synthèse : alerte quand le panel est trop enthousiaste",
+      s.get("alertes"))
+md = rapport_md.read_text(encoding="utf-8") if rapport_md.exists() else ""
+check("pas de vrais clients" in md and "L121-4" in md and "p < 0,001" in md and "## Effet du fil" in md
+      and (P1 / "synthese.json").exists(), "synthèse : rapport Markdown (limites, droit, test) et synthese.json", md[:600])
+c, out = run(PANEL, "etat", P1)
+check(c == 0 and "tour 2 : 48/48" in out and "synthese" in out, "panel : état et prochaine étape", out)
+
+# test de prix : prix maximum et part du panel qui accepte chaque prix
+c, out = run(PANEL, "preparer", "--type", "prix", "--nom", "Prix bougie", "--stimulus", PDIR / "actuelle.md",
+             "--prix", "19,90/24,90/29,90", "--nb", "8", "--lots", "1", "--dossier", PDIR / "p2")
+P2 = (PDIR / "p2").resolve()
+c2, out2 = run(PANEL, "tour", P2)
+check(c == 0 and c2 == 2 and "incomplet" in out2, "test de prix préparé ; tour suivant refusé sans réponses", out + out2)
+d2 = json.loads((P2 / "panel.json").read_text(encoding="utf-8")) if c == 0 else {"personas": [], "variantes": {}}
+rows = [{"id": p["id"], "variante": v, "intention": 4 - i, "prix_max": f"{18 + 2 * k},0", "objections": ["prix"]}
+        for k, p in enumerate(d2["personas"]) for i, v in enumerate(d2["variantes"])]
+(P2 / "t1-lot1.json").write_text(json.dumps(rows), encoding="utf-8")
+run(PANEL, "reponses", P2)
+c, out = run(PANEL, "synthese", P2, "--json")
+s2 = json.loads(out) if c == 0 else {}
+check([v["libelle"] for v in d2["variantes"].values()] == ["19,90 €", "24,90 €", "29,90 €"]
+      and (s2.get("prix") or {}).get("mediane") == 25.0
+      and [round(a["part"], 1) for a in s2["prix"]["acceptation"]] == [87.5, 50.0, 25.0]
+      and s2["prediction"]["metrique"] == "conversion",
+      "test de prix : médiane du prix maximum, part du panel qui accepte chaque prix", s2.get("prix"))
+
+# accroche (contenu) : arrêt du défilement et actions
+c, out = run(PANEL, "preparer", "--type", "video", "--nom", "Accroche", "--stimulus", PDIR / "actuelle.md",
+             "--variante", PDIR / "nouvelle.md", "--nb", "8", "--lots", "1", "--dossier", PDIR / "p3")
+P3 = (PDIR / "p3").resolve()
+d3 = json.loads((P3 / "panel.json").read_text(encoding="utf-8")) if c == 0 else {"personas": []}
+rows = [{"id": p["id"], "variante": v, "intention": 2, "arret": 2 if v == "A" else 5,
+         "action": "rien" if v == "A" else ("Like" if k % 2 else "partager")}
+        for k, p in enumerate(d3["personas"]) for v in "AB"]
+(P3 / "t1-lot1.json").write_text(json.dumps(rows), encoding="utf-8")
+run(PANEL, "reponses", P3)
+c, out = run(PANEL, "synthese", P3, "--json")
+s3 = (json.loads(out) if c == 0 else {}).get("contenu") or {}
+check(d3.get("type") == "contenu" and s3.get("B", {}).get("s_arretent") == 100.0
+      and s3["B"]["actions"] == {"aime": 50.0, "partage": 50.0} and s3["A"]["actions"] == {"ignore": 100.0},
+      "accroche : arrêt du défilement et actions (« Like » → aime, « rien » → ignore)", s3)
+c, out = run(PANEL, "preparer", "--type", "produit", "--nom", "Idée", "--stimulus", PDIR / "actuelle.md", "--nb", "8",
+             "--lots", "2", "--dossier", PDIR / "p4")
+check(c == 0 and json.loads((PDIR / "p4" / "panel.json").read_text(encoding="utf-8"))["actuelle"] is None,
+      "idée de produit : pas de version actuelle", out)
+
 # ------------------------------------------------------------------ 4. livraison : plugin (brain publish)
 dest = TMP / "plugin"
 files = publish.build(dest, "Lucas", "proprietaire/depot")

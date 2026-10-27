@@ -6,7 +6,9 @@
 - `kpi` : les chiffres d'une semaine complète → taux, panier moyen, marge par heure (par canal), goulot probable, et un
   test statistique qui dit si une variation est réelle ou du bruit.
 - `audit` : l'audit SEO/GEO express du skill, gardé en historique (ce qui a été corrigé, ce qui est apparu).
-- `bilan` : la revue de la semaine (tendance, plan tenu ou en retard, audits, trois priorités).
+- `panel` : les panels de clients simulés du skill (scripts/panel_clients.py), gardés en historique ; une fois la
+  variante choisie en ligne, les relevés de la semaine disent si le panel avait vu juste (fiabilité du panel).
+- `bilan` : la revue de la semaine (tendance, plan tenu ou en retard, audits, panels, trois priorités).
 
 Les données restent chez l'utilisateur : BRAIN_DIR/boutiques/<slug>.json, jamais envoyé au cerveau commun, compris dans
 les sauvegardes ; les souvenirs créés (fiche, à-faire) sont marqués privés. Aucun réseau, sauf pour `audit`."""
@@ -526,16 +528,21 @@ def report(shop, e) -> list:
 
 
 # ------------------------------------------------------------------------------------------------ audit
-def _audit_module():
+def _script(name, quoi):
+    """Outil du skill e-commerce (scripts/<name>.py), chargé comme module."""
     from .install import skill_sources
     src = skill_sources().get("ecommerce")
-    path = src / "scripts" / "audit_site.py" if src else None
+    path = src / "scripts" / f"{name}.py" if src else None
     if not path or not path.is_file():
-        raise RuntimeError("outil d'audit introuvable (skill e-commerce absent : `brain install` le pose)")
-    spec = importlib.util.spec_from_file_location("cerveau_audit_site", path)
+        raise RuntimeError(f"{quoi} introuvable (skill e-commerce absent : `brain install` le pose)")
+    spec = importlib.util.spec_from_file_location(f"cerveau_{name}", path)
     mod = importlib.util.module_from_spec(spec)
     spec.loader.exec_module(mod)
     return mod
+
+
+def _audit_module():
+    return _script("audit_site", "outil d'audit")
 
 
 def _portee(point: str) -> str:
@@ -589,6 +596,198 @@ def audit(ref_or_url, timeout=20.0, legal=False, pages=0, vitesse=False, rapport
                         else " (sur les points vérifiés les deux fois)"))
         lines += [f"  ✓ corrigé : {s}" for s in fixed] + [f"  ✗ nouveau : {s}" for s in appeared]
     lines.append(f"(audit gardé dans le suivi de {shop['nom']} : `brain boutique bilan {shop['slug']}`)")
+    return lines
+
+
+# ------------------------------------------------------------------------------------------------ panels simulés
+def _lire_synthese(chemin):
+    """Dossier d'un panel (synthèse recalculée), son panel.json ou son synthese.json → (synthèse, dossier)."""
+    p = Path(chemin).expanduser()
+    if p.is_dir() or p.name == "panel.json":
+        mod = _script("panel_clients", "outil du panel de clients simulés")
+        dossier, data = mod.charger(p)
+        return mod.synthese(data), dossier
+    s = read_json(p, None)
+    if not isinstance(s, dict) or s.get("outil") != "panel_clients" or "par_variante" not in s:
+        raise ValueError(f"{p} : ni dossier de panel, ni synthese.json (skill e-commerce, scripts/panel_clients.py)")
+    return s, p.parent
+
+
+def _panel_record(s, source) -> dict:
+    pred, comp, ref = s.get("prediction") or {}, s.get("comparaison") or {}, s.get("reference")
+    return {"empreinte": s.get("empreinte"), "date": s.get("cree") or now_iso()[:10], "importe": now_iso()[:10],
+            "nom": s.get("nom"), "type": s.get("type"), "personas": s.get("personas"), "tours": s.get("tours"),
+            "variantes": {v: {"libelle": x.get("libelle"), "prix": x.get("prix"), "moyenne": x.get("moyenne"),
+                              "interesses": x.get("interesses")} for v, x in (s.get("par_variante") or {}).items()},
+            "actuelle": s.get("actuelle"), "gagnante": pred.get("gagnante"), "force": comp.get("force"),
+            "ecart": comp.get("ecart"), "metrique": pred.get("metrique"),
+            "objections": [[o["code"], round(o["part"])] for o in (s.get("objections") or {}).get(ref, [])[:3]],
+            "questions": [q["question"] for q in (s.get("questions") or [])[:5]], "source": str(source)}
+
+
+def _panel_ligne(rec) -> str:
+    vs = rec.get("variantes") or {}
+    res = "aucune réponse"
+    tri = sorted((v for v in vs if vs[v].get("moyenne") is not None), key=lambda v: -vs[v]["moyenne"])
+    g = rec.get("gagnante")
+    if len(tri) > 1 and g:
+        autre = next(v for v in tri if v != g)
+        res = (f"{g} devant {autre} ({_fr(vs[g]['moyenne'], 1)} contre {_fr(vs[autre]['moyenne'], 1)} sur 5, écart "
+               f"{rec.get('force') or '?'})")
+    elif len(tri) > 1:
+        res = "pas d'écart net entre " + ", ".join(tri)
+    elif tri:
+        res = f"intention {_fr(vs[tri[0]]['moyenne'], 1)} sur 5"
+    if rec.get("objections"):
+        res += " · objections : " + ", ".join(f"{c} {p} %" for c, p in rec["objections"])
+    return f"{rec.get('type')} « {rec.get('nom')} » : {res}"
+
+
+def verdict_panel(shop, rec) -> tuple:
+    """La variante mise en ligne a-t-elle fait ce que le panel prévoyait ? Semaines relevées entières avant et après la
+    mise en ligne (4 au plus de chaque côté), test de deux proportions. → (code, texte) ; code : juste, faux, bruit,
+    attente, na."""
+    v, le, act, met = rec.get("applique"), rec.get("applique_le"), rec.get("actuelle"), rec.get("metrique")
+    if not v:
+        return "na", "pas encore en ligne"
+    if not act:
+        return "na", "pas de version de départ : rien à comparer automatiquement"
+    if v == act:
+        return "na", "version actuelle gardée : rien à comparer"
+    if not met:
+        return "na", "pas de mesure automatique pour ce type de test : compare à la main"
+    d = _dt.date.fromisoformat(le)
+    champ = "ajouts" if met == "ajout" else "commandes"
+    kpis = [k for k in shop.get("kpi") or [] if k.get(champ) is not None and k.get("sessions")]
+    avant = [k for k in kpis if _dt.date.fromisoformat(k["semaine"]) + _dt.timedelta(days=7) <= d][-4:]
+    apres = [k for k in kpis if _dt.date.fromisoformat(k["semaine"]) >= d][:4]
+    if not avant:
+        return "attente", f"aucune semaine relevée avant le {_day(le)} : pas de base de comparaison"
+    if not apres:
+        return "attente", f"attend une semaine complète relevée après le {_day(le)} (`brain boutique kpi`)"
+    x0, n0 = sum(k[champ] for k in avant), sum(k["sessions"] for k in avant)
+    x1, n1 = sum(k[champ] for k in apres), sum(k["sessions"] for k in apres)
+    nom = "ajouts au panier" if met == "ajout" else "conversion"
+    base = f"{nom} {_pct(x0 / n0 * 100, 2)} → {_pct(x1 / n1 * 100, 2)}"
+    vs = rec.get("variantes") or {}
+    pred = (vs.get(v, {}).get("moyenne") or 0) - (vs.get(act, {}).get("moyenne") or 0)
+    vu = (f"le panel voyait {v} {'devant' if pred > 0 else 'derrière'} {act} "
+          f"({'+' if pred > 0 else ''}{_fr(pred, 1)})" if abs(pred) >= 0.25
+          else f"le panel ne voyait pas d'écart entre {v} et {act}")
+    p, why = ztest(x1, n1, x0, n0)
+    if p is None:
+        return "attente", f"{base} : {why}"
+    if p >= 0.05:
+        return "bruit", f"≈ {base} : pas encore de variation réelle ({_p(p)}), ni confirmé ni contredit ; {vu}"
+    reel = 1 if x1 / n1 > x0 / n0 else -1
+    predit = 0 if abs(pred) < 0.25 else (1 if pred > 0 else -1)
+    if predit == reel:
+        return "juste", f"✓ vu juste : {base} (variation réelle, {_p(p)}) ; {vu}"
+    return "faux", f"✗ contredit : {base} (variation réelle, {_p(p)}) ; {vu}"
+
+
+def fiabilite(shop):
+    """« fiabilité du panel : 2 vus justes sur 3 vérifiés » ; None tant qu'aucun panel n'est vérifié."""
+    codes = [verdict_panel(shop, p)[0] for p in shop.get("panels") or []]
+    j, n = codes.count("juste"), codes.count("juste") + codes.count("faux")
+    if not n:
+        return None
+    return (f"fiabilité du panel : {j} vu{'s' if j > 1 else ''} juste{'s' if j > 1 else ''} sur {n} vérifié"
+            f"{'s' if n > 1 else ''}" + (" (indice seulement : il faut plusieurs tests)" if n < 5 else ""))
+
+
+def panel(ref, importer=None, applique=None, variante=None, le=None, today=None) -> list:
+    """Panels de clients simulés d'une boutique : importer une synthèse, noter la variante mise en ligne, ou lister
+    (avec le verdict des vrais chiffres). → lignes."""
+    today = today or _dt.date.today()
+    if importer:
+        s, source = _lire_synthese(importer)
+        with lock():
+            shop = find(ref)
+            return _panel_importer(shop, s, source)
+    if applique:
+        with lock():
+            shop = find(ref)
+            return _panel_appliquer(shop, applique, variante, le, today)
+    return panels(find(ref))
+
+
+def _panel_importer(shop, s, source) -> list:
+    from . import observations
+    liste_ = shop.get("panels") or []
+    rec = _panel_record(s, source)
+    old = next((p for p in liste_ if rec["empreinte"] and p.get("empreinte") == rec["empreinte"]), None)
+    if old:  # le même panel, relu après un tour de plus : même id, mise en ligne gardée
+        rec.update({"id": old["id"], "applique": old.get("applique"), "applique_le": old.get("applique_le")})
+        liste_[liste_.index(old)] = rec
+    else:
+        n = max((int(p["id"][1:]) for p in liste_ if str(p.get("id", ""))[1:].isdigit()), default=0) + 1
+        rec["id"] = f"S{n}"
+        liste_.append(rec)
+    shop["panels"] = liste_[-30:]
+    save(shop)
+    lines = [f"✓ panel {rec['id']} {'mis à jour' if old else 'gardé'} dans le suivi de {shop['nom']} (privé) : "
+             f"{_panel_ligne(rec)}"]
+    if rec["questions"]:
+        lines.append("  questions à traiter sur la page : " + " · ".join(rec["questions"][:3]))
+    g, act = rec["gagnante"], rec["actuelle"]
+    if g and act and g != act and rec["metrique"]:
+        lines.append(f"→ quand {g} est en ligne (une seule modification à la fois) : `brain boutique panel "
+                     f"{shop['slug']} --applique {rec['id']} --variante {g} [--le <date>]`, puis chaque lundi "
+                     "`brain boutique kpi` : le bilan dira si le panel avait vu juste")
+    elif not rec["metrique"]:
+        lines.append("· pas de vérification automatique pour ce type de test (idée de produit, contenu) : compare à "
+                     "la main avec les vrais résultats, puis `brain add -t learning …`")
+    elif g and g == act:
+        lines.append("· le panel préfère la version actuelle : garde-la, et travaille ses objections")
+    else:
+        lines.append("· pas d'écart net entre les variantes : travaille plutôt les objections de la version actuelle")
+    try:
+        observations.add([f"🟡 {shop['nom']} : panel simulé {rec['id']} ({_panel_ligne(rec)}) — hypothèse, pas de "
+                          "vrais clients"])
+    except Exception:  # l'observation n'est qu'un plus : le panel est déjà gardé
+        pass
+    return lines
+
+
+def _panel_appliquer(shop, applique, variante, le, today) -> list:
+    from . import dates
+    key = str(applique).strip().upper()
+    key = f"S{key}" if key.isdigit() else key
+    rec = next((p for p in shop.get("panels") or [] if p.get("id") == key), None)
+    if not rec:
+        ids = ", ".join(p["id"] for p in shop.get("panels") or []) or "aucun"
+        raise LookupError(f"panel inconnu : {applique} (panels de {shop['nom']} : {ids})")
+    v = str(variante or rec.get("gagnante") or "").strip().upper()
+    if v not in (rec.get("variantes") or {}):
+        noms = ", ".join(rec.get("variantes") or {})
+        raise ValueError(f"--variante : une des variantes du panel {rec['id']} ({noms})")
+    iso = dates.parse(le, today) if le else today.isoformat()
+    if not iso:
+        raise ValueError(f"date illisible : « {le} » (ex. 02/11, hier, 2026-11-02)")
+    rec["applique"], rec["applique_le"] = v, iso
+    save(shop)
+    return [f"✓ {rec['id']} : variante {v} en ligne depuis le {_day(iso)} → {verdict_panel(shop, rec)[1]}"]
+
+
+def panels(shop) -> list:
+    liste_ = shop.get("panels") or []
+    if not liste_:
+        return [f"Aucun panel simulé pour {shop['nom']} : `python scripts/panel_clients.py preparer …` (skill "
+                f"e-commerce, module 17), puis `brain boutique panel {shop['slug']} --importer <dossier>`"]
+    lines = [f"🧪 Panels simulés de {shop['nom']} ({len(liste_)}) — des personas jouées par Claude, pas de vrais "
+             "clients"]
+    for p in liste_[-10:]:
+        lines.append(f"- {p['id']} · {_day(p['date'])} · {_panel_ligne(p)}")
+        if p.get("applique"):
+            lines.append(f"    {p['applique']} en ligne depuis le {_day(p['applique_le'])} → "
+                         f"{verdict_panel(shop, p)[1]}")
+        elif p.get("gagnante") and p.get("actuelle") and p["gagnante"] != p["actuelle"] and p.get("metrique"):
+            lines.append(f"    pas encore en ligne : `brain boutique panel {shop['slug']} --applique {p['id']} "
+                         f"--variante {p['gagnante']} [--le <date>]`")
+    f = fiabilite(shop)
+    if f:
+        lines.append(f[0].upper() + f[1:])
     return lines
 
 
@@ -657,6 +856,17 @@ def bilan(ref, semaines=4, md=None, today=None) -> list:
         out += [f"- {p}" for p in a.get("points", [])[:6]]
     else:
         out.append(f"Aucun audit : `brain boutique audit {shop['slug']}`.")
+    sims = shop.get("panels") or []
+    if sims:
+        out += ["", "## Panels simulés"]
+        for p in sims[-3:]:
+            out.append(f"- {p['id']} ({_day(p['date'])}) {_panel_ligne(p)}")
+            if p.get("applique"):
+                out.append(f"  - {p['applique']} en ligne depuis le {_day(p['applique_le'])} : "
+                           f"{verdict_panel(shop, p)[1]}")
+        f = fiabilite(shop)
+        if f:
+            out.append(f[0].upper() + f[1:] + ".")
     prio = []
     if weeks:
         niveau, text = diagnostic(weeks[-1], shop)[0]
@@ -700,6 +910,8 @@ def liste(today=None) -> list:
         if s.get("audits"):
             a = s["audits"][-1]
             bits.append(f"audit du {_day(a['date'])} : ✗ {a.get('x', 0)} ⚠ {a.get('warn', 0)}")
+        if s.get("panels"):
+            bits.append(f"{len(s['panels'])} panel(s) simulé(s)")
         lines.append(f"- {s['nom']} `{s['slug']}` · " + " · ".join(bits))
     return lines
 
