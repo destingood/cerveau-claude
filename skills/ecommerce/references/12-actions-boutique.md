@@ -22,6 +22,8 @@ bloque l'action et la fait passer en 🟠) ; gate de conformité du module 10 av
 objets, appliquer d'abord 5, relire le résultat, puis le reste ; jamais de suppression ; une action dont le résultat
 est inconnu est relue avant toute nouvelle tentative (section 3).
 
+Tâche planifiée ou agent sans humain (cron, webhook, routine) : même protocole, sans exception. Comme personne ne relit la page, une modification de thème s'arrête à la copie non publiée (`shopify theme push --unpublished`, `shopify theme check` sans erreur) et passe en 🟠 avec le lien d'aperçu ; un texte public passe en 🤖 seulement s'il fait partie du lot approuvé. Coût : un passage par jour ne profite d'aucun cache de prompt (durée maximale 1 h) ; le préchauffage du cache est inutile en tâche de fond ; préférer l'API Batch (−50 %) pour les traitements non urgents [FAIT — documentation de l'API Claude, lue le 28/10/2026]. Automatiser ne crée pas de ventes : vérifier d'abord le goulot (module 01).
+
 En mode agence, l'autonomie s'applique seulement dans le périmètre que le client a autorisé par écrit ; hors de ce
 périmètre, tout passe en 🟠, validé par le client.
 
