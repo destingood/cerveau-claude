@@ -1,0 +1,48 @@
+# Manifeste du plugin finance_research (Annexe C.1, ADR-015, ADR-027). Un outil de CALCUL en
+# lecture seule sur le registre des stratégies, la base de recherche et config/ ; rien n'y est écrit.
+# Chaque backtest demandé ici est un essai que `cerveau strategy protocol` rejoue depuis le journal
+# d'audit et compte dans N.
+id: finance_research
+version: 0.1.0
+domain: finance
+kind: tool
+transport: mcp-stdio
+# Recherche quantitative d'Aladdin (plan F5) : moteur de backtest maison seul (le recoupement avec
+# NautilusTrader et vectorbt reste dans le protocole), fenêtre bornée, taux sans risque nul et
+# décision à l'heure de coupure exécutée à la clôture suivante.
+parity_label: "[Approximation]"
+environments: [dev]
+max_autonomy_level: N1
+tools:
+  - name: strategy_lab
+    description: >-
+      Laboratoire d'une stratégie du registre, connu à as_of. Mode signaux : poids et indicateurs
+      d'un point de la grille à la dernière décision connue. Mode backtest : backtest d'un point
+      de la grille sur une fenêtre bornée, frais inclus ; c'est un essai que le prochain protocole
+      compte. Mode protocole : dernier verdict enregistré. Aucun mode ne rend de verdict ; chaque
+      nombre porte sa valeur, son affichage et un identifiant.
+    action_class: CALCUL
+    annotations:
+      readOnlyHint: true
+      idempotentHint: true
+      destructiveHint: false
+      openWorldHint: false
+    input_schema: schemas/strategy_lab.in.json
+    output_schema: schemas/strategy_lab.out.json
+tests: tests/
+evals:
+  questions: evals/questions.xml
+  golden: evals/golden.jsonl
+slo:
+  # Provisoire, à confirmer par Lucas après les premières mesures.
+  success_rate_min: 0.9
+  p95_latency_ms: A_DEFINIR
+# mcp, pydantic, PyYAML (MIT), numpy, pandas, scipy, httpx (BSD-3-Clause),
+# exchange-calendars (Apache-2.0) : docs/licences.md.
+dependencies_licences: [MIT, BSD-3-Clause, Apache-2.0]
+# Démarrage (ADR-015, B26) : seul CERVEAU_HOME est transmis, pour trouver le registre, la base et
+# config/ ; aucun outil payant.
+runtime:
+  module: plugins.finance_research
+  env: [CERVEAU_HOME]
+  priced_tools: {}

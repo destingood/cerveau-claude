@@ -1,0 +1,71 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "type": "object",
+  "properties": {
+    "instruments": {
+      "description": "Identifiants CERVEAU des instruments (1 à 10)",
+      "items": {
+        "pattern": "^[A-Z0-9][A-Z0-9._-]{0,31}$",
+        "type": "string"
+      },
+      "maxItems": 10,
+      "minItems": 1,
+      "title": "Instruments",
+      "type": "array"
+    },
+    "kind": {
+      "default": "cours",
+      "description": "cours, referentiel ou fondamentaux",
+      "enum": [
+        "cours",
+        "referentiel",
+        "fondamentaux"
+      ],
+      "title": "Kind",
+      "type": "string"
+    },
+    "as_of": {
+      "anyOf": [
+        {
+          "format": "date-time",
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "description": "Moment « connu à », ISO 8601 avec fuseau ; défaut : maintenant",
+      "title": "As Of"
+    },
+    "sessions": {
+      "default": 20,
+      "description": "Nombre de séances de cours (1 à 260)",
+      "maximum": 260,
+      "minimum": 1,
+      "title": "Sessions",
+      "type": "integer"
+    },
+    "adjust": {
+      "default": "none",
+      "description": "Ajustement des cours : none, split ou total_return",
+      "enum": [
+        "none",
+        "split",
+        "total_return"
+      ],
+      "title": "Adjust",
+      "type": "string"
+    },
+    "strict": {
+      "default": false,
+      "description": "Strict : seules les données enregistrées avant as_of comptent (rejeu d'une décision passée)",
+      "title": "Strict",
+      "type": "boolean"
+    }
+  },
+  "required": [
+    "instruments"
+  ],
+  "title": "market_dataArguments"
+}

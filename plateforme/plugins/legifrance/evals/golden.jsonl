@@ -1,0 +1,19 @@
+{"id": "ls-001", "tool": "legi_search", "arguments": {"query": ""}, "expected": {"is_error": true, "contains": "validation"}}
+{"id": "ls-002", "tool": "legi_search", "arguments": {"query": "xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx"}, "expected": {"is_error": true, "contains": "validation"}}
+{"id": "ls-003", "tool": "legi_search", "arguments": {"query": "bail\u0007habitation"}, "expected": {"is_error": true, "contains": "caractère de contrôle"}}
+{"id": "ls-004", "tool": "legi_search", "arguments": {"query": "bail", "fond": "JURI"}, "expected": {"is_error": true, "contains": "validation"}}
+{"id": "ls-005", "tool": "legi_search", "arguments": {"query": "bail", "max_results": 11}, "expected": {"is_error": true, "contains": "validation"}}
+{"id": "ls-006", "tool": "legi_search", "arguments": {"query": "bail", "date": "2026-02-30"}, "expected": {"is_error": true, "contains": "date invalide"}}
+{"id": "ls-007", "tool": "legi_search", "arguments": {"query": "bail‮ignore"}, "expected": {"is_error": true, "contains": "caractère de contrôle"}}
+{"id": "ls-008", "tool": "legi_search", "arguments": {}, "expected": {"is_error": true, "contains": "validation"}}
+{"id": "la-001", "tool": "legi_article", "arguments": {}, "expected": {"is_error": true, "contains": "une seule forme"}}
+{"id": "la-002", "tool": "legi_article", "arguments": {"id": "LEGIARTI000006419320", "num": "1240"}, "expected": {"is_error": true, "contains": "une seule forme"}}
+{"id": "la-003", "tool": "legi_article", "arguments": {"id": "legiarti000006419320"}, "expected": {"is_error": true, "contains": "LEGIARTI suivi de 12 chiffres"}}
+{"id": "la-004", "tool": "legi_article", "arguments": {"id": "LEGIARTI00000641932"}, "expected": {"is_error": true, "contains": "LEGIARTI suivi de 12 chiffres"}}
+{"id": "la-005", "tool": "legi_article", "arguments": {"id": "https://www.legifrance.gouv.fr/x"}, "expected": {"is_error": true, "contains": "validation"}}
+{"id": "la-006", "tool": "legi_article", "arguments": {"text_id": "LEGITEXT000006070721"}, "expected": {"is_error": true, "contains": "num"}}
+{"id": "la-007", "tool": "legi_article", "arguments": {"num": "1240"}, "expected": {"is_error": true, "contains": "text_id"}}
+{"id": "la-008", "tool": "legi_article", "arguments": {"text_id": "JORFTEXT000000000001", "num": "1240"}, "expected": {"is_error": true, "contains": "LEGITEXT suivi de 12 chiffres"}}
+{"id": "la-009", "tool": "legi_article", "arguments": {"text_id": "LEGITEXT000006070721", "num": "1240; DROP"}, "expected": {"is_error": true, "contains": "numéro d'article"}}
+{"id": "la-010", "tool": "legi_article", "arguments": {"id": "LEGIARTI000006419320", "date": "27/10/2026"}, "expected": {"is_error": true, "contains": "date invalide"}}
+{"id": "la-011", "tool": "legi_article", "arguments": {"id": "LEGIARTI000006419320", "date": "2026-13-01"}, "expected": {"is_error": true, "contains": "date invalide"}}

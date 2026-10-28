@@ -1,0 +1,28 @@
+{"id": "ci-001", "arguments": {"repo": "exemple"}, "expected": {"is_error": false, "contains": "\"total_count\": 57"}}
+{"id": "ci-002", "arguments": {"repo": "exemple"}, "expected": {"is_error": false, "contains": "\"by_conclusion\": {\"en_cours\": 1, \"failure\": 1, \"success\": 1}"}}
+{"id": "ci-003", "arguments": {"repo": "exemple"}, "expected": {"is_error": false, "contains": "\"url\": \"https://github.com/lucas-exemple/projet/actions/runs/103\"", "absent": ["api.github.com", "head_commit", "actor"]}}
+{"id": "ci-004", "arguments": {"repo": "exemple"}, "expected": {"is_error": false, "contains": "\"rate\": {\"limit\": 60, \"remaining\": 57, \"reset_at\": \"2026-10-22T10:00:00Z\"}"}}
+{"id": "ci-005", "arguments": {"repo": "exemple", "max_runs": 1}, "expected": {"is_error": false, "contains": "\"runs\": [{\"id\": 103", "absent": ["\"id\": 102", "\"id\": 101"]}}
+{"id": "ci-006", "arguments": {"repo": "exemple", "branch": "essai"}, "expected": {"is_error": false, "contains": "\"branch\": \"essai\""}}
+{"id": "ci-007", "scenario": "vide", "arguments": {"repo": "exemple"}, "expected": {"is_error": false, "contains": "\"runs\": [], \"by_conclusion\": {}"}}
+{"id": "ci-008", "scenario": "injection", "arguments": {"repo": "exemple"}, "expected": {"is_error": false, "contains": "\"workflow\": \"C⟨U+202E⟩i\""}}
+{"id": "ci-009", "scenario": "injection", "arguments": {"repo": "exemple"}, "expected": {"is_error": false, "contains": "\"branch\": \"ma⟨U+200B⟩in\""}}
+{"id": "ci-010", "scenario": "secret", "arguments": {"repo": "exemple"}, "expected": {"is_error": false, "contains": "\"title\": \"Ajoute le jeton [MASQUÉ]\"", "absent": ["ghp_"]}}
+{"id": "ci-011", "scenario": "non_standard", "arguments": {"repo": "exemple"}, "expected": {"is_error": false, "contains": "\"status\": \"non standard\", \"conclusion\": \"non standard\"", "absent": ["<b>", "Terminé"]}}
+{"id": "ci-012", "scenario": "limite", "arguments": {"repo": "exemple"}, "expected": {"is_error": true, "contains": "limite de 60 requêtes par heure de GitHub atteinte (HTTP 403) : aucune requête avant 2026-10-22T10:00:00Z"}}
+{"id": "ci-013", "scenario": "secondaire", "arguments": {"repo": "exemple"}, "expected": {"is_error": true, "contains": "requête refusée par GitHub (HTTP 429) : aucune requête pendant 30 s"}}
+{"id": "ci-014", "scenario": "introuvable", "arguments": {"repo": "exemple"}, "expected": {"is_error": true, "contains": "« lucas-exemple/projet » introuvable, privé ou sans Actions (aucun jeton, E6)"}}
+{"id": "ci-015", "scenario": "redirection", "arguments": {"repo": "exemple"}, "expected": {"is_error": true, "contains": "redirection refusée", "absent": ["example.org"]}}
+{"id": "ci-016", "scenario": "panne", "arguments": {"repo": "exemple"}, "expected": {"is_error": true, "contains": "service indisponible (HTTP 503)"}}
+{"id": "ci-017", "scenario": "page_html", "arguments": {"repo": "exemple"}, "expected": {"is_error": true, "contains": "réponse qui n'est pas du JSON"}}
+{"id": "ci-018", "scenario": "json_invalide", "arguments": {"repo": "exemple"}, "expected": {"is_error": true, "contains": "réponse illisible (JSON invalide)"}}
+{"id": "ci-019", "scenario": "sha_invalide", "arguments": {"repo": "exemple"}, "expected": {"is_error": true, "contains": "run illisible (champ « head_sha »)"}}
+{"id": "ci-020", "scenario": "date_invalide", "arguments": {"repo": "exemple"}, "expected": {"is_error": true, "contains": "run illisible (champ « created_at »)"}}
+{"id": "ci-021", "scenario": "coupure", "arguments": {"repo": "exemple"}, "expected": {"is_error": true, "contains": "GitHub : connexion impossible", "absent": ["refused"]}}
+{"id": "ci-022", "allowlist": "vide", "arguments": {"repo": "exemple"}, "expected": {"is_error": true, "contains": "la liste blanche des dépôts est vide (E2)"}}
+{"id": "ci-023", "arguments": {"repo": "inconnu"}, "expected": {"is_error": true, "contains": "« inconnu » non autorisé : liste blanche = exemple"}}
+{"id": "ci-024", "allowlist": "cerveau", "arguments": {"repo": "cerveau"}, "expected": {"is_error": true, "contains": "recouvre le dépôt CERVEAU (ADR-047)"}}
+{"id": "ci-025", "allowlist": "sans_github", "arguments": {"repo": "exemple"}, "expected": {"is_error": true, "contains": "aucun dépôt GitHub associé (champ github de config/code.yaml)"}}
+{"id": "ci-026", "arguments": {"repo": "exemple", "branch": "--all"}, "expected": {"is_error": true, "contains": "validation"}}
+{"id": "ci-027", "arguments": {"repo": "exemple", "max_runs": 100}, "expected": {"is_error": true, "contains": "validation"}}
+{"id": "ci-028", "arguments": {"repo": "lucas-exemple/projet"}, "expected": {"is_error": true, "contains": "validation"}}

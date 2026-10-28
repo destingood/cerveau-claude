@@ -1,0 +1,67 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "type": "object",
+  "properties": {
+    "id": {
+      "anyOf": [
+        {
+          "maxLength": 20,
+          "minLength": 1,
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "description": "Identifiant de version, par exemple LEGIARTI000006419320",
+      "title": "Id"
+    },
+    "text_id": {
+      "anyOf": [
+        {
+          "maxLength": 20,
+          "minLength": 1,
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "description": "Texte, par exemple LEGITEXT000006070721 (Code civil)",
+      "title": "Text Id"
+    },
+    "num": {
+      "anyOf": [
+        {
+          "maxLength": 30,
+          "minLength": 1,
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "description": "Numéro, par exemple 1240",
+      "title": "Num"
+    },
+    "date": {
+      "anyOf": [
+        {
+          "maxLength": 10,
+          "minLength": 10,
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "description": "Date de référence AAAA-MM-JJ, aujourd'hui par défaut",
+      "title": "Date"
+    }
+  },
+  "title": "legi_articleArguments"
+}

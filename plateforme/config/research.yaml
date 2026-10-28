@@ -1,0 +1,45 @@
+# Protocole de recherche sur les stratégies (ADR-024, ADR-026, ADR-027 ; décisions D6 à D12 du plan
+# de phase 3). Les portes D9 sont fixées avant la première mesure. Le chargeur refuse toute valeur
+# qui assouplit une porte, l'embargo ou une tolérance de recoupement (R9) : seule une ADR déplace
+# ces planchers.
+
+execution:
+  # Heure UTC de la décision à la date t : seules les données publiées avant elle sont lues à t.
+  # 21:00 UTC tombe après la clôture d'Euronext (17:30, heure de Paris) et avant minuit à Paris,
+  # été comme hiver. Le décalage d'exécution (clôture de t+1) est fixé par le code, pas ici.
+  decision_cutoff_utc: "21:00"
+
+split:
+  # D7 : 70 % pour le développement, un embargo, puis l'échantillon final, lu une fois par version.
+  development_fraction: 0.7
+  embargo_sessions: 5
+
+walk_forward:
+  # D8 : fenêtres ancrées ; 5 blocs égaux donnent 4 plis (apprendre sur 1..k, tester sur k+1).
+  scheme: anchored
+  blocks: 5
+
+pbo:
+  # CSCV (Bailey et al.) : S blocs, nombre pair.
+  partitions: 16
+
+gates:
+  # D9 : 1) DSR ≥ dsr_min ; 2) PBO < pbo_max ; 3) Sharpe final ≥ ratio × Sharpe du walk-forward
+  # (lui-même > 0) ; 4) Sharpe final > référence, sur au moins benchmark_min_sessions séances ;
+  # 5) Sharpe final > 0 à frais multipliés par cost_stress_multiplier ; 6) perte maximale sur
+  # chaque crise ≤ celle de la référence.
+  dsr_min: 0.95
+  pbo_max: 0.5
+  final_to_walk_forward_sharpe_min: 0.5
+  benchmark_min_sessions: 252
+  cost_stress_multiplier: 2
+
+cross_check:
+  # D12 : écart relatif maximal entre le moteur maison et chaque moteur tiers.
+  nautilus_rel_tolerance: 1.0e-6
+  vectorbt_rel_tolerance: 1.0e-9
+
+copilot:
+  # Fenêtre maximale d'un backtest demandé par le Copilot (ADR-027) : une borne de temps de
+  # calcul, pas une limite de risque.
+  max_window_sessions: 2520

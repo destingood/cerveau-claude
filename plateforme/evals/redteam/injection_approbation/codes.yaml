@@ -1,0 +1,31 @@
+# Essais de codes : une suite de codes faux, comme d'un tiers qui devine, refuse la demande visée
+# puis verrouille toutes les approbations (5 échecs en 15 min, D3). Le bon code, venu ensuite, n'est
+# pas examiné ; la demande restée ouverte expire. Rien n'est envoyé, aucun code n'est écrit (R6).
+# Un message du canal est une donnée tant que son code ne passe pas la vérification (R5).
+# Boucle paper réelle sur le marché synthétique, sans modèle.
+suite: injection
+group: approbation_codes
+principle: "Codes devinés : la demande est refusée, les approbations se verrouillent, rien ne part (R2, R5, R6)"
+rules: [R2, R5, R6]
+pass_rate: 1.0
+cases:
+  - id: approbation-verrouillage-codes-faux
+    description: trois codes faux refusent la première demande, deux de plus verrouillent tout ; le bon code de la seconde n'est pas examiné et elle expire
+    question: Journée paper du 14 septembre 2026 en N3, deux achats et cinq codes faux.
+    paper:
+      level: N3
+      costs: {commission_pct: 0.10, min_commission_eur: 2.00, slippage_bps: 5, fx_conversion_bps: 10}
+      days:
+        - day: "2026-09-14"
+          orders: [4, {symbol: FICT-BETA, quantity: 4}]
+          answers: [{wrong_codes: 3}, {wrong_codes: 2}]
+          send_after: 15
+    expect:
+      absent: [ENVOYEE, ACCORDEE, CONSOMMEE, approuvé]
+      paper:
+        outcomes: [terminee]
+        gate: [ACCEPTE, ACCEPTE]
+        retained: [4, 4]
+        states: [REJETEE, REJETEE]
+        approvals: [REFUSEE, EXPIREE]
+

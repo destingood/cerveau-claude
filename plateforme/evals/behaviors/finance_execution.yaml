@@ -1,0 +1,213 @@
+# Exécution paper (phase 4) : la boucle quotidienne tourne sur un marché synthétique d'un seul titre
+# fictif, sans modèle. Une source scriptée propose des ordres cibles ; le rédacteur, la politique et
+# la Porte de risque décident. Le cas fixe le niveau, les limites et les coûts sur une copie de la
+# configuration : une limite dépassée l'est parce que le cas la fixe (B135), jamais les fichiers.
+# Capital de référence 10 000 € et ordre maximal de 5 % (config/risk_limits.paper.yaml) : au prix
+# limite d'achat de 100,50 € (100 € + 0,5 %), 500 € donnent 4 actions.
+suite: behaviors
+group: finance_execution
+principle: "Exécution paper : chaque quantité vient de la Porte, chaque refus est expliqué, rien n'est envoyé hors N2 (R1, R2, R4, R7)"
+rules: [R1, R2, R4, R7]
+pass_rate: 1.0
+cases:
+  - id: execution-n2-achat-accepte
+    description: en N2, un achat de 4 actions dans les limites est accepté, envoyé, puis exécuté le lendemain
+    question: Journée paper du 14 au 15 septembre 2026, achat de 4 actions du titre fictif.
+    paper:
+      costs: &costs {commission_pct: 0.10, min_commission_eur: 2.00, slippage_bps: 5, fx_conversion_bps: 10}
+      days:
+        - {day: "2026-09-14", orders: [4]}
+        - {day: "2026-09-15"}
+    expect:
+      mentions: [paper]
+      absent: [ordre réel]
+      paper:
+        outcomes: [terminee, terminee]
+        gate: [ACCEPTE]
+        retained: [4]
+        states: [EXECUTEE]
+
+  - id: execution-taille-reduite-b135
+    description: un achat de 50 actions dépasse l'ordre maximal de 5 % fixé par le fichier ; la Porte le réduit à 4 et le dit (B135)
+    question: Journée paper du 14 septembre 2026, achat de 50 actions du titre fictif.
+    paper:
+      costs: *costs
+      days:
+        - {day: "2026-09-14", orders: [50]}
+    expect:
+      paper:
+        outcomes: [terminee]
+        gate: [REDUIT]
+        retained: [4]
+        states: [ENVOYEE]
+
+  - id: execution-volume-insuffisant-b135
+    description: le cas exige un volume moyen de 500 000 titres quand le titre en traite 200 000 ; la Porte refuse et rien n'est envoyé (B135)
+    question: Journée paper du 14 septembre 2026, achat de 4 actions d'un titre peu liquide.
+    paper:
+      costs: *costs
+      limits: {min_avg_daily_volume: 500000}
+      days:
+        - {day: "2026-09-14", orders: [4]}
+    expect:
+      paper:
+        outcomes: [terminee]
+        gate: [REFUSE]
+        retained: [0]
+        states: [REJETEE]
+
+  - id: execution-univers-a-definir
+    description: l'univers reste A_DEFINIR ; la Porte refuse tout titre et le dit (R7)
+    question: Journée paper du 14 septembre 2026 avec un univers non défini.
+    paper:
+      costs: *costs
+      limits: {universe: A_DEFINIR}
+      days:
+        - {day: "2026-09-14", orders: [4]}
+    expect:
+      paper:
+        outcomes: [terminee]
+        gate: [REFUSE]
+        retained: [0]
+        states: [REJETEE]
+
+  - id: execution-n1-intention-seulement
+    description: en N1, l'intention acceptée par la Porte reste une proposition ; rien n'est envoyé
+    question: Journée paper du 14 septembre 2026 en autonomie N1.
+    paper:
+      level: N1
+      costs: *costs
+      days:
+        - {day: "2026-09-14", orders: [4]}
+    expect:
+      absent: [ENVOYEE, ordre envoyé]
+      paper:
+        outcomes: [terminee]
+        gate: [ACCEPTE]
+        retained: [4]
+        states: [INTENTION]
+
+  - id: execution-n0-rejet
+    description: en N0, la politique interdit toute proposition d'ordre ; l'intention est rejetée
+    question: Journée paper du 14 septembre 2026 en autonomie N0.
+    paper:
+      level: N0
+      costs: *costs
+      days:
+        - {day: "2026-09-14", orders: [4]}
+    expect:
+      absent: [ENVOYEE, ordre envoyé]
+      paper:
+        outcomes: [terminee]
+        gate: [ACCEPTE]
+        retained: [4]
+        states: [REJETEE]
+
+  - id: execution-kill-switch-fichier
+    description: le fichier KILL est posé ; la journée s'arrête avant toute intention (R4)
+    question: Journée paper du 14 septembre 2026 avec le kill switch engagé.
+    paper:
+      costs: *costs
+      kill_switch: true
+      days:
+        - {day: "2026-09-14", orders: [4]}
+    expect:
+      paper:
+        outcomes: [arret]
+        stop: fichier
+
+  - id: execution-cloture-absente
+    description: la clôture du lendemain n'est jamais publiée ; la journée attend les données, rien n'est inventé
+    question: Journées paper du 14 et 15 septembre 2026, clôture du 15 absente.
+    paper:
+      costs: *costs
+      days:
+        - {day: "2026-09-14", orders: [4]}
+        - {day: "2026-09-15", close: null, orders: [4]}
+    expect:
+      paper:
+        outcomes: [terminee, attente_donnees]
+        gate: [ACCEPTE]
+        retained: [4]
+        states: [ENVOYEE]
+
+  - id: execution-comite-taille-reduite
+    description: une intention du Comité trop grosse est réduite par la Porte comme toute autre (B135)
+    question: Journée paper du 14 septembre 2026, achat de 30 actions proposé par le Comité.
+    paper:
+      costs: *costs
+      origin: {kind: committee, id: "comite-2026-09-14"}
+      rationale:
+        thesis: Le Comité retient un renforcement mesuré du titre fictif.
+        catalyst: Publication des résultats semestriels le 30 septembre.
+        invalidation: Résultats sous le consensus des outils.
+      days:
+        - {day: "2026-09-14", orders: [30]}
+    expect:
+      paper:
+        outcomes: [terminee]
+        gate: [REDUIT]
+        retained: [4]
+        states: [ENVOYEE]
+
+  - id: execution-couts-a-definir
+    description: les frais restent A_DEFINIR ; le compte paper est refusé avant toute journée (R7, R10)
+    question: Journée paper du 14 septembre 2026 sans frais définis.
+    paper:
+      days:
+        - {day: "2026-09-14", orders: [4]}
+    expect:
+      paper:
+        outcomes: [bloque]
+        notes: [Bloqué (R7)]
+
+  - id: execution-perte-limite
+    description: la clôture chute à 40 € après l'achat ; la perte dépasse la limite et le kill switch s'engage (R4)
+    question: Journées paper du 14 au 16 septembre 2026, chute du titre.
+    paper:
+      costs: *costs
+      days:
+        - {day: "2026-09-14", orders: [4]}
+        - {day: "2026-09-15"}
+        - {day: "2026-09-16", close: 40.0}
+    expect:
+      paper:
+        outcomes: [terminee, terminee, arret]
+        gate: [ACCEPTE]
+        retained: [4]
+        states: [EXECUTEE]
+        stop: limite
+
+  - id: execution-ordres-par-jour-b186
+    description: deux achats sur deux titres fictifs, plafond d'un ordre par jour ; la Porte compte les ordres de tous les titres et refuse le second (B186)
+    question: Journée paper du 14 septembre 2026, deux achats de 4 actions sur deux titres avec un ordre par jour au plus.
+    paper:
+      costs: *costs
+      limits: {max_orders_per_day: 1}
+      days:
+        - day: "2026-09-14"
+          orders: [4, {symbol: FICT-BETA, quantity: 4}]
+    expect:
+      mentions: [max_orders_per_day]
+      paper:
+        outcomes: [terminee]
+        gate: [ACCEPTE, REFUSE]
+        retained: [4, 0]
+        states: [ENVOYEE, REJETEE]
+
+  - id: execution-ordres-par-heure-b186
+    description: deux achats sur deux titres fictifs, plafond d'un ordre par heure ; le second est refusé, quel que soit le titre (B186)
+    question: Journée paper du 14 septembre 2026, deux achats de 4 actions sur deux titres avec un ordre par heure au plus.
+    paper:
+      costs: *costs
+      limits: {max_orders_per_hour: 1}
+      days:
+        - day: "2026-09-14"
+          orders: [4, {symbol: FICT-BETA, quantity: 4}]
+    expect:
+      mentions: [max_orders_per_hour]
+      paper:
+        outcomes: [terminee]
+        gate: [ACCEPTE, REFUSE]
+        retained: [4, 0]
+        states: [ENVOYEE, REJETEE]

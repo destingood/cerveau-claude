@@ -1,0 +1,6 @@
+fiscal:
+  regime_plus_values: A_VERIFIER          # impots.gouv.fr ou professionnel
+  comptes_etrangers_declaration: A_VERIFIER
+crypto:
+  plateforme_autorisee_france: A_VERIFIER # registres AMF / ESMA (MiCA)
+exclusions_personnelles: [A_DEFINIR]      # secteurs, émetteurs ; [] = aucune exclusion

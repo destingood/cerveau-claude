@@ -1,0 +1,48 @@
+# Manifeste du plugin cyber_attack (Annexe C.1, ADR-056). Un outil de LECTURE sur l'index local
+# d'une copie figée d'ATT&CK Enterprise ; aucun accès réseau, aucun outil d'action. Le
+# téléchargement est la commande `cerveau cyber attack-fetch` que Lucas lance (G5). Tout texte
+# renvoyé est une donnée externe non fiable (R5).
+id: cyber_attack
+version: 0.1.0
+domain: cyber
+kind: tool
+transport: mcp-stdio
+# Champs d'ATT&CK recopiés tels quels, mais sélection, troncature et recherche propres au plugin.
+parity_label: "[Approximation]"
+environments: [dev]
+max_autonomy_level: N1
+tools:
+  - name: attack_lookup
+    description: >-
+      Cherche dans la copie figée d'ATT&CK Enterprise (MITRE) : un identifiant (tactique TA,
+      technique T, sous-technique, mesure M, stratégie de détection DET, groupe G, logiciel S,
+      campagne C) ou des mots-clés anglais. Rend le nom, le statut, la description tronquée,
+      les tactiques, mesures d'atténuation, stratégies de détection et techniques liées, la
+      version et le commit de la copie, et la mention de MITRE. Aucun accès réseau.
+    action_class: LECTURE
+    annotations:
+      readOnlyHint: true
+      idempotentHint: true
+      destructiveHint: false
+      openWorldHint: false
+    input_schema: schemas/attack_lookup.in.json
+    output_schema: schemas/attack_lookup.out.json
+tests: tests/
+evals:
+  questions: evals/questions.xml
+  golden: evals/golden.jsonl
+slo:
+  # Provisoire, à confirmer par Lucas après les premières mesures.
+  success_rate_min: 0.9
+  p95_latency_ms: A_DEFINIR
+# mcp (MIT), Pydantic (MIT) : docs/licences.md. Les données ATT&CK relèvent de la licence de
+# MITRE (mention reproduite dans chaque résultat), listée dans docs/licences.md.
+dependencies_licences: [MIT]
+# Démarrage (ADR-015). CERVEAU_HOME désigne le projet servi (configuration, index sous
+# var/cyber/attack/). Aucun outil payant, aucune variable secrète. La première lecture valide
+# l'index entier (quelques Mo) ; les suivantes le reprennent en mémoire.
+runtime:
+  module: plugins.cyber_attack
+  env: [CERVEAU_HOME]
+  priced_tools: {}
+  tool_timeout_s: 30

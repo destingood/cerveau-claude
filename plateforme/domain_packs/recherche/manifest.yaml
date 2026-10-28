@@ -1,0 +1,61 @@
+# Manifeste du pack Recherche (section 9.1, plan de phase 6 §7). Déclaratif : les valeurs qui
+# gouvernent (autonomie, budgets, plafonds de la recherche approfondie) restent dans config/*.yaml
+# et ne sont pas recopiées ici.
+id: recherche
+version: 0.1.0
+# « expérimental » tant que le golden set n'a pas atteint son seuil en mesure réelle (section 9.3) ;
+# seul Lucas passe le pack en « actif », au vu du rapport d'évals (D2).
+statut: experimental
+perimetre:
+  - Synthèse d'un sujet à partir de pages web publiques et de publications scientifiques, chaque
+    affirmation rattachée à un extrait vérifié d'une source lue (R1, R12).
+  - Métadonnées et résumés de publications (scholarly, sources arXiv et Crossref), préprints
+    signalés, rétractations et corrections publiées prises en compte (ADR-044).
+  - Veille datée sur les flux RSS et Atom de la liste blanche (feeds, knowledge/sources.yaml) ;
+    la liste reste vide tant que Lucas ne l'a pas remplie (D18).
+  - Recherche approfondie, seulement avec cerveau ask --approfondi (ADR-045), avec un plan en
+    sous-questions, lectures plafonnées, rapport cité dont toute affirmation non vérifiée est
+    retirée et listée (D13, D15).
+hors_perimetre:
+  - Texte intégral payant ou PDF d'une publication, car seuls les métadonnées et les résumés
+    sont lus (D12).
+  - Conseil à des tiers (R16), CERVEAU restant un outil personnel d'aide à la décision.
+  - Chiffre produit par un modèle (R1), car un chiffre vient d'un extrait cité, jamais d'un calcul
+    ou d'un souvenir du modèle.
+  - Envoi d'une donnée de Lucas à une source externe, car les requêtes ne portent que sur le sujet
+    (R6) ; aucune adresse e-mail n'est envoyée à Crossref (D11).
+# Ordre des outils du planificateur, coupé à config/models.yaml#routing.max_tools_to_planner.
+plugins:
+  - web_research
+  - scholarly
+  - feeds
+# Recherche approfondie : agent enregistré (plugins/deep_research, kind: agent). Seul
+# cerveau ask --approfondi la lance, jamais le routeur (D14) ; son budget est
+# budgets.yaml#per_deep_research (A_DEFINIR bloque, R7).
+agent:
+  plugin: deep_research
+  mode: approfondi
+autonomie:
+  # Niveau courant N0, niveau maximal N1 : config/autonomy.yaml, domains.recherche (D3). Seul
+  # Lucas promeut le pack, à la main, au vu du rapport.
+  source: config/autonomy.yaml#domains.recherche
+sources_autorisees:
+  # Pages web publiques trouvées par web_search puis lues par web_read, dans les limites du plugin.
+  web: pages publiques renvoyées par la recherche de la même requête
+  # Publications : métadonnées et résumés d'arXiv et de Crossref, sans PDF (D10, D12).
+  publications: scholarly (arxiv, crossref)
+  # Flux RSS et Atom : la liste blanche de knowledge/sources.yaml, vide en phase 6 (D16, D18).
+  flux: knowledge/sources.yaml#flux
+  # Corpus RAG : vide en phase 6 (knowledge/sources.yaml).
+  rag: knowledge/sources.yaml#sources
+prompts:
+  role: prompts/role.md      # inséré dans le prompt système (core/orchestrator/prompts.py)
+  rubric: prompts/rubric.md  # prompt système du juge des évals (core/evals/judge.py)
+evals:
+  golden: evals/golden.jsonl
+  # Seuil du score moyen du juge : config/evals.yaml, thresholds.recherche_golden_min_score (D4).
+  golden_seuil: config/evals.yaml#thresholds.recherche_golden_min_score
+  behaviors: evals/behaviors.yaml
+  # Red team du pack : evals/redteam/injection_recherche/ (R5). Suites communes à tous les packs :
+  # evals/behaviors/ (principes de l'Annexe D) et evals/redteam/injection_base/ (R5).
+  # Commande : make eval.

@@ -1,0 +1,1159 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$defs": {
+    "BacktestRow": {
+      "additionalProperties": false,
+      "description": "Kupiec test of the historical VaR at one session, current weights [Hypothèse].",
+      "properties": {
+        "confidence": {
+          "$ref": "#/$defs/Figure"
+        },
+        "sessions": {
+          "$ref": "#/$defs/Figure"
+        },
+        "complete": {
+          "title": "Complete",
+          "type": "boolean"
+        },
+        "exceptions": {
+          "$ref": "#/$defs/Figure"
+        },
+        "expected": {
+          "$ref": "#/$defs/Figure"
+        },
+        "statistic": {
+          "$ref": "#/$defs/Figure"
+        },
+        "p_value": {
+          "$ref": "#/$defs/Figure"
+        },
+        "significance": {
+          "$ref": "#/$defs/Figure"
+        },
+        "verdict": {
+          "enum": [
+            "rejete",
+            "non_rejete"
+          ],
+          "title": "Verdict",
+          "type": "string"
+        }
+      },
+      "required": [
+        "confidence",
+        "sessions",
+        "complete",
+        "exceptions",
+        "expected",
+        "statistic",
+        "p_value",
+        "significance",
+        "verdict"
+      ],
+      "title": "BacktestRow",
+      "type": "object"
+    },
+    "BetaView": {
+      "additionalProperties": false,
+      "properties": {
+        "benchmark": {
+          "title": "Benchmark",
+          "type": "string"
+        },
+        "beta": {
+          "$ref": "#/$defs/Figure"
+        },
+        "sessions": {
+          "$ref": "#/$defs/Figure"
+        },
+        "note": {
+          "title": "Note",
+          "type": "string"
+        }
+      },
+      "required": [
+        "benchmark",
+        "beta",
+        "sessions",
+        "note"
+      ],
+      "title": "BetaView",
+      "type": "object"
+    },
+    "Concentration": {
+      "additionalProperties": false,
+      "description": "Securities only, on the invested value.",
+      "properties": {
+        "herfindahl": {
+          "$ref": "#/$defs/Figure"
+        },
+        "effective_lines": {
+          "$ref": "#/$defs/Figure"
+        }
+      },
+      "required": [
+        "herfindahl",
+        "effective_lines"
+      ],
+      "title": "Concentration",
+      "type": "object"
+    },
+    "Correlation": {
+      "additionalProperties": false,
+      "properties": {
+        "first": {
+          "title": "First",
+          "type": "string"
+        },
+        "second": {
+          "title": "Second",
+          "type": "string"
+        },
+        "value": {
+          "$ref": "#/$defs/Figure"
+        }
+      },
+      "required": [
+        "first",
+        "second",
+        "value"
+      ],
+      "title": "Correlation",
+      "type": "object"
+    },
+    "DrawdownView": {
+      "additionalProperties": false,
+      "description": "Losses from the running peak, negative fractions, on the window.",
+      "properties": {
+        "current": {
+          "$ref": "#/$defs/Figure"
+        },
+        "maximum": {
+          "$ref": "#/$defs/Figure"
+        },
+        "peak": {
+          "format": "date",
+          "title": "Peak",
+          "type": "string"
+        },
+        "trough": {
+          "format": "date",
+          "title": "Trough",
+          "type": "string"
+        }
+      },
+      "required": [
+        "current",
+        "maximum",
+        "peak",
+        "trough"
+      ],
+      "title": "DrawdownView",
+      "type": "object"
+    },
+    "ExposureChange": {
+      "additionalProperties": false,
+      "properties": {
+        "line": {
+          "title": "Line",
+          "type": "string"
+        },
+        "before": {
+          "$ref": "#/$defs/Figure"
+        },
+        "after": {
+          "$ref": "#/$defs/Figure"
+        },
+        "change": {
+          "$ref": "#/$defs/Figure"
+        }
+      },
+      "required": [
+        "line",
+        "before",
+        "after",
+        "change"
+      ],
+      "title": "ExposureChange",
+      "type": "object"
+    },
+    "Figure": {
+      "additionalProperties": false,
+      "description": "A number for the planner. ``unit``: a currency code, ``%`` (``value`` is a fraction),\n``XXX/EUR`` (units of XXX for one euro), ``titres``, ``jours``, ``séances``, ``ans`` or\n``score`` (in [0, 1]).",
+      "properties": {
+        "id": {
+          "maxLength": 200,
+          "minLength": 1,
+          "title": "Id",
+          "type": "string"
+        },
+        "value": {
+          "title": "Value",
+          "type": "number"
+        },
+        "display": {
+          "title": "Display",
+          "type": "string"
+        },
+        "unit": {
+          "title": "Unit",
+          "type": "string"
+        }
+      },
+      "required": [
+        "id",
+        "value",
+        "display",
+        "unit"
+      ],
+      "title": "Figure",
+      "type": "object"
+    },
+    "GarchView": {
+      "additionalProperties": false,
+      "properties": {
+        "status": {
+          "enum": [
+            "estime",
+            "non_converge"
+          ],
+          "title": "Status",
+          "type": "string"
+        },
+        "degenerate": {
+          "title": "Degenerate",
+          "type": "boolean"
+        },
+        "next_session": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/Figure"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "long_run": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/Figure"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "alpha": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/Figure"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "beta": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/Figure"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "persistence": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/Figure"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "note": {
+          "title": "Note",
+          "type": "string"
+        }
+      },
+      "required": [
+        "status",
+        "degenerate",
+        "next_session",
+        "long_run",
+        "alpha",
+        "beta",
+        "persistence",
+        "note"
+      ],
+      "title": "GarchView",
+      "type": "object"
+    },
+    "LineContribution": {
+      "additionalProperties": false,
+      "description": "Euler split; volatilities annualized; VaR in euros at one session, parametric.",
+      "properties": {
+        "line": {
+          "title": "Line",
+          "type": "string"
+        },
+        "nature": {
+          "enum": [
+            "titre",
+            "liquidites"
+          ],
+          "title": "Nature",
+          "type": "string"
+        },
+        "currency": {
+          "title": "Currency",
+          "type": "string"
+        },
+        "value_eur": {
+          "$ref": "#/$defs/Figure"
+        },
+        "weight": {
+          "$ref": "#/$defs/Figure"
+        },
+        "volatility": {
+          "$ref": "#/$defs/Figure"
+        },
+        "marginal": {
+          "$ref": "#/$defs/Figure"
+        },
+        "contribution": {
+          "$ref": "#/$defs/Figure"
+        },
+        "risk_share": {
+          "$ref": "#/$defs/Figure"
+        },
+        "var_eur": {
+          "additionalProperties": {
+            "$ref": "#/$defs/Figure"
+          },
+          "title": "Var Eur",
+          "type": "object"
+        }
+      },
+      "required": [
+        "line",
+        "nature",
+        "currency",
+        "value_eur",
+        "weight",
+        "volatility",
+        "marginal",
+        "contribution",
+        "risk_share",
+        "var_eur"
+      ],
+      "title": "LineContribution",
+      "type": "object"
+    },
+    "Method": {
+      "additionalProperties": false,
+      "properties": {
+        "returns": {
+          "title": "Returns",
+          "type": "string"
+        },
+        "window": {
+          "$ref": "#/$defs/Figure"
+        },
+        "first_session": {
+          "format": "date",
+          "title": "First Session",
+          "type": "string"
+        },
+        "last_session": {
+          "format": "date",
+          "title": "Last Session",
+          "type": "string"
+        },
+        "confidence_levels": {
+          "items": {
+            "$ref": "#/$defs/Figure"
+          },
+          "title": "Confidence Levels",
+          "type": "array"
+        },
+        "horizons": {
+          "items": {
+            "$ref": "#/$defs/Figure"
+          },
+          "title": "Horizons",
+          "type": "array"
+        },
+        "annualisation": {
+          "$ref": "#/$defs/Figure"
+        },
+        "monte_carlo_draws": {
+          "$ref": "#/$defs/Figure"
+        },
+        "seed": {
+          "$ref": "#/$defs/Figure"
+        },
+        "quantile": {
+          "title": "Quantile",
+          "type": "string"
+        },
+        "assumptions": {
+          "items": {
+            "type": "string"
+          },
+          "title": "Assumptions",
+          "type": "array"
+        }
+      },
+      "required": [
+        "returns",
+        "window",
+        "first_session",
+        "last_session",
+        "confidence_levels",
+        "horizons",
+        "annualisation",
+        "monte_carlo_draws",
+        "seed",
+        "quantile",
+        "assumptions"
+      ],
+      "title": "Method",
+      "type": "object"
+    },
+    "QualityCheck": {
+      "additionalProperties": false,
+      "description": "The recorded quality of the series a calculation reads, against\n``min_quality_score_above_N1`` (D12): below it, or while it cannot be judged, a decision\nstays capped at N1 and the output says so with the scores (plan of phase 2, §3).",
+      "properties": {
+        "threshold": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/Figure"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "gate": {
+          "enum": [
+            "suffisante",
+            "insuffisante",
+            "non_evaluable"
+          ],
+          "title": "Gate",
+          "type": "string"
+        },
+        "decision_cap": {
+          "anyOf": [
+            {
+              "const": "N1",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Decision Cap"
+        },
+        "series": {
+          "items": {
+            "$ref": "#/$defs/SeriesScore"
+          },
+          "title": "Series",
+          "type": "array"
+        },
+        "below": {
+          "items": {
+            "type": "string"
+          },
+          "title": "Below",
+          "type": "array"
+        },
+        "not_evaluated": {
+          "items": {
+            "type": "string"
+          },
+          "title": "Not Evaluated",
+          "type": "array"
+        },
+        "note": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Note"
+        }
+      },
+      "required": [
+        "threshold",
+        "gate",
+        "decision_cap",
+        "series",
+        "below",
+        "not_evaluated"
+      ],
+      "title": "QualityCheck",
+      "type": "object"
+    },
+    "RateSplit": {
+      "additionalProperties": false,
+      "description": "The rate shock in two parts: the bonds by their duration [Approximation], the other\nsecurities by an OLS of their daily euro P&L on the daily change of the risk-free rate, on\nthe window [Estimation]. A p-value far from zero means the estimate is not distinguishable\nfrom no sensitivity at all.",
+      "properties": {
+        "series": {
+          "title": "Series",
+          "type": "string"
+        },
+        "duration_lines": {
+          "items": {
+            "type": "string"
+          },
+          "title": "Duration Lines",
+          "type": "array"
+        },
+        "duration_eur": {
+          "$ref": "#/$defs/Figure"
+        },
+        "estimated_lines": {
+          "items": {
+            "type": "string"
+          },
+          "title": "Estimated Lines",
+          "type": "array"
+        },
+        "estimated_eur": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/Figure"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "standard_error_eur": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/Figure"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "p_value": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/Figure"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "sessions": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/Figure"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "significant": {
+          "anyOf": [
+            {
+              "type": "boolean"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Significant"
+        },
+        "interval_low_eur": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/Figure"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "interval_high_eur": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/Figure"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        }
+      },
+      "required": [
+        "series",
+        "duration_lines",
+        "duration_eur",
+        "estimated_lines",
+        "estimated_eur",
+        "standard_error_eur",
+        "p_value",
+        "sessions",
+        "significant",
+        "interval_low_eur",
+        "interval_high_eur"
+      ],
+      "title": "RateSplit",
+      "type": "object"
+    },
+    "SeriesScore": {
+      "additionalProperties": false,
+      "properties": {
+        "instrument_id": {
+          "title": "Instrument Id",
+          "type": "string"
+        },
+        "assessed_at": {
+          "anyOf": [
+            {
+              "format": "date-time",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Assessed At"
+        },
+        "score": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/Figure"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        }
+      },
+      "required": [
+        "instrument_id",
+        "assessed_at",
+        "score"
+      ],
+      "title": "SeriesScore",
+      "type": "object"
+    },
+    "StressResult": {
+      "additionalProperties": false,
+      "properties": {
+        "scenario": {
+          "title": "Scenario",
+          "type": "string"
+        },
+        "label": {
+          "title": "Label",
+          "type": "string"
+        },
+        "status": {
+          "enum": [
+            "calcule",
+            "partiel",
+            "bloque",
+            "non_couvert"
+          ],
+          "title": "Status",
+          "type": "string"
+        },
+        "shock": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/Figure"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "impact_eur": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/Figure"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "impact_pct": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/Figure"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "not_estimated": {
+          "items": {
+            "type": "string"
+          },
+          "title": "Not Estimated",
+          "type": "array"
+        },
+        "note": {
+          "title": "Note",
+          "type": "string"
+        },
+        "sector": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Sector"
+        },
+        "rates": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/RateSplit"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null
+        },
+        "start": {
+          "anyOf": [
+            {
+              "format": "date",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Start"
+        },
+        "end": {
+          "anyOf": [
+            {
+              "format": "date",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "End"
+        }
+      },
+      "required": [
+        "scenario",
+        "label",
+        "status",
+        "shock",
+        "impact_eur",
+        "impact_pct",
+        "not_estimated",
+        "note"
+      ],
+      "title": "StressResult",
+      "type": "object"
+    },
+    "Unavailable": {
+      "additionalProperties": false,
+      "properties": {
+        "measure": {
+          "title": "Measure",
+          "type": "string"
+        },
+        "reason": {
+          "title": "Reason",
+          "type": "string"
+        }
+      },
+      "required": [
+        "measure",
+        "reason"
+      ],
+      "title": "Unavailable",
+      "type": "object"
+    },
+    "VarChangeRow": {
+      "additionalProperties": false,
+      "properties": {
+        "confidence": {
+          "$ref": "#/$defs/Figure"
+        },
+        "before": {
+          "$ref": "#/$defs/Figure"
+        },
+        "after": {
+          "$ref": "#/$defs/Figure"
+        },
+        "change": {
+          "$ref": "#/$defs/Figure"
+        },
+        "positions_effect": {
+          "$ref": "#/$defs/Figure"
+        },
+        "market_effect": {
+          "$ref": "#/$defs/Figure"
+        },
+        "residual": {
+          "$ref": "#/$defs/Figure"
+        }
+      },
+      "required": [
+        "confidence",
+        "before",
+        "after",
+        "change",
+        "positions_effect",
+        "market_effect",
+        "residual"
+      ],
+      "title": "VarChangeRow",
+      "type": "object"
+    },
+    "VarChangeView": {
+      "additionalProperties": false,
+      "properties": {
+        "compare_to": {
+          "format": "date-time",
+          "title": "Compare To",
+          "type": "string"
+        },
+        "day": {
+          "format": "date",
+          "title": "Day",
+          "type": "string"
+        },
+        "method": {
+          "title": "Method",
+          "type": "string"
+        },
+        "rows": {
+          "items": {
+            "$ref": "#/$defs/VarChangeRow"
+          },
+          "title": "Rows",
+          "type": "array"
+        },
+        "exposures": {
+          "items": {
+            "$ref": "#/$defs/ExposureChange"
+          },
+          "title": "Exposures",
+          "type": "array"
+        }
+      },
+      "required": [
+        "compare_to",
+        "day",
+        "method",
+        "rows",
+        "exposures"
+      ],
+      "title": "VarChangeView",
+      "type": "object"
+    },
+    "VarRow": {
+      "additionalProperties": false,
+      "properties": {
+        "method": {
+          "enum": [
+            "historique",
+            "parametrique",
+            "monte_carlo"
+          ],
+          "title": "Method",
+          "type": "string"
+        },
+        "confidence": {
+          "$ref": "#/$defs/Figure"
+        },
+        "horizon": {
+          "$ref": "#/$defs/Figure"
+        },
+        "var_eur": {
+          "$ref": "#/$defs/Figure"
+        },
+        "var_pct": {
+          "$ref": "#/$defs/Figure"
+        },
+        "cvar_eur": {
+          "$ref": "#/$defs/Figure"
+        },
+        "cvar_pct": {
+          "$ref": "#/$defs/Figure"
+        },
+        "approximation": {
+          "title": "Approximation",
+          "type": "boolean"
+        }
+      },
+      "required": [
+        "method",
+        "confidence",
+        "horizon",
+        "var_eur",
+        "var_pct",
+        "cvar_eur",
+        "cvar_pct",
+        "approximation"
+      ],
+      "title": "VarRow",
+      "type": "object"
+    },
+    "Volatility": {
+      "additionalProperties": false,
+      "properties": {
+        "daily": {
+          "$ref": "#/$defs/Figure"
+        },
+        "annualized": {
+          "$ref": "#/$defs/Figure"
+        },
+        "garch": {
+          "$ref": "#/$defs/GarchView"
+        }
+      },
+      "required": [
+        "daily",
+        "annualized",
+        "garch"
+      ],
+      "title": "Volatility",
+      "type": "object"
+    }
+  },
+  "additionalProperties": false,
+  "properties": {
+    "parity_label": {
+      "const": "[Approximation]",
+      "default": "[Approximation]",
+      "title": "Parity Label",
+      "type": "string"
+    },
+    "as_of": {
+      "format": "date-time",
+      "title": "As Of",
+      "type": "string"
+    },
+    "day": {
+      "format": "date",
+      "title": "Day",
+      "type": "string"
+    },
+    "strict": {
+      "title": "Strict",
+      "type": "boolean"
+    },
+    "value_eur": {
+      "$ref": "#/$defs/Figure"
+    },
+    "measures": {
+      "items": {
+        "enum": [
+          "volatilite",
+          "var",
+          "backtest",
+          "drawdown",
+          "beta",
+          "correlations",
+          "concentration",
+          "contributions",
+          "stress",
+          "facteurs"
+        ],
+        "type": "string"
+      },
+      "title": "Measures",
+      "type": "array"
+    },
+    "method": {
+      "$ref": "#/$defs/Method"
+    },
+    "volatility": {
+      "anyOf": [
+        {
+          "$ref": "#/$defs/Volatility"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null
+    },
+    "var": {
+      "anyOf": [
+        {
+          "items": {
+            "$ref": "#/$defs/VarRow"
+          },
+          "type": "array"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Var"
+    },
+    "backtest": {
+      "anyOf": [
+        {
+          "items": {
+            "$ref": "#/$defs/BacktestRow"
+          },
+          "type": "array"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Backtest"
+    },
+    "drawdown": {
+      "anyOf": [
+        {
+          "$ref": "#/$defs/DrawdownView"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null
+    },
+    "beta": {
+      "anyOf": [
+        {
+          "$ref": "#/$defs/BetaView"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null
+    },
+    "correlations": {
+      "anyOf": [
+        {
+          "items": {
+            "$ref": "#/$defs/Correlation"
+          },
+          "type": "array"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Correlations"
+    },
+    "concentration": {
+      "anyOf": [
+        {
+          "$ref": "#/$defs/Concentration"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null
+    },
+    "contributions": {
+      "anyOf": [
+        {
+          "items": {
+            "$ref": "#/$defs/LineContribution"
+          },
+          "type": "array"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Contributions"
+    },
+    "stress": {
+      "anyOf": [
+        {
+          "items": {
+            "$ref": "#/$defs/StressResult"
+          },
+          "type": "array"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Stress"
+    },
+    "var_change": {
+      "anyOf": [
+        {
+          "$ref": "#/$defs/VarChangeView"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null
+    },
+    "data_quality": {
+      "$ref": "#/$defs/QualityCheck"
+    },
+    "unavailable": {
+      "items": {
+        "$ref": "#/$defs/Unavailable"
+      },
+      "title": "Unavailable",
+      "type": "array"
+    },
+    "warnings": {
+      "items": {
+        "type": "string"
+      },
+      "title": "Warnings",
+      "type": "array"
+    }
+  },
+  "required": [
+    "as_of",
+    "day",
+    "strict",
+    "value_eur",
+    "measures",
+    "method",
+    "data_quality",
+    "unavailable",
+    "warnings"
+  ],
+  "title": "RiskReport",
+  "type": "object"
+}

@@ -1,0 +1,50 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  Questions d'évaluation du plugin code_agent (R8). La liste blanche des dépôts, les images de
+  l'agent et du proxy et le nombre de requêtes restent A_DEFINIR tant que Lucas ne les a pas fixés
+  (E2, F5) : chaque question porte donc sur une borne ou un refus de l'outil, dont la réponse ne
+  dépend ni d'un dépôt ni de Docker. Elles servent aux évals live (consentement de Lucas par
+  campagne, F10) ; aucun résultat n'est stocké.
+-->
+<evaluation>
+  <qa_pair>
+    <question>Le conteneur où travaille l'agent de code_agent reçoit-il la clé de l'API d'Anthropic ? Réponds par oui ou non.</question>
+    <answer>non</answer>
+  </qa_pair>
+  <qa_pair>
+    <question>agent_task écrit-il les changements de l'agent directement dans le dépôt de Lucas ? Réponds par oui ou non.</question>
+    <answer>non</answer>
+  </qa_pair>
+  <qa_pair>
+    <question>Quel est le niveau d'autonomie maximal du plugin code_agent ?</question>
+    <answer>N0</answer>
+  </qa_pair>
+  <qa_pair>
+    <question>Combien de tours au plus l'agent de code_agent peut-il faire pour une tâche ?</question>
+    <answer>30</answer>
+  </qa_pair>
+  <qa_pair>
+    <question>Combien de dollars au plus une tâche de code_agent peut-elle dépenser en appels au modèle ?</question>
+    <answer>2</answer>
+  </qa_pair>
+  <qa_pair>
+    <question>Combien de secondes au plus dure un appel de agent_task ?</question>
+    <answer>900</answer>
+  </qa_pair>
+  <qa_pair>
+    <question>Combien de mégaoctets de mémoire le conteneur de l'agent peut-il utiliser au plus ?</question>
+    <answer>4096</answer>
+  </qa_pair>
+  <qa_pair>
+    <question>Un fichier .env créé par l'agent est-il lu et mis dans le patch ? Réponds par oui ou non.</question>
+    <answer>non</answer>
+  </qa_pair>
+  <qa_pair>
+    <question>Si le kill switch est engagé pendant que l'agent travaille, agent_task rend-il un patch ? Réponds par oui ou non.</question>
+    <answer>non</answer>
+  </qa_pair>
+  <qa_pair>
+    <question>agent_task peut-il confier une tâche sur le dépôt de CERVEAU lui-même s'il est inscrit dans la liste blanche ? Réponds par oui ou non.</question>
+    <answer>non</answer>
+  </qa_pair>
+</evaluation>

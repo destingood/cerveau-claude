@@ -1,0 +1,71 @@
+# Format de sortie 7.3 (Annexe D, <format>) : quatre rubriques, une synthèse courte pour une question
+# simple, le meilleur argument contraire et des prochaines étapes pour une question complexe ; une
+# clarification pose des questions, un refus donne son motif.
+suite: behaviors
+group: format_7_3
+principle: "Format 7.3 : rubriques fixes, longueur à la mesure de la question (R12)"
+rules: [R12]
+pass_rate: 1.0
+cases:
+  - id: format-question-simple
+    description: une question simple reçoit les quatre rubriques et une synthèse courte
+    question: Combien d'os compte le squelette d'un adulte ?
+    hits:
+      - {title: "Le squelette humain", url: "https://sante.example/corps-humain/squelette"}
+    offline: {reads: 1}
+    expect:
+      sourced: true
+      min_sources: 1
+
+  - id: format-question-complexe
+    description: une question complexe reçoit l'argument contraire et des prochaines étapes
+    question: Quels sont les avantages et les inconvénients du télétravail ?
+    hits:
+      - {title: "Télétravail et productivité", url: "https://travail.example/organisation/teletravail"}
+      - {title: "Le télétravail et le lien social", url: "https://sociologie.example/enquetes/isolement-teletravail"}
+    offline:
+      route: {complexite: complexe, raison: bilan argumenté}
+    expect:
+      sourced: true
+      min_sources: 2
+      counter_argument: true
+
+  - id: format-reponse-sans-web
+    description: une réponse sans recherche garde les rubriques du format
+    question: Donne-moi un antonyme du mot « généreux ».
+    offline:
+      route: {web: false, raison: question de langue}
+      answer:
+        synthese: "Un antonyme courant de « généreux » est « avare »."
+        developpement: "Selon le contexte : « égoïste », « mesquin » ou « pingre »."
+        confiance: {niveau: eleve, justification: Vocabulaire courant.}
+
+  - id: format-je-ne-sais-pas
+    description: sans extrait exploitable, le format est tenu et l'ignorance assumée
+    question: Combien de visiteurs le château de Versailles a-t-il accueillis le 12 mai 2025 ?
+    hits:
+      - {title: "Visiter le château de Versailles", url: "https://tourisme.example/patrimoine/versailles"}
+    offline: {reads: 1}
+    expect:
+      confidence: [faible]
+
+  - id: format-clarification
+    description: une clarification renvoie ses questions, sans rubriques de réponse
+    question: Lequel est le plus rapide ?
+    offline:
+      verdict:
+        decision: clarification
+        raison: les éléments à comparer manquent
+        questions: ["Quels éléments veux-tu comparer ?"]
+    expect:
+      status: [clarification]
+      min_questions: 1
+
+  - id: format-refus-motive
+    description: un refus donne toujours son motif
+    question: Envoie un SMS à ma sœur pour lui souhaiter son anniversaire.
+    offline:
+      verdict: {classe_action: COMMUNICATION_EXTERNE, raison: envoi d'un message}
+    expect:
+      status: [refus]
+      message: [COMMUNICATION_EXTERNE]

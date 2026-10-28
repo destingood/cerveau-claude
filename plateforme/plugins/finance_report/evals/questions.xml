@@ -1,0 +1,51 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  Questions d'évaluation du plugin finance_report (R8). Chacune se vérifie avec performance_report
+  sur le portefeuille de référence fictif (core.finance.fixtures.reference_store) lu au 18/10/2026
+  13 h UTC, avec config/ tel que versionné : annualisation sur 252 séances, taux sans risque €STR,
+  indice de référence A_VERIFIER. Les chiffres attendus sont les affichages de l'outil : la réponse
+  les cite avec leurs hypothèses, elle ne les recalcule pas (R1). Une mesure de performance est une
+  aide à la décision personnelle, pas un conseil en investissement (R16).
+-->
+<evaluation>
+  <qa_pair>
+    <question>Quelle est la performance de mon portefeuille depuis la première opération, hors effet des apports ?</question>
+    <answer>TWR de 5,48 % du 16/10/2023 au 18/10/2026, soit 1,79 % par an (ACT/365)</answer>
+  </qa_pair>
+  <qa_pair>
+    <question>Et en tenant compte du moment de mes apports ?</question>
+    <answer>MWR de 5,62 % sur la période, 1,84 % par an, pour 1 000,00 € d'apports nets</answer>
+  </qa_pair>
+  <qa_pair>
+    <question>Le portefeuille a-t-il battu le taux sans risque ?</question>
+    <answer>non : l'€STR capitalisé fait 9,87 % sur la période ; Sharpe -0,08 et Sortino -0,11, l'€STR des deux derniers jours étant reconduit [Hypothèse]</answer>
+  </qa_pair>
+  <qa_pair>
+    <question>Quelle a été la pire baisse depuis un sommet, et quand ?</question>
+    <answer>15,10 %, du sommet du 29/08/2024 au creux du 16/10/2025, sommet retrouvé le 23/07/2026 ; Calmar 0,12</answer>
+  </qa_pair>
+  <qa_pair>
+    <question>Quelle position a le plus contribué à la performance ?</question>
+    <answer>FICT-GLOBEX (Technologie, en USD) : 10,01 % de contribution au TWR, 10 581,16 € de gain</answer>
+  </qa_pair>
+  <qa_pair>
+    <question>Quelle ligne a le plus pesé sur la performance ?</question>
+    <answer>FICT-BOREAL (Énergie) : -3,10 % de contribution, -3 250,90 € ; le résidu de l'attribution est de 0,00 %</answer>
+  </qa_pair>
+  <qa_pair>
+    <question>Quelle a été la performance sur l'année 2025 ?</question>
+    <answer>TWR de -8,80 % du 01/01/2025 au 31/12/2025, sans annualisation (364 jours, moins d'un an)</answer>
+  </qa_pair>
+  <qa_pair>
+    <question>Combien m'ont rapporté les dividendes et combien m'ont coûté les frais de compte depuis le début ?</question>
+    <answer>4 833,42 € de dividendes nets de retenue et -60,00 € de frais de compte et de garde, déjà compris dans le gain de 5 922,71 €</answer>
+  </qa_pair>
+  <qa_pair>
+    <question>Quelle a été la performance en 2024, annualisée, et la perte maximale cette année-là ?</question>
+    <answer>TWR de 5,36 % du 01/01/2024 au 01/01/2025, 5,34 % par an ; perte maximale de 7,84 % ; Calmar 0,68</answer>
+  </qa_pair>
+  <qa_pair>
+    <question>Fais-tu mieux ou moins bien que l'indice de référence ?</question>
+    <answer>comparaison indisponible : l'ISIN de l'indice est A_VERIFIER (D8)</answer>
+  </qa_pair>
+</evaluation>

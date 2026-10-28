@@ -1,0 +1,55 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "type": "object",
+  "properties": {
+    "start": {
+      "anyOf": [
+        {
+          "format": "date",
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "description": "Début de la période (base, AAAA-MM-JJ) ; défaut : la première opération",
+      "title": "Start"
+    },
+    "end": {
+      "anyOf": [
+        {
+          "format": "date",
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "description": "Fin de la période (AAAA-MM-JJ) ; défaut : le jour de as_of",
+      "title": "End"
+    },
+    "as_of": {
+      "anyOf": [
+        {
+          "format": "date-time",
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "description": "Moment « connu à », ISO 8601 avec fuseau ; défaut : maintenant",
+      "title": "As Of"
+    },
+    "strict": {
+      "default": false,
+      "description": "Strict : seuls les imports et les données enregistrés avant as_of comptent (rejeu d'une décision passée)",
+      "title": "Strict",
+      "type": "boolean"
+    }
+  },
+  "title": "performance_reportArguments"
+}

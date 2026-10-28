@@ -1,0 +1,11 @@
+identifiant,nom,classe,devise,place,secteur,pays,debut,duration
+FICT-ACME,Acme Industries (fictif),action,EUR,XPAR,Industrie,FR,2023-10-16,
+FICT-BOREAL,Boréal Énergie (fictif),action,EUR,XETR,Énergie,DE,2023-10-16,
+FICT-CYGNE,Cygne Santé (fictif),action,EUR,XPAR,Santé,FR,2023-10-16,
+FICT-DELTA,Delta Banque (fictif),action,EUR,XPAR,Finance,FR,2023-10-16,
+FICT-GLOBEX,Globex Systems (fictif),action,USD,XNYS,Technologie,US,2023-10-16,
+FICT-HELIOS,Hélios Consumer (fictif),action,GBP,XLON,Consommation,GB,2023-10-16,
+FICT-MONDE,ETF Actions Monde (fictif),etf,EUR,XPAR,Actions monde,IE,2023-10-16,
+FICT-EMERG,ETF Émergents (fictif),etf,USD,XNYS,Actions émergentes,US,2023-10-16,
+FICT-OAT35,OAT zéro coupon mars 2035 (fictive),obligation,EUR,XPAR,Souverain,FR,2023-10-16,8.4
+FICT-OR,Or physique (fictif),or,EUR,XETR,Matières premières,DE,2023-10-16,

@@ -1,0 +1,141 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$defs": {
+    "FeedEntry": {
+      "additionalProperties": false,
+      "properties": {
+        "title": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Title"
+        },
+        "link": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Link"
+        },
+        "published": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Published"
+        },
+        "summary": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Summary"
+        },
+        "summary_truncated": {
+          "title": "Summary Truncated",
+          "type": "boolean"
+        }
+      },
+      "required": [
+        "title",
+        "link",
+        "published",
+        "summary",
+        "summary_truncated"
+      ],
+      "title": "FeedEntry",
+      "type": "object"
+    }
+  },
+  "additionalProperties": false,
+  "properties": {
+    "feed": {
+      "title": "Feed",
+      "type": "string"
+    },
+    "name": {
+      "title": "Name",
+      "type": "string"
+    },
+    "url": {
+      "title": "Url",
+      "type": "string"
+    },
+    "licence": {
+      "title": "Licence",
+      "type": "string"
+    },
+    "since": {
+      "anyOf": [
+        {
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "title": "Since"
+    },
+    "feed_title": {
+      "anyOf": [
+        {
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "title": "Feed Title"
+    },
+    "entries": {
+      "items": {
+        "$ref": "#/$defs/FeedEntry"
+      },
+      "title": "Entries",
+      "type": "array"
+    },
+    "skipped": {
+      "title": "Skipped",
+      "type": "integer"
+    },
+    "more_entries": {
+      "title": "More Entries",
+      "type": "integer"
+    },
+    "retrieved_at": {
+      "title": "Retrieved At",
+      "type": "string"
+    }
+  },
+  "required": [
+    "feed",
+    "name",
+    "url",
+    "licence",
+    "since",
+    "feed_title",
+    "entries",
+    "skipped",
+    "more_entries",
+    "retrieved_at"
+  ],
+  "title": "FeedResult",
+  "type": "object"
+}

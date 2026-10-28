@@ -1,0 +1,49 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "type": "object",
+  "properties": {
+    "query": {
+      "description": "Mots cherchés",
+      "maxLength": 300,
+      "minLength": 1,
+      "title": "Query",
+      "type": "string"
+    },
+    "source": {
+      "description": "arxiv (prépublications) ou crossref (publications avec DOI)",
+      "enum": [
+        "arxiv",
+        "crossref"
+      ],
+      "title": "Source",
+      "type": "string"
+    },
+    "since": {
+      "anyOf": [
+        {
+          "pattern": "^\\d{4}-\\d{2}-\\d{2}$",
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "description": "Seulement les notices parues ce jour ou après (AAAA-MM-JJ)",
+      "title": "Since"
+    },
+    "max_results": {
+      "default": 5,
+      "description": "Nombre de notices (1 à 10)",
+      "maximum": 10,
+      "minimum": 1,
+      "title": "Max Results",
+      "type": "integer"
+    }
+  },
+  "required": [
+    "query",
+    "source"
+  ],
+  "title": "scholar_searchArguments"
+}

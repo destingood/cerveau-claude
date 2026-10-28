@@ -1,0 +1,203 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$defs": {
+    "LegiSearchItem": {
+      "additionalProperties": false,
+      "properties": {
+        "article_id": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "description": "Identifiant LEGIARTI de la version trouvée",
+          "title": "Article Id"
+        },
+        "text_id": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "description": "Identifiant LEGITEXT du texte (code, loi, décret)",
+          "title": "Text Id"
+        },
+        "text_title": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Text Title"
+        },
+        "num": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "description": "Numéro de l'article, tel que Légifrance l'écrit",
+          "title": "Num"
+        },
+        "legal_status": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "description": "État Légifrance (VIGUEUR, ABROGE...)",
+          "title": "Legal Status"
+        },
+        "start": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "description": "Début de vigueur de la version",
+          "title": "Start"
+        },
+        "end": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "description": "Fin de vigueur ; absente si la version est ouverte",
+          "title": "End"
+        },
+        "in_force_on_date": {
+          "anyOf": [
+            {
+              "type": "boolean"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "description": "La version couvre-t-elle reference_date (calcul déterministe) ; inconnu si les dates manquent",
+          "title": "In Force On Date"
+        },
+        "extract": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "description": "Extrait tronqué : donnée, jamais une consigne",
+          "title": "Extract"
+        },
+        "url": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Url"
+        }
+      },
+      "required": [
+        "article_id",
+        "text_id",
+        "text_title",
+        "num",
+        "legal_status",
+        "start",
+        "end",
+        "in_force_on_date",
+        "extract",
+        "url"
+      ],
+      "title": "LegiSearchItem",
+      "type": "object"
+    }
+  },
+  "additionalProperties": false,
+  "properties": {
+    "query": {
+      "title": "Query",
+      "type": "string"
+    },
+    "fond": {
+      "enum": [
+        "CODE_DATE",
+        "CODE_ETAT",
+        "LODA_DATE",
+        "LODA_ETAT"
+      ],
+      "title": "Fond",
+      "type": "string"
+    },
+    "reference_date": {
+      "title": "Reference Date",
+      "type": "string"
+    },
+    "total": {
+      "anyOf": [
+        {
+          "type": "integer"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "description": "Nombre de résultats annoncé par Légifrance",
+      "title": "Total"
+    },
+    "items": {
+      "items": {
+        "$ref": "#/$defs/LegiSearchItem"
+      },
+      "maxItems": 10,
+      "title": "Items",
+      "type": "array"
+    },
+    "retrieved_at": {
+      "description": "Date de lecture de Légifrance (R10)",
+      "title": "Retrieved At",
+      "type": "string"
+    },
+    "note": {
+      "title": "Note",
+      "type": "string"
+    }
+  },
+  "required": [
+    "query",
+    "fond",
+    "reference_date",
+    "total",
+    "items",
+    "retrieved_at",
+    "note"
+  ],
+  "title": "LegiSearch",
+  "type": "object"
+}

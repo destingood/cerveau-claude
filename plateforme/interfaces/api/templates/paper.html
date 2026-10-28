@@ -1,0 +1,37 @@
+{% extends "base.html" %}
+{% block content %}
+<p class="note">Source : la boucle paper (<code>core.execution.loop</code>), qui valorise le
+compte simulé en fin de journée. Aucun ordre réel.</p>
+{% if problem %}<p class="alerte">{{ problem }}</p>{% endif %}
+{% if last is none %}
+<p>Aucune valorisation : la boucle paper n'a encore traité aucune journée.</p>
+{% else %}
+<h2>Au {{ last.day|jour }}</h2>
+<table>
+<tr><th>Fonds propres</th><td class="n">{{ last.equity_eur|euros }}</td></tr>
+<tr><th>Liquidités</th><td class="n">{{ last.cash_eur|euros }}</td></tr>
+<tr><th>Valorisé le</th><td>{{ last.valued_at|quand }}</td></tr>
+</table>
+
+<h2>Positions</h2>
+{% if last.positions %}
+<table>
+<tr><th>Instrument</th><th>Quantité</th></tr>
+{% for symbol, quantity in last.positions.items() %}
+<tr><td>{{ symbol }}</td><td class="n">{{ quantity|nombre }}</td></tr>
+{% endfor %}
+</table>
+{% else %}
+<p>Aucune position en titres.</p>
+{% endif %}
+
+<h2>Dernières valorisations</h2>
+<table>
+<tr><th>Jour</th><th>Fonds propres</th><th>Liquidités</th><th>Lignes</th></tr>
+{% for valuation in recent %}
+<tr><td>{{ valuation.day|jour }}</td><td class="n">{{ valuation.equity_eur|euros }}</td>
+<td class="n">{{ valuation.cash_eur|euros }}</td><td class="n">{{ valuation.positions|length }}</td></tr>
+{% endfor %}
+</table>
+{% endif %}
+{% endblock %}

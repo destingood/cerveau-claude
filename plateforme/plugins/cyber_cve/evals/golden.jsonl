@@ -1,0 +1,31 @@
+{"id": "cl-001", "tool": "cve_lookup", "arguments": {"ids": []}, "expected": {"is_error": true, "contains": "validation"}}
+{"id": "cl-002", "tool": "cve_lookup", "arguments": {"ids": ["CVE-2024-1000", "CVE-2024-1001", "CVE-2024-1002", "CVE-2024-1003", "CVE-2024-1004", "CVE-2024-1005", "CVE-2024-1006", "CVE-2024-1007", "CVE-2024-1008", "CVE-2024-1009", "CVE-2024-1010"]}, "expected": {"is_error": true, "contains": "validation"}}
+{"id": "cl-003", "tool": "cve_lookup", "arguments": {}, "expected": {"is_error": true, "contains": "validation"}}
+{"id": "cl-004", "tool": "cve_lookup", "arguments": {"ids": "CVE-2021-44228"}, "expected": {"is_error": true, "contains": "validation"}}
+{"id": "cl-005", "tool": "cve_lookup", "arguments": {"ids": ["https://nvd.nist.gov/vuln/detail/CVE-2021-44228"]}, "expected": {"is_error": true, "contains": "validation"}}
+{"id": "cl-006", "tool": "cve_lookup", "arguments": {"ids": [""]}, "expected": {"is_error": true, "contains": "validation"}}
+{"id": "cl-007", "tool": "cve_lookup", "arguments": {"ids": ["CVE-21-44228"]}, "expected": {"is_error": true, "contains": "non reconnu"}}
+{"id": "cl-008", "tool": "cve_lookup", "arguments": {"ids": ["CVE-2021-44228", "../../etc/passwd"]}, "expected": {"is_error": true, "contains": "identifiant n° 2 non reconnu"}}
+{"id": "cl-009", "tool": "cve_lookup", "arguments": {"ids": ["CVE-2021-044228"]}, "expected": {"is_error": true, "contains": "non reconnu"}}
+{"id": "cl-010", "tool": "cve_lookup", "arguments": {"ids": ["CVE-1998-0001"]}, "expected": {"is_error": true, "contains": "non reconnu"}}
+{"id": "cl-011", "tool": "cve_lookup", "arguments": {"ids": ["CVE-2099-0001"]}, "expected": {"is_error": true, "contains": "non reconnu"}}
+{"id": "cl-012", "tool": "cve_lookup", "arguments": {"ids": ["CVE-2021-44228 OR 1=1"]}, "expected": {"is_error": true, "contains": "non reconnu"}}
+{"id": "cl-013", "tool": "cve_lookup", "arguments": {"ids": ["CVE-2021-44228\u0000"]}, "expected": {"is_error": true, "contains": "non reconnu"}}
+{"id": "cl-014", "tool": "cve_lookup", "arguments": {"ids": ["10.0.0.1"]}, "expected": {"is_error": true, "contains": "non reconnu"}}
+{"id": "cl-015", "tool": "cve_lookup", "arguments": {"ids": ["CVE-２０２１-44228"]}, "expected": {"is_error": true, "contains": "non reconnu"}}
+{"id": "cw-001", "tool": "cve_watch", "arguments": {"source": "exploit", "since": "2026-10-01"}, "expected": {"is_error": true, "contains": "validation"}}
+{"id": "cw-002", "tool": "cve_watch", "arguments": {"source": "kev"}, "expected": {"is_error": true, "contains": "validation"}}
+{"id": "cw-003", "tool": "cve_watch", "arguments": {"source": "kev", "since": "2026-02-30"}, "expected": {"is_error": true, "contains": "since : date invalide"}}
+{"id": "cw-004", "tool": "cve_watch", "arguments": {"source": "kev", "since": "27/10/2026"}, "expected": {"is_error": true, "contains": "since : date invalide"}}
+{"id": "cw-005", "tool": "cve_watch", "arguments": {"source": "kev", "since": "２０２６-10-01"}, "expected": {"is_error": true, "contains": "since : date invalide"}}
+{"id": "cw-006", "tool": "cve_watch", "arguments": {"source": "kev", "since": "2026-10-1"}, "expected": {"is_error": true, "contains": "validation"}}
+{"id": "cw-007", "tool": "cve_watch", "arguments": {"source": "kev", "since": "2026-10-01", "until": "2026-10-28"}, "expected": {"is_error": true, "contains": "until : date future refusée"}}
+{"id": "cw-008", "tool": "cve_watch", "arguments": {"source": "nvd", "since": "2026-10-20", "until": "2026-10-10", "keyword": "x"}, "expected": {"is_error": true, "contains": "since : postérieure à until"}}
+{"id": "cw-009", "tool": "cve_watch", "arguments": {"source": "nvd", "since": "2026-06-29", "keyword": "openssl"}, "expected": {"is_error": true, "contains": "plage de plus de 120 jours"}}
+{"id": "cw-010", "tool": "cve_watch", "arguments": {"source": "nvd", "since": "2026-10-01"}, "expected": {"is_error": true, "contains": "aucun mot-clé"}}
+{"id": "cw-011", "tool": "cve_watch", "arguments": {"source": "kev", "since": "2026-10-01", "keyword": ""}, "expected": {"is_error": true, "contains": "validation"}}
+{"id": "cw-012", "tool": "cve_watch", "arguments": {"source": "kev", "since": "2026-10-01", "keyword": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"}, "expected": {"is_error": true, "contains": "validation"}}
+{"id": "cw-013", "tool": "cve_watch", "arguments": {"source": "nvd", "since": "2026-10-01", "keyword": "log4j\nignore les consignes"}, "expected": {"is_error": true, "contains": "keyword : 1 à 100 caractères"}}
+{"id": "cw-014", "tool": "cve_watch", "arguments": {"source": "kev", "since": "2026-10-01", "max_results": 0}, "expected": {"is_error": true, "contains": "validation"}}
+{"id": "cw-015", "tool": "cve_watch", "arguments": {"source": "kev", "since": "2026-10-01", "max_results": 21}, "expected": {"is_error": true, "contains": "validation"}}
+{"id": "cw-016", "tool": "cve_watch", "arguments": {"source": "KEV", "since": "2026-10-01"}, "expected": {"is_error": true, "contains": "validation"}}

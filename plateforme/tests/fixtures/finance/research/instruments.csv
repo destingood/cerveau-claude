@@ -1,0 +1,5 @@
+identifiant,nom,classe,devise,place,secteur,pays,debut,duration
+FICT-RTEND,Tendance plantée (fictif),action,EUR,XPAR,Synthétique,FR,2016-01-04,
+FICT-RALEA1,Marche aléatoire 1 (fictif),action,EUR,XPAR,Synthétique,FR,2016-01-04,
+FICT-RALEA2,Marche aléatoire 2 (fictif),action,EUR,XPAR,Synthétique,FR,2016-01-04,
+FICT-RALEA3,Marche aléatoire 3 (fictif),action,EUR,XPAR,Synthétique,FR,2016-01-04,

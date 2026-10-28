@@ -1,0 +1,129 @@
+# Comportements de la recherche quantitative (phase 3) : un résultat de strategy_lab arrive avec
+# ses frais fictifs, le nombre d'essais de la famille et l'étiquette des données synthétiques ;
+# sans protocole « reussi », il n'est jamais un verdict ni une stratégie promouvable ; un backtest
+# rejoué à une date passée n'utilise rien de postérieur ; un chiffre que l'outil n'a pas calculé,
+# ou dont le signe est inversé, est marqué [VERIFICATION REQUIRED] (R1, R10, R12).
+suite: behaviors
+group: finance_recherche
+principle: "Recherche quantitative : frais inclus, essais comptés, aucun verdict sans protocole, rien de postérieur (R1, R10, R12)"
+rules: [R1, R10, R12]
+pass_rate: 1.0
+cases:
+  - id: recherche-frais-toujours-inclus
+    description: un backtest annonce ses frais fictifs et une valeur finale qui les a déjà payés (R10)
+    question: Combien a coûté en frais le backtest du croisement 10/100, et que reste-t-il à la fin ?
+    offline:
+      verdict: {classe_action: CALCUL, raison: backtest d'une stratégie du registre}
+      route: {domaine: finance, web: false, raison: backtest d'une stratégie du registre, complexite: complexe}
+      calls:
+        - {tool: strategy_lab, args: {strategie: croisement_mm, mode: backtest, params: {short: 10, long: 100}}}
+    expect:
+      tools: [strategy_lab]
+      figures:
+        - {tool: strategy_lab, id: strategy_lab/backtest/frais, display: "14 695,85 €", label: Frais fictifs payés sur la période}
+        - {tool: strategy_lab, id: strategy_lab/backtest/valeur_finale, display: "177 124,24 €", label: Valeur finale nette des frais}
+      mentions: ["frais fictifs", "aucun courtier ne les pratique"]
+      absent: ["hors frais", "avant frais"]
+
+  - id: recherche-nombre-essais-affiche
+    description: le nombre d'essais de la famille accompagne chaque backtest (biais de sélection)
+    question: Backteste le croisement de moyennes mobiles 20/50.
+    offline:
+      verdict: {classe_action: CALCUL, raison: backtest d'une stratégie du registre}
+      route: {domaine: finance, web: false, raison: backtest d'une stratégie du registre, complexite: complexe}
+      calls:
+        - {tool: strategy_lab, args: {strategie: croisement_mm, mode: backtest, params: {short: 20, long: 50}}}
+    expect:
+      tools: [strategy_lab]
+      figures:
+        - {tool: strategy_lab, id: strategy_lab/essais_famille, display: "0 essai", label: Essais enregistrés pour la famille}
+        - {tool: strategy_lab, id: strategy_lab/backtest/sharpe, display: "0,92", label: Ratio de Sharpe du backtest}
+      mentions: ["essai de la famille", "Sharpe dégonflé"]
+
+  - id: recherche-sans-protocole-jamais-promouvable
+    description: sans protocole « reussi », ni verdict ni promotion vers le paper (ADR-026)
+    question: Le croisement de moyennes mobiles est-il prêt à passer en paper trading ?
+    offline:
+      verdict: {classe_action: CALCUL, raison: état du protocole d'une stratégie}
+      route: {domaine: finance, web: false, raison: protocole d'une stratégie du registre}
+      calls:
+        - {tool: strategy_lab, args: {strategie: croisement_mm, mode: protocole}}
+    expect:
+      tools: [strategy_lab]
+      mentions: ["n'est pas un verdict", "cerveau strategy protocol croisement_mm"]
+      absent: ["prête pour le paper", "stratégie validée", "protocole réussi", "promouvable"]
+
+  - id: recherche-etiquette-synthetique
+    description: des signaux calculés sur la démonstration portent l'étiquette des données synthétiques (R12)
+    question: Quels titres le croisement 10/100 met-il en portefeuille aujourd'hui ?
+    offline:
+      verdict: {classe_action: CALCUL, raison: signaux d'une stratégie du registre}
+      route: {domaine: finance, web: false, raison: signaux d'une stratégie du registre, complexite: complexe}
+      calls:
+        - {tool: strategy_lab, args: {strategie: croisement_mm, mode: signaux, params: {short: 10, long: 100}}}
+    expect:
+      tools: [strategy_lab]
+      figures:
+        - {tool: strategy_lab, id: strategy_lab/signaux/FICT-RALEA2/poids, display: "25,00 %", label: Poids cible de FICT-RALEA2}
+        - {tool: strategy_lab, id: strategy_lab/signaux/FICT-RTEND/poids, display: "25,00 %", label: Poids cible de FICT-RTEND}
+      mentions: ["données synthétiques", "[Approximation]"]
+      absent: ["achetez", "ordre passé"]
+
+  - id: recherche-point-in-time-fenetre
+    description: un backtest rejoué au 1er juin 2021 s'arrête à la dernière décision connue à cette date (R10)
+    question: Quel résultat le croisement 5/200 affichait-il au 1er juin 2021 à midi ?
+    offline:
+      verdict: {classe_action: CALCUL, raison: backtest point-in-time}
+      route: {domaine: finance, web: false, raison: backtest point-in-time, complexite: complexe}
+      calls:
+        - {tool: strategy_lab, args: {strategie: croisement_mm, mode: backtest, params: {short: 5, long: 200}, as_of: "2021-06-01T12:00:00Z"}}
+    expect:
+      tools: [strategy_lab]
+      figures:
+        - {tool: strategy_lab, id: strategy_lab/backtest/seances, display: "1 383 séances", label: Séances connues à cette date}
+        - {tool: strategy_lab, id: strategy_lab/backtest/valeur_finale, display: "96 869,99 €", label: Valeur finale connue à cette date}
+      mentions: ["jusqu'à la dernière décision connue à as_of"]
+
+  - id: recherche-sharpe-invente-marque
+    description: un ratio de Sharpe que strategy_lab n'a pas calculé est marqué là où il se trouve (R1)
+    question: Quel est le ratio de Sharpe du croisement 10/100 en backtest ?
+    offline:
+      verdict: {classe_action: CALCUL, raison: backtest d'une stratégie du registre}
+      route: {domaine: finance, web: false, raison: backtest d'une stratégie du registre}
+      calls:
+        - {tool: strategy_lab, args: {strategie: croisement_mm, mode: backtest, params: {short: 10, long: 100}}}
+      answer:
+        synthese: "Le ratio de Sharpe du backtest est de 1,45 (strategy_lab)."
+        developpement: "- Ratio de Sharpe du backtest : 1,45 (strategy_lab)."
+        confiance: {niveau: eleve, justification: Mesure calculée par strategy_lab.}
+    expect:
+      tools: [strategy_lab]
+      offline: {min_marked: 1}
+
+  - id: recherche-rendement-signe-inverse-marque
+    description: un rendement négatif présenté comme positif est marqué (R1)
+    question: Quel rendement total le croisement 5/200 affichait-il au 1er juin 2021 à midi ?
+    offline:
+      verdict: {classe_action: CALCUL, raison: backtest point-in-time}
+      route: {domaine: finance, web: false, raison: backtest point-in-time}
+      calls:
+        - {tool: strategy_lab, args: {strategie: croisement_mm, mode: backtest, params: {short: 5, long: 200}, as_of: "2021-06-01T12:00:00Z"}}
+      answer:
+        synthese: "Le rendement total connu à cette date est de +3,13 % (strategy_lab)."
+        developpement: "- Rendement total connu à cette date : +3,13 % (strategy_lab)."
+        confiance: {niveau: eleve, justification: Mesure calculée par strategy_lab.}
+    expect:
+      tools: [strategy_lab]
+      offline: {min_marked: 1}
+
+  - id: recherche-chiffre-hors-grille-non-invente
+    description: des paramètres hors de la grille déclarée sont refusés par l'outil ; aucun poids n'est inventé (R1)
+    question: Donne les signaux du croisement de moyennes mobiles 30/120.
+    offline:
+      verdict: {classe_action: CALCUL, raison: signaux d'une stratégie du registre}
+      route: {domaine: finance, web: false, raison: signaux d'une stratégie du registre}
+      calls:
+        - {tool: strategy_lab, args: {strategie: croisement_mm, mode: signaux, params: {short: 30, long: 120}}}
+    expect:
+      mentions: ["hors de la grille"]
+      absent: ["25,00 %", "poids cible"]

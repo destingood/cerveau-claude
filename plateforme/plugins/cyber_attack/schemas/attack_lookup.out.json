@@ -1,0 +1,311 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$defs": {
+    "AttackItem": {
+      "additionalProperties": false,
+      "properties": {
+        "id": {
+          "description": "Identifiant ATT&CK (TA, T, M, DET, G, S ou C suivi de chiffres)",
+          "title": "Id",
+          "type": "string"
+        },
+        "kind": {
+          "enum": [
+            "tactic",
+            "technique",
+            "subtechnique",
+            "mitigation",
+            "detection_strategy",
+            "group",
+            "software",
+            "campaign"
+          ],
+          "title": "Kind",
+          "type": "string"
+        },
+        "name": {
+          "title": "Name",
+          "type": "string"
+        },
+        "status": {
+          "description": "révoqué : remplacé (revoked_by) ; obsolète : retiré",
+          "enum": [
+            "en vigueur",
+            "obsolète",
+            "révoqué"
+          ],
+          "title": "Status",
+          "type": "string"
+        },
+        "url": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "description": "Page de l'objet sur attack.mitre.org",
+          "title": "Url"
+        },
+        "description": {
+          "description": "Description anglaise sur une ligne, citations retirées, tronquée",
+          "title": "Description",
+          "type": "string"
+        },
+        "description_truncated": {
+          "title": "Description Truncated",
+          "type": "boolean"
+        },
+        "aliases": {
+          "items": {
+            "type": "string"
+          },
+          "title": "Aliases",
+          "type": "array"
+        },
+        "platforms": {
+          "items": {
+            "type": "string"
+          },
+          "title": "Platforms",
+          "type": "array"
+        },
+        "tactics": {
+          "description": "Tactiques d'une technique ou sous-technique",
+          "items": {
+            "$ref": "#/$defs/Ref"
+          },
+          "title": "Tactics",
+          "type": "array"
+        },
+        "parent": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/Ref"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "description": "Technique parente d'une sous-technique"
+        },
+        "subtechniques": {
+          "items": {
+            "$ref": "#/$defs/Ref"
+          },
+          "title": "Subtechniques",
+          "type": "array"
+        },
+        "mitigations": {
+          "description": "Mesures d'atténuation en vigueur de la technique",
+          "items": {
+            "$ref": "#/$defs/Ref"
+          },
+          "title": "Mitigations",
+          "type": "array"
+        },
+        "detection_strategies": {
+          "description": "Stratégies de détection en vigueur",
+          "items": {
+            "$ref": "#/$defs/Ref"
+          },
+          "title": "Detection Strategies",
+          "type": "array"
+        },
+        "techniques": {
+          "description": "Techniques atténuées (mesure), détectées (stratégie) ou employées (groupe, logiciel, campagne)",
+          "items": {
+            "$ref": "#/$defs/Ref"
+          },
+          "title": "Techniques",
+          "type": "array"
+        },
+        "lists_truncated": {
+          "description": "Une liste a été coupée à la limite du résultat",
+          "title": "Lists Truncated",
+          "type": "boolean"
+        },
+        "revoked_by": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/Ref"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "description": "Objet qui remplace un objet révoqué"
+        },
+        "modified": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "description": "Dernière modification publiée par MITRE",
+          "title": "Modified"
+        },
+        "version": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "description": "Version de l'objet dans ATT&CK",
+          "title": "Version"
+        }
+      },
+      "required": [
+        "id",
+        "kind",
+        "name",
+        "status",
+        "url",
+        "description",
+        "description_truncated",
+        "aliases",
+        "platforms",
+        "tactics",
+        "parent",
+        "subtechniques",
+        "mitigations",
+        "detection_strategies",
+        "techniques",
+        "lists_truncated",
+        "revoked_by",
+        "modified",
+        "version"
+      ],
+      "title": "AttackItem",
+      "type": "object"
+    },
+    "AttackSource": {
+      "additionalProperties": false,
+      "properties": {
+        "name": {
+          "const": "MITRE ATT&CK Enterprise",
+          "title": "Name",
+          "type": "string"
+        },
+        "version": {
+          "title": "Version",
+          "type": "string"
+        },
+        "commit": {
+          "description": "Commit épinglé de mitre-attack/attack-stix-data",
+          "title": "Commit",
+          "type": "string"
+        },
+        "bundle_sha256": {
+          "title": "Bundle Sha256",
+          "type": "string"
+        },
+        "built_at": {
+          "description": "Construction de l'index par `cerveau cyber attack-fetch`",
+          "title": "Built At",
+          "type": "string"
+        },
+        "notice": {
+          "description": "Mention de MITRE à reproduire avec toute copie",
+          "title": "Notice",
+          "type": "string"
+        },
+        "terms_url": {
+          "title": "Terms Url",
+          "type": "string"
+        }
+      },
+      "required": [
+        "name",
+        "version",
+        "commit",
+        "bundle_sha256",
+        "built_at",
+        "notice",
+        "terms_url"
+      ],
+      "title": "AttackSource",
+      "type": "object"
+    },
+    "Ref": {
+      "additionalProperties": false,
+      "properties": {
+        "id": {
+          "description": "Identifiant ATT&CK",
+          "title": "Id",
+          "type": "string"
+        },
+        "name": {
+          "title": "Name",
+          "type": "string"
+        }
+      },
+      "required": [
+        "id",
+        "name"
+      ],
+      "title": "Ref",
+      "type": "object"
+    }
+  },
+  "additionalProperties": false,
+  "properties": {
+    "query": {
+      "title": "Query",
+      "type": "string"
+    },
+    "match": {
+      "enum": [
+        "identifiant",
+        "mots-clés"
+      ],
+      "title": "Match",
+      "type": "string"
+    },
+    "results": {
+      "description": "Identifiant : l'objet, puis son remplaçant s'il est révoqué ; mots-clés : rangés selon order",
+      "items": {
+        "$ref": "#/$defs/AttackItem"
+      },
+      "maxItems": 10,
+      "title": "Results",
+      "type": "array"
+    },
+    "total_matches": {
+      "description": "Objets trouvés avant la limite",
+      "minimum": 0,
+      "title": "Total Matches",
+      "type": "integer"
+    },
+    "more_available": {
+      "title": "More Available",
+      "type": "boolean"
+    },
+    "order": {
+      "title": "Order",
+      "type": "string"
+    },
+    "source": {
+      "$ref": "#/$defs/AttackSource"
+    }
+  },
+  "required": [
+    "query",
+    "match",
+    "results",
+    "total_matches",
+    "more_available",
+    "order",
+    "source"
+  ],
+  "title": "AttackLookup",
+  "type": "object"
+}

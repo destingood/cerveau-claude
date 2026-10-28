@@ -1,0 +1,39 @@
+{"id": "fr-001", "tool": "performance_report", "arguments": {}, "expected": {"is_error": false, "contains": "\"notice\":\"aide à la décision personnelle, pas un conseil en investissement (R16)\""}}
+{"id": "fr-002", "tool": "performance_report", "arguments": {}, "expected": {"is_error": false, "contains": "\"period\":{\"start\":\"2023-10-16\",\"end\":\"2026-10-18\""}}
+{"id": "fr-003", "tool": "performance_report", "arguments": {}, "expected": {"is_error": false, "contains": "\"display\":\"5,48 %\""}}
+{"id": "fr-004", "tool": "performance_report", "arguments": {}, "expected": {"is_error": false, "contains": "\"display\":\"1,79 %\""}}
+{"id": "fr-005", "tool": "performance_report", "arguments": {}, "expected": {"is_error": false, "contains": "\"display\":\"5,62 %\""}}
+{"id": "fr-006", "tool": "performance_report", "arguments": {}, "expected": {"is_error": false, "contains": "\"display\":\"1,84 %\""}}
+{"id": "fr-007", "tool": "performance_report", "arguments": {}, "expected": {"is_error": false, "contains": "\"display\":\"10,30 %\""}}
+{"id": "fr-008", "tool": "performance_report", "arguments": {}, "expected": {"is_error": false, "contains": "\"display\":\"9,87 %\""}}
+{"id": "fr-009", "tool": "performance_report", "arguments": {}, "expected": {"is_error": false, "contains": "\"display\":\"-0,08\""}}
+{"id": "fr-010", "tool": "performance_report", "arguments": {}, "expected": {"is_error": false, "contains": "\"display\":\"-0,11\""}}
+{"id": "fr-011", "tool": "performance_report", "arguments": {}, "expected": {"is_error": false, "contains": "\"display\":\"15,10 %\""}}
+{"id": "fr-012", "tool": "performance_report", "arguments": {}, "expected": {"is_error": false, "contains": "\"peak\":\"2024-08-29\",\"trough\":\"2025-10-16\",\"recovery\":\"2026-07-23\""}}
+{"id": "fr-013", "tool": "performance_report", "arguments": {}, "expected": {"is_error": false, "contains": "\"display\":\"0,12\""}}
+{"id": "fr-014", "tool": "performance_report", "arguments": {}, "expected": {"is_error": false, "contains": "\"display\":\"111 922,71 €\""}}
+{"id": "fr-015", "tool": "performance_report", "arguments": {}, "expected": {"is_error": false, "contains": "\"display\":\"5 922,71 €\""}}
+{"id": "fr-016", "tool": "performance_report", "arguments": {}, "expected": {"is_error": false, "contains": "\"display\":\"4 833,42 €\""}}
+{"id": "fr-017", "tool": "performance_report", "arguments": {}, "expected": {"is_error": false, "contains": "\"display\":\"-60,00 €\""}}
+{"id": "fr-018", "tool": "performance_report", "arguments": {}, "expected": {"is_error": false, "contains": "\"display\":\"10,01 %\""}}
+{"id": "fr-019", "tool": "performance_report", "arguments": {}, "expected": {"is_error": false, "contains": "\"line\":\"FICT-GLOBEX\",\"name\":\"Globex Systems (fictif)\",\"sector\":\"Technologie\",\"currency\":\"USD\""}}
+{"id": "fr-020", "tool": "performance_report", "arguments": {}, "expected": {"is_error": false, "contains": "\"display\":\"-3,10 %\""}}
+{"id": "fr-021", "tool": "performance_report", "arguments": {}, "expected": {"is_error": false, "contains": "\"sector\":\"Matières premières\""}}
+{"id": "fr-022", "tool": "performance_report", "arguments": {}, "expected": {"is_error": false, "contains": "\"residual\":{\"id\":\"attribution/residu\""}}
+{"id": "fr-023", "tool": "performance_report", "arguments": {}, "expected": {"is_error": false, "contains": "risk.yaml › market_risk.benchmark.isin = A_VERIFIER (D8)"}}
+{"id": "fr-024", "tool": "performance_report", "arguments": {}, "expected": {"is_error": false, "contains": "modèle de facteurs non validé (D9)"}}
+{"id": "fr-025", "tool": "performance_report", "arguments": {}, "expected": {"is_error": false, "contains": "€STR pas encore publié pour 2 jour(s) à partir du 16/10/2026 : dernier fixing connu reconduit [Hypothèse]"}}
+{"id": "fr-026", "tool": "performance_report", "arguments": {"start": "2025-01-01", "end": "2025-12-31"}, "expected": {"is_error": false, "contains": "\"display\":\"-8,80 %\""}}
+{"id": "fr-027", "tool": "performance_report", "arguments": {"start": "2025-01-01", "end": "2025-12-31"}, "expected": {"is_error": false, "contains": "période de moins d'un an : pas d'annualisation"}}
+{"id": "fr-028", "tool": "performance_report", "arguments": {"start": "2025-01-01", "end": "2025-12-31"}, "expected": {"is_error": false, "contains": "\"peak\":\"2025-06-06\",\"trough\":\"2025-10-16\",\"recovery\":null"}}
+{"id": "fr-029", "tool": "performance_report", "arguments": {"start": "2024-01-01", "end": "2025-01-01"}, "expected": {"is_error": false, "contains": "\"display\":\"5,34 %\""}}
+{"id": "fr-030", "tool": "performance_report", "arguments": {"start": "2024-01-01", "end": "2025-01-01"}, "expected": {"is_error": false, "contains": "\"display\":\"7,84 %\""}}
+{"id": "fr-031", "tool": "performance_report", "arguments": {"start": "2024-01-01", "end": "2025-01-01"}, "expected": {"is_error": false, "contains": "\"display\":\"0,68\""}}
+{"id": "fr-032", "tool": "performance_report", "arguments": {"start": "2026-09-30", "end": "2026-10-16"}, "expected": {"is_error": false, "contains": "\"display\":\"0,85 %\""}}
+{"id": "fr-033", "tool": "performance_report", "arguments": {"strict": true}, "expected": {"is_error": false, "contains": "\"strict\":true"}}
+{"id": "fr-034", "tool": "performance_report", "arguments": {"end": "2026-10-19"}, "expected": {"is_error": true, "contains": "fin de période après la date de lecture (18/10/2026) (R10)"}}
+{"id": "fr-035", "tool": "performance_report", "arguments": {"start": "2023-10-01"}, "expected": {"is_error": true, "contains": "aucun avoir à la fin du 01/10/2023 : la période commence au plus tôt le 16/10/2023"}}
+{"id": "fr-036", "tool": "performance_report", "arguments": {"start": "2026-10-18"}, "expected": {"is_error": true, "contains": "le début de la période doit précéder sa fin"}}
+{"id": "fr-037", "tool": "performance_report", "arguments": {"as_of": "2020-01-01T00:00:00Z"}, "expected": {"is_error": true, "contains": "aucune transaction connue à cette date : pas de performance"}}
+{"id": "fr-038", "tool": "performance_report", "arguments": {"as_of": "2025-06-30T18:00:00Z", "strict": true}, "expected": {"is_error": true, "contains": "aucune transaction connue à cette date"}}
+{"id": "fr-039", "tool": "performance_report", "arguments": {"start": "2025-13-01"}, "expected": {"is_error": true, "contains": "validation error for performance_reportArguments"}}

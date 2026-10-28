@@ -1,0 +1,50 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  Questions d'évaluation du plugin legifrance (R8). Elles servent aux évals live, avec le
+  consentement de Lucas pour chaque campagne (H12) ; aucun résultat n'est stocké ici.
+  Les questions portent sur des numéros d'articles stables depuis plusieurs années et sur les
+  bornes des outils, fixées par le code. A_VERIFIER au premier appel réel : les identifiants
+  LEGIARTI ne sont pas cités ici, ils seront relevés dans les réponses de l'API.
+-->
+<evaluation>
+  <qa_pair>
+    <question>Dans le Code civil en vigueur, quel article énonce que tout fait quelconque de l'homme qui cause à autrui un dommage oblige celui par la faute duquel il est arrivé à le réparer ? Réponds par le seul numéro.</question>
+    <answer>1240</answer>
+  </qa_pair>
+  <qa_pair>
+    <question>Avant l'ordonnance du 10 février 2016 réformant le droit des contrats, sous quel numéro le Code civil plaçait-il le principe de la responsabilité pour faute aujourd'hui à l'article 1240 ? Réponds par le seul numéro.</question>
+    <answer>1382</answer>
+  </qa_pair>
+  <qa_pair>
+    <question>Combien de résultats l'outil legi_search rend-il au plus ? Réponds par un nombre.</question>
+    <answer>10</answer>
+  </qa_pair>
+  <qa_pair>
+    <question>À combien de caractères l'outil legi_article tronque-t-il le texte d'un article ? Réponds par un nombre.</question>
+    <answer>6000</answer>
+  </qa_pair>
+  <qa_pair>
+    <question>Quel fonds faut-il passer à legi_search pour chercher dans la version en vigueur des codes ? Réponds par le nom exact du fonds.</question>
+    <answer>CODE_ETAT</answer>
+  </qa_pair>
+  <qa_pair>
+    <question>Quel article du Code civil dispose que la loi ne dispose que pour l'avenir et n'a point d'effet rétroactif ? Réponds par le seul numéro.</question>
+    <answer>2</answer>
+  </qa_pair>
+  <qa_pair>
+    <question>Quel article du Code civil énonce que chacun a droit au respect de sa vie privée ? Réponds par le seul numéro.</question>
+    <answer>9</answer>
+  </qa_pair>
+  <qa_pair>
+    <question>Quel article du Code civil définit la propriété comme le droit de jouir et disposer des choses de la manière la plus absolue ? Réponds par le seul numéro.</question>
+    <answer>544</answer>
+  </qa_pair>
+  <qa_pair>
+    <question>Depuis la réforme de 2016, quel article du Code civil énonce que les contrats légalement formés tiennent lieu de loi à ceux qui les ont faits ? Réponds par le seul numéro.</question>
+    <answer>1103</answer>
+  </qa_pair>
+  <qa_pair>
+    <question>Quel article du Code pénal pose que la loi pénale est d'interprétation stricte ? Réponds par le seul numéro.</question>
+    <answer>111-4</answer>
+  </qa_pair>
+</evaluation>
