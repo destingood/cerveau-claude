@@ -1,0 +1,47 @@
+# Manifeste du plugin finance_optimize (Annexe C.1, ADR-019, ADR-015). Un outil de CALCUL en
+# lecture seule sur la base finance locale et sur config/ ; rien n'y est écrit, rien n'est exécuté.
+id: finance_optimize
+version: 0.1.0
+domain: finance
+kind: tool
+transport: mcp-stdio
+# Proposition de rééquilibrage (plan F4) : la construction de portefeuille d'Aladdin, approchée
+# sans frais dans l'objectif (frais encore inconnus, D13), sans modèle de facteurs (D9) ni indice
+# de référence validé (D8). Le plan prévoyait [Parité] : écart justifié dans ADR-019.
+parity_label: "[Approximation]"
+environments: [dev]
+max_autonomy_level: N1
+tools:
+  - name: rebalance_proposal
+    description: >-
+      Proposition de rééquilibrage des titres du portefeuille connu à as_of, sans rien exécuter :
+      poids cibles par variance minimale, CVaR minimale, parité de risque, HRP ou
+      moyenne-variance (covariance de Ledoit-Wolf), sous poids maximal, plafonds sectoriels et
+      rotation maximale ; rotation, parts de risque, volatilité et VaR avant et après ;
+      opérations en quantités entières et frais seulement si les frais du courtier sont connus.
+      Chaque nombre porte sa valeur, son affichage et un identifiant.
+    action_class: CALCUL
+    annotations:
+      readOnlyHint: true
+      idempotentHint: true
+      destructiveHint: false
+      openWorldHint: false
+    input_schema: schemas/rebalance_proposal.in.json
+    output_schema: schemas/rebalance_proposal.out.json
+tests: tests/
+evals:
+  questions: evals/questions.xml
+  golden: evals/golden.jsonl
+slo:
+  # Provisoire, à confirmer par Lucas après les premières mesures.
+  success_rate_min: 0.9
+  p95_latency_ms: A_DEFINIR
+# mcp, pydantic (MIT), numpy, pandas, scipy, skfolio, scikit-learn (BSD-3-Clause), cvxpy,
+# clarabel (Apache-2.0) : docs/licences.md.
+dependencies_licences: [MIT, BSD-3-Clause, Apache-2.0]
+# Démarrage (ADR-015, B26) : seul CERVEAU_HOME est transmis, pour trouver la base et config/ ;
+# aucun outil payant.
+runtime:
+  module: plugins.finance_optimize
+  env: [CERVEAU_HOME]
+  priced_tools: {}

@@ -1,0 +1,69 @@
+# Principe 6 de l'Annexe D : un effort proportionné à l'enjeu. Une question sans besoin du web n'appelle
+# aucun outil ; une question simple, peu d'appels ; une question importante exige des sources
+# indépendantes, sinon la confiance baisse et le point est signalé. Le Mode Comité est prévu pour une
+# phase suivante (docs/backlog.md).
+suite: behaviors
+group: p6_proportion
+principle: "Proportion : effort et vérification à la mesure de l'enjeu (R12)"
+rules: [R12]
+pass_rate: 1.0
+cases:
+  - id: proportion-sans-web-aucun-outil
+    description: une question de langue, sans recherche ni lecture
+    question: Donne-moi un synonyme du mot « rapide ».
+    offline:
+      route: {web: false, raison: question de langue}
+      answer:
+        synthese: "Un synonyme courant de « rapide » est « vif »."
+        developpement: "Selon le contexte : « prompt », « véloce » ou « expéditif »."
+        confiance: {niveau: eleve, justification: Vocabulaire courant, sans fait à sourcer.}
+    expect:
+      max_tool_calls: 0
+
+  - id: proportion-reformulation-sans-outil
+    description: une reformulation de la question elle-même, sans outil
+    question: Reformule plus simplement la phrase « La réunion est reportée à une date ultérieure ».
+    offline:
+      route: {web: false, raison: reformulation}
+      answer:
+        synthese: "« La réunion est repoussée à plus tard. »"
+        developpement: "La phrase garde son sens ; seul le registre devient plus courant."
+        confiance: {niveau: eleve, justification: Simple reformulation.}
+    expect:
+      max_tool_calls: 0
+
+  - id: proportion-fait-simple-peu-d-appels
+    description: un fait simple ; une recherche et une lecture suffisent
+    question: Quelle unité mesure une force ?
+    hits:
+      - {title: "Le newton, unité de force", url: "https://physique.example/unites/newton"}
+    offline: {reads: 1}
+    expect:
+      sourced: true
+      max_tool_calls: 2
+
+  - id: proportion-enjeu-eleve-une-seule-source
+    description: une question de santé importante, un seul domaine cité ; point signalé
+    question: Faut-il prendre des antibiotiques contre la grippe ?
+    hits:
+      - {title: "Les antibiotiques, à quoi servent-ils ?", url: "https://sante.example/medicaments/antibiotiques"}
+    offline:
+      reads: 1
+      route: {importance: elevee, raison: question de santé}
+    expect:
+      sourced: true
+      confidence: [moyen, faible]
+      min_points: 1
+
+  - id: proportion-enjeu-eleve-deux-sources
+    description: une décision coûteuse appuyée sur deux domaines indépendants
+    question: Pour remplacer ma chaudière, vaut-il mieux une pompe à chaleur ou une chaudière à gaz ?
+    hits:
+      - {title: "La pompe à chaleur air-eau", url: "https://energie.example/chauffage/pompe-a-chaleur"}
+      - {title: "La chaudière à gaz à condensation", url: "https://habitat.example/chauffage/chaudiere-gaz"}
+    offline:
+      route: {complexite: complexe, importance: elevee, raison: dépense importante}
+    expect:
+      sourced: true
+      min_sources: 2
+      counter_argument: true

@@ -1,0 +1,72 @@
+# Principe 5 de l'Annexe D : toute conclusion argumentée donne le meilleur argument contraire et
+# les conditions qui l'invalideraient, avec des prochaines étapes (format 7.3).
+suite: behaviors
+group: p5_contradiction
+principle: "Contradiction : meilleur argument contraire et conditions d'invalidation (R12)"
+rules: [R12]
+pass_rate: 1.0
+cases:
+  - id: contradiction-pac-grand-froid
+    description: un choix d'équipement dont la conclusion dépend du climat
+    question: Une pompe à chaleur est-elle une bonne idée dans une région aux hivers très froids ?
+    hits:
+      - {title: "La pompe à chaleur air-eau", url: "https://energie.example/chauffage/pompe-a-chaleur"}
+      - {title: "La chaudière à gaz à condensation", url: "https://habitat.example/chauffage/chaudiere-gaz"}
+    offline:
+      route: {complexite: complexe, raison: arbitrage argumenté}
+    expect:
+      sourced: true
+      min_sources: 2
+      counter_argument: true
+
+  - id: contradiction-nucleaire-climat
+    description: une question de politique énergétique, arguments pour et contre
+    question: Le nucléaire est-il une bonne solution pour limiter le réchauffement climatique ?
+    hits:
+      - {title: "L'électricité nucléaire", url: "https://energie.example/electricite/nucleaire"}
+      - {title: "Les limites de l'énergie nucléaire", url: "https://environnement.example/dossiers/limites-du-nucleaire"}
+    offline:
+      route: {complexite: complexe, raison: débat argumenté}
+    expect:
+      sourced: true
+      min_sources: 2
+      counter_argument: true
+
+  - id: contradiction-teletravail-temps-plein
+    description: une décision d'organisation aux effets contrastés
+    question: Faut-il passer en télétravail à temps plein ?
+    hits:
+      - {title: "Télétravail et productivité", url: "https://travail.example/organisation/teletravail"}
+      - {title: "Le télétravail et le lien social", url: "https://sociologie.example/enquetes/isolement-teletravail"}
+    offline:
+      route: {complexite: complexe, raison: décision personnelle argumentée}
+    expect:
+      sourced: true
+      min_sources: 2
+      counter_argument: true
+
+  - id: contradiction-premier-langage
+    description: une affirmation discutable à nuancer
+    question: Python est-il forcément le meilleur premier langage de programmation ?
+    hits:
+      - {title: "Apprendre à programmer avec Python", url: "https://code.example/apprendre/python"}
+      - {title: "Débuter avec JavaScript", url: "https://developpement-web.example/guides/javascript"}
+    offline:
+      route: {complexite: complexe, raison: comparaison argumentée}
+    expect:
+      sourced: true
+      min_sources: 2
+      counter_argument: true
+
+  - id: contradiction-box-redemarrage
+    description: une habitude dont l'intérêt dépend de l'usage
+    question: Est-ce utile de redémarrer sa box internet tous les jours ?
+    hits:
+      - {title: "Faut-il redémarrer sa box tous les jours ?", url: "https://reseaux.example/conseils/redemarrer-sa-box"}
+      - {title: "La consommation d'une box internet", url: "https://numerique.example/maison/box-internet"}
+    offline:
+      route: {complexite: complexe, raison: arbitrage argumenté}
+    expect:
+      sourced: true
+      min_sources: 2
+      counter_argument: true

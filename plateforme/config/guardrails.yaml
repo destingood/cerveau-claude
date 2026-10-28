@@ -1,0 +1,16 @@
+# Garde-fous d'entrée (section 13, ADR-010).
+pii:
+  language: fr
+  spacy_model: fr_core_news_md
+  # Seuil de score Presidio : décision de Lucas (valeur proposée dans le plan : 0.5).
+  score_threshold: A_DEFINIR
+  # Libellé du pseudonyme (<PERSONNE_1>...) par type d'entité ; toutes sont pseudonymisées.
+  entities:
+    PERSON: PERSONNE
+    LOCATION: LIEU
+    EMAIL_ADDRESS: EMAIL
+    IBAN_CODE: IBAN
+    CREDIT_CARD: CARTE
+    FR_PHONE: TELEPHONE
+    FR_NIR: NIR
+    IP_ADDRESS: IP

@@ -1,0 +1,60 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  Questions d'évaluation du plugin cyber_cve (R8). Elles servent aux évals live, avec le
+  consentement de Lucas pour chaque campagne ; aucun résultat n'est stocké ici.
+  Les faits sur des CVE ont été relevés le 27/10/2026 dans les réponses réelles du NVD (fiche
+  CVE-2021-44228) et du catalogue KEV de la CISA (version 2026.10.26) : ce sont des champs
+  historiques (dates d'ajout, échéances, éditeurs, score de base du NVD) qui ne changent plus en
+  temps normal. Aucune question ne porte sur une valeur EPSS, recalculée chaque jour. Les autres
+  questions portent sur les bornes des outils, fixées par le code.
+-->
+<evaluation>
+  <qa_pair>
+    <question>Selon le catalogue KEV de la CISA, à quelle date la CVE-2021-44228 y a-t-elle été ajoutée ? Réponds au format AAAA-MM-JJ.</question>
+    <answer>2021-12-10</answer>
+  </qa_pair>
+  <qa_pair>
+    <question>Selon le catalogue KEV de la CISA, quelle est l'échéance de correction (due date) de la CVE-2021-44228 ? Réponds au format AAAA-MM-JJ.</question>
+    <answer>2021-12-24</answer>
+  </qa_pair>
+  <qa_pair>
+    <question>Quel score CVSS 3.1 de base le NVD (source nvd@nist.gov) publie-t-il pour la CVE-2021-44228 ?</question>
+    <answer>10.0</answer>
+  </qa_pair>
+  <qa_pair>
+    <question>Selon le catalogue KEV de la CISA, quel produit la CVE-2014-0160 concerne-t-elle ?</question>
+    <answer>OpenSSL</answer>
+  </qa_pair>
+  <qa_pair>
+    <question>Selon le catalogue KEV de la CISA, à quelle date la CVE-2014-0160 y a-t-elle été ajoutée ? Réponds au format AAAA-MM-JJ.</question>
+    <answer>2022-05-04</answer>
+  </qa_pair>
+  <qa_pair>
+    <question>Selon le catalogue KEV de la CISA, l'usage de la CVE-2017-0144 dans des campagnes de rançongiciel est-il connu (Known) ou inconnu (Unknown) ?</question>
+    <answer>Known</answer>
+  </qa_pair>
+  <qa_pair>
+    <question>Selon le catalogue KEV de la CISA, quel éditeur la CVE-2023-4966 concerne-t-elle ?</question>
+    <answer>Citrix</answer>
+  </qa_pair>
+  <qa_pair>
+    <question>Combien d'identifiants CVE cve_lookup accepte-t-il au plus en un appel ?</question>
+    <answer>10</answer>
+  </qa_pair>
+  <qa_pair>
+    <question>Sur combien de jours au plus une veille du NVD avec cve_watch peut-elle porter ?</question>
+    <answer>120</answer>
+  </qa_pair>
+  <qa_pair>
+    <question>Combien de résultats cve_watch renvoie-t-il au plus ?</question>
+    <answer>20</answer>
+  </qa_pair>
+  <qa_pair>
+    <question>cve_lookup accepte-t-il l'identifiant CVE-21-44228 ? Réponds par oui ou non.</question>
+    <answer>non</answer>
+  </qa_pair>
+  <qa_pair>
+    <question>Selon la règle de tri de cve_lookup, une CVE inscrite au catalogue KEV passe-t-elle avant une CVE absente du KEV dont l'EPSS est plus élevé ? Réponds par oui ou non.</question>
+    <answer>oui</answer>
+  </qa_pair>
+</evaluation>

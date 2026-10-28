@@ -1,0 +1,48 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  Questions d'évaluation du plugin web_research (R8). Chacune se vérifie avec web_search puis
+  web_read sur une source publique, et sa réponse est stable dans le temps. Elles servent aux
+  évals live (consentement de Lucas par campagne, D8) ; aucun résultat n'est stocké ici.
+-->
+<evaluation>
+  <qa_pair>
+    <question>Quel RFC de l'IETF normalise le protocole d'exclusion des robots (robots.txt) ?</question>
+    <answer>RFC 9309</answer>
+  </qa_pair>
+  <qa_pair>
+    <question>En quelle année la loi française de séparation des Églises et de l'État a-t-elle été promulguée ?</question>
+    <answer>1905</answer>
+  </qa_pair>
+  <qa_pair>
+    <question>Dans quelle ville siège la Banque centrale européenne ?</question>
+    <answer>Francfort-sur-le-Main</answer>
+  </qa_pair>
+  <qa_pair>
+    <question>Quel institut publie l'indice des prix à la consommation en France ?</question>
+    <answer>Insee</answer>
+  </qa_pair>
+  <qa_pair>
+    <question>En quelle année le traité de Rome instituant la Communauté économique européenne a-t-il été signé ?</question>
+    <answer>1957</answer>
+  </qa_pair>
+  <qa_pair>
+    <question>Quelle est la capitale de l'Australie ?</question>
+    <answer>Canberra</answer>
+  </qa_pair>
+  <qa_pair>
+    <question>Quel est le numéro atomique du carbone ?</question>
+    <answer>6</answer>
+  </qa_pair>
+  <qa_pair>
+    <question>Quelle est l'unité de force du Système international d'unités ?</question>
+    <answer>newton</answer>
+  </qa_pair>
+  <qa_pair>
+    <question>Qui a écrit le roman « Les Misérables » ?</question>
+    <answer>Victor Hugo</answer>
+  </qa_pair>
+  <qa_pair>
+    <question>Sous quelle licence la bibliothèque Python httpx est-elle distribuée ?</question>
+    <answer>BSD-3-Clause</answer>
+  </qa_pair>
+</evaluation>

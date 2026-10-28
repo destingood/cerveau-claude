@@ -1,0 +1,35 @@
+# Manifeste du pack Généraliste (section 9.1, priorité P0 du tableau 9.2). Déclaratif : les valeurs
+# qui gouvernent (autonomie, seuils, budgets) restent dans config/*.yaml et ne sont pas recopiées ici.
+id: generaliste
+version: 0.1.0
+# « expérimental » tant que le golden set n'a pas atteint son seuil en mesure réelle (section 9.3) ;
+# seul Lucas passe le pack en « actif », au vu du rapport d'évals.
+statut: experimental
+perimetre:
+  - Questions générales de connaissance, d'explication et de raisonnement.
+  - Recherche web avec citations vérifiées des pages lues.
+  - Repli pour toute question sans pack de domaine dédié.
+hors_perimetre:
+  - Conseil à des tiers, conseil juridique, médical ou en investissement (R16).
+  - Toute action réelle ou communication externe : le pack ne fait que lire (LECTURE).
+  - Chiffre décisionnel produit par un modèle (R1) : aucun outil de calcul en phase 1.
+plugins: [web_research]
+autonomie:
+  # Niveau courant et niveau maximal : config/autonomy.yaml, domains.generaliste (N1, tableau 9.2).
+  source: config/autonomy.yaml#domains.generaliste
+sources_autorisees:
+  # Pages web publiques (http, https) trouvées par web_search puis lues par web_read, dans les
+  # limites du plugin : anti-SSRF, robots.txt respecté, taille et durée bornées (plugin.yaml).
+  web: pages publiques renvoyées par la recherche de la même requête
+  # Corpus RAG : vide en phase 1 (knowledge/sources.yaml).
+  rag: knowledge/sources.yaml
+prompts:
+  role: prompts/role.md      # inséré dans le prompt système (core/orchestrator/prompts.py)
+  rubric: prompts/rubric.md  # prompt système du juge des évals (core/evals/judge.py)
+evals:
+  golden: evals/golden.jsonl
+  # Seuil du score moyen du juge : config/evals.yaml, thresholds.generaliste_golden_min_score.
+  golden_seuil: config/evals.yaml#thresholds.generaliste_golden_min_score
+  behaviors: evals/behaviors.yaml
+  # Suites communes à tous les packs : evals/behaviors/ (principes de l'Annexe D) et
+  # evals/redteam/injection_base/ (R5). Commande : make eval.

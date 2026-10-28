@@ -1,0 +1,68 @@
+{% extends "base.html" %}
+{% macro fig(figure) -%}
+{%- if figure is none %}—{% else %}{{ figure.display }} <code class="note">{{ figure.id }}</code>{% endif -%}
+{%- endmacro %}
+{% block content %}
+{% if report is none %}
+<p class="note">Source : l'outil <code>finance_risk.risk_report</code>.</p>
+<p class="alerte">{{ problem }}</p>
+{% else %}
+<p class="note">Source : l'outil <code>finance_risk.risk_report</code> {{ report.parity_label }},
+au {{ report.as_of|quand }} (séance du {{ report.day|jour }}). Chaque chiffre est celui de
+l'outil, avec son identifiant (R1).</p>
+<table>
+<tr><th>Valeur du portefeuille</th><td>{{ fig(report.value_eur) }}</td></tr>
+<tr><th>Qualité des données</th><td>{{ report.data_quality.gate }}
+{%- if report.data_quality.decision_cap %} : décision plafonnée à {{ report.data_quality.decision_cap }}{% endif -%}
+</td></tr>
+</table>
+
+{% if report.volatility is not none %}
+<h2>Volatilité</h2>
+<table>
+<tr><th>Journalière</th><td>{{ fig(report.volatility.daily) }}</td></tr>
+<tr><th>Annualisée</th><td>{{ fig(report.volatility.annualized) }}</td></tr>
+<tr><th>GARCH, prochaine séance</th><td>{{ fig(report.volatility.garch.next_session) }}</td></tr>
+</table>
+{% endif %}
+
+{% if report.var is not none %}
+<h2>VaR et CVaR</h2>
+<table>
+<tr><th>Méthode</th><th>Confiance</th><th>Horizon</th><th>VaR</th><th>VaR %</th><th>CVaR</th><th>CVaR %</th></tr>
+{% for row in report.var %}
+<tr><td>{{ row.method }}{% if row.approximation %} (√h){% endif %}</td><td>{{ fig(row.confidence) }}</td>
+<td>{{ fig(row.horizon) }}</td><td>{{ fig(row.var_eur) }}</td><td>{{ fig(row.var_pct) }}</td>
+<td>{{ fig(row.cvar_eur) }}</td><td>{{ fig(row.cvar_pct) }}</td></tr>
+{% endfor %}
+</table>
+{% endif %}
+
+{% if report.drawdown is not none %}
+<h2>Drawdown</h2>
+<table>
+<tr><th>Actuel</th><td>{{ fig(report.drawdown.current) }}</td></tr>
+<tr><th>Maximal</th><td>{{ fig(report.drawdown.maximum) }}, du {{ report.drawdown.peak|jour }} au {{ report.drawdown.trough|jour }}</td></tr>
+</table>
+{% endif %}
+
+{% if report.concentration is not none %}
+<h2>Concentration</h2>
+<table>
+<tr><th>Herfindahl</th><td>{{ fig(report.concentration.herfindahl) }}</td></tr>
+<tr><th>Lignes effectives</th><td>{{ fig(report.concentration.effective_lines) }}</td></tr>
+</table>
+{% endif %}
+
+{% if report.unavailable %}
+<h2>Mesures indisponibles</h2>
+<ul>{% for item in report.unavailable %}<li>{{ item.measure }} : {{ item.reason }}</li>{% endfor %}</ul>
+{% endif %}
+{% if report.warnings %}
+<h2>Avertissements</h2>
+<ul>{% for warning in report.warnings %}<li>{{ warning }}</li>{% endfor %}</ul>
+{% endif %}
+<h2>Hypothèses</h2>
+<ul>{% for assumption in report.method.assumptions %}<li>{{ assumption }}</li>{% endfor %}</ul>
+{% endif %}
+{% endblock %}

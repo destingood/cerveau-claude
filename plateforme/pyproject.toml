@@ -1,0 +1,101 @@
+[project]
+name = "cerveau"
+version = "0.0.1"
+description = "CERVEAU: personal multi-domain AI platform (Phase 0 foundations)."
+readme = "README.md"
+requires-python = ">=3.12,<3.13"
+license = { text = "Proprietary - personal use" }
+authors = [{ name = "Lucas" }]
+dependencies = [
+    "arch==8.0.0",
+    "defusedxml==0.7.1",
+    "exchange-calendars==4.13.2",
+    "fastapi==0.156.8",
+    "fr-core-news-md==3.8.0",
+    "httpx==0.28.1",
+    "jinja2==3.1.6",
+    "jsonschema>=4",
+    "langchain-anthropic==1.7.6",
+    "langchain-core==1.6.12",
+    "langfuse==5.0.2",
+    "langgraph==1.2.16",
+    "mcp==2.3.0",
+    "nautilus-trader==1.231.0",
+    "numpy==2.4.6",
+    "pandas==3.0.6",
+    "presidio-analyzer==2.2.364",
+    "pydantic>=2",
+    "pyyaml>=6",
+    "scipy==1.18.1",
+    "skfolio==1.8.1",
+    "spacy==3.8.16",
+    "tldextract==5.4.0",
+    "trafilatura==2.3.1",
+    "typer>=0.12",
+    "uvicorn==0.54.0",
+]
+
+[project.scripts]
+cerveau = "interfaces.cli.main:run"
+
+[dependency-groups]
+dev = [
+    "hypothesis>=6.170.1",
+    "pip-audit>=2.10.1",
+    "pre-commit>=4.7.0",
+    "pytest>=9.1.1",
+    "pytest-cov>=7.1.0",
+    "pytest-socket==0.8.1",
+    "ruff>=0.17.1",
+]
+research = [
+    "vectorbt==1.1.2",
+]
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[tool.hatch.build.targets.wheel]
+packages = ["core", "interfaces", "plugins"]
+
+[tool.uv]
+# research: vectorbt, isolated in core/finance/research/screening.py (ADR-025, Commons Clause).
+default-groups = ["dev", "research"]
+# nautilus-trader 1.231.0 pins fsspec==2026.2.0, hit by CVE-2026-104851 (PYSEC-2026-4217, code
+# execution through ReferenceFileSystem templates; fixed in 2026.6.0). CERVEAU never opens an fsspec
+# filesystem, but pip-audit must stay clean: the override is tested by the NautilusTrader
+# cross-check (ADR-024).
+override-dependencies = ["fsspec==2026.9.0"]
+
+[tool.uv.sources]
+fr-core-news-md = { url = "https://github.com/explosion/spacy-models/releases/download/fr_core_news_md-3.8.0/fr_core_news_md-3.8.0-py3-none-any.whl" }
+
+[tool.ruff]
+line-length = 100
+target-version = "py312"
+extend-exclude = ["docs", "evals/reports"]
+
+[tool.ruff.lint]
+select = ["E", "F", "W", "I", "B", "UP", "S", "SIM", "RUF"]
+ignore = [
+    "RUF001", # French text legitimately contains non-ASCII punctuation
+    "RUF002",
+    "RUF003",
+]
+
+[tool.ruff.lint.per-file-ignores]
+"tests/**" = ["S101", "S603", "S607", "S108"]
+"plugins/*/tests/**" = ["S101", "S603", "S607", "S108"]
+".claude/hooks/**" = ["S603", "S607"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests", "plugins"]
+addopts = "-ra --strict-markers --allow-hosts=127.0.0.1,::1"
+markers = [
+    "hooks: tests of the Claude Code hooks (.claude/hooks)",
+]
+
+[tool.coverage.run]
+source = ["core", "interfaces", "plugins"]
+branch = true

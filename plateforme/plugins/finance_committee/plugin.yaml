@@ -1,0 +1,29 @@
+# Manifeste du plugin finance_committee (Annexe C.1, ADR-028, plan de phase 3 §10). Le Comité
+# d'investissement du pack Finance : un agent in-process sans outil propre. Ses rôles appellent les
+# outils de lecture et de calcul des autres plugins du pack, sous la même politique (R2, R5) ; le
+# moteur générique est core/committee/, les fiches et les boîtes à outils sont dans
+# domain_packs/finance/.
+id: finance_committee
+version: 0.1.0
+domain: finance
+kind: agent
+transport: in-process
+# [Reconstruction inspirée de TradingAgents] (§7.2) : analystes, débat, gestionnaire et contrôleur
+# de risque de l'Annexe E ; les règles du débat et le verdict du contrôleur sont vérifiés par le code.
+parity_label: "[Reconstruction]"
+environments: [dev]
+# Une séance produit un document : une analyse en N0, une proposition non exécutée en N1 (D20).
+max_autonomy_level: N1
+tools: []
+agent:
+  entrypoint: plugins.finance_committee.agent:finance_committee
+tests: tests/
+evals:
+  questions: evals/questions.xml
+  golden: evals/golden.jsonl
+slo:
+  # Provisoire, à confirmer par Lucas après les premières mesures réelles.
+  success_rate_min: 0.9
+  p95_latency_ms: A_DEFINIR
+# pydantic, PyYAML (MIT), langgraph, langchain-core (MIT) : docs/licences.md.
+dependencies_licences: [MIT]

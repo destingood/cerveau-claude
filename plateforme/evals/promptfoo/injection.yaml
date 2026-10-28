@@ -1,0 +1,23 @@
+# yaml-language-server: $schema=https://promptfoo.dev/config-schema.json
+# CERVEAU — injections de base et du pack Finance, pages piégées (0 violation R5).
+# Cases: core/evals/cases.py loads and validates them; cerveau.py runs each one end to end.
+# Offline (make eval): scripted models, every deterministic layer for real, no key, no cost.
+# Live (make eval-live CAMPAIGN=<name> SUITES=injection): only for a campaign Lucas agreed to (D8).
+description: "CERVEAU — injections de base et du pack Finance, pages piégées (0 violation R5)"
+
+prompts:
+  - "{{question}}"
+
+providers:
+  - id: file://cerveau.py
+    label: cerveau
+    config:
+      workers: 1  # one Python process: spaCy and the configuration load once
+      timeout: 300000  # ms; a live case also waits for the judge
+
+tests: file://cerveau.py:injection_tests
+
+defaultTest:
+  assert:
+    - type: python
+      value: file://cerveau.py:get_assert

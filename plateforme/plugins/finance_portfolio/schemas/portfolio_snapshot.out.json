@@ -1,0 +1,486 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$defs": {
+    "AccountStatus": {
+      "additionalProperties": false,
+      "properties": {
+        "account": {
+          "title": "Account",
+          "type": "string"
+        },
+        "status": {
+          "enum": [
+            "ok",
+            "ecart",
+            "non_rapproche"
+          ],
+          "title": "Status",
+          "type": "string"
+        },
+        "statement_date": {
+          "anyOf": [
+            {
+              "format": "date",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Statement Date"
+        },
+        "gaps": {
+          "items": {
+            "$ref": "#/$defs/GapRef"
+          },
+          "title": "Gaps",
+          "type": "array"
+        }
+      },
+      "required": [
+        "account",
+        "status",
+        "statement_date",
+        "gaps"
+      ],
+      "title": "AccountStatus",
+      "type": "object"
+    },
+    "CashBalance": {
+      "additionalProperties": false,
+      "properties": {
+        "account": {
+          "title": "Account",
+          "type": "string"
+        },
+        "currency": {
+          "title": "Currency",
+          "type": "string"
+        },
+        "balance": {
+          "$ref": "#/$defs/Figure"
+        },
+        "fx_rate": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/Figure"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "fx_date": {
+          "anyOf": [
+            {
+              "format": "date",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Fx Date"
+        },
+        "value_eur": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/Figure"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "weight": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/Figure"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        }
+      },
+      "required": [
+        "account",
+        "currency",
+        "balance",
+        "fx_rate",
+        "fx_date",
+        "value_eur",
+        "weight"
+      ],
+      "title": "CashBalance",
+      "type": "object"
+    },
+    "Exposure": {
+      "additionalProperties": false,
+      "properties": {
+        "key": {
+          "title": "Key",
+          "type": "string"
+        },
+        "value_eur": {
+          "$ref": "#/$defs/Figure"
+        },
+        "weight": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/Figure"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        }
+      },
+      "required": [
+        "key",
+        "value_eur",
+        "weight"
+      ],
+      "title": "Exposure",
+      "type": "object"
+    },
+    "Exposures": {
+      "additionalProperties": false,
+      "description": "Cash counts in its currency, and in the ``liquidites`` bucket for sector and country.",
+      "properties": {
+        "sector": {
+          "items": {
+            "$ref": "#/$defs/Exposure"
+          },
+          "title": "Sector",
+          "type": "array"
+        },
+        "country": {
+          "items": {
+            "$ref": "#/$defs/Exposure"
+          },
+          "title": "Country",
+          "type": "array"
+        },
+        "currency": {
+          "items": {
+            "$ref": "#/$defs/Exposure"
+          },
+          "title": "Currency",
+          "type": "array"
+        }
+      },
+      "required": [
+        "sector",
+        "country",
+        "currency"
+      ],
+      "title": "Exposures",
+      "type": "object"
+    },
+    "Figure": {
+      "additionalProperties": false,
+      "description": "A number for the planner. ``unit``: a currency code, ``%`` (``value`` is a fraction),\n``XXX/EUR`` (units of XXX for one euro), ``titres``, ``jours``, ``séances``, ``ans`` or\n``score`` (in [0, 1]).",
+      "properties": {
+        "id": {
+          "maxLength": 200,
+          "minLength": 1,
+          "title": "Id",
+          "type": "string"
+        },
+        "value": {
+          "title": "Value",
+          "type": "number"
+        },
+        "display": {
+          "title": "Display",
+          "type": "string"
+        },
+        "unit": {
+          "title": "Unit",
+          "type": "string"
+        }
+      },
+      "required": [
+        "id",
+        "value",
+        "display",
+        "unit"
+      ],
+      "title": "Figure",
+      "type": "object"
+    },
+    "GapRef": {
+      "additionalProperties": false,
+      "properties": {
+        "nature": {
+          "enum": [
+            "titre",
+            "especes"
+          ],
+          "title": "Nature",
+          "type": "string"
+        },
+        "asset": {
+          "title": "Asset",
+          "type": "string"
+        }
+      },
+      "required": [
+        "nature",
+        "asset"
+      ],
+      "title": "GapRef",
+      "type": "object"
+    },
+    "Position": {
+      "additionalProperties": false,
+      "properties": {
+        "account": {
+          "title": "Account",
+          "type": "string"
+        },
+        "instrument_id": {
+          "title": "Instrument Id",
+          "type": "string"
+        },
+        "name": {
+          "title": "Name",
+          "type": "string"
+        },
+        "asset_class": {
+          "enum": [
+            "equity",
+            "etf",
+            "bond",
+            "gold",
+            "fund"
+          ],
+          "title": "Asset Class",
+          "type": "string"
+        },
+        "sector": {
+          "title": "Sector",
+          "type": "string"
+        },
+        "country": {
+          "title": "Country",
+          "type": "string"
+        },
+        "currency": {
+          "title": "Currency",
+          "type": "string"
+        },
+        "quantity": {
+          "$ref": "#/$defs/Figure"
+        },
+        "cost": {
+          "$ref": "#/$defs/Figure"
+        },
+        "average_price": {
+          "$ref": "#/$defs/Figure"
+        },
+        "close": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/Figure"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "close_date": {
+          "anyOf": [
+            {
+              "format": "date",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Close Date"
+        },
+        "fx_rate": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/Figure"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "fx_date": {
+          "anyOf": [
+            {
+              "format": "date",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Fx Date"
+        },
+        "value_eur": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/Figure"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "unrealized_gain": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/Figure"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "weight": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/Figure"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        }
+      },
+      "required": [
+        "account",
+        "instrument_id",
+        "name",
+        "asset_class",
+        "sector",
+        "country",
+        "currency",
+        "quantity",
+        "cost",
+        "average_price",
+        "close",
+        "close_date",
+        "fx_rate",
+        "fx_date",
+        "value_eur",
+        "unrealized_gain",
+        "weight"
+      ],
+      "title": "Position",
+      "type": "object"
+    }
+  },
+  "additionalProperties": false,
+  "properties": {
+    "parity_label": {
+      "const": "[Parité]",
+      "default": "[Parité]",
+      "title": "Parity Label",
+      "type": "string"
+    },
+    "as_of": {
+      "format": "date-time",
+      "title": "As Of",
+      "type": "string"
+    },
+    "day": {
+      "format": "date",
+      "title": "Day",
+      "type": "string"
+    },
+    "strict": {
+      "title": "Strict",
+      "type": "boolean"
+    },
+    "total_eur": {
+      "anyOf": [
+        {
+          "$ref": "#/$defs/Figure"
+        },
+        {
+          "type": "null"
+        }
+      ]
+    },
+    "missing": {
+      "items": {
+        "type": "string"
+      },
+      "title": "Missing",
+      "type": "array"
+    },
+    "positions": {
+      "items": {
+        "$ref": "#/$defs/Position"
+      },
+      "title": "Positions",
+      "type": "array"
+    },
+    "cash": {
+      "items": {
+        "$ref": "#/$defs/CashBalance"
+      },
+      "title": "Cash",
+      "type": "array"
+    },
+    "exposures": {
+      "anyOf": [
+        {
+          "$ref": "#/$defs/Exposures"
+        },
+        {
+          "type": "null"
+        }
+      ]
+    },
+    "reconciliation": {
+      "items": {
+        "$ref": "#/$defs/AccountStatus"
+      },
+      "title": "Reconciliation",
+      "type": "array"
+    },
+    "alert": {
+      "anyOf": [
+        {
+          "const": "rapprochement: ecart",
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "title": "Alert"
+    },
+    "warnings": {
+      "items": {
+        "type": "string"
+      },
+      "title": "Warnings",
+      "type": "array"
+    }
+  },
+  "required": [
+    "as_of",
+    "day",
+    "strict",
+    "total_eur",
+    "missing",
+    "positions",
+    "cash",
+    "exposures",
+    "reconciliation",
+    "alert",
+    "warnings"
+  ],
+  "title": "Snapshot",
+  "type": "object"
+}

@@ -1,0 +1,27 @@
+{"id": "cr-001", "tool": "repo_log", "arguments": {"repo": "exemple"}, "expected": {"is_error": false, "contains": "rotation du jeton [MASQUÉ]", "absent": ["example.test"]}}
+{"id": "cr-002", "tool": "repo_log", "arguments": {"repo": "exemple", "rev": "v1"}, "expected": {"is_error": false, "contains": "\"subject\": \"initial\""}}
+{"id": "cr-003", "tool": "repo_log", "arguments": {"repo": "exemple", "max_count": 51}, "expected": {"is_error": true, "contains": "validation"}}
+{"id": "cr-004", "tool": "repo_log", "arguments": {"repo": "exemple", "rev": "v1..HEAD"}, "expected": {"is_error": true, "contains": "révision « v1..HEAD » refusée"}}
+{"id": "cr-005", "tool": "repo_log", "arguments": {"repo": "exemple", "rev": "--all"}, "expected": {"is_error": true, "contains": "validation"}}
+{"id": "cr-006", "tool": "repo_log", "arguments": {"repo": "exemple", "rev": "HEAD@{1}"}, "expected": {"is_error": true, "contains": "validation"}}
+{"id": "cr-007", "tool": "repo_log", "arguments": {"repo": "../cerveau"}, "expected": {"is_error": true, "contains": "validation"}}
+{"id": "cr-008", "tool": "repo_log", "arguments": {"repo": "inconnu"}, "expected": {"is_error": true, "contains": "« inconnu » non autorisé : liste blanche = exemple"}}
+{"id": "cr-009", "tool": "repo_log", "allowlist": "vide", "arguments": {"repo": "exemple"}, "expected": {"is_error": true, "contains": "la liste blanche des dépôts est vide"}}
+{"id": "cr-010", "tool": "repo_file", "allowlist": "cerveau", "arguments": {"repo": "cerveau", "path": "README.md"}, "expected": {"is_error": true, "contains": "recouvre le dépôt CERVEAU (ADR-047)"}}
+{"id": "cr-011", "tool": "repo_diff", "allowlist": "cerveau", "arguments": {"repo": "cerveau", "base": "HEAD~1"}, "expected": {"is_error": true, "contains": "recouvre le dépôt CERVEAU (ADR-047)"}}
+{"id": "cr-012", "tool": "repo_diff", "arguments": {"repo": "exemple", "base": "HEAD~1"}, "expected": {"is_error": false, "contains": "\"withheld\": [\".env\"]", "absent": ["VALEUR-DU-FICHIER-ENV"]}}
+{"id": "cr-013", "tool": "repo_diff", "arguments": {"repo": "exemple", "base": "HEAD~1"}, "expected": {"is_error": false, "contains": "+TOKEN = \\\"[MASQUÉ]\\\""}}
+{"id": "cr-014", "tool": "repo_diff", "arguments": {"repo": "exemple", "base": "HEAD~1"}, "expected": {"is_error": false, "contains": "⟨U+202E⟩"}}
+{"id": "cr-015", "tool": "repo_diff", "arguments": {"repo": "exemple", "base": "v1", "head": "HEAD~1"}, "expected": {"is_error": false, "contains": "Subproject commit"}}
+{"id": "cr-016", "tool": "repo_diff", "arguments": {"repo": "exemple", "base": "absente"}, "expected": {"is_error": true, "contains": "révision « absente » introuvable"}}
+{"id": "cr-017", "tool": "repo_file", "arguments": {"repo": "exemple", "path": ".env"}, "expected": {"is_error": true, "contains": "fichier sensible, jamais lu (R6)", "absent": ["VALEUR-DU-FICHIER-ENV"]}}
+{"id": "cr-018", "tool": "repo_file", "arguments": {"repo": "exemple", "path": "src/../../x"}, "expected": {"is_error": true, "contains": "chemin refusé"}}
+{"id": "cr-019", "tool": "repo_file", "arguments": {"repo": "exemple", "path": "C:/Windows/win.ini"}, "expected": {"is_error": true, "contains": "chemin refusé"}}
+{"id": "cr-020", "tool": "repo_file", "arguments": {"repo": "exemple", "path": ".git/config"}, "expected": {"is_error": true, "contains": "le dossier .git n'est pas lisible"}}
+{"id": "cr-021", "tool": "repo_file", "arguments": {"repo": "exemple", "path": "lien"}, "expected": {"is_error": true, "contains": "lien symbolique : jamais suivi"}}
+{"id": "cr-022", "tool": "repo_file", "arguments": {"repo": "exemple", "path": "vendor/lib"}, "expected": {"is_error": true, "contains": "sous-module : hors du dépôt"}}
+{"id": "cr-023", "tool": "repo_file", "arguments": {"repo": "exemple", "path": "data.bin"}, "expected": {"is_error": true, "contains": "fichier binaire : non montré"}}
+{"id": "cr-024", "tool": "repo_file", "arguments": {"repo": "exemple", "path": "README.md"}, "expected": {"is_error": false, "contains": "# Exemple"}}
+{"id": "cr-025", "tool": "repo_file", "arguments": {"repo": "exemple", "path": "src/long.py", "start_line": 401, "max_lines": 400}, "expected": {"is_error": false, "contains": "\"end_line\": 450"}}
+{"id": "cr-026", "tool": "repo_file", "arguments": {"repo": "exemple", "path": "src/long.py", "max_lines": 401}, "expected": {"is_error": true, "contains": "validation"}}
+{"id": "cr-027", "tool": "repo_file", "arguments": {"repo": "exemple"}, "expected": {"is_error": false, "contains": "\"name\": \".env\", \"kind\": \"file\"", "absent": ["VALEUR-DU-FICHIER-ENV"]}}

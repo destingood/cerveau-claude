@@ -1,0 +1,9 @@
+# Frais FICTIFS de démonstration, écrits par generate.py : aucun courtier ne les
+# pratique. Ils ne remplacent pas config/risk.yaml › trading_costs (A_DEFINIR, D13 de
+# la phase 2).
+nom: "frais fictifs de démonstration"
+trading_costs:
+  commission_pct: 0.10
+  min_commission_eur: 2.00
+  slippage_bps: 5
+  fx_conversion_bps: 10

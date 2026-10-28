@@ -1,0 +1,60 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  Questions d'évaluation du plugin cyber_attack (R8). Elles servent aux évals live, avec le
+  consentement de Lucas pour chaque campagne, une fois l'index construit par
+  `cerveau cyber attack-fetch` (version 20.0) ; aucun résultat n'est stocké ici.
+  Les faits sur ATT&CK ont été relevés le 27/10/2026 sur attack.mitre.org (pied de page
+  « ATT&CK content v20.0 ») : pages T1059.001, T1003.001, TA0006, M1038, G0007 et S0002. Les
+  noms et identifiants ATT&CK sont stables d'une version à l'autre. Les autres questions portent
+  sur les bornes de l'outil, fixées par le code (plugins/cyber_attack/search.py, models.py).
+-->
+<evaluation>
+  <qa_pair>
+    <question>Dans ATT&amp;CK Enterprise 20.0, quel est le nom de la sous-technique T1059.001 ?</question>
+    <answer>PowerShell</answer>
+  </qa_pair>
+  <qa_pair>
+    <question>Dans ATT&amp;CK Enterprise 20.0, quel est l'identifiant de la technique parente de la sous-technique T1059.001 ?</question>
+    <answer>T1059</answer>
+  </qa_pair>
+  <qa_pair>
+    <question>Dans ATT&amp;CK Enterprise 20.0, à quelle tactique la sous-technique T1059.001 est-elle rattachée ? Donne son nom anglais.</question>
+    <answer>Execution</answer>
+  </qa_pair>
+  <qa_pair>
+    <question>Dans ATT&amp;CK Enterprise 20.0, quel est le nom de la technique parente de la sous-technique T1003.001 ?</question>
+    <answer>OS Credential Dumping</answer>
+  </qa_pair>
+  <qa_pair>
+    <question>Dans ATT&amp;CK Enterprise 20.0, quel est le nom anglais de la tactique TA0006 ?</question>
+    <answer>Credential Access</answer>
+  </qa_pair>
+  <qa_pair>
+    <question>Dans ATT&amp;CK Enterprise 20.0, quel est le nom de la mesure d'atténuation M1038 ?</question>
+    <answer>Execution Prevention</answer>
+  </qa_pair>
+  <qa_pair>
+    <question>Dans ATT&amp;CK Enterprise 20.0, quel identifiant porte la mesure d'atténuation « Disable or Remove Feature or Program », listée pour la sous-technique T1059.001 ?</question>
+    <answer>M1042</answer>
+  </qa_pair>
+  <qa_pair>
+    <question>Dans ATT&amp;CK Enterprise 20.0, quel est l'identifiant du groupe APT28, aussi appelé Fancy Bear ?</question>
+    <answer>G0007</answer>
+  </qa_pair>
+  <qa_pair>
+    <question>Dans ATT&amp;CK Enterprise 20.0, quel est le nom du logiciel S0002 ?</question>
+    <answer>Mimikatz</answer>
+  </qa_pair>
+  <qa_pair>
+    <question>Combien de résultats l'outil attack_lookup rend-il au plus pour une recherche ?</question>
+    <answer>10</answer>
+  </qa_pair>
+  <qa_pair>
+    <question>Combien de caractères la requête de l'outil attack_lookup peut-elle compter au plus ?</question>
+    <answer>200</answer>
+  </qa_pair>
+  <qa_pair>
+    <question>Combien de mots-clés distincts d'au moins 2 caractères l'outil attack_lookup accepte-t-il au plus dans une requête ?</question>
+    <answer>8</answer>
+  </qa_pair>
+</evaluation>

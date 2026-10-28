@@ -1,0 +1,60 @@
+# Sources du pack Cyber (section 9.1).
+#
+# guides : pages HTML officielles que le rôle du pack privilégie, lues à la demande par web_read,
+# jamais stockées (G6). Chaque page : titre, url, licence, date de vérification. L'OWASP Top 10
+# des applications LLM, version 2025, est sous licence CC BY-SA 4.0 (pages vérifiées le
+# 2026-10-27) ; une citation garde le lien et la mention, aucun contenu adapté n'est conservé. Les
+# pages de l'ANSSI, de la CISA et du NIST CSRC s'ajouteront une fois leur licence vérifiée
+# (docs/backlog.md).
+guides:
+  - titre: "OWASP Top 10 LLM 2025 — LLM01 Prompt Injection"
+    url: https://genai.owasp.org/llmrisk/llm01-prompt-injection/
+    licence: CC BY-SA 4.0
+    verifie_le: "2026-10-27"
+  - titre: "OWASP Top 10 LLM 2025 — LLM02 Sensitive Information Disclosure"
+    url: https://genai.owasp.org/llmrisk/llm022025-sensitive-information-disclosure/
+    licence: CC BY-SA 4.0
+    verifie_le: "2026-10-27"
+  - titre: "OWASP Top 10 LLM 2025 — LLM03 Supply Chain"
+    url: https://genai.owasp.org/llmrisk/llm032025-supply-chain/
+    licence: CC BY-SA 4.0
+    verifie_le: "2026-10-27"
+  - titre: "OWASP Top 10 LLM 2025 — LLM04 Data and Model Poisoning"
+    url: https://genai.owasp.org/llmrisk/llm042025-data-and-model-poisoning/
+    licence: CC BY-SA 4.0
+    verifie_le: "2026-10-27"
+  - titre: "OWASP Top 10 LLM 2025 — LLM05 Improper Output Handling"
+    url: https://genai.owasp.org/llmrisk/llm052025-improper-output-handling/
+    licence: CC BY-SA 4.0
+    verifie_le: "2026-10-27"
+  - titre: "OWASP Top 10 LLM 2025 — LLM06 Excessive Agency"
+    url: https://genai.owasp.org/llmrisk/llm062025-excessive-agency/
+    licence: CC BY-SA 4.0
+    verifie_le: "2026-10-27"
+  # Adresse écartée des résultats de recherche par le filtre R5 des adresses (signal fuite_prompt,
+  # core/guardrails/injection.py) : la page n'est pas lue tant que Lucas n'a pas tranché
+  # (docs/backlog.md).
+  - titre: "OWASP Top 10 LLM 2025 — LLM07 System Prompt Leakage"
+    url: https://genai.owasp.org/llmrisk/llm072025-system-prompt-leakage/
+    licence: CC BY-SA 4.0
+    verifie_le: "2026-10-27"
+  - titre: "OWASP Top 10 LLM 2025 — LLM08 Vector and Embedding Weaknesses"
+    url: https://genai.owasp.org/llmrisk/llm082025-vector-and-embedding-weaknesses/
+    licence: CC BY-SA 4.0
+    verifie_le: "2026-10-27"
+  - titre: "OWASP Top 10 LLM 2025 — LLM09 Misinformation"
+    url: https://genai.owasp.org/llmrisk/llm092025-misinformation/
+    licence: CC BY-SA 4.0
+    verifie_le: "2026-10-27"
+  - titre: "OWASP Top 10 LLM 2025 — LLM10 Unbounded Consumption"
+    url: https://genai.owasp.org/llmrisk/llm102025-unbounded-consumption/
+    licence: CC BY-SA 4.0
+    verifie_le: "2026-10-27"
+#
+# produits_suivis : noms de logiciels que cve_watch envoie au NVD comme mots-clés quand la
+# question n'en donne pas (G10) ; rien d'autre ne part. 5 noms au plus, de 1 à 100 caractères,
+# sans caractère de contrôle. Vide : seul Lucas la remplit.
+produits_suivis: []
+#
+# sources : corpus RAG autorisé du pack. Vide : pas de RAG en phase 6 (docs/backlog.md, B57).
+sources: []

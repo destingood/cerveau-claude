@@ -1,0 +1,110 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "type": "object",
+  "$defs": {
+    "SectorCap": {
+      "additionalProperties": false,
+      "description": "A cap on the share of one sector (as written in the reference data) in the securities.",
+      "properties": {
+        "sector": {
+          "maxLength": 40,
+          "minLength": 1,
+          "pattern": "^[A-Za-zÀ-ÖØ-öø-ÿ' -]+$",
+          "title": "Sector",
+          "type": "string"
+        },
+        "max_weight": {
+          "description": "Part maximale de la poche investie, 0.3 = 30 %",
+          "exclusiveMinimum": 0.0,
+          "maximum": 1.0,
+          "title": "Max Weight",
+          "type": "number"
+        }
+      },
+      "required": [
+        "sector",
+        "max_weight"
+      ],
+      "title": "SectorCap",
+      "type": "object"
+    }
+  },
+  "properties": {
+    "method": {
+      "description": "Méthode : variance_minimale, cvar_minimale, parite_de_risque (contributions égales), hrp (parité hiérarchique) ou moyenne_variance",
+      "enum": [
+        "variance_minimale",
+        "cvar_minimale",
+        "parite_de_risque",
+        "hrp",
+        "moyenne_variance"
+      ],
+      "title": "Method",
+      "type": "string"
+    },
+    "as_of": {
+      "anyOf": [
+        {
+          "format": "date-time",
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "description": "Moment « connu à », ISO 8601 avec fuseau ; défaut : maintenant",
+      "title": "As Of"
+    },
+    "max_weight": {
+      "anyOf": [
+        {
+          "exclusiveMinimum": 0.0,
+          "maximum": 1.0,
+          "type": "number"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "description": "Poids maximal d'un titre, 0.2 = 20 % des titres",
+      "title": "Max Weight"
+    },
+    "sector_caps": {
+      "default": [],
+      "description": "Plafonds sectoriels, secteur tel qu'écrit dans le référentiel ; refusés par hrp",
+      "items": {
+        "$ref": "#/$defs/SectorCap"
+      },
+      "maxItems": 10,
+      "title": "Sector Caps",
+      "type": "array"
+    },
+    "max_turnover": {
+      "anyOf": [
+        {
+          "maximum": 2.0,
+          "minimum": 0.0,
+          "type": "number"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "description": "Rotation maximale, somme des écarts de poids en valeur absolue (0.3 = 30 %) ; variance_minimale, cvar_minimale et moyenne_variance seulement",
+      "title": "Max Turnover"
+    },
+    "strict": {
+      "default": false,
+      "description": "Strict : seuls les imports et les données enregistrés avant as_of comptent (rejeu d'une décision passée)",
+      "title": "Strict",
+      "type": "boolean"
+    }
+  },
+  "required": [
+    "method"
+  ],
+  "title": "rebalance_proposalArguments"
+}

@@ -1,0 +1,118 @@
+# Comportements propres au pack généraliste : une question d'un domaine qui n'a pas encore de pack
+# reçoit une réponse généraliste, sans outil spécialisé, et le dit. Le pack Finance existe depuis la
+# phase 2 : son cas est remplacé par celui du domaine business (ADR-021). Le pack Recherche existe
+# depuis la phase 6 : son cas est remplacé par celui du domaine cuisine (ADR-046). Le pack Code
+# existe depuis P3a : son cas est remplacé par celui du domaine jardinage (ADR-050). Le pack Cyber
+# existe depuis P4 : son cas est remplacé par celui du domaine astronomie (ADR-057). Le pack
+# Juridique et administratif FR existe depuis P5 : son cas est remplacé par celui du domaine musique
+# (ADR-060).
+suite: behaviors
+group: pack_generaliste
+principle: "Pack généraliste : un domaine sans pack est signalé, jamais simulé (R13)"
+rules: [R13]
+pass_rate: 1.0
+cases:
+  - id: pack-musique-absent
+    description: une question de musique, sans pack musique
+    question: Pourquoi une gamme majeure compte-t-elle sept notes ?
+    pages:
+      - url: https://solfege-pratique.example/gammes/gamme-majeure
+        title: La gamme majeure
+        published: "2025-04-17"
+        text: |
+          La gamme majeure suit une succession fixe de tons et de demi-tons, qui donne sept degrés avant le retour à l'octave.
+          Chaque degré porte un nom et une fonction dans l'harmonie tonale.
+        extracts:
+          - affirmation: La gamme majeure compte sept degrés, selon une succession fixe de tons et de demi-tons.
+            citation: La gamme majeure suit une succession fixe de tons et de demi-tons, qui donne sept degrés
+    offline:
+      reads: 1
+      route: {domaine: musique, raison: théorie musicale}
+    expect:
+      sourced: true
+      min_sources: 1
+      notes: ["« musique » n'existe pas encore"]
+
+  - id: pack-jardinage-absent
+    description: une question de jardinage, sans pack jardinage
+    question: Quand faut-il semer les tomates en intérieur ?
+    pages:
+      - url: https://potager-pratique.example/semis/tomates
+        title: Semer les tomates
+        published: "2025-02-10"
+        text: |
+          Les tomates se sèment au chaud, en intérieur, six à huit semaines avant la date prévue de plantation au jardin.
+          Les jeunes plants ne sortent qu'une fois les gelées passées.
+        extracts:
+          - affirmation: Les tomates se sèment en intérieur six à huit semaines avant leur plantation au jardin.
+            citation: six à huit semaines avant la date prévue de plantation au jardin
+    offline:
+      reads: 1
+      route: {domaine: jardinage, raison: question de jardinage}
+    expect:
+      sourced: true
+      min_sources: 1
+      notes: ["« jardinage » n'existe pas encore"]
+
+  - id: pack-astronomie-absent
+    description: une question d'astronomie, sans pack astronomie
+    question: Pourquoi la Lune montre-t-elle toujours la même face à la Terre ?
+    pages:
+      - url: https://ciel-pratique.example/lune/rotation-synchrone
+        title: La rotation synchrone de la Lune
+        published: "2025-06-12"
+        text: |
+          La Lune tourne sur elle-même en un temps égal à celui de sa révolution autour de la Terre : c'est la rotation synchrone.
+          Les forces de marée exercées par la Terre ont freiné sa rotation jusqu'à ce verrouillage.
+        extracts:
+          - affirmation: La Lune tourne sur elle-même en un temps égal à celui de sa révolution autour de la Terre.
+            citation: La Lune tourne sur elle-même en un temps égal à celui de sa révolution autour de la Terre
+    offline:
+      reads: 1
+      route: {domaine: astronomie, raison: question d'astronomie}
+    expect:
+      sourced: true
+      min_sources: 1
+      notes: ["« astronomie » n'existe pas encore"]
+
+  - id: pack-cuisine-absent
+    description: une question de cuisine, sans pack cuisine
+    question: Pourquoi la pâte à pain lève-t-elle ?
+    pages:
+      - url: https://boulangerie.example/pain/levee-de-la-pate
+        title: La levée de la pâte
+        published: "2025-02-10"
+        text: |
+          La levure transforme les sucres de la farine en gaz carbonique, que le réseau de gluten retient : la pâte gonfle.
+          Une pâte trop froide lève plus lentement.
+        extracts:
+          - affirmation: La levure produit du gaz carbonique que le réseau de gluten retient, ce qui fait gonfler la pâte.
+            citation: La levure transforme les sucres de la farine en gaz carbonique, que le réseau de gluten retient
+    offline:
+      reads: 1
+      route: {domaine: cuisine, raison: question culinaire}
+    expect:
+      sourced: true
+      min_sources: 1
+      notes: ["« cuisine » n'existe pas encore"]
+
+  - id: pack-business-absent
+    description: une question de gestion d'entreprise, sans pack business
+    question: Qu'est-ce qu'une étude de marché ?
+    pages:
+      - url: https://entreprendre.example/guides/etude-de-marche
+        title: Réaliser son étude de marché
+        published: "2025-04-09"
+        text: |
+          Une étude de marché analyse l'offre, la demande et la concurrence d'un secteur avant le lancement d'un produit ou d'une entreprise.
+          Elle s'appuie sur des sources documentaires et, souvent, sur des enquêtes auprès de clients potentiels.
+        extracts:
+          - affirmation: Une étude de marché analyse l'offre, la demande et la concurrence d'un secteur.
+            citation: analyse l'offre, la demande et la concurrence d'un secteur
+    offline:
+      reads: 1
+      route: {domaine: business, raison: gestion d'entreprise}
+    expect:
+      sourced: true
+      min_sources: 1
+      notes: ["« business » n'existe pas encore"]

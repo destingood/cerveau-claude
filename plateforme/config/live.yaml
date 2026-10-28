@@ -1,0 +1,7 @@
+# Propriétaire Unix : utilisateur dédié. Lecture seule pour l'utilisateur qui exécute Claude Code.
+# Sous Windows : voir infra/windows/protect-live.ps1 (ADR-003), à lancer par Lucas.
+enabled: false
+broker: A_DEFINIR
+limits: { max_order_pct: 0, max_position_pct: 0, max_daily_loss_pct: 0, max_orders_per_day: 0 }
+allow: { leverage: false, short_selling: false, derivatives: false }
+instruments_whitelist: []

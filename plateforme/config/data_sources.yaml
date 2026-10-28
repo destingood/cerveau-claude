@@ -1,0 +1,108 @@
+sources:
+  openbb:   { enabled: false, url: A_VERIFIER, categories: [equity, news, economy], terms: A_VERIFIER }
+            # reporté au backlog (ADR-013, D3) ; défaut documenté : `openbb-mcp` écoute sur
+            # 127.0.0.1:8001 en streamable HTTP
+  yfinance: { enabled: false, usage: personnel, terms: "refusé : les CGU de Yahoo interdisent la collecte automatisée (R15, ADR-013, vérifié le 2026-10-18)" }
+  ccxt:     { enabled: false }
+  fred:     { enabled: false, terms: A_VERIFIER }
+  ecb:
+    enabled: true                     # D2
+    url: https://data-api.ecb.europa.eu/service/
+    # ADR-017 : la courbe des taux (yield_curve) est retirée tant que Lucas n'a pas lu ses
+    # conditions propres, plus restrictives (D22).
+    categories: [fx_reference_rates, estr]
+    usage: personnel
+    terms: >-
+      Réutilisation libre si la BCE est citée comme source et si toute modification (calcul de
+      rendement, par exemple) est signalée ; l'€STR est publié sans frais ni licence ; les cours
+      de référence sont donnés à titre d'information seulement
+      (ecb.europa.eu/services/using-our-site/disclaimer et page €STR, vérifiées le 2026-10-18).
+  # Pack cyber (phase 6, P4). Lus par cyber_cve et cyber_attack ; leurs débits sont fixés dans le
+  # code (G4) et rappelés ici. Faits lus le 2026-10-22 et le 2026-10-27 (plan P4, §1).
+  nvd:
+    enabled: true                     # G1
+    url: https://services.nvd.nist.gov/rest/json/cves/2.0
+    categories: [cve]
+    usage: personnel
+    licence: >-
+      Service du NIST ; les descriptions des CVE suivent les conditions d'utilisation du programme
+      CVE : licence gratuite, mondiale et irrévocable de MITRE, à condition de reproduire sa
+      mention de copyright et la licence
+    terms: >-
+      Mention exigée : « This product uses the NVD API but is not endorsed or certified by the
+      NVD. » ; un contenu modifié ne s'attribue pas au NVD ; la clé est personnelle et ne se
+      partage pas (nvd.nist.gov/developers/terms-of-use, lue le 2026-10-22)
+    rate: >-
+      1 requête par 6 s sans clé, 1 par 0,6 s avec la clé facultative NVD_API_KEY (G3, G4), sous
+      les 5 et 50 requêtes par 30 s glissantes publiées
+    # Restent à lire à la source : les débits sur la page officielle (rendue en JavaScript) et le
+    # texte exact de la mention de copyright du programme CVE (cve.org/Legal/TermsOfUse).
+  cisa_kev:
+    enabled: true                     # G2
+    url: https://www.cisa.gov/sites/default/files/feeds/known_exploited_vulnerabilities.json
+    categories: [kev]
+    usage: personnel
+    licence: CC0 1.0, sans le logo de la CISA ni aval de la CISA ou du DHS
+    terms: >-
+      Catalogue des vulnérabilités exploitées connues (cisa.gov/known-exploited-vulnerabilities-catalog
+      et licence du flux, lues le 2026-10-22)
+    rate: 1 lecture du flux par 24 h, gardée en cache sous var/cyber/ (G4)
+  epss:
+    enabled: true                     # G1
+    url: https://api.first.org/data/v1/epss
+    categories: [epss]
+    usage: personnel
+    licence: >-
+      Scores publiés librement, sans inscription ; attribution demandée dans les publications et
+      les produits (first.org/epss/faq, lue le 2026-10-22)
+    rate: 1 requête par seconde (G4, hypothèse) ; aucun débit publié
+  attack:
+    enabled: true                     # G5
+    url: https://github.com/mitre-attack/attack-stix-data
+    categories: [enterprise]
+    usage: personnel
+    version: "20.0"
+    # Empreinte du bundle Enterprise, inscrite par `cerveau cyber attack-fetch` que Lucas lance
+    # (G5) ; tant qu'elle manque, cyber_attack ne répond pas.
+    sha256: A_VERIFIER
+    licence: >-
+      Licence de MITRE, non exclusive et gratuite ; toute copie reproduit « © 2026 The MITRE
+      Corporation. This work is reproduced and distributed with the permission of The MITRE
+      Corporation. » et la licence ; ATT&CK est une marque déposée de MITRE
+      (attack.mitre.org/resources/legal-and-branding/terms-of-use/, lue le 2026-10-22)
+    rate: une lecture par commande attack-fetch, jamais automatique (G5)
+  # Pack Juridique FR (phase 6, P5). Lu par le plugin legifrance (ADR-059) ; identifiants PISTE en
+  # variables d'environnement de Lucas (PISTE_CLIENT_ID, PISTE_CLIENT_SECRET), jamais ici (R6).
+  legifrance:
+    enabled: true                     # H1
+    # Environnement à choisir par Lucas (H4) : bac à sable https://sandbox-api.piste.gouv.fr ou
+    # production https://api.piste.gouv.fr, chemin /dila/legifrance/lf-engine-app. Tant qu'il
+    # manque, le plugin répond « source officielle indisponible » (R7).
+    url: A_DEFINIR
+    categories: [codes, lois_reglements]
+    usage: personnel
+    licence: >-
+      Licence Ouverte 2.0 (etalab-2.0) : citer « Légifrance (DILA) » et la date de dernière mise à
+      jour, sans laisser croire à un aval officiel ; seules les publications du Journal officiel
+      font foi (CGU de l'API Légifrance V1.1 du 04/08/2020, lues le 2026-10-27)
+    terms: >-
+      Jeton OAuth à chaque requête ; API en bêta ; clés réinitialisées et DILA prévenue en cas de
+      compromission. A_VERIFIER : version des CGU en vigueur sur PISTE, durée de vie du jeton,
+      quotas (consultables seulement dans PISTE)
+    rate: 1 requête par seconde (H10, hypothèse) ; cache sous var/juridique/ (H9)
+# ADR-058 : un domaine listé ne lit le web que sur ces hôtes et leurs sous-domaines ; chaque
+# entrée a sa licence vérifiée (H5, lue le 2026-10-27, détail dans docs/licences.md).
+web_allowlists:
+  juridique_fr:
+    - legifrance.gouv.fr              # etalab-2.0
+    - service-public.gouv.fr          # etalab-2.0, dont entreprendre.service-public.gouv.fr
+    - impots.gouv.fr                  # Licence Ouverte 2.0 ; BOFiP : source et date de publication
+    - cnil.fr                         # CC BY-ND 4.0 FR : source, lien, date, sans modification
+    - conseil-etat.fr                 # réutilisation libre, sans altération, source et date
+quality:
+  max_staleness_sessions: 1           # D12 : données de clôture
+  min_quality_score_above_N1: 0.90    # D12
+  # ADR-016 : seuils des contrôles « cours aberrants » et « opérations sur titres ». Tant qu'ils
+  # ne sont pas fixés, ces deux sous-scores et le score sont « non évaluables ».
+  outlier_robust_z: A_DEFINIR         # proposé : 3,5 (z modifié, Iglewicz et Hoaglin)
+  max_unexplained_move: A_DEFINIR     # proposé : 0,30, un cours multiplié ou divisé par 1,30

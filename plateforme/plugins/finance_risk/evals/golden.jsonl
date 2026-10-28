@@ -1,0 +1,42 @@
+{"id": "fr-001", "tool": "risk_report", "arguments": {}, "expected": {"is_error": false, "contains": "\"display\":\"111\u202f922,71\u00a0€\""}}
+{"id": "fr-002", "tool": "risk_report", "arguments": {}, "expected": {"is_error": false, "contains": "\"display\":\"1\u202f365,72\u00a0€\""}}
+{"id": "fr-003", "tool": "risk_report", "arguments": {}, "expected": {"is_error": false, "contains": "\"display\":\"1\u202f796,21\u00a0€\""}}
+{"id": "fr-004", "tool": "risk_report", "arguments": {}, "expected": {"is_error": false, "contains": "\"display\":\"2\u202f035,90\u00a0€\""}}
+{"id": "fr-005", "tool": "risk_report", "arguments": {}, "expected": {"is_error": false, "contains": "\"display\":\"1\u202f421,95\u00a0€\""}}
+{"id": "fr-006", "tool": "risk_report", "arguments": {}, "expected": {"is_error": false, "contains": "\"display\":\"6\u202f282,71\u00a0€\""}}
+{"id": "fr-007", "tool": "risk_report", "arguments": {}, "expected": {"is_error": false, "contains": "\"display\":\"12,72\u00a0%\""}}
+{"id": "fr-008", "tool": "risk_report", "arguments": {}, "expected": {"is_error": false, "contains": "\"status\":\"estime\""}}
+{"id": "fr-009", "tool": "risk_report", "arguments": {}, "expected": {"is_error": false, "contains": "\"display\":\"-17,25\u00a0%\""}}
+{"id": "fr-010", "tool": "risk_report", "arguments": {}, "expected": {"is_error": false, "contains": "\"peak\":\"2025-06-02\",\"trough\":\"2025-10-09\""}}
+{"id": "fr-011", "tool": "risk_report", "arguments": {}, "expected": {"is_error": false, "contains": "\"display\":\"0,612\""}}
+{"id": "fr-012", "tool": "risk_report", "arguments": {}, "expected": {"is_error": false, "contains": "backtest incomplet"}}
+{"id": "fr-013", "tool": "risk_report", "arguments": {}, "expected": {"is_error": false, "contains": "\"display\":\"-13\u202f651,61\u00a0€\""}}
+{"id": "fr-014", "tool": "risk_report", "arguments": {}, "expected": {"is_error": false, "contains": "\"display\":\"3\u202f539,76\u00a0€\""}}
+{"id": "fr-015", "tool": "risk_report", "arguments": {}, "expected": {"is_error": false, "contains": "\"display\":\"-2\u202f896,17\u00a0€\""}}
+{"id": "fr-016", "tool": "risk_report", "arguments": {}, "expected": {"is_error": false, "contains": "\"display\":\"-1\u202f844,66\u00a0€\""}}
+{"id": "fr-017", "tool": "risk_report", "arguments": {}, "expected": {"is_error": false, "contains": "\"display\":\"-677,12\u00a0€\""}}
+{"id": "fr-018", "tool": "risk_report", "arguments": {}, "expected": {"is_error": false, "contains": "\"scenario\":\"historique/crise_2008\",\"label\":\"Crise financière (faillite de Lehman)\",\"status\":\"bloque\""}}
+{"id": "fr-019", "tool": "risk_report", "arguments": {}, "expected": {"is_error": false, "contains": "\"scenario\":\"actions_beta\",\"label\""}}
+{"id": "fr-020", "tool": "risk_report", "arguments": {}, "expected": {"is_error": false, "contains": "\"reason\":\"indice de référence bloqué : ISIN A_VERIFIER (D8)\""}}
+{"id": "fr-021", "tool": "risk_report", "arguments": {"measures": ["facteurs"]}, "expected": {"is_error": false, "contains": "\"reason\":\"régression factorielle non disponible : aucune source de facteurs validée (D9)\""}}
+{"id": "fr-022", "tool": "risk_report", "arguments": {"measures": ["contributions"]}, "expected": {"is_error": false, "contains": "\"display\":\"52,33\u00a0%\""}}
+{"id": "fr-023", "tool": "risk_report", "arguments": {"measures": ["contributions"]}, "expected": {"is_error": false, "contains": "\"display\":\"734,20\u00a0€\""}}
+{"id": "fr-024", "tool": "risk_report", "arguments": {"measures": ["concentration"]}, "expected": {"is_error": false, "contains": "\"display\":\"6,67\u00a0lignes\""}}
+{"id": "fr-025", "tool": "risk_report", "arguments": {"measures": ["correlations"]}, "expected": {"is_error": false, "contains": "\"id\":\"correlations/FICT-DELTA/FICT-MONDE\""}}
+{"id": "fr-026", "tool": "risk_report", "arguments": {"measures": ["var"], "compare_to": "2026-10-12T13:00:00Z"}, "expected": {"is_error": false, "contains": "\"display\":\"163,72\u00a0€\""}}
+{"id": "fr-027", "tool": "risk_report", "arguments": {"measures": ["var"], "compare_to": "2026-10-12T13:00:00Z"}, "expected": {"is_error": false, "contains": "\"display\":\"267,76\u00a0€\""}}
+{"id": "fr-028", "tool": "risk_report", "arguments": {"measures": ["stress"], "sector_shocks": [{"sector": "Technologie", "shock": -0.15}]}, "expected": {"is_error": false, "contains": "\"display\":\"-3\u202f625,03\u00a0€\""}}
+{"id": "fr-029", "tool": "risk_report", "arguments": {"measures": ["stress"], "sector_shocks": [{"sector": "Inexistant", "shock": -0.1}]}, "expected": {"is_error": false, "contains": "aucune ligne de ce secteur dans le portefeuille"}}
+{"id": "fr-030", "tool": "risk_report", "arguments": {"measures": ["volatilite", "var", "backtest", "drawdown", "beta", "correlations", "concentration", "contributions", "stress", "facteurs"], "as_of": "2026-10-16T20:00:00Z"}, "expected": {"is_error": false, "contains": "\"day\":\"2026-10-16\""}}
+{"id": "fr-031", "tool": "risk_report", "arguments": {"as_of": "2026-10-19T00:00:00Z"}, "expected": {"is_error": true, "contains": "as_of est dans le futur"}}
+{"id": "fr-032", "tool": "risk_report", "arguments": {"as_of": "2026-10-18T13:00:00"}, "expected": {"is_error": true, "contains": "timezone"}}
+{"id": "fr-033", "tool": "risk_report", "arguments": {"compare_to": "2026-10-18T13:00:00Z"}, "expected": {"is_error": true, "contains": "compare_to doit précéder as_of"}}
+{"id": "fr-034", "tool": "risk_report", "arguments": {"measures": []}, "expected": {"is_error": true, "contains": "at least 1 item"}}
+{"id": "fr-035", "tool": "risk_report", "arguments": {"measures": ["inconnue"]}, "expected": {"is_error": true, "contains": "Input should be 'volatilite'"}}
+{"id": "fr-036", "tool": "risk_report", "arguments": {"as_of": "2026-10-18T11:00:00Z", "strict": true}, "expected": {"is_error": true, "contains": "aucune position en titres à cette date"}}
+{"id": "fr-037", "tool": "risk_report", "arguments": {"as_of": "2025-01-10T20:00:00Z"}, "expected": {"is_error": true, "contains": "historique insuffisant à as_of"}}
+{"id": "fr-038", "tool": "risk_report", "arguments": {"measures": ["var"], "compare_to": "2023-10-01T12:00:00Z"}, "expected": {"is_error": true, "contains": "historique insuffisant à compare_to"}}
+{"id": "fr-039", "tool": "risk_report", "arguments": {"sector_shocks": [{"sector": "A", "shock": -0.1}, {"sector": "B", "shock": -0.1}, {"sector": "C", "shock": -0.1}, {"sector": "D", "shock": -0.1}, {"sector": "E", "shock": -0.1}, {"sector": "F", "shock": -0.1}]}, "expected": {"is_error": true, "contains": "at most 5 items"}}
+{"id": "fr-040", "tool": "risk_report", "arguments": {"sector_shocks": [{"sector": "Technologie", "shock": -1.5}]}, "expected": {"is_error": true, "contains": "greater than -1"}}
+{"id": "fr-041", "tool": "risk_report", "arguments": {"sector_shocks": [{"sector": "Tech;DROP", "shock": -0.1}]}, "expected": {"is_error": true, "contains": "should match pattern"}}
+{"id": "fr-042", "tool": "risk_report", "arguments": {"strict": "peut-être"}, "expected": {"is_error": true, "contains": "valid boolean"}}

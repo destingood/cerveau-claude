@@ -1,0 +1,4 @@
+# Corpus RAG autorisé du pack Finance et fréquence de mise à jour (section 9.1). Vide en phase 2 :
+# les chiffres viennent de la base locale (var/finance/) par les plugins finance_*, les actualités
+# du web (plugin web_research), sans RAG (docs/backlog.md).
+sources: []

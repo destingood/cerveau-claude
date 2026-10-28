@@ -1,0 +1,103 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "type": "object",
+  "properties": {
+    "strategie": {
+      "description": "Identifiant de la stratégie dans le registre",
+      "pattern": "^[a-z][a-z0-9_]{0,63}$",
+      "title": "Strategie",
+      "type": "string"
+    },
+    "mode": {
+      "description": "signaux : poids et indicateurs ; backtest : un point de la grille sur une fenêtre bornée ; protocole : dernier verdict enregistré",
+      "enum": [
+        "signaux",
+        "backtest",
+        "protocole"
+      ],
+      "title": "Mode",
+      "type": "string"
+    },
+    "params": {
+      "anyOf": [
+        {
+          "maxProperties": 16,
+          "minProperties": 1,
+          "patternProperties": {
+            "^[a-z][a-z0-9_]{0,31}$": {
+              "anyOf": [
+                {
+                  "type": "boolean"
+                },
+                {
+                  "type": "integer"
+                },
+                {
+                  "type": "number"
+                },
+                {
+                  "maxLength": 64,
+                  "type": "string"
+                }
+              ]
+            }
+          },
+          "type": "object"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "description": "Un point de la grille, types compris (10 n'est pas 10.0) ; requis en modes signaux et backtest, refusé en mode protocole",
+      "title": "Params"
+    },
+    "as_of": {
+      "anyOf": [
+        {
+          "format": "date-time",
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "description": "Moment « connu à », ISO 8601 avec fuseau ; défaut : maintenant",
+      "title": "As Of"
+    },
+    "debut": {
+      "anyOf": [
+        {
+          "format": "date",
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "description": "Mode backtest : premier jour ; défaut : la fenêtre la plus récente que permet config/research.yaml",
+      "title": "Debut"
+    },
+    "fin": {
+      "anyOf": [
+        {
+          "format": "date",
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "description": "Mode backtest : dernier jour ; défaut : dernière décision connue",
+      "title": "Fin"
+    }
+  },
+  "required": [
+    "strategie",
+    "mode"
+  ],
+  "title": "strategy_labArguments"
+}

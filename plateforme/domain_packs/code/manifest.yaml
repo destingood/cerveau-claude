@@ -1,0 +1,74 @@
+# Manifeste du pack Code (section 9.1, complément de plan P3 §3 à §5). Déclaratif : les valeurs
+# qui gouvernent (autonomie, dépôts autorisés, image et bornes du conteneur) restent dans
+# config/*.yaml et ne sont pas recopiées ici.
+id: code
+version: 0.1.0
+# « expérimental » tant que le golden set n'a pas atteint son seuil en mesure réelle (section 9.3) ;
+# seul Lucas passe le pack en « actif », au vu du rapport d'évals (D2).
+statut: experimental
+perimetre:
+  - Lecture de l'historique, des différences et des fichiers commités des dépôts de la liste
+    blanche (code_repo, config/code.yaml#repositories, E2), sans écriture ni copie de travail
+    (ADR-047).
+  - Contrôles ruff et, si Lucas a préparé l'environnement du dépôt, pytest, dans un conteneur sans
+    réseau, en lecture seule et borné (code_checks, ADR-048, E3 à E5).
+  - État des derniers runs GitHub Actions d'un dépôt public de la liste blanche, sans jeton
+    (code_ci, E6).
+  - Explication d'un diff, d'un diagnostic ou d'un test en échec, chaque compte et chaque citation
+    venant de l'outil qui l'a lu (R1, R12).
+  - Tâche de code confiée à un agent Claude Code (code_agent, ADR-053, ADR-054) sur une copie d'un
+    dépôt de la liste blanche, dans un conteneur sans Internet dont seul le proxy de l'API sort ;
+    il rend un patch sous var/code/agent/<id>/, contrôlé par ruff et pytest sur la copie, que
+    Lucas relit et applique lui-même (N0, F9).
+hors_perimetre:
+  - Toute écriture dans un dépôt (commit, branche, push, PR, merge, relance d'un run de CI) ;
+    l'agent n'écrit que dans sa copie. N2 (branche locale et PR en brouillon) n'est pas livré ; il
+    se gagnera par les évals réelles (R9).
+  - Accès de l'agent à Internet (documentation, paquets), sous-agents, outils web, et agent lancé
+    depuis Discord ou l'API.
+  - Le dépôt de CERVEAU, refusé par le code même s'il est listé (ADR-047), donc aucune
+    auto-modification.
+  - Un dépôt hors de la liste blanche, un chemin hors du dépôt, un lien symbolique sortant.
+  - Le contenu des fichiers sensibles (.env, secrets/, clés privées), nommés mais jamais montrés ;
+    un secret vu dans un diff n'est jamais recopié (R6).
+  - L'installation de dépendances d'un dépôt dans le conteneur des contrôles (E3) et l'analyse de
+    dépendances d'un dépôt tiers (phase 7).
+  - Conseil à des tiers (R16), CERVEAU restant un outil personnel d'aide à la décision.
+# Ordre des outils du planificateur, coupé à config/models.yaml#routing.max_tools_to_planner.
+plugins:
+  - code_repo
+  - code_checks
+  - code_ci
+  - code_agent
+autonomie:
+  # Niveau courant N0, niveau maximal N2 : config/autonomy.yaml, domains.code (D3). Seul Lucas
+  # promeut le pack, à la main, au vu du rapport.
+  source: config/autonomy.yaml#domains.code
+sources_autorisees:
+  # Dépôts git locaux de Lucas : la liste blanche de config/code.yaml, A_DEFINIR tant qu'il ne l'a
+  # pas remplie (R7) ; le dépôt de CERVEAU en est exclu par le code (ADR-047).
+  depots: config/code.yaml#repositories
+  # Conteneur des contrôles : image construite par Lucas, figée par condensé (E4), jamais
+  # téléchargée par CERVEAU.
+  conteneur: config/code.yaml#checks
+  # GitHub Actions : API REST publique, sans jeton (E6), pour le miroir déclaré de chaque dépôt.
+  ci: api.github.com (GET /repos/{owner}/{repo}/actions/runs)
+  # Agent : images construites par Lucas, figées par condensé, et modèle, plafonds et budget de
+  # tâche (budgets.yaml#per_code_agent), A_DEFINIR tant qu'il ne les a pas fixés (R7).
+  agent: config/code.yaml#agent
+  # Seul le proxy de l'agent sort, vers POST /v1/messages ; la clé n'entre pas dans le conteneur
+  # de l'agent (ADR-053).
+  api_agent: api.anthropic.com (POST /v1/messages)
+  # Corpus RAG : vide en P3a (knowledge/sources.yaml).
+  rag: knowledge/sources.yaml#sources
+prompts:
+  role: prompts/role.md      # inséré dans le prompt système (core/orchestrator/prompts.py)
+  rubric: prompts/rubric.md  # prompt système du juge des évals (core/evals/judge.py)
+evals:
+  golden: evals/golden.jsonl
+  # Seuil du score moyen du juge : config/evals.yaml, thresholds.code_golden_min_score (D4).
+  golden_seuil: config/evals.yaml#thresholds.code_golden_min_score
+  behaviors: evals/behaviors.yaml
+  # Red team du pack : evals/redteam/injection_code/ (R5). Suites communes à tous les packs :
+  # evals/behaviors/ (principes de l'Annexe D) et evals/redteam/injection_base/ (R5).
+  # Commande : make eval.

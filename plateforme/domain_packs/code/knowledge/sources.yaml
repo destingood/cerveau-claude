@@ -1,0 +1,5 @@
+# Sources du pack Code (section 9.1).
+#
+# sources : corpus RAG autorisé du pack. Vide : pas de RAG en P3a (docs/backlog.md, B57) ; le code
+# vient des dépôts de la liste blanche (config/code.yaml#repositories), lus par code_repo.
+sources: []

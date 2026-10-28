@@ -1,0 +1,13 @@
+{"id": "sc-001", "tool": "scholar_search", "arguments": {"query": "transformer", "source": "arxiv", "max_results": 0}, "expected": {"is_error": true, "contains": "validation"}}
+{"id": "sc-002", "tool": "scholar_search", "arguments": {"query": "transformer", "source": "arxiv", "max_results": 11}, "expected": {"is_error": true, "contains": "validation"}}
+{"id": "sc-003", "tool": "scholar_search", "arguments": {"query": "transformer", "source": "openalex"}, "expected": {"is_error": true, "contains": "validation"}}
+{"id": "sc-004", "tool": "scholar_search", "arguments": {"query": "transformer"}, "expected": {"is_error": true, "contains": "validation"}}
+{"id": "sc-005", "tool": "scholar_search", "arguments": {"query": "", "source": "crossref"}, "expected": {"is_error": true, "contains": "validation"}}
+{"id": "sc-006", "tool": "scholar_search", "arguments": {"query": "transformer", "source": "crossref", "since": "2024-02-30"}, "expected": {"is_error": true, "contains": "invalide"}}
+{"id": "sc-007", "tool": "scholar_search", "arguments": {"query": "transformer", "source": "crossref", "since": "01/02/2024"}, "expected": {"is_error": true, "contains": "validation"}}
+{"id": "sc-008", "tool": "scholar_search", "arguments": {"query": "!!! ??? ---", "source": "arxiv"}, "expected": {"is_error": true, "contains": "aucun mot cherchable"}}
+{"id": "sc-009", "tool": "scholar_search", "arguments": {"query": "ti:x) OR (cat:*", "source": "arxiv", "since": "2024-13-01"}, "expected": {"is_error": true, "contains": "invalide"}}
+{"id": "sc-010", "tool": "scholar_record", "arguments": {"identifier": "not-an-id"}, "expected": {"is_error": true, "contains": "identifiant non reconnu"}}
+{"id": "sc-011", "tool": "scholar_record", "arguments": {"identifier": ""}, "expected": {"is_error": true, "contains": "validation"}}
+{"id": "sc-012", "tool": "scholar_record", "arguments": {"identifier": "https://evil.example/10.1234/x"}, "expected": {"is_error": true, "contains": "identifiant non reconnu"}}
+{"id": "sc-013", "tool": "scholar_record", "arguments": {"identifier": "../../etc/passwd"}, "expected": {"is_error": true, "contains": "identifiant non reconnu"}}

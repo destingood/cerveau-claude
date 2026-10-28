@@ -1,0 +1,401 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$defs": {
+    "Close": {
+      "additionalProperties": false,
+      "properties": {
+        "session": {
+          "format": "date",
+          "title": "Session",
+          "type": "string"
+        },
+        "close": {
+          "$ref": "#/$defs/Figure"
+        }
+      },
+      "required": [
+        "session",
+        "close"
+      ],
+      "title": "Close",
+      "type": "object"
+    },
+    "Figure": {
+      "additionalProperties": false,
+      "description": "A number for the planner. ``unit``: a currency code, ``%`` (``value`` is a fraction),\n``XXX/EUR`` (units of XXX for one euro), ``titres``, ``jours``, ``séances``, ``ans`` or\n``score`` (in [0, 1]).",
+      "properties": {
+        "id": {
+          "maxLength": 200,
+          "minLength": 1,
+          "title": "Id",
+          "type": "string"
+        },
+        "value": {
+          "title": "Value",
+          "type": "number"
+        },
+        "display": {
+          "title": "Display",
+          "type": "string"
+        },
+        "unit": {
+          "title": "Unit",
+          "type": "string"
+        }
+      },
+      "required": [
+        "id",
+        "value",
+        "display",
+        "unit"
+      ],
+      "title": "Figure",
+      "type": "object"
+    },
+    "PriceSeries": {
+      "additionalProperties": false,
+      "properties": {
+        "instrument_id": {
+          "title": "Instrument Id",
+          "type": "string"
+        },
+        "name": {
+          "title": "Name",
+          "type": "string"
+        },
+        "currency": {
+          "title": "Currency",
+          "type": "string"
+        },
+        "mic": {
+          "title": "Mic",
+          "type": "string"
+        },
+        "adjust": {
+          "enum": [
+            "none",
+            "split",
+            "total_return"
+          ],
+          "title": "Adjust",
+          "type": "string"
+        },
+        "closes": {
+          "items": {
+            "$ref": "#/$defs/Close"
+          },
+          "title": "Closes",
+          "type": "array"
+        },
+        "last_session": {
+          "anyOf": [
+            {
+              "format": "date",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Last Session"
+        },
+        "age_days": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/Figure"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "quality": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/Quality"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "quality_note": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Quality Note"
+        }
+      },
+      "required": [
+        "instrument_id",
+        "name",
+        "currency",
+        "mic",
+        "adjust",
+        "closes",
+        "last_session",
+        "age_days",
+        "quality"
+      ],
+      "title": "PriceSeries",
+      "type": "object"
+    },
+    "Quality": {
+      "additionalProperties": false,
+      "description": "The last quality score recorded for the series at ``assessed_at`` or before (ADR-016).",
+      "properties": {
+        "assessed_at": {
+          "format": "date-time",
+          "title": "Assessed At",
+          "type": "string"
+        },
+        "score": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/Figure"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "gaps": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/Figure"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "corporate_actions": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/Figure"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "outliers": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/Figure"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "freshness": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/Figure"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "stale_sessions": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/Figure"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "not_evaluated": {
+          "additionalProperties": {
+            "type": "string"
+          },
+          "title": "Not Evaluated",
+          "type": "object"
+        }
+      },
+      "required": [
+        "assessed_at",
+        "score",
+        "gaps",
+        "corporate_actions",
+        "outliers",
+        "freshness",
+        "stale_sessions",
+        "not_evaluated"
+      ],
+      "title": "Quality",
+      "type": "object"
+    },
+    "ReferenceCard": {
+      "additionalProperties": false,
+      "properties": {
+        "instrument_id": {
+          "title": "Instrument Id",
+          "type": "string"
+        },
+        "name": {
+          "title": "Name",
+          "type": "string"
+        },
+        "asset_class": {
+          "enum": [
+            "equity",
+            "etf",
+            "bond",
+            "gold",
+            "fund"
+          ],
+          "title": "Asset Class",
+          "type": "string"
+        },
+        "currency": {
+          "title": "Currency",
+          "type": "string"
+        },
+        "mic": {
+          "title": "Mic",
+          "type": "string"
+        },
+        "sector": {
+          "title": "Sector",
+          "type": "string"
+        },
+        "country": {
+          "title": "Country",
+          "type": "string"
+        },
+        "isin": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Isin"
+        },
+        "valid_from": {
+          "format": "date",
+          "title": "Valid From",
+          "type": "string"
+        },
+        "valid_to": {
+          "anyOf": [
+            {
+              "format": "date",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Valid To"
+        },
+        "duration": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/Figure"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "duration_note": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Duration Note"
+        }
+      },
+      "required": [
+        "instrument_id",
+        "name",
+        "asset_class",
+        "currency",
+        "mic",
+        "sector",
+        "country",
+        "isin",
+        "valid_from",
+        "valid_to",
+        "duration"
+      ],
+      "title": "ReferenceCard",
+      "type": "object"
+    }
+  },
+  "additionalProperties": false,
+  "properties": {
+    "parity_label": {
+      "const": "[Approximation]",
+      "default": "[Approximation]",
+      "title": "Parity Label",
+      "type": "string"
+    },
+    "kind": {
+      "enum": [
+        "cours",
+        "referentiel",
+        "fondamentaux"
+      ],
+      "title": "Kind",
+      "type": "string"
+    },
+    "as_of": {
+      "format": "date-time",
+      "title": "As Of",
+      "type": "string"
+    },
+    "day": {
+      "format": "date",
+      "title": "Day",
+      "type": "string"
+    },
+    "strict": {
+      "title": "Strict",
+      "type": "boolean"
+    },
+    "series": {
+      "default": [],
+      "items": {
+        "$ref": "#/$defs/PriceSeries"
+      },
+      "title": "Series",
+      "type": "array"
+    },
+    "cards": {
+      "default": [],
+      "items": {
+        "$ref": "#/$defs/ReferenceCard"
+      },
+      "title": "Cards",
+      "type": "array"
+    }
+  },
+  "required": [
+    "kind",
+    "as_of",
+    "day",
+    "strict"
+  ],
+  "title": "MarketData",
+  "type": "object"
+}

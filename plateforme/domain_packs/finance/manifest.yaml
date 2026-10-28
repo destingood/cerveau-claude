@@ -1,0 +1,61 @@
+# Manifeste du pack Finance (section 9.1, plan de phase 2 §8). Déclaratif : les valeurs qui
+# gouvernent (autonomie, limites de risque, budgets) restent dans config/*.yaml et ne sont pas
+# recopiées ici.
+id: finance
+version: 0.1.0
+# « expérimental » tant que le golden set n'a pas atteint son seuil en mesure réelle (section 9.3) ;
+# seul Lucas passe le pack en « actif », au vu du rapport d'évals.
+statut: experimental
+perimetre:
+  - Le portefeuille de Lucas tel que la base locale le connaît à une date (positions, poids, cash).
+  - Risque de marché, stress et décomposition de la VaR (finance_risk).
+  - Rééquilibrage étudié, présenté comme une analyse tant que l'autonomie est N0 (finance_optimize).
+  - Performance et attribution d'une période (finance_report).
+  - Données de marché point-in-time et leur qualité (finance_data).
+  - Signaux, backtest d'un point de la grille et dernier verdict du protocole d'une stratégie
+    du registre (finance_research) ; chaque backtest compte comme un essai (ADR-027).
+  - Actualités d'une société ou d'un marché, lues par web_research et le lecteur (R5).
+  - Mode Comité (ADR-028) pour une question de décision (« dois-je vendre… ») ou avec
+    cerveau ask --comite ; analyse en N0, proposition non exécutée en N1, jamais un ordre.
+hors_perimetre:
+  - Conseil en investissement, conseil à des tiers (R16) : aide à la décision personnelle.
+  - Tout ordre, virement ou action réelle : aucune classe FINANCIERE n'existe en phase 2.
+  - Chiffre décisionnel produit par un modèle (R1) : chaque chiffre vient d'un outil.
+  - Calcul d'impôt ou déclaration fiscale.
+# Ordre des outils du planificateur, coupé à config/models.yaml#routing.max_tools_to_planner.
+# web_research n'est ouvert que si la question demande des actualités ou une page donnée.
+plugins:
+  - finance_data
+  - finance_portfolio
+  - finance_risk
+  - finance_optimize
+  - finance_report
+  - finance_research
+  - web_research
+# Comité d'investissement : agent enregistré (plugins/finance_committee, kind: agent). Il ouvre
+# tous les plugins ci-dessus ; son budget est budgets.yaml#per_committee (A_DEFINIR bloque, R7).
+agent:
+  plugin: finance_committee
+  mode: comite  # le routeur ou cerveau ask --comite le convoque (ADR-028, ADR-043)
+autonomie:
+  # Niveau courant N0, niveau maximal N4 : config/autonomy.yaml, domains.finance. Seul Lucas
+  # promeut le pack, à la main, au vu du rapport (D16).
+  source: config/autonomy.yaml#domains.finance
+sources_autorisees:
+  # Base finance locale (var/finance/), lue par les plugins finance_* en lecture seule.
+  base: var/finance
+  # Pages web publiques trouvées par web_search puis lues par web_read, dans les limites du plugin.
+  web: pages publiques renvoyées par la recherche de la même requête
+  # Corpus RAG : vide en phase 2 (knowledge/sources.yaml).
+  rag: knowledge/sources.yaml
+prompts:
+  role: prompts/role.md      # inséré dans le prompt système (core/orchestrator/prompts.py)
+  rubric: prompts/rubric.md  # prompt système du juge des évals (core/evals/judge.py)
+evals:
+  golden: evals/golden.jsonl
+  # Seuil du score moyen du juge : config/evals.yaml, thresholds.finance_golden_min_score (D17).
+  golden_seuil: config/evals.yaml#thresholds.finance_golden_min_score
+  behaviors: evals/behaviors.yaml
+  # Red team du pack : evals/redteam/injection_finance/ (R5). Suites communes à tous les packs :
+  # evals/behaviors/ (principes de l'Annexe D) et evals/redteam/injection_base/ (R5).
+  # Commande : make eval.

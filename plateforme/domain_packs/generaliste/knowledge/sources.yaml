@@ -1,0 +1,3 @@
+# Corpus RAG autorisé du pack Généraliste et fréquence de mise à jour (section 9.1). Vide en phase 1 :
+# le pack répond à partir du web (plugin web_research), sans RAG (docs/backlog.md).
+sources: []

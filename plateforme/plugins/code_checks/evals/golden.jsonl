@@ -1,0 +1,26 @@
+{"id": "cc-001", "arguments": {"repo": "exemple"}, "expected": {"is_error": false, "contains": "\"ruff_check\": {\"status\": \"ok\"", "absent": ["VALEUR-DU-FICHIER-ENV"]}}
+{"id": "cc-002", "arguments": {"repo": "exemple"}, "expected": {"is_error": false, "contains": "\"withheld\": [\".env\"]"}}
+{"id": "cc-003", "arguments": {"repo": "exemple"}, "expected": {"is_error": false, "contains": "\"skipped\": [\"lien\"]"}}
+{"id": "cc-004", "arguments": {"repo": "exemple"}, "expected": {"is_error": false, "contains": "\"removed\": true"}}
+{"id": "cc-005", "scenario": "violations", "arguments": {"repo": "exemple"}, "expected": {"is_error": false, "contains": "\"by_code\": {\"F401\": 2, \"E501\": 1}"}}
+{"id": "cc-006", "scenario": "violations", "arguments": {"repo": "exemple"}, "expected": {"is_error": false, "contains": "\"files\": [\"src/app.py\"]"}}
+{"id": "cc-007", "scenario": "violations", "arguments": {"repo": "exemple"}, "expected": {"is_error": false, "contains": "\"failed\": [\"tests/test_app.py::test_main\"]"}}
+{"id": "cc-008", "scenario": "injection", "arguments": {"repo": "exemple"}, "expected": {"is_error": false, "contains": "src/a⟨U+202E⟩pp.py"}}
+{"id": "cc-009", "scenario": "secret", "arguments": {"repo": "exemple"}, "expected": {"is_error": false, "contains": "[MASQUÉ]", "absent": ["Q1w2E3r4T5y6U7i8O9p0"]}}
+{"id": "cc-010", "scenario": "moteur_arrete", "arguments": {"repo": "exemple"}, "expected": {"is_error": false, "contains": "Docker n'a pas lancé le conteneur (code 125)", "absent": ["Cannot connect"]}}
+{"id": "cc-011", "scenario": "lent", "arguments": {"repo": "exemple"}, "expected": {"is_error": false, "contains": "délai de 25 s dépassé : conteneur arrêté"}}
+{"id": "cc-012", "scenario": "lent", "arguments": {"repo": "exemple"}, "expected": {"is_error": false, "contains": "budget de temps épuisé par les contrôles précédents"}}
+{"id": "cc-013", "scenario": "inonde", "arguments": {"repo": "exemple"}, "expected": {"is_error": false, "contains": "sortie de plus de 4000000 octets : conteneur arrêté"}}
+{"id": "cc-014", "scenario": "illisible", "arguments": {"repo": "exemple"}, "expected": {"is_error": false, "contains": "sortie de ruff illisible"}}
+{"id": "cc-015", "scenario": "incoherent", "arguments": {"repo": "exemple"}, "expected": {"is_error": false, "contains": "code de sortie de ruff et diagnostics incohérents"}}
+{"id": "cc-016", "scenario": "sans_tests", "arguments": {"repo": "exemple"}, "expected": {"is_error": false, "contains": "\"status\": \"aucun_test\""}}
+{"id": "cc-017", "scenario": "collecte", "arguments": {"repo": "exemple"}, "expected": {"is_error": false, "contains": "pytest interrompu (code 2)"}}
+{"id": "cc-018", "scenario": "sans_resume", "arguments": {"repo": "exemple"}, "expected": {"is_error": false, "contains": "résumé de pytest introuvable dans sa sortie"}}
+{"id": "cc-019", "arguments": {"repo": "exemple", "pytest": false}, "expected": {"is_error": false, "contains": "\"note\": \"non demandé\""}}
+{"id": "cc-020", "allowlist": "non_prepare", "arguments": {"repo": "exemple"}, "expected": {"is_error": false, "contains": "environnement du dépôt non préparé (E3)"}}
+{"id": "cc-021", "allowlist": "vide", "arguments": {"repo": "exemple"}, "expected": {"is_error": true, "contains": "la liste blanche des dépôts est vide"}}
+{"id": "cc-022", "arguments": {"repo": "inconnu"}, "expected": {"is_error": true, "contains": "« inconnu » non autorisé : liste blanche = exemple"}}
+{"id": "cc-023", "allowlist": "cerveau", "arguments": {"repo": "cerveau"}, "expected": {"is_error": true, "contains": "recouvre le dépôt CERVEAU (ADR-047)"}}
+{"id": "cc-024", "arguments": {"repo": "exemple", "rev": "v1..HEAD"}, "expected": {"is_error": true, "contains": "révision « v1..HEAD » refusée"}}
+{"id": "cc-025", "arguments": {"repo": "exemple", "rev": "--all"}, "expected": {"is_error": true, "contains": "validation"}}
+{"id": "cc-026", "arguments": {"repo": "C:/Users/User/Documents/projet"}, "expected": {"is_error": true, "contains": "validation"}}

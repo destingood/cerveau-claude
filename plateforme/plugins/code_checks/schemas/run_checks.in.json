@@ -1,0 +1,30 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "type": "object",
+  "properties": {
+    "repo": {
+      "description": "Identifiant du dépôt dans la liste blanche",
+      "pattern": "^[a-z0-9][a-z0-9-]{0,39}$",
+      "title": "Repo",
+      "type": "string"
+    },
+    "rev": {
+      "default": "HEAD",
+      "description": "Révision contrôlée (branche, étiquette, commit)",
+      "maxLength": 100,
+      "pattern": "^[A-Za-z0-9_][A-Za-z0-9._/~^-]{0,99}$",
+      "title": "Rev",
+      "type": "string"
+    },
+    "pytest": {
+      "default": true,
+      "description": "Lancer pytest si l'environnement du dépôt est préparé (E3)",
+      "title": "Pytest",
+      "type": "boolean"
+    }
+  },
+  "required": [
+    "repo"
+  ],
+  "title": "run_checksArguments"
+}

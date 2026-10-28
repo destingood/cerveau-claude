@@ -1,0 +1,18 @@
+# Fenêtres de crise FICTIVES du jeu de recherche synthétique, écrites par generate.py.
+# Elles ne décrivent aucune crise réelle. Même forme que
+# config/risk.yaml › market_risk.historical_stress.
+crise_fictive_2017:
+  label: "Crise fictive de 2017 (synthétique)"
+  start: 2017-05-15
+  end: 2017-07-07
+  source: "fictif : tests/fixtures/finance/research/generate.py"
+crise_fictive_2019:
+  label: "Crise fictive de 2019 (synthétique)"
+  start: 2019-02-04
+  end: 2019-03-29
+  source: "fictif : tests/fixtures/finance/research/generate.py"
+crise_fictive_2024:
+  label: "Crise fictive de 2024 (synthétique)"
+  start: 2024-02-05
+  end: 2024-03-28
+  source: "fictif : tests/fixtures/finance/research/generate.py"

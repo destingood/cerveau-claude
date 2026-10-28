@@ -1,0 +1,64 @@
+# Manifeste du pack Cyber (section 9.1, complément de plan P4 §2 à §4). Déclaratif : les valeurs
+# qui gouvernent (autonomie, sources, débits, empreinte d'ATT&CK) restent dans config/*.yaml et ne
+# sont pas recopiées ici.
+id: cyber
+version: 0.1.0
+# « expérimental » tant que le golden set n'a pas atteint son seuil en mesure réelle (section 9.3) ;
+# seul Lucas passe le pack en « actif », au vu du rapport d'évals (D2).
+statut: experimental
+perimetre:
+  - Fiche d'une à dix CVE — statut et dates du NVD, scores CVSS tels que publiés, faiblesses,
+    inscription au catalogue KEV de la CISA, score EPSS de FIRST, et ordre de priorité rendu par
+    une règle déterministe et citée (cve_lookup, ADR-055, G8).
+  - Veille datée — entrées du KEV ajoutées depuis une date, ou CVE publiées au NVD sur 120 jours au
+    plus pour un mot-clé ou la liste produits_suivis (cve_watch, G10).
+  - Cartographie ATT&CK Enterprise depuis une copie figée et vérifiée par empreinte — technique,
+    tactiques, atténuations, stratégies de détection, objets révoqués ou obsolètes signalés
+    (attack_lookup, ADR-056).
+  - Durcissement et OWASP Top 10 des applications LLM par des pages officielles lues à la demande
+    (web_research, knowledge/sources.yaml#guides, G6, G7).
+  - Actions défensives proposées sur les systèmes de Lucas, qu'il exécute lui-même (N0).
+hors_perimetre:
+  - Écriture ou adaptation d'un exploit, d'une preuve de concept ou d'un logiciel malveillant ;
+    contournement d'un antivirus ou d'un EDR ; recherche de cibles vulnérables (R15, D20).
+  - Scan, test d'intrusion, lab ou audit d'un système, même déclaré à Lucas ; aucun outil ne prend
+    d'hôte, d'adresse, de port ni d'URL cible en phase 6.
+  - Toute action sur un système (correctif, configuration, blocage) ; N1 n'est pas livré ; il se
+    gagnera par les évals réelles (R9).
+  - ATT&CK Mobile et ICS, D3FEND, règles Sigma, guides en PDF, veille planifiée, rapprochement
+    avec un inventaire logiciel, calcul local d'un score CVSS (docs/backlog.md).
+  - Conseil à des tiers (R16), CERVEAU restant un outil personnel d'aide à la décision.
+# Ordre des outils du planificateur, coupé à config/models.yaml#routing.max_tools_to_planner.
+plugins:
+  - cyber_cve
+  - cyber_attack
+  - web_research
+autonomie:
+  # Niveau courant N0, niveau maximal N1 : config/autonomy.yaml, domains.cyber (D3). Seul Lucas
+  # promeut le pack, à la main, au vu du rapport.
+  source: config/autonomy.yaml#domains.cyber
+sources_autorisees:
+  # NVD, catalogue KEV de la CISA et EPSS de FIRST, par cyber_cve, sur une liste fixe d'hôtes, avec
+  # débits, cache et plafonds de taille (config/data_sources.yaml, G2 à G4).
+  vulnerabilites: config/data_sources.yaml#sources (nvd, cisa_kev, epss)
+  # ATT&CK Enterprise 20.0, copie locale construite par `cerveau cyber attack-fetch` que Lucas
+  # lance ; une empreinte absente ou différente bloque cyber_attack (G5).
+  attack: config/data_sources.yaml#sources.attack
+  # Pages publiques trouvées par web_search puis lues par web_read ; le rôle privilégie l'avis de
+  # l'éditeur et les guides de knowledge/sources.yaml#guides (G6, G7).
+  web: pages publiques renvoyées par la recherche de la même requête
+  # Produits suivis pour la veille NVD : liste vide, remplie par Lucas (G10).
+  produits: knowledge/sources.yaml#produits_suivis
+  # Corpus RAG : vide en phase 6 (knowledge/sources.yaml).
+  rag: knowledge/sources.yaml#sources
+prompts:
+  role: prompts/role.md      # inséré dans le prompt système (core/orchestrator/prompts.py)
+  rubric: prompts/rubric.md  # prompt système du juge des évals (core/evals/judge.py)
+evals:
+  golden: evals/golden.jsonl
+  # Seuil du score moyen du juge : config/evals.yaml, thresholds.cyber_golden_min_score (D4).
+  golden_seuil: config/evals.yaml#thresholds.cyber_golden_min_score
+  behaviors: evals/behaviors.yaml
+  # Red team du pack : evals/redteam/injection_cyber/ (R5). Suites communes à tous les packs :
+  # evals/behaviors/ (principes de l'Annexe D) et evals/redteam/injection_base/ (R5).
+  # Commande : make eval.

@@ -1,0 +1,19 @@
+{
+  "name": "cerveau-discord-bot",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Bot Discord mince de CERVEAU : il relaie à l'API interne locale et ne décide rien (ADR-037).",
+  "license": "UNLICENSED",
+  "type": "module",
+  "main": "index.js",
+  "engines": {
+    "node": ">=24"
+  },
+  "scripts": {
+    "start": "node index.js",
+    "test": "node --test \"test/*.test.js\""
+  },
+  "dependencies": {
+    "discord.js": "14.27.0"
+  }
+}

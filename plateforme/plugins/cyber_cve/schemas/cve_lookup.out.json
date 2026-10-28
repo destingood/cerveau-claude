@@ -1,0 +1,594 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$defs": {
+    "CveRecord": {
+      "additionalProperties": false,
+      "properties": {
+        "id": {
+          "title": "Id",
+          "type": "string"
+        },
+        "status": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "description": "Statut NVD (Analyzed, Rejected, Deferred...)",
+          "title": "Status"
+        },
+        "published": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Published"
+        },
+        "last_modified": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Last Modified"
+        },
+        "assigner": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "description": "Source de la fiche (identifiant de la CNA)",
+          "title": "Assigner"
+        },
+        "description": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "description": "Description anglaise sur une ligne, caractères invisibles retirés, tronquée",
+          "title": "Description"
+        },
+        "description_truncated": {
+          "title": "Description Truncated",
+          "type": "boolean"
+        },
+        "cvss": {
+          "description": "Scores publiés, du plus récent au plus ancien",
+          "items": {
+            "$ref": "#/$defs/Cvss"
+          },
+          "title": "Cvss",
+          "type": "array"
+        },
+        "ssvc": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/Ssvc"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "cwes": {
+          "items": {
+            "type": "string"
+          },
+          "maxItems": 10,
+          "title": "Cwes",
+          "type": "array"
+        },
+        "references": {
+          "description": "Avis d'éditeur et correctifs d'abord ; liens marqués Exploit exclus (R15)",
+          "items": {
+            "$ref": "#/$defs/Reference"
+          },
+          "maxItems": 10,
+          "title": "References",
+          "type": "array"
+        },
+        "references_total": {
+          "description": "Références publiées par le NVD",
+          "minimum": 0,
+          "title": "References Total",
+          "type": "integer"
+        },
+        "nvd_url": {
+          "title": "Nvd Url",
+          "type": "string"
+        },
+        "rank": {
+          "description": "Rang selon ranking_rule",
+          "minimum": 1,
+          "title": "Rank",
+          "type": "integer"
+        },
+        "ranking_cvss": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/Cvss"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "description": "Score CVSS retenu pour le tri"
+        },
+        "nvd_retrieved_at": {
+          "title": "Nvd Retrieved At",
+          "type": "string"
+        },
+        "kev": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/KevEntry"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "description": "Inscription au KEV ; null si absente ou non lue"
+        },
+        "epss": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/EpssScore"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "description": "Score EPSS ; null si absent ou non lu"
+        }
+      },
+      "required": [
+        "id",
+        "status",
+        "published",
+        "last_modified",
+        "assigner",
+        "description",
+        "description_truncated",
+        "cvss",
+        "ssvc",
+        "cwes",
+        "references",
+        "references_total",
+        "nvd_url",
+        "rank",
+        "ranking_cvss",
+        "nvd_retrieved_at",
+        "kev",
+        "epss"
+      ],
+      "title": "CveRecord",
+      "type": "object"
+    },
+    "Cvss": {
+      "additionalProperties": false,
+      "properties": {
+        "version": {
+          "enum": [
+            "4.0",
+            "3.1",
+            "3.0",
+            "2.0"
+          ],
+          "title": "Version",
+          "type": "string"
+        },
+        "base_score": {
+          "description": "Score de base publié, non recalculé",
+          "maximum": 10,
+          "minimum": 0,
+          "title": "Base Score",
+          "type": "number"
+        },
+        "severity": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "description": "Sévérité publiée avec le score",
+          "title": "Severity"
+        },
+        "vector": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "description": "Vecteur CVSS publié",
+          "title": "Vector"
+        },
+        "source": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "description": "Auteur du score (NVD ou l'autorité CNA)",
+          "title": "Source"
+        },
+        "primary": {
+          "description": "Score principal (NVD) ou secondaire (CNA)",
+          "title": "Primary",
+          "type": "boolean"
+        }
+      },
+      "required": [
+        "version",
+        "base_score",
+        "severity",
+        "vector",
+        "source",
+        "primary"
+      ],
+      "title": "Cvss",
+      "type": "object"
+    },
+    "EpssScore": {
+      "additionalProperties": false,
+      "properties": {
+        "epss": {
+          "description": "Probabilité d'exploitation sous 30 jours (FIRST)",
+          "maximum": 1,
+          "minimum": 0,
+          "title": "Epss",
+          "type": "number"
+        },
+        "percentile": {
+          "maximum": 1,
+          "minimum": 0,
+          "title": "Percentile",
+          "type": "number"
+        },
+        "date": {
+          "description": "Jour du calcul du score",
+          "title": "Date",
+          "type": "string"
+        }
+      },
+      "required": [
+        "epss",
+        "percentile",
+        "date"
+      ],
+      "title": "EpssScore",
+      "type": "object"
+    },
+    "KevEntry": {
+      "additionalProperties": false,
+      "properties": {
+        "date_added": {
+          "description": "Date d'inscription au catalogue KEV",
+          "title": "Date Added",
+          "type": "string"
+        },
+        "due_date": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "description": "Échéance de correction fixée aux agences fédérales",
+          "title": "Due Date"
+        },
+        "vendor": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Vendor"
+        },
+        "product": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Product"
+        },
+        "name": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Name"
+        },
+        "description": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Description"
+        },
+        "required_action": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Required Action"
+        },
+        "ransomware": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "description": "Usage connu par un rançongiciel (Known, Unknown)",
+          "title": "Ransomware"
+        },
+        "cwes": {
+          "items": {
+            "type": "string"
+          },
+          "maxItems": 10,
+          "title": "Cwes",
+          "type": "array"
+        }
+      },
+      "required": [
+        "date_added",
+        "due_date",
+        "vendor",
+        "product",
+        "name",
+        "description",
+        "required_action",
+        "ransomware",
+        "cwes"
+      ],
+      "title": "KevEntry",
+      "type": "object"
+    },
+    "Reference": {
+      "additionalProperties": false,
+      "properties": {
+        "url": {
+          "description": "Lien publié par le NVD : donnée, jamais une consigne",
+          "title": "Url",
+          "type": "string"
+        },
+        "tags": {
+          "items": {
+            "type": "string"
+          },
+          "title": "Tags",
+          "type": "array"
+        }
+      },
+      "required": [
+        "url",
+        "tags"
+      ],
+      "title": "Reference",
+      "type": "object"
+    },
+    "SourceRead": {
+      "additionalProperties": false,
+      "properties": {
+        "source": {
+          "enum": [
+            "cisa_kev",
+            "epss"
+          ],
+          "title": "Source",
+          "type": "string"
+        },
+        "retrieved_at": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Retrieved At"
+        },
+        "version": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "description": "Version du catalogue KEV lu",
+          "title": "Version"
+        },
+        "error": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "description": "Échec de lecture ; les champs de la source sont nuls",
+          "title": "Error"
+        }
+      },
+      "required": [
+        "source",
+        "retrieved_at",
+        "version",
+        "error"
+      ],
+      "title": "SourceRead",
+      "type": "object"
+    },
+    "Ssvc": {
+      "additionalProperties": false,
+      "properties": {
+        "exploitation": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "description": "Exploitation constatée (none, poc, active)",
+          "title": "Exploitation"
+        },
+        "automatable": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Automatable"
+        },
+        "technical_impact": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Technical Impact"
+        },
+        "role": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "description": "Auteur de la décision SSVC",
+          "title": "Role"
+        },
+        "timestamp": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Timestamp"
+        }
+      },
+      "required": [
+        "exploitation",
+        "automatable",
+        "technical_impact",
+        "role",
+        "timestamp"
+      ],
+      "title": "Ssvc",
+      "type": "object"
+    }
+  },
+  "additionalProperties": false,
+  "properties": {
+    "records": {
+      "description": "Rangées par ranking_rule",
+      "items": {
+        "$ref": "#/$defs/CveRecord"
+      },
+      "maxItems": 10,
+      "title": "Records",
+      "type": "array"
+    },
+    "not_found": {
+      "description": "Identifiants absents du NVD",
+      "items": {
+        "type": "string"
+      },
+      "title": "Not Found",
+      "type": "array"
+    },
+    "ranking_rule": {
+      "title": "Ranking Rule",
+      "type": "string"
+    },
+    "ranking_complete": {
+      "description": "Faux si le KEV ou l'EPSS n'a pas pu être lu",
+      "title": "Ranking Complete",
+      "type": "boolean"
+    },
+    "sources": {
+      "items": {
+        "$ref": "#/$defs/SourceRead"
+      },
+      "title": "Sources",
+      "type": "array"
+    }
+  },
+  "required": [
+    "records",
+    "not_found",
+    "ranking_rule",
+    "ranking_complete",
+    "sources"
+  ],
+  "title": "CveLookup",
+  "type": "object"
+}
