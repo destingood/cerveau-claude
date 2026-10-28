@@ -22,7 +22,8 @@ from .lexicon import phon, root, within_one
 
 SKILLS_DIR = CLAUDE_HOME / "skills"
 PLUGINS_FILE = CLAUDE_HOME / "plugins" / "installed_plugins.json"
-OWN_PLUGIN = "cerveau"  # ses skills (/cerveau:brain…) servent le cerveau lui-même : jamais soufflées
+OWN_PLUGIN = "cerveau"  # ce plugin-ci : ses skills métier (ecommerce…) toujours connues, sa skill « brain » jamais
+COPY_MARK = ".cerveau"  # = install.SKILL_MARK : skill métier copiée dans ~/.claude/skills par le cerveau classique
 CACHE_FILE = STATE_DIR / "skills_index.json"
 STATS_FILE = STATE_DIR / "skills.json"
 CACHE_V = 3
@@ -201,10 +202,11 @@ def _inside(cwd, project) -> bool:
 
 def plugin_roots(cwd=None, want=True) -> list:
     """[(plugin, dossier skills/)] des plugins installés par Claude Code (plugins/installed_plugins.json) et actifs ici :
-    pas à false dans enabledPlugins, portée « user » ou projet qui contient `cwd`. Jamais le cerveau lui-même ni les
-    plugins synchronisés depuis claude.ai (absents de ce registre). `want` : True = tous, liste = seulement ceux-là."""
-    if not want or want == "off":
-        return []
+    pas à false dans enabledPlugins, portée « user » ou projet qui contient `cwd`. Jamais les plugins synchronisés
+    depuis claude.ai (absents de ce registre). `want` (True = tous, liste = seulement ceux-là, False = aucun) ne règle
+    que les autres plugins : le cerveau compte toujours, ses skills métier valent des skills perso (`_files` écarte
+    « brain »)."""
+    off = not want or want == "off"
     data = read_json(PLUGINS_FILE, {}) or {}
     plugins = data.get("plugins") if isinstance(data, dict) else None
     if not isinstance(plugins, dict):
@@ -212,7 +214,7 @@ def plugin_roots(cwd=None, want=True) -> list:
     enabled, out = _enabled(cwd), []
     for key, entries in sorted(plugins.items()):
         name = str(key).partition("@")[0]
-        if name == OWN_PLUGIN or enabled.get(key) is False or (isinstance(want, list) and name not in want):
+        if enabled.get(key) is False or (name != OWN_PLUGIN and (off or (isinstance(want, list) and name not in want))):
             continue
         entries = [entries] if isinstance(entries, dict) else entries if isinstance(entries, list) else []
         for e in entries:
@@ -235,6 +237,7 @@ def _files(cwd=None, plugins=True) -> list:
         except OSError:
             pass
     roots += plugin_roots(cwd, plugins)
+    own = any(p == OWN_PLUGIN for p, _ in roots)
     out = []
     for plugin, r in roots:
         try:
@@ -242,6 +245,10 @@ def _files(cwd=None, plugins=True) -> list:
         except OSError:
             continue
         for d in entries:
+            if plugin == OWN_PLUGIN and d.name == "brain":  # le cerveau lui-même : son contexte est déjà injecté
+                continue
+            if own and not plugin and (d / COPY_MARK).exists():  # copie du mode classique : doublon de la skill du plugin
+                continue
             f = d / "SKILL.md"
             try:
                 s = f.stat()
