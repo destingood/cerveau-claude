@@ -1,0 +1,174 @@
+# CERVEAU — local infrastructure (phase 0). Claude Code never starts it; Lucas does.
+#
+# Profiles
+#   core           PostgreSQL 17 + pgvector (memory, registry and audit mirror in later phases)
+#   observability  Langfuse v4 (web + worker) with ClickHouse, MinIO and Redis; uses the same
+#                  PostgreSQL server, in its own `langfuse` database and role (ADR-004)
+#
+# Secrets come only from infra/.env (ignored by git), created once by
+# `uv run python infra/scripts/generate_secrets.py`. Every secret is required: Compose refuses to
+# start while one is missing (R6, R7). Every published port is bound to 127.0.0.1.
+#
+#   docker compose -f infra/docker-compose.yml --profile core up -d
+#   docker compose -f infra/docker-compose.yml --profile observability up -d
+#
+# Traces from `cerveau ask` (optional): create a project and its keys in Langfuse
+# (http://localhost:3000), then set LANGFUSE_PUBLIC_KEY, LANGFUSE_SECRET_KEY and
+# LANGFUSE_BASE_URL=http://localhost:3000 as user environment variables. CERVEAU refuses any
+# server that is not on this machine (core/observability, ADR-004).
+#
+# Images were checked on 2026-10-17. Langfuse is pinned to 4.63.0 (D12, checked on 2026-10-18;
+# upgrades are manual). MinIO (Chainguard, untagged) follows the upstream compose file and is not
+# pinned to a release: see docs/threat-model.md.
+name: cerveau
+
+x-langfuse-depends-on: &langfuse-depends-on
+  db:
+    condition: service_healthy
+  minio:
+    condition: service_healthy
+  redis:
+    condition: service_healthy
+  clickhouse:
+    condition: service_healthy
+
+# Reduced from the upstream Langfuse compose file: no cloud storage, AI features, SMTP or
+# experimental flags; telemetry off.
+x-langfuse-env: &langfuse-env
+  NEXTAUTH_URL: http://localhost:3000
+  DATABASE_URL: postgresql://langfuse:${LANGFUSE_DB_PASSWORD:?run infra/scripts/generate_secrets.py}@db:5432/langfuse
+  SALT: ${SALT:?run infra/scripts/generate_secrets.py}
+  ENCRYPTION_KEY: ${ENCRYPTION_KEY:?run infra/scripts/generate_secrets.py}
+  TELEMETRY_ENABLED: "false"
+  LANGFUSE_ENABLE_EXPERIMENTAL_FEATURES: "false"
+  CLICKHOUSE_MIGRATION_URL: clickhouse://clickhouse:9000
+  CLICKHOUSE_URL: http://clickhouse:8123
+  CLICKHOUSE_USER: clickhouse
+  CLICKHOUSE_PASSWORD: ${CLICKHOUSE_PASSWORD:?run infra/scripts/generate_secrets.py}
+  CLICKHOUSE_CLUSTER_ENABLED: "false"
+  LANGFUSE_S3_EVENT_UPLOAD_BUCKET: langfuse
+  LANGFUSE_S3_EVENT_UPLOAD_REGION: auto
+  LANGFUSE_S3_EVENT_UPLOAD_ACCESS_KEY_ID: minio
+  LANGFUSE_S3_EVENT_UPLOAD_SECRET_ACCESS_KEY: ${MINIO_ROOT_PASSWORD:?run infra/scripts/generate_secrets.py}
+  LANGFUSE_S3_EVENT_UPLOAD_ENDPOINT: http://minio:9000
+  LANGFUSE_S3_EVENT_UPLOAD_FORCE_PATH_STYLE: "true"
+  LANGFUSE_S3_EVENT_UPLOAD_PREFIX: events/
+  LANGFUSE_S3_MEDIA_UPLOAD_BUCKET: langfuse
+  LANGFUSE_S3_MEDIA_UPLOAD_REGION: auto
+  LANGFUSE_S3_MEDIA_UPLOAD_ACCESS_KEY_ID: minio
+  LANGFUSE_S3_MEDIA_UPLOAD_SECRET_ACCESS_KEY: ${MINIO_ROOT_PASSWORD:?run infra/scripts/generate_secrets.py}
+  LANGFUSE_S3_MEDIA_UPLOAD_ENDPOINT: http://minio:9000
+  LANGFUSE_S3_MEDIA_UPLOAD_FORCE_PATH_STYLE: "true"
+  LANGFUSE_S3_MEDIA_UPLOAD_PREFIX: media/
+  LANGFUSE_S3_BATCH_EXPORT_ENABLED: "false"
+  REDIS_HOST: redis
+  REDIS_PORT: "6379"
+  REDIS_AUTH: ${REDIS_AUTH:?run infra/scripts/generate_secrets.py}
+
+services:
+  db:
+    image: pgvector/pgvector:0.8.7-pg17-trixie
+    profiles: [core, observability]
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: cerveau
+      POSTGRES_DB: cerveau
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?run infra/scripts/generate_secrets.py}
+      # Read once by postgres/init/10-init.sh to create the Langfuse role.
+      LANGFUSE_DB_PASSWORD: ${LANGFUSE_DB_PASSWORD:?run infra/scripts/generate_secrets.py}
+      TZ: UTC
+      PGTZ: UTC
+    ports:
+      - 127.0.0.1:5432:5432
+    volumes:
+      - pg_data:/var/lib/postgresql/data
+      - ./postgres/init:/docker-entrypoint-initdb.d:ro
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U cerveau -d cerveau"]
+      interval: 3s
+      timeout: 3s
+      retries: 10
+
+  langfuse-worker:
+    image: docker.langfuse.com/langfuse/langfuse-worker:4.63.0
+    profiles: [observability]
+    restart: unless-stopped
+    depends_on: *langfuse-depends-on
+    environment:
+      <<: *langfuse-env
+
+  langfuse-web:
+    image: docker.langfuse.com/langfuse/langfuse:4.63.0
+    profiles: [observability]
+    restart: unless-stopped
+    depends_on: *langfuse-depends-on
+    ports:
+      - 127.0.0.1:3000:3000
+    environment:
+      <<: *langfuse-env
+      NEXTAUTH_SECRET: ${NEXTAUTH_SECRET:?run infra/scripts/generate_secrets.py}
+      # The browser uploads media through the published MinIO port; the server uses the network.
+      LANGFUSE_S3_MEDIA_UPLOAD_ENDPOINT: http://localhost:9090
+      LANGFUSE_S3_MEDIA_UPLOAD_INTERNAL_ENDPOINT: http://minio:9000
+
+  clickhouse:
+    image: clickhouse/clickhouse-server:25.12
+    profiles: [observability]
+    restart: unless-stopped
+    user: "101:101"
+    environment:
+      CLICKHOUSE_DB: default
+      CLICKHOUSE_USER: clickhouse
+      CLICKHOUSE_PASSWORD: ${CLICKHOUSE_PASSWORD:?run infra/scripts/generate_secrets.py}
+    volumes:
+      - clickhouse_data:/var/lib/clickhouse
+      - clickhouse_logs:/var/log/clickhouse-server
+    healthcheck:
+      test: wget --no-verbose --tries=1 --spider http://localhost:8123/ping || exit 1
+      interval: 5s
+      timeout: 5s
+      retries: 10
+      start_period: 1s
+
+  minio:
+    image: cgr.dev/chainguard/minio
+    profiles: [observability]
+    restart: unless-stopped
+    entrypoint: sh
+    command: -c 'mkdir -p /data/langfuse && minio server --address ":9000" --console-address ":9001" /data'
+    environment:
+      MINIO_ROOT_USER: minio
+      MINIO_ROOT_PASSWORD: ${MINIO_ROOT_PASSWORD:?run infra/scripts/generate_secrets.py}
+    ports:
+      # Upstream publishes 9090 on every interface; CERVEAU keeps it on the loopback.
+      - 127.0.0.1:9090:9000
+    volumes:
+      - minio_data:/data
+    healthcheck:
+      test: ["CMD", "mc", "ready", "local"]
+      interval: 1s
+      timeout: 5s
+      retries: 5
+      start_period: 1s
+
+  redis:
+    image: redis:7
+    profiles: [observability]
+    restart: unless-stopped
+    command: >
+      --requirepass ${REDIS_AUTH:?run infra/scripts/generate_secrets.py}
+      --maxmemory-policy noeviction
+    volumes:
+      - redis_data:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 3s
+      timeout: 10s
+      retries: 10
+
+volumes:
+  pg_data:
+  clickhouse_data:
+  clickhouse_logs:
+  minio_data:
+  redis_data:

@@ -1,0 +1,664 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$defs": {
+    "AppliedConstraints": {
+      "additionalProperties": false,
+      "properties": {
+        "long_only": {
+          "title": "Long Only",
+          "type": "boolean"
+        },
+        "leverage": {
+          "title": "Leverage",
+          "type": "boolean"
+        },
+        "max_weight": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/Figure"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "sector_caps": {
+          "items": {
+            "$ref": "#/$defs/SectorCapView"
+          },
+          "title": "Sector Caps",
+          "type": "array"
+        },
+        "max_turnover": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/Figure"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        }
+      },
+      "required": [
+        "long_only",
+        "leverage",
+        "max_weight",
+        "sector_caps",
+        "max_turnover"
+      ],
+      "title": "AppliedConstraints",
+      "type": "object"
+    },
+    "Figure": {
+      "additionalProperties": false,
+      "description": "A number for the planner. ``unit``: a currency code, ``%`` (``value`` is a fraction),\n``XXX/EUR`` (units of XXX for one euro), ``titres``, ``jours``, ``séances``, ``ans`` or\n``score`` (in [0, 1]).",
+      "properties": {
+        "id": {
+          "maxLength": 200,
+          "minLength": 1,
+          "title": "Id",
+          "type": "string"
+        },
+        "value": {
+          "title": "Value",
+          "type": "number"
+        },
+        "display": {
+          "title": "Display",
+          "type": "string"
+        },
+        "unit": {
+          "title": "Unit",
+          "type": "string"
+        }
+      },
+      "required": [
+        "id",
+        "value",
+        "display",
+        "unit"
+      ],
+      "title": "Figure",
+      "type": "object"
+    },
+    "OptimizationMethod": {
+      "additionalProperties": false,
+      "properties": {
+        "name": {
+          "enum": [
+            "variance_minimale",
+            "cvar_minimale",
+            "parite_de_risque",
+            "hrp",
+            "moyenne_variance"
+          ],
+          "title": "Name",
+          "type": "string"
+        },
+        "description": {
+          "title": "Description",
+          "type": "string"
+        },
+        "covariance": {
+          "title": "Covariance",
+          "type": "string"
+        },
+        "window": {
+          "$ref": "#/$defs/Figure"
+        },
+        "first_session": {
+          "format": "date",
+          "title": "First Session",
+          "type": "string"
+        },
+        "last_session": {
+          "format": "date",
+          "title": "Last Session",
+          "type": "string"
+        },
+        "cvar_confidence": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/Figure"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "risk_aversion": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/Figure"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "assumptions": {
+          "items": {
+            "type": "string"
+          },
+          "title": "Assumptions",
+          "type": "array"
+        }
+      },
+      "required": [
+        "name",
+        "description",
+        "covariance",
+        "window",
+        "first_session",
+        "last_session",
+        "cvar_confidence",
+        "risk_aversion",
+        "assumptions"
+      ],
+      "title": "OptimizationMethod",
+      "type": "object"
+    },
+    "ProposedLine": {
+      "additionalProperties": false,
+      "description": "Weights within the securities; risk shares of their volatility, shrunk covariance.",
+      "properties": {
+        "line": {
+          "title": "Line",
+          "type": "string"
+        },
+        "name": {
+          "title": "Name",
+          "type": "string"
+        },
+        "sector": {
+          "title": "Sector",
+          "type": "string"
+        },
+        "currency": {
+          "title": "Currency",
+          "type": "string"
+        },
+        "value_eur": {
+          "$ref": "#/$defs/Figure"
+        },
+        "current_weight": {
+          "$ref": "#/$defs/Figure"
+        },
+        "target_weight": {
+          "$ref": "#/$defs/Figure"
+        },
+        "change": {
+          "$ref": "#/$defs/Figure"
+        },
+        "target_value_eur": {
+          "$ref": "#/$defs/Figure"
+        },
+        "risk_share_before": {
+          "$ref": "#/$defs/Figure"
+        },
+        "risk_share_after": {
+          "$ref": "#/$defs/Figure"
+        }
+      },
+      "required": [
+        "line",
+        "name",
+        "sector",
+        "currency",
+        "value_eur",
+        "current_weight",
+        "target_weight",
+        "change",
+        "target_value_eur",
+        "risk_share_before",
+        "risk_share_after"
+      ],
+      "title": "ProposedLine",
+      "type": "object"
+    },
+    "QualityCheck": {
+      "additionalProperties": false,
+      "description": "The recorded quality of the series a calculation reads, against\n``min_quality_score_above_N1`` (D12): below it, or while it cannot be judged, a decision\nstays capped at N1 and the output says so with the scores (plan of phase 2, §3).",
+      "properties": {
+        "threshold": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/Figure"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "gate": {
+          "enum": [
+            "suffisante",
+            "insuffisante",
+            "non_evaluable"
+          ],
+          "title": "Gate",
+          "type": "string"
+        },
+        "decision_cap": {
+          "anyOf": [
+            {
+              "const": "N1",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Decision Cap"
+        },
+        "series": {
+          "items": {
+            "$ref": "#/$defs/SeriesScore"
+          },
+          "title": "Series",
+          "type": "array"
+        },
+        "below": {
+          "items": {
+            "type": "string"
+          },
+          "title": "Below",
+          "type": "array"
+        },
+        "not_evaluated": {
+          "items": {
+            "type": "string"
+          },
+          "title": "Not Evaluated",
+          "type": "array"
+        },
+        "note": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Note"
+        }
+      },
+      "required": [
+        "threshold",
+        "gate",
+        "decision_cap",
+        "series",
+        "below",
+        "not_evaluated"
+      ],
+      "title": "QualityCheck",
+      "type": "object"
+    },
+    "RiskComparison": {
+      "additionalProperties": false,
+      "properties": {
+        "before": {
+          "$ref": "#/$defs/RiskSide"
+        },
+        "after": {
+          "$ref": "#/$defs/RiskSide"
+        }
+      },
+      "required": [
+        "before",
+        "after"
+      ],
+      "title": "RiskComparison",
+      "type": "object"
+    },
+    "RiskSide": {
+      "additionalProperties": false,
+      "properties": {
+        "volatility": {
+          "$ref": "#/$defs/Figure"
+        },
+        "var_eur": {
+          "additionalProperties": {
+            "$ref": "#/$defs/Figure"
+          },
+          "title": "Var Eur",
+          "type": "object"
+        }
+      },
+      "required": [
+        "volatility",
+        "var_eur"
+      ],
+      "title": "RiskSide",
+      "type": "object"
+    },
+    "SectorCapView": {
+      "additionalProperties": false,
+      "properties": {
+        "sector": {
+          "title": "Sector",
+          "type": "string"
+        },
+        "max_weight": {
+          "$ref": "#/$defs/Figure"
+        }
+      },
+      "required": [
+        "sector",
+        "max_weight"
+      ],
+      "title": "SectorCapView",
+      "type": "object"
+    },
+    "SectorWeights": {
+      "additionalProperties": false,
+      "properties": {
+        "sector": {
+          "title": "Sector",
+          "type": "string"
+        },
+        "current_weight": {
+          "$ref": "#/$defs/Figure"
+        },
+        "target_weight": {
+          "$ref": "#/$defs/Figure"
+        }
+      },
+      "required": [
+        "sector",
+        "current_weight",
+        "target_weight"
+      ],
+      "title": "SectorWeights",
+      "type": "object"
+    },
+    "SeriesScore": {
+      "additionalProperties": false,
+      "properties": {
+        "instrument_id": {
+          "title": "Instrument Id",
+          "type": "string"
+        },
+        "assessed_at": {
+          "anyOf": [
+            {
+              "format": "date-time",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Assessed At"
+        },
+        "score": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/Figure"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        }
+      },
+      "required": [
+        "instrument_id",
+        "assessed_at",
+        "score"
+      ],
+      "title": "SeriesScore",
+      "type": "object"
+    },
+    "Trade": {
+      "additionalProperties": false,
+      "properties": {
+        "line": {
+          "title": "Line",
+          "type": "string"
+        },
+        "currency": {
+          "title": "Currency",
+          "type": "string"
+        },
+        "side": {
+          "enum": [
+            "achat",
+            "vente"
+          ],
+          "title": "Side",
+          "type": "string"
+        },
+        "quantity": {
+          "$ref": "#/$defs/Figure"
+        },
+        "price_eur": {
+          "$ref": "#/$defs/Figure"
+        },
+        "amount_eur": {
+          "$ref": "#/$defs/Figure"
+        },
+        "commission_eur": {
+          "$ref": "#/$defs/Figure"
+        },
+        "slippage_eur": {
+          "$ref": "#/$defs/Figure"
+        },
+        "fx_eur": {
+          "$ref": "#/$defs/Figure"
+        },
+        "fees_eur": {
+          "$ref": "#/$defs/Figure"
+        }
+      },
+      "required": [
+        "line",
+        "currency",
+        "side",
+        "quantity",
+        "price_eur",
+        "amount_eur",
+        "commission_eur",
+        "slippage_eur",
+        "fx_eur",
+        "fees_eur"
+      ],
+      "title": "Trade",
+      "type": "object"
+    },
+    "TradeTotals": {
+      "additionalProperties": false,
+      "properties": {
+        "orders": {
+          "$ref": "#/$defs/Figure"
+        },
+        "buys_eur": {
+          "$ref": "#/$defs/Figure"
+        },
+        "sells_eur": {
+          "$ref": "#/$defs/Figure"
+        },
+        "fees_eur": {
+          "$ref": "#/$defs/Figure"
+        },
+        "cash_change_eur": {
+          "$ref": "#/$defs/Figure"
+        },
+        "cash_after_eur": {
+          "$ref": "#/$defs/Figure"
+        }
+      },
+      "required": [
+        "orders",
+        "buys_eur",
+        "sells_eur",
+        "fees_eur",
+        "cash_change_eur",
+        "cash_after_eur"
+      ],
+      "title": "TradeTotals",
+      "type": "object"
+    },
+    "Unavailable": {
+      "additionalProperties": false,
+      "properties": {
+        "measure": {
+          "title": "Measure",
+          "type": "string"
+        },
+        "reason": {
+          "title": "Reason",
+          "type": "string"
+        }
+      },
+      "required": [
+        "measure",
+        "reason"
+      ],
+      "title": "Unavailable",
+      "type": "object"
+    }
+  },
+  "additionalProperties": false,
+  "properties": {
+    "parity_label": {
+      "const": "[Approximation]",
+      "default": "[Approximation]",
+      "title": "Parity Label",
+      "type": "string"
+    },
+    "as_of": {
+      "format": "date-time",
+      "title": "As Of",
+      "type": "string"
+    },
+    "day": {
+      "format": "date",
+      "title": "Day",
+      "type": "string"
+    },
+    "strict": {
+      "title": "Strict",
+      "type": "boolean"
+    },
+    "status": {
+      "enum": [
+        "analyse",
+        "proposition non exécutée"
+      ],
+      "title": "Status",
+      "type": "string"
+    },
+    "autonomy_level": {
+      "title": "Autonomy Level",
+      "type": "string"
+    },
+    "notice": {
+      "title": "Notice",
+      "type": "string"
+    },
+    "value_eur": {
+      "$ref": "#/$defs/Figure"
+    },
+    "invested_eur": {
+      "$ref": "#/$defs/Figure"
+    },
+    "cash_eur": {
+      "$ref": "#/$defs/Figure"
+    },
+    "method": {
+      "$ref": "#/$defs/OptimizationMethod"
+    },
+    "constraints": {
+      "$ref": "#/$defs/AppliedConstraints"
+    },
+    "lines": {
+      "items": {
+        "$ref": "#/$defs/ProposedLine"
+      },
+      "title": "Lines",
+      "type": "array"
+    },
+    "sectors": {
+      "items": {
+        "$ref": "#/$defs/SectorWeights"
+      },
+      "title": "Sectors",
+      "type": "array"
+    },
+    "turnover": {
+      "$ref": "#/$defs/Figure"
+    },
+    "risk": {
+      "$ref": "#/$defs/RiskComparison"
+    },
+    "trades": {
+      "anyOf": [
+        {
+          "items": {
+            "$ref": "#/$defs/Trade"
+          },
+          "type": "array"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Trades"
+    },
+    "totals": {
+      "anyOf": [
+        {
+          "$ref": "#/$defs/TradeTotals"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null
+    },
+    "data_quality": {
+      "$ref": "#/$defs/QualityCheck"
+    },
+    "unavailable": {
+      "items": {
+        "$ref": "#/$defs/Unavailable"
+      },
+      "title": "Unavailable",
+      "type": "array"
+    },
+    "warnings": {
+      "items": {
+        "type": "string"
+      },
+      "title": "Warnings",
+      "type": "array"
+    }
+  },
+  "required": [
+    "as_of",
+    "day",
+    "strict",
+    "status",
+    "autonomy_level",
+    "notice",
+    "value_eur",
+    "invested_eur",
+    "cash_eur",
+    "method",
+    "constraints",
+    "lines",
+    "sectors",
+    "turnover",
+    "risk",
+    "data_quality",
+    "unavailable",
+    "warnings"
+  ],
+  "title": "RebalanceProposal",
+  "type": "object"
+}

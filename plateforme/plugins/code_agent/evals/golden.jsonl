@@ -1,0 +1,13 @@
+{"id": "ca-001", "scenario": "corrige", "arguments": {"repo": "exemple", "task": "Corrige main() et ajoute un test."}, "expected": {"is_error": false, "contains": "\"path\": \"tests/test_more.py\"", "absent": ["VALEUR-DU-FICHIER-ENV"]}}
+{"id": "ca-002", "scenario": "secret", "arguments": {"repo": "exemple", "task": "Ajoute un réglage."}, "expected": {"is_error": false, "contains": "\"applies\": false", "absent": ["ghp_"]}}
+{"id": "ca-003", "scenario": "risque", "arguments": {"repo": "exemple", "task": "Ajoute une CI."}, "expected": {"is_error": false, "contains": "\"risky\": [\".github/workflows/ci.yml\", \"conftest.py\"]"}}
+{"id": "ca-004", "scenario": "ecartes", "arguments": {"repo": "exemple", "task": "Mets à jour le README."}, "expected": {"is_error": false, "contains": "\"sensitive\": [\".env\"]", "absent": ["CREEE-PAR-L-AGENT", "VALEUR-DU-FICHIER-ENV"]}}
+{"id": "ca-005", "scenario": "injection", "arguments": {"repo": "exemple", "task": "Corrige main()."}, "expected": {"is_error": false, "contains": "⟨U+202E⟩", "absent": ["\u202e"]}}
+{"id": "ca-006", "scenario": "rien", "arguments": {"repo": "exemple", "task": "Relis le code."}, "expected": {"is_error": false, "contains": "l'agent n'a changé aucun fichier : contrôles non lancés"}}
+{"id": "ca-007", "scenario": "lent", "arguments": {"repo": "exemple", "task": "Corrige main()."}, "expected": {"is_error": false, "contains": "\"status\": \"delai\"", "absent": ["\"applies\""]}}
+{"id": "ca-008", "scenario": "plafond", "arguments": {"repo": "exemple", "task": "Corrige main()."}, "expected": {"is_error": false, "contains": "\"stopped\": \"plafond_usd\""}}
+{"id": "ca-009", "scenario": "etat_illisible", "arguments": {"repo": "exemple", "task": "Corrige main()."}, "expected": {"is_error": false, "contains": "\"depense\": null"}}
+{"id": "ca-010", "scenario": "moteur_arrete", "arguments": {"repo": "exemple", "task": "Corrige main()."}, "expected": {"is_error": true, "contains": "Docker : réseau de la tâche impossible"}}
+{"id": "ca-011", "scenario": "corrige", "arguments": {"repo": "inconnu", "task": "Corrige main()."}, "expected": {"is_error": true, "contains": "non autorisé"}}
+{"id": "ca-012", "scenario": "corrige", "arguments": {"repo": "exemple", "rev": "--all", "task": "Corrige main()."}, "expected": {"is_error": true, "contains": "validation"}}
+{"id": "ca-013", "scenario": "proxy_muet", "arguments": {"repo": "exemple", "task": "Corrige main()."}, "expected": {"is_error": true, "contains": "le proxy n'a pas démarré en 15 s"}}

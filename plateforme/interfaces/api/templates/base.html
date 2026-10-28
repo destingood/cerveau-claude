@@ -1,0 +1,39 @@
+<!doctype html>
+<html lang="fr">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="robots" content="noindex, nofollow">
+<title>CERVEAU · {{ title }}</title>
+<style>
+body { font-family: system-ui, sans-serif; max-width: 76rem; margin: 0 auto; padding: 1rem;
+       color: #1b1b1b; background: #fbfbfb; }
+nav a { margin-right: 1.2rem; }
+nav a[aria-current] { font-weight: bold; text-decoration: none; }
+table { border-collapse: collapse; margin: .4rem 0 1.2rem; }
+th, td { border: 1px solid #c8c8c8; padding: .25rem .5rem; text-align: left; vertical-align: top; }
+th { background: #f0f0f0; }
+td.n { text-align: right; font-variant-numeric: tabular-nums; white-space: nowrap; }
+.alerte { color: #a40000; font-weight: bold; }
+.bon { color: #1d6b1d; }
+.note { color: #555; font-size: .9em; }
+code { font-size: .85em; }
+</style>
+</head>
+<body>
+<header>
+<nav>
+{%- for path, label in pages.items() %}
+<a href="/dashboard{{ path }}"{% if path == current %} aria-current="page"{% endif %}>{{ label }}</a>
+{%- endfor %}
+</nav>
+<p class="note">Lecture seule, page générée le {{ now|quand }}. Rien ne s'approuve ni ne
+s'arrête d'ici : approbations par Discord ou le terminal, kill switch par Discord, l'API ou
+le terminal.</p>
+</header>
+<main>
+<h1>{{ title }}</h1>
+{% block content %}{% endblock %}
+</main>
+</body>
+</html>

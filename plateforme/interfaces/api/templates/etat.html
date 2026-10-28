@@ -1,0 +1,65 @@
+{% extends "base.html" %}
+{% block content %}
+{% if invalid %}<p class="alerte">{{ invalid }}</p>{% endif %}
+{% for problem in problems %}<p class="alerte">{{ problem }}</p>{% endfor %}
+
+<h2>Arrêt et live</h2>
+<table>
+<tr><th>Kill switch</th><td>
+{%- if kill.engaged -%}
+<span class="alerte">ENGAGÉ</span> ({{ kill.trigger }}, {{ kill.engaged_at|quand }})
+{%- else -%}
+non engagé
+{%- endif -%}
+</td></tr>
+<tr><th>Live</th><td>
+{%- if live is none -%}—
+{%- elif live -%}<span class="alerte">activé</span>
+{%- else -%}désactivé (R3)
+{%- endif -%}
+</td></tr>
+</table>
+
+<h2>Autonomie</h2>
+{% if autonomy is none %}
+<p>—</p>
+{% else %}
+<table>
+<tr><th>Domaine</th><th>Niveau écrit</th><th>Niveau en vigueur</th></tr>
+{% for row in autonomy.domains %}
+<tr><td>{{ row.domain }}</td><td>{{ row.written }}</td><td>{{ row.effective }}</td></tr>
+{% endfor %}
+</table>
+{% for problem in autonomy.problems %}<p class="alerte">{{ problem }}</p>{% endfor %}
+{% endif %}
+
+<h2>Budget LLM</h2>
+{% if budget is none %}
+<p>—</p>
+{% elif budget.defined %}
+<p>Aujourd'hui : {{ budget.day_pct }} % du plafond ; ce mois : {{ budget.month_pct }} %.</p>
+{% else %}
+<p>{{ budget.reason }}</p>
+{% endif %}
+
+<h2>Boucle paper et réconciliation</h2>
+<table>
+<tr><th>Dernière journée traitée</th><td>{{ loop.last_day|jour }}</td></tr>
+<tr><th>Terminée le</th><td>{{ loop.completed_at|quand }}</td></tr>
+{% if reconciliation is not none %}
+<tr><th>Dernière réconciliation</th><td>{{ reconciliation.last_at|quand }}</td></tr>
+<tr><th>Écarts ouverts</th><td>
+{%- if reconciliation.open_gaps %}<span class="alerte">{{ reconciliation.open_gaps }}</span>
+{%- else %}aucun{% endif -%}
+</td></tr>
+<tr><th>Acquittement attendu</th><td>{{ "oui" if reconciliation.awaiting_acknowledgement else "non" }}</td></tr>
+{% endif %}
+</table>
+
+<h2>Journal d'audit</h2>
+<p>
+{%- if chain.ok %}<span class="bon">Chaîne vérifiée</span>
+{%- else %}<span class="alerte">Chaîne ROMPUE</span>{% endif -%}
+ : {{ chain.entries }} entrée(s), tête n° {{ chain.head_seq }} <code>{{ chain.head_hash }}</code>.</p>
+{% for error in chain.errors[:5] %}<p class="alerte">{{ error }}</p>{% endfor %}
+{% endblock %}

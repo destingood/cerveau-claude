@@ -1,0 +1,91 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  Questions d'évaluation du plugin finance_risk (R8). Chacune se vérifie avec risk_report sur le
+  portefeuille de référence fictif (core.finance.fixtures.reference_store) lu au 18/10/2026 13 h
+  UTC, avec config/risk.yaml tel que versionné : fenêtre de 500 séances, VaR à 95 % et 99 %, sur
+  1 et 10 séances, 10 000 tirages Monte Carlo. Les chiffres attendus sont les affichages de
+  l'outil : la réponse les cite avec leurs hypothèses, elle ne les recalcule pas (R1). Une mesure
+  indisponible se dit indisponible, avec sa raison.
+-->
+<evaluation>
+  <qa_pair>
+    <question>Quelle est la VaR historique à 95 % sur une séance du portefeuille, en euros ?</question>
+    <answer>1 365,72 €</answer>
+  </qa_pair>
+  <qa_pair>
+    <question>Quelle est la CVaR historique à 95 % sur une séance, en euros ?</question>
+    <answer>1 796,21 €</answer>
+  </qa_pair>
+  <qa_pair>
+    <question>Quelle est la VaR paramétrique à 99 % sur une séance, en euros ?</question>
+    <answer>2 035,90 €</answer>
+  </qa_pair>
+  <qa_pair>
+    <question>Quelle est la VaR Monte Carlo à 95 % sur une séance, en euros ?</question>
+    <answer>1 421,95 €</answer>
+  </qa_pair>
+  <qa_pair>
+    <question>Quelle est la VaR historique à 99 % sur dix séances, et comment est-elle obtenue ?</question>
+    <answer>6 282,71 €, par la règle de la racine du temps [Approximation]</answer>
+  </qa_pair>
+  <qa_pair>
+    <question>Quelle est la volatilité annualisée du portefeuille ?</question>
+    <answer>12,72 %</answer>
+  </qa_pair>
+  <qa_pair>
+    <question>Quel est le drawdown maximal du portefeuille sur la fenêtre, et entre quelles dates ?</question>
+    <answer>-17,25 %, du 2 juin 2025 au 9 octobre 2025</answer>
+  </qa_pair>
+  <qa_pair>
+    <question>Le backtest de Kupiec rejette-t-il la VaR à 95 % ?</question>
+    <answer>Non : 10 exceptions pour 11,7 attendues, p-value 0,612 ; backtest incomplet (233 séances)</answer>
+  </qa_pair>
+  <qa_pair>
+    <question>Quel est le bêta du portefeuille ?</question>
+    <answer>Indisponible : indice de référence bloqué, ISIN A_VERIFIER (D8)</answer>
+  </qa_pair>
+  <qa_pair>
+    <question>Quelle est l'exposition du portefeuille aux facteurs de style ?</question>
+    <answer>Indisponible : aucune source de facteurs validée (D9)</answer>
+  </qa_pair>
+  <qa_pair>
+    <question>Combien de lignes effectives compte le portefeuille selon l'indice de Herfindahl ?</question>
+    <answer>6,67 lignes</answer>
+  </qa_pair>
+  <qa_pair>
+    <question>Quelle ligne porte la plus grande part du risque, et quelle part ?</question>
+    <answer>FICT-GLOBEX, 52,33 % du risque</answer>
+  </qa_pair>
+  <qa_pair>
+    <question>Quelle perte entraînerait une baisse de 20 % des actions ?</question>
+    <answer>-13 651,61 €</answer>
+  </qa_pair>
+  <qa_pair>
+    <question>Quel serait l'effet d'une baisse de 10 % de l'EUR/USD ?</question>
+    <answer>+3 539,76 €</answer>
+  </qa_pair>
+  <qa_pair>
+    <question>Quel serait l'effet d'une hausse de 10 % de l'EUR/USD ?</question>
+    <answer>-2 896,17 €</answer>
+  </qa_pair>
+  <qa_pair>
+    <question>Quel serait l'effet d'une hausse des taux de 100 points de base, et quelle part en est estimée ?</question>
+    <answer>-1 844,66 €, dont -677,12 € par la duration de FICT-OAT35 et -1 167,53 € estimés sur l'€STR (écart-type 1 575,37 €, p-value 0,459) [Estimation]</answer>
+  </qa_pair>
+  <qa_pair>
+    <question>Quel serait l'effet d'une baisse de 15 % du secteur Technologie ?</question>
+    <answer>-3 625,03 €</answer>
+  </qa_pair>
+  <qa_pair>
+    <question>Que donnerait le stress de la crise de 2008 ?</question>
+    <answer>Bloqué : dates et source de la fenêtre à relever (D10)</answer>
+  </qa_pair>
+  <qa_pair>
+    <question>De combien la VaR paramétrique à 95 % a-t-elle varié depuis le 12 octobre 2026, et pourquoi ?</question>
+    <answer>+185,00 € : effet positions 163,72 €, effet marché 17,88 €, résidu 3,40 €</answer>
+  </qa_pair>
+  <qa_pair>
+    <question>Quelle est la corrélation entre FICT-DELTA et FICT-MONDE ?</question>
+    <answer>0,77</answer>
+  </qa_pair>
+</evaluation>

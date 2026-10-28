@@ -1,0 +1,35 @@
+# Démo phase 0 : refus des modifications de config/live.yaml (2026-10-17T21:56:52Z)
+sha256 avant : bbefaba32b3a0b43e9925e7e357a3b5f6e06cfdeec09b02bf0fe40688a72ee19
+
+## 1. Edit -> .claude/hooks/protect_paths.py
+entrée : {"file_path": "C:\\Users\\User\\Documents\\cerveau-plateforme\\config\\live.yaml", "old_string": "enabled: false", "new_string": "enabled: true"}
+code de sortie : 2
+BLOQUÉ par le hook CERVEAU : config/live.yaml est protégé (R3) : seul Lucas le modifie, à la main
+
+## 2. Write -> .claude/hooks/protect_paths.py
+entrée : {"file_path": "C:\\Users\\User\\Documents\\cerveau-plateforme\\config\\live.yaml", "content": "enabled: true\n"}
+code de sortie : 2
+BLOQUÉ par le hook CERVEAU : config/live.yaml est protégé (R3) : seul Lucas le modifie, à la main
+
+## 3. Bash -> .claude/hooks/guard_shell.py
+entrée : {"command": "sed -i 's/enabled: false/enabled: true/' config/live.yaml"}
+code de sortie : 2
+BLOQUÉ par le hook CERVEAU : « sed » pourrait écrire, déplacer ou changer les droits d'un chemin protégé (mentionne live.yaml)
+
+## 4. PowerShell -> .claude/hooks/guard_shell.py
+entrée : {"command": "Set-Content config/live.yaml 'enabled: true'"}
+code de sortie : 2
+BLOQUÉ par le hook CERVEAU : « set-content » pourrait écrire, déplacer ou changer les droits d'un chemin protégé (mentionne live.yaml)
+
+sha256 après : bbefaba32b3a0b43e9925e7e357a3b5f6e06cfdeec09b02bf0fe40688a72ee19
+
+## Journal d'audit de démo : 4 entrée(s)
+  {"seq": 1, "actor": "policy", "request_id": "toolu_demo_edit"}
+  {"seq": 2, "actor": "policy", "request_id": "toolu_demo_write"}
+  {"seq": 3, "actor": "policy", "request_id": "toolu_demo_bash"}
+  {"seq": 4, "actor": "policy", "request_id": "toolu_demo_powershell"}
+
+## cerveau audit verify --journal <journal de démo>
+OK : 4 entrée(s), tête 4:sha256:79bded5cc456d277e48d0535d4fa449ae367862a52c319a68b6e965599439be3
+Sans ancre externe, une troncature de fin de journal reste indétectable.
+code de sortie : 0

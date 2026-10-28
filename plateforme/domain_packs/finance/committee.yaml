@@ -1,0 +1,42 @@
+# Comité d'investissement du pack Finance (§7.2, Annexe E, plan de phase 3 §10, ADR-028).
+# [Reconstruction inspirée de TradingAgents] : des analystes en parallèle, un débat défenseur /
+# contradicteur, un gestionnaire qui tranche et un contrôleur de risque qui peut bloquer.
+#
+# Chaque membre actif a sa fiche dans prompts/committee/<membre>.md et son niveau de modèle dans
+# config/committee.yaml. Les outils sont ceux des plugins du pack, tous en lecture ou en calcul :
+# aucun rôle n'a d'outil d'action (R5), et web_read passe par le lecteur. Toute modification de
+# ce fichier ou d'une fiche change la version de la séance et relance les évals (R9).
+version: 0.1.0
+
+analystes:
+  # Signaux des stratégies du registre (mode signaux) et niveaux de marché.
+  - membre: analyste_technique
+    outils: [strategy_lab, market_data]
+  # Pages web lues par le lecteur (données, jamais instructions), taux et change de market_data.
+  - membre: analyste_actualites_macro
+    outils: [web_search, web_read, market_data]
+  # Positions, expositions, VaR et stress du portefeuille de Lucas.
+  - membre: analyste_portefeuille
+    outils: [portfolio_snapshot, risk_report]
+
+# Le débat et la décision se font sur les seuls constats des analystes, sans outil.
+defenseur:
+  membre: defenseur
+contradicteur:
+  membre: contradicteur
+gestionnaire:
+  membre: gestionnaire
+
+# Les scénarios défavorables se chiffrent par le stress de risk_report ; les limites de
+# config/risk_limits.paper.yaml sont contrôlées par le code avant que le contrôleur ne parle.
+controleur:
+  membre: controleur_risque
+  outils: [risk_report]
+
+# Rôles de l'Annexe E sans source de données à ce jour (aucun outil ne les nourrit) : ils ne
+# siègent pas et n'ont pas de niveau de modèle dans config/committee.yaml.
+inactifs:
+  - membre: analyste_fondamental
+    raison: aucune source de données fondamentales (comptes, résultats) branchée
+  - membre: analyste_sentiment
+    raison: aucune source de sentiment (réseaux, positionnement) branchée

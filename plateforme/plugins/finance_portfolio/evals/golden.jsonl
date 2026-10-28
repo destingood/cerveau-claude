@@ -1,0 +1,16 @@
+{"id": "fp-001", "tool": "portfolio_snapshot", "arguments": {}, "expected": {"is_error": false, "contains": "\"display\":\"111\u202f922,71\u00a0€\""}}
+{"id": "fp-002", "tool": "portfolio_snapshot", "arguments": {"as_of": "2026-10-19T00:00:00Z"}, "expected": {"is_error": true, "contains": "as_of est dans le futur"}}
+{"id": "fp-003", "tool": "portfolio_snapshot", "arguments": {"as_of": "2026-10-18T13:00:00"}, "expected": {"is_error": true, "contains": "timezone"}}
+{"id": "fp-004", "tool": "portfolio_snapshot", "arguments": {"strict": "peut-être"}, "expected": {"is_error": true, "contains": "valid boolean"}}
+{"id": "fp-005", "tool": "portfolio_snapshot", "arguments": {"as_of": "2026-10-18T11:00:00Z", "strict": true}, "expected": {"is_error": false, "contains": "aucune transaction connue"}}
+{"id": "fp-006", "tool": "portfolio_snapshot", "arguments": {}, "expected": {"is_error": false, "contains": "\"display\":\"68,12\u00a0%\""}}
+{"id": "fp-007", "tool": "portfolio_snapshot", "arguments": {}, "expected": {"is_error": false, "contains": "\"display\":\"28,46\u00a0%\""}}
+{"id": "fp-008", "tool": "portfolio_snapshot", "arguments": {}, "expected": {"is_error": false, "contains": "\"display\":\"3,42\u00a0%\""}}
+{"id": "fp-009", "tool": "portfolio_snapshot", "arguments": {}, "expected": {"is_error": false, "contains": "\"display\":\"22,97\u00a0%\""}}
+{"id": "fp-010", "tool": "portfolio_snapshot", "arguments": {}, "expected": {"is_error": false, "contains": "\"display\":\"42,405\u00a0USD\""}}
+{"id": "fp-011", "tool": "portfolio_snapshot", "arguments": {}, "expected": {"is_error": false, "contains": "\"display\":\"176,4775\u00a0USD\""}}
+{"id": "fp-012", "tool": "portfolio_snapshot", "arguments": {}, "expected": {"is_error": false, "contains": "\"display\":\"14\u202f118,20\u00a0USD\""}}
+{"id": "fp-013", "tool": "portfolio_snapshot", "arguments": {}, "expected": {"is_error": false, "contains": "{\"account\":\"CTO-FICTIF\",\"status\":\"ok\",\"statement_date\":\"2026-10-16\""}}
+{"id": "fp-014", "tool": "portfolio_snapshot", "arguments": {}, "expected": {"is_error": false, "contains": "\"alert\":null"}}
+{"id": "fp-015", "tool": "portfolio_snapshot", "arguments": {"as_of": "2026-10-16T20:00:00Z"}, "expected": {"is_error": false, "contains": "\"display\":\"112\u202f449,32\u00a0€\""}}
+{"id": "fp-016", "tool": "portfolio_snapshot", "arguments": {"as_of": "2025-01-10T20:00:00Z"}, "expected": {"is_error": false, "contains": "\"display\":\"103\u202f182,91\u00a0€\""}}

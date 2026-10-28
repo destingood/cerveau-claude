@@ -1,0 +1,745 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$defs": {
+    "AgentRun": {
+      "additionalProperties": false,
+      "properties": {
+        "status": {
+          "enum": [
+            "termine",
+            "erreur",
+            "delai",
+            "arrete"
+          ],
+          "title": "Status",
+          "type": "string"
+        },
+        "note": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Note"
+        },
+        "subtype": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Subtype"
+        },
+        "turns": {
+          "anyOf": [
+            {
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Turns"
+        },
+        "summary": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Summary"
+        },
+        "seconds": {
+          "title": "Seconds",
+          "type": "number"
+        }
+      },
+      "required": [
+        "status",
+        "note",
+        "subtype",
+        "turns",
+        "summary",
+        "seconds"
+      ],
+      "title": "AgentRun",
+      "type": "object"
+    },
+    "Checks": {
+      "additionalProperties": false,
+      "description": "ruff and pytest on the copy the agent changed (``code_checks``): the only counts the\nanswer cites (R1), and a hint, never a proof. ``conclusive`` is false, with its ``caveats``,\nwhen the patch changes what the checks read (``conftest.py``, ``pyproject.toml``...) or when\nthe copy they ran on is not what the patch gives (files left out, secrets masked).",
+      "properties": {
+        "ruff_check": {
+          "$ref": "#/$defs/RuffCheck"
+        },
+        "ruff_format": {
+          "$ref": "#/$defs/RuffFormat"
+        },
+        "pytest": {
+          "$ref": "#/$defs/Pytest"
+        },
+        "budget_seconds": {
+          "title": "Budget Seconds",
+          "type": "number"
+        },
+        "conclusive": {
+          "title": "Conclusive",
+          "type": "boolean"
+        },
+        "caveats": {
+          "items": {
+            "type": "string"
+          },
+          "title": "Caveats",
+          "type": "array"
+        }
+      },
+      "required": [
+        "ruff_check",
+        "ruff_format",
+        "pytest",
+        "budget_seconds",
+        "conclusive",
+        "caveats"
+      ],
+      "title": "Checks",
+      "type": "object"
+    },
+    "Cleanup": {
+      "additionalProperties": false,
+      "properties": {
+        "copy_removed": {
+          "title": "Copy Removed",
+          "type": "boolean"
+        },
+        "network_removed": {
+          "title": "Network Removed",
+          "type": "boolean"
+        },
+        "containers_stopped": {
+          "title": "Containers Stopped",
+          "type": "boolean"
+        }
+      },
+      "required": [
+        "copy_removed",
+        "network_removed",
+        "containers_stopped"
+      ],
+      "title": "Cleanup",
+      "type": "object"
+    },
+    "Diagnostic": {
+      "additionalProperties": false,
+      "properties": {
+        "path": {
+          "title": "Path",
+          "type": "string"
+        },
+        "line": {
+          "anyOf": [
+            {
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Line"
+        },
+        "column": {
+          "anyOf": [
+            {
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Column"
+        },
+        "code": {
+          "title": "Code",
+          "type": "string"
+        },
+        "message": {
+          "title": "Message",
+          "type": "string"
+        }
+      },
+      "required": [
+        "path",
+        "line",
+        "column",
+        "code",
+        "message"
+      ],
+      "title": "Diagnostic",
+      "type": "object"
+    },
+    "FileChange": {
+      "additionalProperties": false,
+      "properties": {
+        "path": {
+          "title": "Path",
+          "type": "string"
+        },
+        "change": {
+          "enum": [
+            "ajoute",
+            "modifie",
+            "supprime"
+          ],
+          "title": "Change",
+          "type": "string"
+        },
+        "added": {
+          "title": "Added",
+          "type": "integer"
+        },
+        "removed": {
+          "title": "Removed",
+          "type": "integer"
+        },
+        "risky": {
+          "title": "Risky",
+          "type": "boolean"
+        },
+        "masked": {
+          "title": "Masked",
+          "type": "integer"
+        }
+      },
+      "required": [
+        "path",
+        "change",
+        "added",
+        "removed",
+        "risky",
+        "masked"
+      ],
+      "title": "FileChange",
+      "type": "object"
+    },
+    "PatchOut": {
+      "additionalProperties": false,
+      "description": "The patch in ``folder``/patch.diff, for Lucas to review and apply with ``git apply``.",
+      "properties": {
+        "folder": {
+          "title": "Folder",
+          "type": "string"
+        },
+        "sha256": {
+          "title": "Sha256",
+          "type": "string"
+        },
+        "bytes": {
+          "title": "Bytes",
+          "type": "integer"
+        },
+        "files": {
+          "items": {
+            "$ref": "#/$defs/FileChange"
+          },
+          "title": "Files",
+          "type": "array"
+        },
+        "more_files": {
+          "title": "More Files",
+          "type": "integer"
+        },
+        "risky": {
+          "items": {
+            "type": "string"
+          },
+          "title": "Risky",
+          "type": "array"
+        },
+        "masked": {
+          "title": "Masked",
+          "type": "integer"
+        },
+        "applies": {
+          "title": "Applies",
+          "type": "boolean"
+        },
+        "binary": {
+          "items": {
+            "type": "string"
+          },
+          "title": "Binary",
+          "type": "array"
+        },
+        "too_big": {
+          "items": {
+            "type": "string"
+          },
+          "title": "Too Big",
+          "type": "array"
+        },
+        "ignored": {
+          "items": {
+            "type": "string"
+          },
+          "title": "Ignored",
+          "type": "array"
+        },
+        "sensitive": {
+          "items": {
+            "type": "string"
+          },
+          "title": "Sensitive",
+          "type": "array"
+        },
+        "more_left_out": {
+          "title": "More Left Out",
+          "type": "integer"
+        }
+      },
+      "required": [
+        "folder",
+        "sha256",
+        "bytes",
+        "files",
+        "more_files",
+        "risky",
+        "masked",
+        "applies",
+        "binary",
+        "too_big",
+        "ignored",
+        "sensitive",
+        "more_left_out"
+      ],
+      "title": "PatchOut",
+      "type": "object"
+    },
+    "ProxyCounts": {
+      "additionalProperties": false,
+      "description": "What the proxy of the task counted; the dollars come from pricing.yaml (R1).",
+      "properties": {
+        "requests": {
+          "title": "Requests",
+          "type": "integer"
+        },
+        "usd": {
+          "title": "Usd",
+          "type": "string"
+        },
+        "stopped": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Stopped"
+        },
+        "refusals": {
+          "additionalProperties": {
+            "type": "integer"
+          },
+          "title": "Refusals",
+          "type": "object"
+        }
+      },
+      "required": [
+        "requests",
+        "usd",
+        "stopped",
+        "refusals"
+      ],
+      "title": "ProxyCounts",
+      "type": "object"
+    },
+    "Pytest": {
+      "additionalProperties": false,
+      "properties": {
+        "status": {
+          "enum": [
+            "ok",
+            "echec",
+            "erreur",
+            "aucun_test",
+            "non_lance",
+            "delai"
+          ],
+          "title": "Status",
+          "type": "string"
+        },
+        "note": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Note"
+        },
+        "counts": {
+          "additionalProperties": {
+            "type": "integer"
+          },
+          "title": "Counts",
+          "type": "object"
+        },
+        "failed": {
+          "items": {
+            "type": "string"
+          },
+          "title": "Failed",
+          "type": "array"
+        },
+        "errors": {
+          "items": {
+            "type": "string"
+          },
+          "title": "Errors",
+          "type": "array"
+        },
+        "more_failures": {
+          "title": "More Failures",
+          "type": "integer"
+        }
+      },
+      "required": [
+        "status",
+        "note",
+        "counts",
+        "failed",
+        "errors",
+        "more_failures"
+      ],
+      "title": "Pytest",
+      "type": "object"
+    },
+    "RuffCheck": {
+      "additionalProperties": false,
+      "properties": {
+        "status": {
+          "enum": [
+            "ok",
+            "echec",
+            "erreur",
+            "aucun_test",
+            "non_lance",
+            "delai"
+          ],
+          "title": "Status",
+          "type": "string"
+        },
+        "note": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Note"
+        },
+        "count": {
+          "anyOf": [
+            {
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Count"
+        },
+        "by_code": {
+          "additionalProperties": {
+            "type": "integer"
+          },
+          "title": "By Code",
+          "type": "object"
+        },
+        "diagnostics": {
+          "items": {
+            "$ref": "#/$defs/Diagnostic"
+          },
+          "title": "Diagnostics",
+          "type": "array"
+        },
+        "more_diagnostics": {
+          "title": "More Diagnostics",
+          "type": "integer"
+        }
+      },
+      "required": [
+        "status",
+        "note",
+        "count",
+        "by_code",
+        "diagnostics",
+        "more_diagnostics"
+      ],
+      "title": "RuffCheck",
+      "type": "object"
+    },
+    "RuffFormat": {
+      "additionalProperties": false,
+      "properties": {
+        "status": {
+          "enum": [
+            "ok",
+            "echec",
+            "erreur",
+            "aucun_test",
+            "non_lance",
+            "delai"
+          ],
+          "title": "Status",
+          "type": "string"
+        },
+        "note": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Note"
+        },
+        "count": {
+          "anyOf": [
+            {
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Count"
+        },
+        "files": {
+          "items": {
+            "type": "string"
+          },
+          "title": "Files",
+          "type": "array"
+        },
+        "more_files": {
+          "title": "More Files",
+          "type": "integer"
+        }
+      },
+      "required": [
+        "status",
+        "note",
+        "count",
+        "files",
+        "more_files"
+      ],
+      "title": "RuffFormat",
+      "type": "object"
+    },
+    "Source": {
+      "additionalProperties": false,
+      "description": "The throwaway copy the containers read.",
+      "properties": {
+        "files": {
+          "title": "Files",
+          "type": "integer"
+        },
+        "bytes": {
+          "title": "Bytes",
+          "type": "integer"
+        },
+        "withheld": {
+          "items": {
+            "type": "string"
+          },
+          "title": "Withheld",
+          "type": "array"
+        },
+        "more_withheld": {
+          "title": "More Withheld",
+          "type": "integer"
+        },
+        "skipped": {
+          "items": {
+            "type": "string"
+          },
+          "title": "Skipped",
+          "type": "array"
+        },
+        "more_skipped": {
+          "title": "More Skipped",
+          "type": "integer"
+        },
+        "removed": {
+          "title": "Removed",
+          "type": "boolean"
+        }
+      },
+      "required": [
+        "files",
+        "bytes",
+        "withheld",
+        "more_withheld",
+        "skipped",
+        "more_skipped",
+        "removed"
+      ],
+      "title": "Source",
+      "type": "object"
+    },
+    "Spend": {
+      "additionalProperties": false,
+      "description": "Read by the adapter (``core/mcp/spend.py``): the tokens the proxy counted, per model, and\nwhether a cost stayed unknown (the adapter then charges the task's ceiling, R7). French names:\nthe adapter's contract with every isolated tool.",
+      "properties": {
+        "modeles": {
+          "additionalProperties": {
+            "additionalProperties": {
+              "type": "integer"
+            },
+            "type": "object"
+          },
+          "title": "Modeles",
+          "type": "object"
+        },
+        "cout_inconnu": {
+          "title": "Cout Inconnu",
+          "type": "boolean"
+        }
+      },
+      "required": [
+        "modeles",
+        "cout_inconnu"
+      ],
+      "title": "Spend",
+      "type": "object"
+    }
+  },
+  "additionalProperties": false,
+  "properties": {
+    "task_id": {
+      "title": "Task Id",
+      "type": "string"
+    },
+    "repo": {
+      "title": "Repo",
+      "type": "string"
+    },
+    "rev": {
+      "title": "Rev",
+      "type": "string"
+    },
+    "sha": {
+      "title": "Sha",
+      "type": "string"
+    },
+    "model": {
+      "title": "Model",
+      "type": "string"
+    },
+    "source": {
+      "$ref": "#/$defs/Source"
+    },
+    "agent": {
+      "$ref": "#/$defs/AgentRun"
+    },
+    "proxy": {
+      "anyOf": [
+        {
+          "$ref": "#/$defs/ProxyCounts"
+        },
+        {
+          "type": "null"
+        }
+      ]
+    },
+    "depense": {
+      "anyOf": [
+        {
+          "$ref": "#/$defs/Spend"
+        },
+        {
+          "type": "null"
+        }
+      ]
+    },
+    "patch": {
+      "anyOf": [
+        {
+          "$ref": "#/$defs/PatchOut"
+        },
+        {
+          "type": "null"
+        }
+      ]
+    },
+    "patch_note": {
+      "anyOf": [
+        {
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "title": "Patch Note"
+    },
+    "checks": {
+      "anyOf": [
+        {
+          "$ref": "#/$defs/Checks"
+        },
+        {
+          "type": "null"
+        }
+      ]
+    },
+    "checks_note": {
+      "anyOf": [
+        {
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "title": "Checks Note"
+    },
+    "cleanup": {
+      "$ref": "#/$defs/Cleanup"
+    }
+  },
+  "required": [
+    "task_id",
+    "repo",
+    "rev",
+    "sha",
+    "model",
+    "source",
+    "agent",
+    "proxy",
+    "depense",
+    "patch",
+    "patch_note",
+    "checks",
+    "checks_note",
+    "cleanup"
+  ],
+  "title": "AgentResult",
+  "type": "object"
+}

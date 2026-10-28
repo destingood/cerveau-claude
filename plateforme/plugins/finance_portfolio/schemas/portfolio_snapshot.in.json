@@ -1,0 +1,27 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "type": "object",
+  "properties": {
+    "as_of": {
+      "anyOf": [
+        {
+          "format": "date-time",
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "description": "Moment « connu à », ISO 8601 avec fuseau ; défaut : maintenant",
+      "title": "As Of"
+    },
+    "strict": {
+      "default": false,
+      "description": "Strict : seuls les imports et les données enregistrés avant as_of comptent (rejeu d'une décision passée)",
+      "title": "Strict",
+      "type": "boolean"
+    }
+  },
+  "title": "portfolio_snapshotArguments"
+}

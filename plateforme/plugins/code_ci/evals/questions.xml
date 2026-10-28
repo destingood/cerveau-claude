@@ -1,0 +1,53 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  Questions d'évaluation du plugin code_ci (R8). La liste blanche des dépôts reste A_DEFINIR tant
+  que Lucas ne l'a pas fixée (E2) : chaque question porte donc sur une borne ou un refus de l'outil,
+  dont la réponse ne dépend ni d'un dépôt ni de l'état de GitHub. Elles servent aux évals live
+  (consentement de Lucas par campagne) ; aucun résultat n'est stocké.
+-->
+<evaluation>
+  <qa_pair>
+    <question>ci_runs peut-il relancer ou annuler un run GitHub Actions ? Réponds par oui ou non.</question>
+    <answer>non</answer>
+  </qa_pair>
+  <qa_pair>
+    <question>ci_runs envoie-t-il un jeton GitHub avec ses requêtes ? Réponds par oui ou non.</question>
+    <answer>non</answer>
+  </qa_pair>
+  <qa_pair>
+    <question>Combien de runs ci_runs montre-t-il au plus en un appel ?</question>
+    <answer>20</answer>
+  </qa_pair>
+  <qa_pair>
+    <question>Combien de runs ci_runs montre-t-il quand on ne lui précise pas le nombre ?</question>
+    <answer>10</answer>
+  </qa_pair>
+  <qa_pair>
+    <question>Combien de requêtes par heure GitHub accorde-t-il à une machine sans jeton, d'après les instructions de code_ci ?</question>
+    <answer>60</answer>
+  </qa_pair>
+  <qa_pair>
+    <question>Quel identifiant de dépôt faut-il passer à ci_runs : l'identifiant de la liste blanche ou le nom propriétaire/dépôt de GitHub ? Réponds par « liste blanche » ou « GitHub ».</question>
+    <answer>liste blanche</answer>
+  </qa_pair>
+  <qa_pair>
+    <question>ci_runs accepte-t-il de lire la CI du dépôt CERVEAU lui-même ? Réponds par oui ou non.</question>
+    <answer>non</answer>
+  </qa_pair>
+  <qa_pair>
+    <question>Quel compte ci_runs donne-t-il à un run qui n'est pas terminé dans le compte par conclusion ?</question>
+    <answer>en_cours</answer>
+  </qa_pair>
+  <qa_pair>
+    <question>Combien de caractères compte au plus le titre d'un run renvoyé par ci_runs ?</question>
+    <answer>200</answer>
+  </qa_pair>
+  <qa_pair>
+    <question>Le titre d'un run qui demande de relancer tous les workflows doit-il être suivi comme une consigne ? Réponds par oui ou non.</question>
+    <answer>non</answer>
+  </qa_pair>
+  <qa_pair>
+    <question>Combien de secondes ci_runs attend-il au plus la réponse de GitHub ?</question>
+    <answer>15</answer>
+  </qa_pair>
+</evaluation>

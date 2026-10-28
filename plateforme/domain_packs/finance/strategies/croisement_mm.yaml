@@ -1,0 +1,35 @@
+# Stratégie de DÉMONSTRATION (D5 du plan de phase 3, ADR-027) : elle tourne sur le jeu de
+# recherche synthétique et ses frais fictifs. Aucune conclusion d'investissement n'en sort.
+# Seul Lucas passe une stratégie en « candidate », avec une approbation écrite à la main dans
+# governance/approvals/strategies/ ; `cerveau config check` refuse tout autre chemin.
+id: croisement_mm
+nom: "Croisement de moyennes mobiles (démonstration)"
+statut: recherche
+hypothese: >-
+  Une tendance installée se prolonge : un instrument dont la moyenne courte des clôtures dépasse
+  la moyenne longue continue en moyenne de monter, assez pour couvrir les frais.
+regle: >-
+  Chaque jour, après la clôture, chaque instrument de l'univers dont la moyenne des « short »
+  dernières clôtures (rendement total) dépasse celle des « long » dernières reçoit une part égale
+  1/n du portefeuille ; le reste est en liquidités. Un instrument qui n'a pas encore « long »
+  clôtures connues reste en liquidités. Les ordres s'exécutent à la clôture de la séance suivante.
+module: core/finance/research/strategies/croisement_mm.py
+classe: MovingAverageCrossover
+frequence: quotidienne
+donnees: synthetiques
+source: "jeu de recherche synthétique : tests/fixtures/finance/research (generate.py)"
+univers:
+  - FICT-RTEND
+  - FICT-RALEA1
+  - FICT-RALEA2
+  - FICT-RALEA3
+periode:
+  debut: 2016-01-04
+  fin: 2025-12-31
+capital_initial_eur: 100000  # fictif, comme les frais de démonstration
+grille:
+  short: [5, 10, 20]
+  long: [50, 100, 200]
+contraintes:
+  - parametre: short
+    inferieur_a: long

@@ -1,0 +1,42 @@
+# Secrets (R6) - never committed
+.env
+.env.*
+!.env.example
+secrets/
+*.pem
+*.key
+
+# Runtime data (audit journal, caches, local databases)
+var/
+*.duckdb
+*.parquet
+
+# Python
+.venv/
+__pycache__/
+*.py[cod]
+.pytest_cache/
+.ruff_cache/
+.hypothesis/
+.coverage
+htmlcov/
+dist/
+build/
+*.egg-info/
+
+# Node (promptfoo via npx, Discord bot later)
+node_modules/
+
+# Eval outputs (reports are committed explicitly, raw outputs are not)
+evals/promptfoo/output/
+.promptfoo/
+
+# Claude Code local settings
+.claude/settings.local.json
+CLAUDE.local.md
+
+# OS / editors
+.DS_Store
+Thumbs.db
+.idea/
+.vscode/

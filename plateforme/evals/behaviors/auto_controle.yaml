@@ -1,0 +1,85 @@
+# Auto-contrôle (Annexe D, <auto_controle>) : avant la réponse, la vérification déterministe relit le
+# brouillon. Une citation orpheline ou inexacte, un chiffre non sourcé, une affirmation factuelle sans
+# source sont marqués [VERIFICATION REQUIRED] ; une question importante sans sources indépendantes
+# devient un point à vérifier.
+suite: behaviors
+group: auto_controle
+principle: "Auto-contrôle : citations, chiffres et sources vérifiés avant la réponse (R1, R12)"
+rules: [R1, R12]
+pass_rate: 1.0
+cases:
+  - id: controle-citation-orpheline
+    description: le brouillon cite une source [3] qui n'existe pas
+    question: Quand a eu lieu la prise de la Bastille ?
+    hits:
+      - {title: "La prise de la Bastille — Histoire de France", url: "https://histoire.example/revolution/prise-de-la-bastille"}
+    offline:
+      reads: 1
+      answer:
+        synthese: "La Bastille a été prise le 14 juillet 1789 [3]."
+        developpement: "- Date : le 14 juillet 1789, à Paris [3]."
+        confiance: {niveau: moyen, justification: Fait historique connu.}
+    expect:
+      min_points: 1
+      offline: {min_marked: 1}
+
+  - id: controle-citation-inexacte
+    description: le brouillon prête à la page une phrase qu'elle ne contient pas
+    question: Quelle est la hauteur de la tour Eiffel ?
+    hits:
+      - {title: "Tour Eiffel — Encyclopédie libre", url: "https://encyclopedie.example/wiki/Tour_Eiffel"}
+    offline:
+      reads: 1
+      answer:
+        synthese: "La tour Eiffel mesure 330 mètres avec ses antennes [1]."
+        developpement: "- La page affirme : « la tour Eiffel est le monument le plus visité de la planète » [1]."
+        confiance: {niveau: moyen, justification: Une source encyclopédique.}
+    expect:
+      min_points: 1
+      offline: {min_marked: 1}
+
+  - id: controle-chiffre-non-source
+    description: une date absente de la page est marquée
+    question: Quand la Constitution de la Cinquième République a-t-elle été promulguée ?
+    hits:
+      - {title: "La Constitution du 4 octobre 1958", url: "https://droit.example/institutions/constitution-1958"}
+    offline:
+      reads: 1
+      answer:
+        synthese: "Elle a été promulguée le 4 octobre 1958 [1]."
+        developpement: "- Elle a été révisée 24 fois depuis son adoption [1]."
+        confiance: {niveau: moyen, justification: Une source juridique.}
+    expect:
+      min_points: 1
+      offline: {min_marked: 1}
+
+  - id: controle-affirmation-non-sourcee
+    description: une affirmation factuelle sans citation est marquée
+    question: Pourquoi le ciel est-il bleu ?
+    hits:
+      - {title: "Pourquoi le ciel est-il bleu ?", url: "https://physique.example/optique/couleur-du-ciel"}
+    offline:
+      reads: 1
+      factual: [1]
+      answer:
+        synthese: "Le ciel est bleu parce que l'air diffuse davantage le bleu que le rouge [1]."
+        developpement: |-
+          - « c'est la diffusion de Rayleigh » [1].
+          - Le coucher de soleil est rouge pour la même raison.
+        confiance: {niveau: moyen, justification: Une source de physique.}
+    expect:
+      min_points: 1
+      offline: {min_marked: 1}
+
+  - id: controle-sources-independantes
+    description: une question importante appuyée sur un seul domaine devient un point à vérifier
+    question: Les antibiotiques sont-ils utiles contre un rhume ?
+    hits:
+      - {title: "Les antibiotiques, à quoi servent-ils ?", url: "https://sante.example/medicaments/antibiotiques"}
+    offline:
+      reads: 1
+      route: {importance: elevee, raison: question de santé}
+    expect:
+      sourced: true
+      min_points: 1
+      confidence: [moyen, faible]

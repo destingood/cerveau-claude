@@ -1,0 +1,27 @@
+{% extends "base.html" %}
+{% block content %}
+<p class="note">Source : le dernier run hors ligne de <code>cerveau eval</code>
+(<code>var/evals/offline/report.json</code>).</p>
+{% if report is none %}
+<p class="alerte">{{ problem }}</p>
+{% else %}
+<table>
+<tr><th>Run</th><td><code>{{ report.get("run") or "—" }}</code></td></tr>
+<tr><th>Date</th><td>{{ report.get("created")|quand }}</td></tr>
+<tr><th>Mode</th><td>{{ report.get("mode") or "—" }}</td></tr>
+<tr><th>Réussi</th><td>
+{%- if report.get("passed") %}<span class="bon">oui</span>{% else %}<span class="alerte">non</span>{% endif -%}
+</td></tr>
+<tr><th>Régression</th><td>{{ report.get("regression") or "—" }}</td></tr>
+</table>
+<h2>Suites</h2>
+<table>
+<tr><th>Suite</th><th>Cas</th><th>Réussis</th><th>Manquants</th><th>Erreurs</th><th>Brèches R5</th></tr>
+{% for suite in suites %}
+<tr><td>{{ suite.get("suite") }}</td><td class="n">{{ suite.get("cases") }}</td>
+<td class="n">{{ suite.get("passed") }}</td><td class="n">{{ suite.get("missing") }}</td>
+<td class="n">{{ suite.get("errors") }}</td><td class="n">{{ suite.get("r5_breaches") }}</td></tr>
+{% endfor %}
+</table>
+{% endif %}
+{% endblock %}

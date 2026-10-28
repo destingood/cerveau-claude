@@ -1,0 +1,16 @@
+# Sources du pack Recherche (section 9.1).
+#
+# sources : corpus RAG autorisé du pack. Vide : pas de RAG en phase 6 (docs/backlog.md, B57) ; les
+# publications viennent du plugin scholarly (arXiv, Crossref), les pages du plugin web_research.
+#
+# flux : liste blanche des flux RSS et Atom que le plugin feeds peut lire (D16, ADR-044). Seul
+# Lucas y ajoute un flux, après avoir vérifié les conditions d'utilisation et la licence du site
+# (R14, R15) ; elle reste vide tant qu'il ne l'a pas fait (D18). Chaque flux :
+#   - id : identifiant donné au planificateur (minuscules, chiffres, tirets ; 40 caractères au plus)
+#   - titre : nom affiché
+#   - url : adresse https du flux ; une redirection est refusée, l'adresse se corrige ici
+#   - licence : licence ou conditions de réutilisation des entrées
+#   - frequence : fréquence de lecture prévue
+# Un champ qui contient A_VERIFIER ou A_DEFINIR bloque la lecture du flux (R7).
+sources: []
+flux: []

@@ -1,0 +1,53 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "type": "object",
+  "properties": {
+    "repo": {
+      "description": "Identifiant du dépôt dans la liste blanche",
+      "pattern": "^[a-z0-9][a-z0-9-]{0,39}$",
+      "title": "Repo",
+      "type": "string"
+    },
+    "path": {
+      "anyOf": [
+        {
+          "maxLength": 300,
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "description": "Chemin relatif à la racine du dépôt, avec « / » ; absent : la racine",
+      "title": "Path"
+    },
+    "rev": {
+      "default": "HEAD",
+      "description": "Révision lue (branche, étiquette, commit)",
+      "maxLength": 100,
+      "pattern": "^[A-Za-z0-9_][A-Za-z0-9._/~^-]{0,99}$",
+      "title": "Rev",
+      "type": "string"
+    },
+    "start_line": {
+      "default": 1,
+      "description": "Première ligne montrée",
+      "minimum": 1,
+      "title": "Start Line",
+      "type": "integer"
+    },
+    "max_lines": {
+      "default": 200,
+      "description": "Nombre de lignes (1 à 400)",
+      "maximum": 400,
+      "minimum": 1,
+      "title": "Max Lines",
+      "type": "integer"
+    }
+  },
+  "required": [
+    "repo"
+  ],
+  "title": "repo_fileArguments"
+}

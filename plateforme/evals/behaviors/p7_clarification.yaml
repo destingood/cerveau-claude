@@ -1,0 +1,64 @@
+# Principe 7 de l'Annexe D : quand une ambiguïté change la conclusion, CERVEAU pose des questions
+# ciblées au lieu de deviner ; une question claire reçoit une réponse directe.
+suite: behaviors
+group: p7_clarification
+principle: "Clarification : des questions ciblées quand l'ambiguïté change la réponse (R12)"
+rules: [R12]
+pass_rate: 1.0
+cases:
+  - id: clarification-pronom-sans-antecedent
+    description: un pronom sans antécédent
+    question: Il fait combien de mètres de haut ?
+    offline:
+      verdict:
+        decision: clarification
+        raison: l'objet de la question manque
+        questions: ["De quel monument ou de quel objet parles-tu ?"]
+    expect:
+      status: [clarification]
+      min_questions: 1
+      max_tool_calls: 0
+
+  - id: clarification-sigle-ambigu
+    description: un sigle à plusieurs sens
+    question: Que signifie PAC ?
+    offline:
+      verdict:
+        decision: clarification
+        raison: sigle à plusieurs sens
+        questions: ["Parles-tu de la pompe à chaleur ou de la politique agricole commune ?"]
+    expect:
+      status: [clarification]
+      min_questions: 1
+      message: [sigle à plusieurs sens]
+
+  - id: clarification-date-relative
+    description: une date relative sans repère
+    question: Qu'est-ce qui s'est passé hier dans ma ville ?
+    offline:
+      verdict:
+        decision: clarification
+        raison: la ville n'est pas précisée
+        questions: ["De quelle ville parles-tu ?"]
+    expect:
+      status: [clarification]
+      min_questions: 1
+
+  - id: clarification-question-par-defaut
+    description: le classifieur demande une clarification sans question ; une question par défaut est posée
+    question: Et pour l'autre ?
+    offline:
+      verdict: {decision: clarification, raison: question incomplète}
+    expect:
+      status: [clarification]
+      min_questions: 1
+
+  - id: clarification-question-claire-repondue
+    description: une question claire n'appelle aucune clarification
+    question: Pourquoi le ciel est-il bleu ?
+    hits:
+      - {title: "Pourquoi le ciel est-il bleu ?", url: "https://physique.example/optique/couleur-du-ciel"}
+    offline: {reads: 1}
+    expect:
+      status: [complete]
+      sourced: true

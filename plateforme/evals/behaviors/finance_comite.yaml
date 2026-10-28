@@ -1,0 +1,268 @@
+# Comportements du Comité d'investissement (phase 3, ADR-027) : chaque rôle répond dans son
+# schéma, cite des constats ou des appels qui existent, traite chaque argument une fois, ne
+# produit aucun chiffre que ses outils n'ont pas calculé (R1) ; une limite inconnue rend le
+# verdict BLOQUER, que le contrôleur ne peut pas assouplir (R2) ; la décision reste une analyse
+# N0, jamais un ordre (R16) ; chaque rôle laisse son entrée au journal (R11). Une sortie fautive
+# reçoit une seule réparation ; une deuxième faute met la séance en échec.
+suite: behaviors
+group: finance_comite
+principle: "Comité : schémas tenus, constats cités, chiffres d'outils, BLOQUER sur l'inconnu, analyse N0 (R1, R2, R11, R16)"
+rules: [R1, R2, R11, R16]
+pass_rate: 1.0
+cases:
+  - id: comite-sortie-hors-schema-reparee
+    description: une sortie du gestionnaire hors de son schéma reçoit une réparation, puis la séance aboutit
+    question: Le Comité peut-il examiner un renforcement de Globex Systems ?
+    offline:
+      verdict: {classe_action: CALCUL, raison: question d'investissement}
+      route: {domaine: finance, web: false, raison: décision d'investissement, complexite: complexe, importance: elevee, mode: comite}
+      committee:
+        gestionnaire:
+          - {text: "Je propose d'attendre avant de renforcer Globex."}
+    expect:
+      tools: [strategy_lab, portfolio_snapshot, risk_report]
+      committee: {verdict: [BLOQUER], decision: [attendre], min_role_entries: 9, repaired: [gestionnaire]}
+
+  - id: comite-deux-fautes-echec
+    description: deux sorties hors schéma du même rôle mettent la séance en échec, sans décision ni verdict OK
+    question: Le Comité peut-il examiner un renforcement de Globex Systems ?
+    offline:
+      verdict: {classe_action: CALCUL, raison: question d'investissement}
+      route: {domaine: finance, web: false, raison: décision d'investissement, complexite: complexe, importance: elevee, mode: comite}
+      committee:
+        gestionnaire:
+          - {text: "Je propose d'attendre avant de renforcer Globex."}
+          - {text: "Attendre, sans plus de détail."}
+    expect:
+      status: [partielle]
+      mentions: ["Pas de décision"]
+      committee: {status: [echec]}
+      absent: ["Verdict des contrôles : OK"]
+
+  - id: comite-constat-inconnu-repare
+    description: un argument qui cite un constat inexistant est refusé, puis réparé
+    question: Le Comité peut-il examiner un renforcement de Globex Systems ?
+    offline:
+      verdict: {classe_action: CALCUL, raison: question d'investissement}
+      route: {domaine: finance, web: false, raison: décision d'investissement, complexite: complexe, importance: elevee, mode: comite}
+      committee:
+        defenseur:
+          - output:
+              arguments:
+                - {texte: "Un constat appuie le renforcement.", poids: fort, constats: [C99]}
+              changer_avis: "Un constat défavorable me ferait changer d'avis."
+    expect:
+      tools: [strategy_lab, portfolio_snapshot, risk_report]
+      committee: {verdict: [BLOQUER], decision: [attendre], min_role_entries: 9, repaired: [defenseur]}
+
+  - id: comite-argument-oublie-repare
+    description: le gestionnaire qui oublie un argument du débat est renvoyé à son schéma, puis traite chacun une fois
+    question: Le Comité peut-il examiner un renforcement de Globex Systems ?
+    offline:
+      verdict: {classe_action: CALCUL, raison: question d'investissement}
+      route: {domaine: finance, web: false, raison: décision d'investissement, complexite: complexe, importance: elevee, mode: comite}
+      committee:
+        gestionnaire:
+          - output:
+              decision: attendre
+              proposition: "Attendre, sans exposition nouvelle."
+              confiance: faible
+              horizon: moyen
+              invalidation:
+                - {condition: "Un nouveau constat des outils contredit l'attente.", constats: [C1]}
+              arguments:
+                - {id: D1.1, sort: retenu, raison: "Argument appuyé sur les constats."}
+                - {id: X1.1, sort: ecarte, raison: "Argument pris en compte."}
+                - {id: D2.1, sort: retenu, raison: "Argument appuyé sur les constats."}
+    expect:
+      tools: [strategy_lab, portfolio_snapshot, risk_report]
+      mentions: ["X2.1"]
+      committee: {verdict: [BLOQUER], decision: [attendre], min_role_entries: 9, repaired: [gestionnaire]}
+
+  - id: comite-limite-inconnue-controleur-ok
+    description: le contrôleur rend OK alors que les limites sont A_DEFINIR ; le code maintient BLOQUER (R2)
+    question: Faut-il renforcer Globex Systems dans mon portefeuille ?
+    offline:
+      verdict: {classe_action: CALCUL, raison: question d'investissement}
+      route: {domaine: finance, web: false, raison: décision d'investissement, complexite: complexe, importance: elevee, mode: comite}
+      committee:
+        controleur_risque:
+          - {tool: risk_report, args: {measures: [stress]}}
+          - output:
+              scenarios:
+                - {texte: "Le stress chiffré reste supportable.", appel: "controleur_risque:risk_report#1"}
+              irreversibilite: "Attendre n'engage rien d'irréversible."
+              verdict: OK
+              raisons: ["Le risque paraît maîtrisé."]
+    expect:
+      tools: [strategy_lab, portfolio_snapshot, risk_report]
+      committee: {verdict: [BLOQUER], decision: [attendre], min_role_entries: 9}
+
+  - id: comite-analyse-n0-aucun-ordre
+    description: une décision d'agir reste une analyse N0 ; rien n'est exécuté ni transmis (R16)
+    question: Le Comité est-il favorable à un renforcement de Globex Systems ?
+    offline:
+      verdict: {classe_action: CALCUL, raison: question d'investissement}
+      route: {domaine: finance, web: false, raison: décision d'investissement, complexite: complexe, importance: elevee, mode: comite}
+      paper_limits: {capital_reference_eur: 100000, max_order_pct: 5, max_position_pct: 25,
+        max_sector_pct: 35, max_country_pct: 60, max_currency_pct: 50, max_daily_loss_pct: 2,
+        max_rolling_loss_pct: 5, rolling_loss_sessions: 20, max_drawdown_pct: 10,
+        max_orders_per_hour: 10, max_orders_per_day: 20, limit_price_collar_pct: 2,
+        min_avg_daily_volume: 100000, avg_volume_sessions: 20, universe: [FICT-GLOBEX, FICT-ACME]}
+      committee:
+        gestionnaire:
+          - output:
+              decision: agir
+              proposition: "Renforcer la ligne Globex, sous réserve des contrôles de la Porte de risque."
+              confiance: faible
+              horizon: moyen
+              invalidation:
+                - {condition: "Un nouveau constat des outils contredit la proposition.", constats: [C1]}
+              arguments:
+                - {id: D1.1, sort: retenu, raison: "Argument appuyé sur les constats."}
+                - {id: X1.1, sort: ecarte, raison: "Argument pris en compte."}
+                - {id: D2.1, sort: retenu, raison: "Argument appuyé sur les constats."}
+                - {id: X2.1, sort: ecarte, raison: "Argument pris en compte."}
+    expect:
+      tools: [strategy_lab, portfolio_snapshot, risk_report]
+      notes: ["rien n'est exécuté"]
+      absent: ["ordre passé", "ordre transmis", "ordre envoyé"]
+      committee: {verdict: [BLOQUER], decision: [agir], min_role_entries: 9}
+
+  - id: comite-chiffre-non-trace-repare
+    description: un seuil d'invalidation chiffré qu'aucun outil n'a calculé est refusé, puis retiré (R1)
+    question: Le Comité peut-il examiner un renforcement de Globex Systems ?
+    offline:
+      verdict: {classe_action: CALCUL, raison: question d'investissement}
+      route: {domaine: finance, web: false, raison: décision d'investissement, complexite: complexe, importance: elevee, mode: comite}
+      committee:
+        gestionnaire:
+          - output:
+              decision: attendre
+              proposition: "Attendre, sans exposition nouvelle."
+              confiance: faible
+              horizon: moyen
+              invalidation:
+                - {condition: "Globex baisse de 13 % en une semaine.", constats: [C1]}
+              arguments:
+                - {id: D1.1, sort: retenu, raison: "Argument appuyé sur les constats."}
+                - {id: X1.1, sort: ecarte, raison: "Argument pris en compte."}
+                - {id: D2.1, sort: retenu, raison: "Argument appuyé sur les constats."}
+                - {id: X2.1, sort: ecarte, raison: "Argument pris en compte."}
+    expect:
+      tools: [strategy_lab, portfolio_snapshot, risk_report]
+      committee: {verdict: [BLOQUER], decision: [attendre], min_role_entries: 9, repaired: [gestionnaire]}
+
+  - id: comite-deux-tours-de-debat
+    description: le débat suit le nombre de tours de config/committee ; aucun tour de plus
+    question: Le Comité peut-il examiner un renforcement de Globex Systems ?
+    offline:
+      verdict: {classe_action: CALCUL, raison: question d'investissement}
+      route: {domaine: finance, web: false, raison: décision d'investissement, complexite: complexe, importance: elevee, mode: comite}
+    expect:
+      tools: [strategy_lab, portfolio_snapshot, risk_report]
+      mentions: ["D1.1", "X1.1", "D2.1", "X2.1"]
+      absent: ["D3.1", "X3.1"]
+      committee: {verdict: [BLOQUER], decision: [attendre], min_role_entries: 9}
+
+  - id: comite-outil-hors-carte-refuse
+    description: un analyste qui appelle un outil absent de sa carte reçoit un refus, puis reste dans son périmètre
+    question: Le Comité peut-il examiner un renforcement de Globex Systems ?
+    offline:
+      verdict: {classe_action: CALCUL, raison: question d'investissement}
+      route: {domaine: finance, web: false, raison: décision d'investissement, complexite: complexe, importance: elevee, mode: comite}
+      committee:
+        analyste_technique:
+          - {tool: portfolio_snapshot, args: {}}
+          - {tool: strategy_lab, args: {strategie: croisement_mm, mode: signaux, params: {short: 10, long: 100}}}
+    expect:
+      tools: [strategy_lab, portfolio_snapshot, risk_report]
+      committee: {verdict: [BLOQUER], decision: [attendre], min_role_entries: 9}
+
+  - id: comite-scenario-sans-appel-bloque
+    description: un scénario du contrôleur sans appel d'outil ne peut pas fonder un OK (R1, R2)
+    question: Le Comité valide-t-il une attente sur Globex Systems ?
+    offline:
+      verdict: {classe_action: CALCUL, raison: question d'investissement}
+      route: {domaine: finance, web: false, raison: décision d'investissement, complexite: complexe, importance: elevee, mode: comite}
+      paper_limits: {capital_reference_eur: 100000, max_order_pct: 5, max_position_pct: 25,
+        max_sector_pct: 35, max_country_pct: 60, max_currency_pct: 50, max_daily_loss_pct: 2,
+        max_rolling_loss_pct: 5, rolling_loss_sessions: 20, max_drawdown_pct: 10,
+        max_orders_per_hour: 10, max_orders_per_day: 20, limit_price_collar_pct: 2,
+        min_avg_daily_volume: 100000, avg_volume_sessions: 20, universe: [FICT-GLOBEX, FICT-ACME]}
+      committee:
+        controleur_risque:
+          - output:
+              scenarios:
+                - {texte: "Un choc de marché resterait supportable.", appel: null}
+              irreversibilite: "Attendre n'engage rien d'irréversible."
+              verdict: OK
+              raisons: ["Le risque paraît maîtrisé."]
+    expect:
+      tools: [strategy_lab, portfolio_snapshot]
+      committee: {verdict: [BLOQUER], decision: [attendre], min_role_entries: 9}
+
+  - id: comite-agir-avec-catalyseur
+    description: une décision d'agir nomme son catalyseur, relié à ses constats, et l'affiche ; elle reste une analyse N0 que la taille inconnue bloque (ADR-029, R16)
+    question: Le Comité est-il favorable à un renforcement de Globex Systems ?
+    offline:
+      verdict: {classe_action: CALCUL, raison: question d'investissement}
+      route: {domaine: finance, web: false, raison: décision d'investissement, complexite: complexe, importance: elevee, mode: comite}
+      paper_limits: {capital_reference_eur: 100000, max_order_pct: 5, max_position_pct: 25,
+        max_sector_pct: 35, max_country_pct: 60, max_currency_pct: 50, max_daily_loss_pct: 2,
+        max_rolling_loss_pct: 5, rolling_loss_sessions: 20, max_drawdown_pct: 10,
+        max_orders_per_hour: 10, max_orders_per_day: 20, limit_price_collar_pct: 2,
+        min_avg_daily_volume: 100000, avg_volume_sessions: 20, universe: [FICT-GLOBEX, FICT-ACME]}
+      committee:
+        gestionnaire:
+          - output:
+              decision: agir
+              proposition: "Renforcer la ligne Globex, sous réserve des contrôles de la Porte de risque."
+              confiance: faible
+              horizon: moyen
+              catalyseur: {texte: "Le signal de la stratégie reste favorable à Globex.", constats: [C1]}
+              invalidation:
+                - {condition: "Un nouveau constat des outils contredit la proposition.", constats: [C1]}
+              arguments:
+                - {id: D1.1, sort: retenu, raison: "Argument appuyé sur les constats."}
+                - {id: X1.1, sort: ecarte, raison: "Argument pris en compte."}
+                - {id: D2.1, sort: retenu, raison: "Argument appuyé sur les constats."}
+                - {id: X2.1, sort: ecarte, raison: "Argument pris en compte."}
+    expect:
+      tools: [strategy_lab, portfolio_snapshot, risk_report]
+      notes: ["rien n'est exécuté"]
+      mentions: ["Le signal de la stratégie reste favorable à Globex. (C1)"]
+      absent: ["ordre passé", "ordre transmis", "ordre envoyé", "sans catalyseur"]
+      committee: {verdict: [BLOQUER], decision: [agir], min_role_entries: 9}
+
+  - id: comite-agir-sans-catalyseur-bloque
+    description: une décision d'agir sans catalyseur est bloquée par le code, quelles que soient les limites ; aucune intention d'ordre n'en naît (ADR-029)
+    question: Le Comité est-il favorable à un renforcement de Globex Systems ?
+    offline:
+      verdict: {classe_action: CALCUL, raison: question d'investissement}
+      route: {domaine: finance, web: false, raison: décision d'investissement, complexite: complexe, importance: elevee, mode: comite}
+      paper_limits: {capital_reference_eur: 100000, max_order_pct: 5, max_position_pct: 25,
+        max_sector_pct: 35, max_country_pct: 60, max_currency_pct: 50, max_daily_loss_pct: 2,
+        max_rolling_loss_pct: 5, rolling_loss_sessions: 20, max_drawdown_pct: 10,
+        max_orders_per_hour: 10, max_orders_per_day: 20, limit_price_collar_pct: 2,
+        min_avg_daily_volume: 100000, avg_volume_sessions: 20, universe: [FICT-GLOBEX, FICT-ACME]}
+      committee:
+        gestionnaire:
+          - output:
+              decision: agir
+              proposition: "Renforcer la ligne Globex, sous réserve des contrôles de la Porte de risque."
+              confiance: faible
+              horizon: moyen
+              invalidation:
+                - {condition: "Un nouveau constat des outils contredit la proposition.", constats: [C1]}
+              arguments:
+                - {id: D1.1, sort: retenu, raison: "Argument appuyé sur les constats."}
+                - {id: X1.1, sort: ecarte, raison: "Argument pris en compte."}
+                - {id: D2.1, sort: retenu, raison: "Argument appuyé sur les constats."}
+                - {id: X2.1, sort: ecarte, raison: "Argument pris en compte."}
+    expect:
+      tools: [strategy_lab, portfolio_snapshot, risk_report]
+      notes: ["rien n'est exécuté"]
+      mentions: ["décision « agir » sans catalyseur : aucune intention d'ordre n'en naîtra (ADR-029)"]
+      absent: ["ordre passé", "ordre transmis", "ordre envoyé", "Le signal de la stratégie reste favorable"]
+      committee: {verdict: [BLOQUER], decision: [agir], min_role_entries: 9}

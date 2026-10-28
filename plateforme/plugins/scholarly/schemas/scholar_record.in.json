@@ -1,0 +1,17 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "type": "object",
+  "properties": {
+    "identifier": {
+      "description": "DOI (10.xxxx/...) ou identifiant arXiv (2401.01234)",
+      "maxLength": 200,
+      "minLength": 1,
+      "title": "Identifier",
+      "type": "string"
+    }
+  },
+  "required": [
+    "identifier"
+  ],
+  "title": "scholar_recordArguments"
+}

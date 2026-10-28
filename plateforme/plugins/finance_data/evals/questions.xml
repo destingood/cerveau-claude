@@ -1,0 +1,53 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  Questions d'évaluation du plugin finance_data (R8). Chacune se vérifie avec market_data sur la
+  base de référence fictive (tests/fixtures/finance/reference/, chargée par
+  core.finance.fixtures.reference_store), lue au 18/10/2026 13 h UTC. Les chiffres attendus sont
+  les affichages de l'outil : la réponse les cite, elle ne les recalcule pas (R1).
+-->
+<evaluation>
+  <qa_pair>
+    <question>Quelle est la clôture de FICT-ACME à la séance du 16 octobre 2026 ?</question>
+    <answer>42,92 €</answer>
+  </qa_pair>
+  <qa_pair>
+    <question>Quelle était la clôture de FICT-ACME à la séance du 15 octobre 2026 ?</question>
+    <answer>45,99 €</answer>
+  </qa_pair>
+  <qa_pair>
+    <question>Quelle est la dernière clôture connue de FICT-GLOBEX, dans sa devise de cotation ?</question>
+    <answer>278,10 USD</answer>
+  </qa_pair>
+  <qa_pair>
+    <question>Quelle est la clôture de l'obligation FICT-OAT35 à la séance du 16 octobre 2026 ?</question>
+    <answer>80,61 €</answer>
+  </qa_pair>
+  <qa_pair>
+    <question>Quelle est la duration modifiée de FICT-OAT35 selon le référentiel ?</question>
+    <answer>8,4 ans</answer>
+  </qa_pair>
+  <qa_pair>
+    <question>Dans quel secteur le référentiel classe-t-il FICT-OAT35 ?</question>
+    <answer>Souverain</answer>
+  </qa_pair>
+  <qa_pair>
+    <question>Sur quelle place est coté FICT-HELIOS ?</question>
+    <answer>XLON</answer>
+  </qa_pair>
+  <qa_pair>
+    <question>Quel pays le référentiel associe-t-il à FICT-MONDE ?</question>
+    <answer>IE</answer>
+  </qa_pair>
+  <qa_pair>
+    <question>Quel est le score de qualité de la série de cours de FICT-GLOBEX ?</question>
+    <answer>0,998</answer>
+  </qa_pair>
+  <qa_pair>
+    <question>Depuis combien de jours date la dernière clôture de FICT-ACME, le 18 octobre 2026 ?</question>
+    <answer>2 jours</answer>
+  </qa_pair>
+  <qa_pair>
+    <question>Quels sont les fondamentaux de FICT-ACME ?</question>
+    <answer>Indisponibles : aucun fournisseur de fondamentaux n'est retenu (ADR-013).</answer>
+  </qa_pair>
+</evaluation>

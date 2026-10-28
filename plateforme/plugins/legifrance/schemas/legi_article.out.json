@@ -1,0 +1,154 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "additionalProperties": false,
+  "properties": {
+    "id": {
+      "description": "Identifiant LEGIARTI de la version rendue",
+      "title": "Id",
+      "type": "string"
+    },
+    "cid": {
+      "anyOf": [
+        {
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "description": "Identifiant commun à toutes les versions de l'article",
+      "title": "Cid"
+    },
+    "num": {
+      "anyOf": [
+        {
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "title": "Num"
+    },
+    "text_id": {
+      "anyOf": [
+        {
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "title": "Text Id"
+    },
+    "text_title": {
+      "anyOf": [
+        {
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "title": "Text Title"
+    },
+    "legal_status": {
+      "anyOf": [
+        {
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "title": "Legal Status"
+    },
+    "start": {
+      "description": "Début de vigueur de la version rendue",
+      "title": "Start",
+      "type": "string"
+    },
+    "end": {
+      "anyOf": [
+        {
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "description": "Fin de vigueur ; absente si la version est ouverte",
+      "title": "End"
+    },
+    "reference_date": {
+      "description": "Date à laquelle la version est examinée",
+      "title": "Reference Date",
+      "type": "string"
+    },
+    "covers_reference_date": {
+      "description": "start <= reference_date < end, calculé par le code (H3)",
+      "title": "Covers Reference Date",
+      "type": "boolean"
+    },
+    "version_for_date": {
+      "anyOf": [
+        {
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "description": "Version qui couvre reference_date si ce n'est pas celle rendue, sinon absente",
+      "title": "Version For Date"
+    },
+    "warnings": {
+      "description": "Version future, terminée, différée ou abrogée : à dire, jamais à taire",
+      "items": {
+        "type": "string"
+      },
+      "maxItems": 4,
+      "title": "Warnings",
+      "type": "array"
+    },
+    "text": {
+      "description": "Texte de l'article (tronqué à 6 000 caractères)",
+      "title": "Text",
+      "type": "string"
+    },
+    "text_truncated": {
+      "title": "Text Truncated",
+      "type": "boolean"
+    },
+    "url": {
+      "description": "Page de l'article sur legifrance.gouv.fr",
+      "title": "Url",
+      "type": "string"
+    },
+    "retrieved_at": {
+      "description": "Date de lecture de Légifrance (R10)",
+      "title": "Retrieved At",
+      "type": "string"
+    }
+  },
+  "required": [
+    "id",
+    "cid",
+    "num",
+    "text_id",
+    "text_title",
+    "legal_status",
+    "start",
+    "end",
+    "reference_date",
+    "covers_reference_date",
+    "version_for_date",
+    "warnings",
+    "text",
+    "text_truncated",
+    "url",
+    "retrieved_at"
+  ],
+  "title": "LegiArticle",
+  "type": "object"
+}
