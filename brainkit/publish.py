@@ -22,7 +22,8 @@ from . import __version__
 from .common import CODE_DIR, load_config, read_json, remove_tree, set_config
 
 NAME = MARKET = "cerveau"
-KEEP = {".git", "CONTRIBUTORS.md"}  # tenus dans le dépôt lui-même, jamais effacés par la construction
+AUTRES = {"plateforme"}  # dossiers d'autres projets du même dépôt (PR #8) : ni effacés, ni contrôlés, ni commités ici
+KEEP = {".git", "CONTRIBUTORS.md"} | AUTRES  # tenus dans le dépôt lui-même, jamais effacés par la construction
 DESC = ("Cerveau persistant pour Claude Code : souvenirs en graphe, rappel automatique à chaque message, wiki Markdown "
         "tenu par Claude (sources ingérées, coffre Obsidian, dépôt git), cartes de projets, à-faire datés, serveur MCP, "
         "et un cerveau e-commerce qui suit chaque boutique (clients sans pub, SEO, GEO, tunnel de vente, chiffres de "
@@ -238,7 +239,7 @@ def build(dest: Path, owner: str = "Lucas", repo: str = "") -> list:
         (dest / "tests" / rel).parent.mkdir(parents=True, exist_ok=True)
         (dest / "tests" / rel).write_bytes(data)
     return sorted(str(p.relative_to(dest)).replace("\\", "/") for p in dest.rglob("*")
-                  if p.is_file() and ".git" not in p.relative_to(dest).parts)
+                  if p.is_file() and ".git" not in p.relative_to(dest).parts and p.relative_to(dest).parts[0] not in AUTRES)
 
 
 def claude_cli():
@@ -258,7 +259,8 @@ def secrets_in(dest: Path) -> list:
     email = re.compile(r"[\w.+-]+@[A-Za-z0-9-]+(?:\.[A-Za-z0-9-]+)*\.[A-Za-z]{2,}\b")  # pas « paquet@1.80.0 »
     bad = []
     for p in dest.rglob("*"):
-        if p.is_file() and ".git" not in p.relative_to(dest).parts and p.suffix in (".py", ".json", ".md", ""):
+        rel = p.relative_to(dest).parts
+        if p.is_file() and ".git" not in rel and rel[0] not in AUTRES and p.suffix in (".py", ".json", ".md", ""):
             text = p.read_text(encoding="utf-8", errors="replace")
             hits = find(text) + (["e-mail"] if any("example" not in m.group(0) for m in email.finditer(text)) else [])
             if hits:
@@ -371,7 +373,7 @@ def run(dest=None, owner=None, repo=None, push=False, check=True) -> int:
         print(f"· pas de dépôt git dans {dest} : clone d'abord ton dépôt GitHub ici (git clone …), puis relance")
         return 0
     git = ["git", "-C", str(dest)]
-    subprocess.run(git + ["add", "-A"], check=True)
+    subprocess.run(git + ["add", "-A", "--", "."] + [f":(exclude){d}" for d in sorted(AUTRES)], check=True)
     if subprocess.run(git + ["diff", "--cached", "--quiet"]).returncode == 0:
         print("✓ rien de nouveau depuis la dernière publication")
     else:

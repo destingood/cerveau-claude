@@ -533,9 +533,13 @@ check("mode éco" in publish.readme("Moi", "moi/depot"), "README : le mode éco 
 dest = Path(tempfile.mkdtemp(prefix="cerveau-publish-"))
 (dest / "CONTRIBUTORS.md").write_text("# Contributeurs", encoding="utf-8")
 (dest / "ancien.txt").write_text("x", encoding="utf-8")
-publish.build(dest, "Moi", "moi/depot")
+(dest / "plateforme").mkdir()
+(dest / "plateforme" / "README.md").write_text("# Plateforme\ncontact : equipe" + "@" + "plateforme.fr", encoding="utf-8")  # adresse en morceaux : pas d'e-mail dans le dépôt public
+files = publish.build(dest, "Moi", "moi/depot")
 check((dest / "CONTRIBUTORS.md").is_file() and not (dest / "ancien.txt").exists() and (dest / "brainkit").is_dir(),
       "publish : CONTRIBUTORS.md du dépôt gardé, le reste reconstruit")
+check((dest / "plateforme" / "README.md").is_file() and not any(f.startswith("plateforme/") for f in files)
+      and not publish.secrets_in(dest), "publish : plateforme/ (autre projet du dépôt) gardé, hors liste et hors contrôle")
 shutil.rmtree(dest, ignore_errors=True)
 c, out = World("aide").run("econome")
 check(c == 0 and "Mode éco" in out, "alias « econome »", out)
