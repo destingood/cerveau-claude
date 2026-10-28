@@ -6,6 +6,11 @@ commande a tourné telle quelle (rien n'est réécrit : permissions, `cd` et cod
 reste dans un fichier (`state/sorties/`, gardé `keep_days` jours) dont le chemin termine la sortie compactée. Rien
 n'est touché si la sortie est courte ou si le gain est faible ; une commande en échec (PostToolUseFailure) garde sa
 sortie entière. `brain compact` pour l'essayer à la main ; `config compact.enabled false` pour le couper.
+
+v8.14 (idées de rtk_discover / rtk_learn, des règles JSON de RTK et de Headroom, crédits d'OmniRoute) : filtres perso
+(`compact.filtres` : `{"cmd": motif, "drop": [motifs]}`, proposés par `brain compact --decouvrir` / `--apprendre`),
+liste JSON d'objets → tableau en-tête + lignes sans perte, et une sortie identique à une précédente de la session
+devient un renvoi vers sa sortie brute (oublié à la compaction).
 """
 from __future__ import annotations
 
@@ -19,6 +24,7 @@ from .common import STATE_DIR, load_config, log, read_json, read_stdin_json, wri
 
 OUT_DIR = STATE_DIR / "sorties"
 STATS_FILE = STATE_DIR / "compact.json"
+SEEN_FILE = STATE_DIR / "compact-vus.json"  # empreintes des longues sorties déjà lues, par session
 
 # Familles de commandes bavardes, reconnues sur le début de chaque commande simple d'une ligne (`cd x && npm i`).
 _FAMILIES = [
@@ -173,15 +179,42 @@ def _git_log(lines) -> list:
     return out + [" ".join(x for x in (c["sha"], c["date"], c["subj"] or "") if x) for c in commits[50:]]
 
 
-def compact_text(text, kind) -> str:
-    """Texte compacté d'une sortie de la famille `kind` (sans en-tête ni pied)."""
+def _json_table(text) -> str | None:
+    """Liste JSON d'au moins 3 objets → en-tête + une ligne par objet, colonnes séparées par « | » (façon TOON) ;
+    None si la conversion perdrait quelque chose (une valeur contient « | » ou un saut de ligne)."""
+    try:
+        data = json.loads(text)
+    except ValueError:
+        return None
+    if not isinstance(data, list) or len(data) < 3 or not all(isinstance(d, dict) and d for d in data):
+        return None
+    cols = list(dict.fromkeys(k for d in data for k in d))
+    cell = lambda v: v if isinstance(v, str) else json.dumps(v, ensure_ascii=False)  # noqa: E731
+    rows = [cols] + [[cell(d[k]) if k in d else "" for k in cols] for d in data]
+    if any("|" in str(v) or "\n" in str(v) or "\r" in str(v) for r in rows for v in r):
+        return None
+    return "\n".join(" | ".join(r) for r in rows)
+
+
+def compact_text(text, kind, drop=()) -> str:
+    """Texte compacté d'une sortie de la famille `kind` (sans en-tête ni pied) ; `drop` : motifs des filtres perso,
+    lignes retirées (jamais une erreur)."""
+    if kind == "json":
+        return _json_table(text) or text
     lines = clean_lines(text)
     if kind == "git-log":
         return "\n".join(_git_log(lines))
+    dropped, guard = set(), 0
+    for i, line in enumerate(lines if drop else ()):
+        guard = 20 if _HARD.search(line) else max(0, guard - 1)  # une erreur et sa trace restent entières
+        if not guard and any(r.search(line) for r in drop):
+            dropped.add(i)
     noise = _NOISE.get(kind)
-    keep = set(range(max(0, len(lines) - _TAIL.get(kind, 10)), len(lines)))
+    keep = set(range(len(lines))) if kind == "perso" else set(range(max(0, len(lines) - _TAIL.get(kind, 10)), len(lines)))
     block = 0
     for i, line in enumerate(lines):
+        if kind == "perso":
+            break  # filtre perso : tout sauf ses motifs
         if kind in ("test", "mixte") and _FAIL_START.match(line):
             block = 30  # un échec se lit avec ses lignes suivantes (trace, attendu/obtenu)
         if block:
@@ -191,6 +224,7 @@ def compact_text(text, kind) -> str:
             keep.add(i)
         elif i < 2 and line and not (noise and noise.search(line)):
             keep.add(i)  # bannière de l'outil (nom, version)
+    keep -= dropped
     idx = [i for i in sorted(keep) if lines[i] or i - 1 in keep]
     out, last = [], -1
     for first, end, line in _collapse(lines, idx):
@@ -233,9 +267,8 @@ def _prune(keep_days, max_files):
 
 def save_raw(command, stdout, stderr, cfg) -> Path:
     """Sortie brute complète dans state/sorties/<date>-<empreinte>.txt (même sortie → même fichier)."""
-    import hashlib  # ici : 4 ms d'import épargnés aux commandes qui ne sont pas compactées
-    body =f"$ {command}\n\n{stdout}" + (f"\n\n--- stderr ---\n{stderr}" if stderr else "")
-    digest = hashlib.sha1(body.encode("utf-8", "replace")).hexdigest()[:10]
+    body = f"$ {command}\n\n{stdout}" + (f"\n\n--- stderr ---\n{stderr}" if stderr else "")
+    digest = _digest(body)
     OUT_DIR.mkdir(parents=True, exist_ok=True)
     found = list(OUT_DIR.glob(f"*-{digest}.txt"))
     if found:
@@ -255,23 +288,74 @@ def _stats(kind, n_in, n_out):
     write_json(STATS_FILE, st)
 
 
+def _rules(command, cfg) -> list:
+    """Motifs « drop » des filtres perso (`compact.filtres`) dont le motif `cmd` prend le début d'une commande simple."""
+    out = []
+    for f in (cfg or {}).get("filtres") or []:
+        try:
+            if any(re.match(f["cmd"], _PREFIX.sub("", part)) for part in _SPLIT.split(str(command or ""))):
+                out += [re.compile(p) for p in f.get("drop") or []]
+        except (re.error, KeyError, TypeError):
+            continue  # filtre mal écrit : ignoré, jamais bloquant
+    return out
+
+
+def kind_of(command, stdout, cfg) -> str | None:
+    """Famille de la commande, « perso » (filtre perso), « json » (liste JSON) ou None : sortie laissée telle quelle."""
+    return family(command) or ("perso" if _rules(command, cfg) else None) or \
+        ("json" if (stdout or "").lstrip()[:1] == "[" else None)
+
+
+def _digest(*parts) -> str:
+    import hashlib  # ici : 4 ms d'import épargnés aux commandes qui ne sont pas compactées
+    return hashlib.sha1("\0".join(parts).encode("utf-8", "replace")).hexdigest()[:10]
+
+
+def _repeat(session, command, stdout, stderr, cfg) -> str | None:
+    """Sortie identique à une précédente de la session (idée de Session-Dedup, Headroom) → renvoi vers la sortie brute
+    plutôt que la relire ; sinon None, et son empreinte est notée (sessions de plus de 2 jours oubliées)."""
+    if not session:
+        return None
+    key, now = _digest(stdout, stderr), time.time()
+    seen = {s: v for s, v in (read_json(SEEN_FILE, {}) or {}).items() if now - v.get("t", 0) < 2 * 86400}
+    mine = seen.setdefault(session, {"t": now, "k": {}})
+    prev = mine["k"].get(key)
+    mine["t"] = now
+    if prev is None:
+        mine["k"] = dict(list(mine["k"].items())[-199:] + [(key, str(command or "")[:120])])
+    write_json(SEEN_FILE, seen)
+    if prev is None:
+        return None
+    raw = save_raw(command, stdout, stderr, cfg)
+    return (f"[🧠 sortie identique à celle de `{prev}` plus tôt dans cette session ({_num(len(stdout) + len(stderr))} car.,"
+            f" rien n'a changé) ; brute complète : {raw.as_posix()}]")
+
+
+def forget(session):
+    """Compaction ou /clear : les sorties déjà lues ont quitté le contexte, plus de renvoi vers elles."""
+    seen = read_json(SEEN_FILE, {}) or {}
+    if seen.pop(session, None) is not None:
+        write_json(SEEN_FILE, seen)
+
+
 def compact_output(command, stdout, stderr="", cfg=None) -> tuple | None:
     """(stdout, stderr, avant, après) compactés, ou None : commande non bavarde, sortie courte, gain trop faible."""
     cfg = cfg if cfg is not None else load_config().get("compact", {})
-    kind = family(command)
-    if not kind:
-        return None
+    drop = _rules(command, cfg)
     saved = _saved_path(stdout)
     if saved:
         try:
             stdout = saved.read_text(encoding="utf-8", errors="replace")
         except OSError:
             return None
+    kind = kind_of(command, stdout, cfg)
+    if not kind:
+        return None
     n_in = len(stdout) + len(stderr or "")
     if n_in < cfg.get("min_chars", 1500):
         return None
-    new_out = compact_text(stdout, kind) if stdout else ""
-    new_err = compact_text(stderr, kind) if stderr else ""
+    new_out = compact_text(stdout, kind, drop) if stdout else ""
+    new_err = compact_text(stderr, kind, drop) if stderr else ""
     if n_in - (len(new_out) + len(new_err) + 150) < max(cfg.get("min_saved", 600), cfg.get("min_gain", 0.3) * n_in):
         return None  # abandon : le gain ne vaut pas une sortie retouchée (150 car. : le pied de page)
     raw = saved or save_raw(command, stdout, stderr, cfg)
@@ -291,19 +375,27 @@ def on_post_bash(data, cfg=None) -> dict | None:
     tin, resp = data.get("tool_input") or {}, data.get("tool_response")
     if not isinstance(resp, dict) or tin.get("run_in_background") or resp.get("interrupted") or resp.get("isImage"):
         return None
-    stdout, stderr = resp.get("stdout"), resp.get("stderr") or ""
-    if not isinstance(stdout, str) or not isinstance(stderr, str) or not family(tin.get("command")):
+    stdout, stderr, command = resp.get("stdout"), resp.get("stderr") or "", tin.get("command")
+    if not isinstance(stdout, str) or not isinstance(stderr, str):
         return None
     cfg = cfg if cfg is not None else load_config()
     cc = cfg.get("compact") or {}
     if not cc.get("enabled", True):
         return None
-    done = compact_output(tin.get("command"), stdout, stderr, cc)
+    ref = None
+    if len(stdout) + len(stderr) >= cc.get("min_chars", 1500):
+        ref = _repeat(data.get("session_id"), command, stdout, stderr, cc)
+    if ref:
+        done, kind = (ref, "", len(stdout) + len(stderr), len(ref)), "doublon"
+    else:
+        done, kind = compact_output(command, stdout, stderr, cc), kind_of(command, stdout, cc) or "json"
     if not done:
+        if cc.get("echantillons") and len(stdout) + len(stderr) >= cc.get("min_chars", 1500):
+            save_raw(command, stdout, stderr, cc)  # opt-in : matière de `brain compact --decouvrir`
         return None
     new_out, new_err, n_in, n_out = done
     try:
-        _stats(family(tin.get("command")), n_in, n_out)
+        _stats(kind, n_in, n_out)
     except Exception as exc:
         log(f"compact : statistiques non écrites ({exc!r})")
     return {"hookSpecificOutput": {"hookEventName": "PostToolUse",
@@ -334,3 +426,116 @@ def stats_text() -> str:
     for kind, (n, a, b) in sorted(st.get("par", {}).items(), key=lambda kv: -(kv[1][1] - kv[1][2])):
         lines.append(f"- {kind} : {n} fois, {_num(a)} → {_num(b)} car. (−{100 - 100 * b // max(1, a)} %)")
     return "\n".join(lines)
+
+
+# --- Filtres appris (idée de rtk_discover / rtk_learn) : suggestions seulement, appliquées après --enregistrer ---
+_PLAIN = re.compile(r"^(?:[^\W\d_]+(?:[-'’][^\W\d_]+)*:?|[^\w\s]{1,3})$")
+
+
+def _key(line) -> str:
+    """Étiquette d'une ligne : ses premiers mots sans chiffre ni nom propre au cas (3 au plus) — « Collecting
+    requests==2.31 » → « Collecting », « remote: Counting objects: 5 » → « remote: Counting objects: »."""
+    words = []
+    for w in line.split()[:3]:
+        if not _PLAIN.match(w):
+            break
+        words.append(w)
+    key = " ".join(words)
+    return key if len(re.findall(r"[^\W\d_]", key)) >= 4 else ""  # « at », « - » : trop vague
+
+
+def _label(command) -> str:
+    part = _PREFIX.sub("", (_SPLIT.split(str(command or "")) or [""])[-1])
+    return " ".join(part.split()[:2])
+
+
+def _samples(command=None, files=()) -> list:
+    """(commande, sortie) : les fichiers donnés, sinon les sorties brutes gardées (state/sorties/, en-tête « $ cmd »)
+    dont une commande simple commence par `command`."""
+    out = []
+    for p in files or sorted(OUT_DIR.glob("*.txt")):
+        try:
+            text = Path(p).read_text(encoding="utf-8", errors="replace")
+        except OSError:
+            continue
+        head, sep, body = text.partition("\n\n")
+        cmd = head[2:] if sep and head.startswith("$ ") else ""
+        if files:
+            out.append((command or cmd, body if cmd else text))
+        elif not command or any(_PREFIX.sub("", part).startswith(command.strip()) for part in _SPLIT.split(cmd)):
+            out.append((cmd, body))
+    return out
+
+
+def recurrent(samples, min_n=5) -> list:
+    """Lignes de bruit qui reviennent : même étiquette au moins `min_n` fois (dans 2 sorties au moins s'il y en a
+    plusieurs), et jamais sur une erreur, un avertissement ni un résumé → [(étiquette, lignes, sorties, car., exemple,
+    motif, commandes)], les plus coûteuses d'abord."""
+    stat, bad = {}, set()
+    for i, (cmd, text) in enumerate(samples):
+        for line in clean_lines(text):
+            k = _key(line)
+            if not k:
+                continue
+            if _IMPORTANT.search(line) or _SUMMARY.search(line):
+                bad.add(k)
+            s = stat.setdefault(k, [0, set(), 0, line, set()])
+            s[0], s[2] = s[0] + 1, s[2] + len(line) + 1
+            s[1].add(i)
+            s[4].add(_label(cmd))
+    need = 2 if len(samples) > 1 else 1
+    rows = [(k, n, len(f), c, ex, r"^\s*" + r"\s+".join(map(re.escape, k.split())) + (r"\b" if k[-1].isalnum() else ""),
+             sorted(x for x in cmds if x)) for k, (n, f, c, ex, cmds) in stat.items()
+            if k not in bad and n >= min_n and len(f) >= need]
+    return sorted(rows, key=lambda r: -r[3])
+
+
+def discover_text() -> str:
+    """`brain compact --decouvrir` : le bruit qui revient dans les sorties gardées, classé par caractères."""
+    samples = _samples()
+    hint = "sorties des commandes non reconnues aussi : brain config compact.echantillons true (gardées keep_days jours)"
+    if not samples:
+        return f"Aucune sortie gardée dans state/sorties/ pour l'instant ({hint})."
+    rows = recurrent(samples)
+    out = [f"Bruit qui revient dans {len(samples)} sortie(s) gardée(s) — suggestions, rien n'est appliqué :"]
+    for k, n, f, c, ex, _, cmds in rows[:15]:
+        out.append(f"- « {k} » : {n} lignes dans {f} sortie(s), {_num(c)} car. — ex. « {ex.strip()[:80]} »"
+                   + (f" — {', '.join(cmds[:3])}" if cmds else ""))
+    if len(out) == 1:
+        out.append("- rien qui revienne assez souvent")
+    else:
+        out.append("Filtre pour une commande : brain compact --apprendre \"<commande>\" (puis --enregistrer)")
+    if not load_config().get("compact", {}).get("echantillons"):
+        out.append(f"({hint})")
+    return "\n".join(out)
+
+
+def learn_text(command, files=(), save=False) -> str:
+    """`brain compact [sortie.txt] --apprendre <commande> [--enregistrer]` : filtre proposé pour cette commande,
+    appris de ses sorties (gardées ou données), avec le gain mesuré dessus ; enregistré dans compact.filtres sur demande."""
+    samples = _samples(command, files)
+    if not samples:
+        return (f"Aucune sortie de « {command} » gardée : donne-en une (brain compact sortie.txt --apprendre "
+                f"\"{command}\") ou garde les sorties des commandes non reconnues (brain config compact.echantillons true).")
+    rows = recurrent(samples, 3)
+    if not rows:
+        return f"« {command} » ({len(samples)} sortie(s)) : aucune ligne de bruit qui revienne — pas de filtre à proposer."
+    filt = {"cmd": re.escape(command.strip()) + r"(?=\s|$)", "drop": [r[5] for r in rows[:12]]}
+    drop = [re.compile(p) for p in filt["drop"]]
+    kind = family(command) or "perso"
+    before = sum(len(t if kind == "perso" else compact_text(t, kind)) for _, t in samples)
+    after = sum(len(compact_text(t, kind, drop)) for _, t in samples)
+    out = [f"Filtre proposé pour « {command} » ({len(samples)} sortie(s)) : {_num(before)} → {_num(after)} car.",
+           json.dumps(filt, ensure_ascii=False)] + [f"- « {r[0]} » : {r[1]} lignes, ex. « {r[4].strip()[:80]} »"
+                                                    for r in rows[:12]]
+    if not save:
+        return "\n".join(out + ["Relis la liste : une ligne utile qui revient souvent y figure aussi (motif à retirer du JSON).",
+                                f"Pour l'appliquer à chaque sortie : brain compact --apprendre \"{command}\" --enregistrer"
+                                " (ou brain config compact.filtres '[<JSON retouché>]')"])
+    from .common import update_config
+
+    def change(c):
+        cc = c.setdefault("compact", {})
+        cc["filtres"] = [f for f in cc.get("filtres") or [] if f.get("cmd") != filt["cmd"]] + [filt]
+    update_config(change)
+    return "\n".join(out + ["✓ Enregistré dans compact.filtres : appliqué tout seul (les erreurs et leurs traces restent)."])

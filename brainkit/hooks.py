@@ -13,7 +13,7 @@ from pathlib import Path
 
 from . import index as idx
 from . import journal, search
-from .concis import concis
+from .concis import concis, relevant
 from .common import (BRAIN_DIR, BRAIN_PY, CMD, SESSIONS_DIR, STATE_DIR, budget_chars, days_since, fold, load_config, log,
                      now_iso, parse_iso, read_json, read_stdin_json, set_config, short, tokenize, write_json)
 from .store import TYPES, Brain, bump_hits, bump_used
@@ -69,9 +69,11 @@ def context_query(raw, query) -> str:
     return query if clean == raw else recall_query(re.sub(r"«[^»]*»", " ", clean))
 
 
-def gist(n, chars=220) -> str:
-    """Ce qu'on montre d'un souvenir : le résumé d'une page du wiki s'il existe, sinon le début de son contenu."""
-    return short(concis((n.get("meta") or {}).get("resume") or n.get("body", "")), chars)
+def gist(n, chars=220, query=None) -> str:
+    """Ce qu'on montre d'un souvenir : le résumé d'une page du wiki s'il existe, sinon le début de son contenu ; avec
+    `query`, les phrases qui répondent au message quand le début en montre moins (concis.relevant)."""
+    base = (n.get("meta") or {}).get("resume") or n.get("body", "")
+    return (query and relevant(base, n.get("body", ""), query, chars, n.get("title", ""))) or short(concis(base), chars)
 
 
 def label(n) -> str:
@@ -355,6 +357,8 @@ def on_session_start(data, cfg):
         # L'injection précédente et les rappels ont quitté le contexte : on repart de ce qui est visible maintenant
         # (avant : « déjà injectés » gardés, donc plus jamais rappelés après une compaction).
         st["injected"], st["files"], st["recalled"] = sorted(ids), [], 0
+        from . import compact
+        compact.forget(sid)  # sorties déjà lues sorties du contexte : plus de renvoi « identique » vers elles
         if source == "compact":
             extra, shown = compact_recall(brain, st, data, cfg, proj)
             if extra:
@@ -702,21 +706,22 @@ def on_prompt(data, cfg):
 MEM_HEADER = "🧠 Souvenirs liés :"
 
 
-def memory_line(n, full=True) -> str:
-    """Ligne d'un souvenir dans le rappel : complète (type, titre, résumé, id) ou titre seul (`show <id>` au besoin)."""
+def memory_line(n, full=True, query=None) -> str:
+    """Ligne d'un souvenir dans le rappel : complète (type, titre, résumé ou phrases utiles au message, id) ou titre
+    seul (`show <id>` au besoin)."""
     if full:
-        return f"- [{label(n)}] {n['title']} — {gist(n)} `{n['id']}`"
+        return f"- [{label(n)}] {n['title']} — {gist(n, query=query)} `{n['id']}`"
     return f"- [{label(n)}] {n['title']} `{n['id']}`"
 
 
-def _rule_picks(found, injected, rc, accept) -> list:
+def _rule_picks(found, injected, rc, accept, query=None) -> list:
     """Règle fixe : dans l'ordre du classement, les souvenirs que le filtre anti-bruit laisse passer."""
     out = []
     for r in found:
         n = r["node"]
         if n["id"] in injected or n["type"] == "project" or not accept(r):
             continue
-        out.append((n, memory_line(n)))
+        out.append((n, memory_line(n, query=query)))
         if len(out) >= rc["max_items"]:
             break
     return out
@@ -739,7 +744,7 @@ def pick_memories(brain, query, rc, project=None, injected=(), before=None, prev
         return search.accept_recall(r, rc["min_cov"], rc["min_score"], query=query)
 
     if not learn:
-        return _rule_picks(found, injected, rc, accept)
+        return _rule_picks(found, injected, rc, accept, query)
     from . import neurone
     cands = [r for r in found if r["node"]["type"] != "project"][:neurone.TOP]
     accs = [accept(r) for r in cands]
@@ -751,9 +756,9 @@ def pick_memories(brain, query, rc, project=None, injected=(), before=None, prev
                       for r, f in zip(cands, feats))
     model = neurone.load()
     if model is None:  # pas encore assez d'exemples (ou pas mieux que la règle) : la règle, comme avant
-        return _rule_picks(found if before else found[:10], injected, rc, accept)
+        return _rule_picks(found if before else found[:10], injected, rc, accept, query)
     probs = [model.predict(f) for f in feats]
-    return [(r["node"], memory_line(r["node"], full)) for r, full in neurone.choose(cands, probs, accs, injected, rc)]
+    return [(r["node"], memory_line(r["node"], full, query)) for r, full in neurone.choose(cands, probs, accs, injected, rc)]
 
 
 FICHE_CHARS = 800  # part du budget du rappel prise au plus par une fiche de synthèse

@@ -4,7 +4,7 @@ de la version. Chez un ami, Claude Code installe le plugin une fois, puis le met
 version publiée ; ses souvenirs restent chez lui, dans ~/.claude/brain, et ne partent jamais.
 
 Ne part dans le dépôt que le code (brain.py, brainkit/) et les skills (/brain, et les skills métier de skills/<nom>/,
-comme le cerveau e-commerce) : jamais les souvenirs ni la configuration. Les tests publics que le dépôt a déjà
+comme le cerveau e-commerce) et les styles de réponse (output-styles/) : jamais les souvenirs ni la configuration. Les tests publics que le dépôt a déjà
 (tests/) restent, mis à jour depuis le code ; les tests privés (PRIVATE_TESTS : ils lisent la mémoire de Lucas), jamais.
 L'envoi sur GitHub est une publication : il n'a lieu qu'avec `--push`."""
 from __future__ import annotations
@@ -75,6 +75,12 @@ décisions et de ce qu'il a appris, d'une session à l'autre.
   injecté au démarrage, à chaque message et dans la liste des outils est plus court ; `brain recall --pourquoi` dit
   pourquoi un souvenir n'est pas remonté ; `brain tokens` donne aussi le coût au tarif de l'API, en dollars ; et la
   skill `/cerveau:securite` relit le code exposé (site, API, formulaire) avant de le livrer.
+- **Nouveau — rappel plus précis, filtres appris, style concis** : un souvenir rappelé montre les phrases qui répondent
+  à ton message, pas seulement son début ; `brain compact --decouvrir` repère le bruit qui revient dans les sorties de
+  tes commandes et `brain compact --apprendre <commande> --enregistrer` en fait un filtre appliqué tout seul (erreurs
+  gardées) ; une liste JSON arrive en tableau, une sortie déjà lue dans la session renvoie vers la première ; et le
+  style de réponse « concis » (l'action d'abord, sans préambule ni récapitulatif), au choix :
+  `/output-style cerveau:concis`.
 - **Nouveau — le cerveau en wiki** (le « LLM Wiki » d'Andrej Karpathy) : `brain wiki init <dossier>` range chaque
   souvenir dans une page Markdown d'un dossier que tu ouvres dans Obsidian (idéalement un dépôt GitHub privé). Tu y
   déposes des sources (articles, PDF, transcriptions, notes) ; Claude les lit et tient à jour des pages de synthèse
@@ -231,6 +237,8 @@ def build(dest: Path, owner: str = "Lucas", repo: str = "") -> list:
     _lf(dest / "skills" / "brain" / "SKILL.md", SKILL)
     for name, src in skills.items():  # skills métier (cerveau e-commerce…) : Claude Code les lit dans le plugin
         shutil.copytree(src, dest / "skills" / name, ignore=shutil.ignore_patterns("__pycache__", "*.pyc", SKILL_MARK))
+    if (CODE_DIR / "output-styles").is_dir():  # styles de réponse : /output-style cerveau:<nom>, au choix de chacun
+        shutil.copytree(CODE_DIR / "output-styles", dest / "output-styles")
     plugin = {"name": NAME, "version": __version__, "description": DESC, "author": {"name": owner},
               "keywords": KEYWORDS}
     if repo:

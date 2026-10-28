@@ -1222,6 +1222,12 @@ def cmd_eco(a):
 
 def cmd_compact(a):
     from . import compact
+    if a.decouvrir:
+        print(compact.discover_text())
+        return 0
+    if a.apprendre:
+        print(compact.learn_text(a.apprendre, [a.fichier] if a.fichier not in (None, "-") else (), a.enregistrer))
+        return 0
     if a.stats or not (a.fichier or a.cmd):
         print(compact.stats_text())
         return 0
@@ -1229,9 +1235,9 @@ def cmd_compact(a):
         die("donne la commande qui a produit la sortie : --cmd \"npm install\" (elle choisit les règles)")
     text = sys.stdin.read() if a.fichier in (None, "-") else Path(a.fichier).read_text(encoding="utf-8", errors="replace")
     cfg = dict(load_config().get("compact") or {}, min_chars=0, min_gain=0, min_saved=0)
-    kind = compact.family(a.cmd)
-    if not kind:
-        print(f"« {a.cmd} » : commande non reconnue comme bavarde — sa sortie resterait telle quelle.")
+    if not compact.kind_of(a.cmd, text, cfg):
+        print(f"« {a.cmd} » : commande non reconnue comme bavarde (ni filtre perso, ni JSON) — sa sortie resterait telle "
+              "quelle.")
         return 0
     done = compact.compact_output(a.cmd, text, "", cfg)
     print(done[0] if done else text)
@@ -1949,10 +1955,14 @@ def build_parser():
                    help="durée du cache de prompt : auto (choisie chaque jour d'après tes pauses), 5m, 1h, "
                         "off (le cerveau n'y touche plus)")
     s = cmd("compact", cmd_compact, "sorties de commandes compactes (hook après chaque commande bavarde) : statistiques, "
-            "ou essai sur une sortie enregistrée — compact sortie.txt --cmd \"npm install\" · config compact.enabled false")
+            "ou essai sur une sortie enregistrée — compact sortie.txt --cmd \"npm install\" · filtres appris : "
+            "--decouvrir, puis --apprendre <cmd> --enregistrer · config compact.enabled false")
     s.add_argument("fichier", nargs="?", help="sortie enregistrée à compacter (« - » : entrée standard)")
     s.add_argument("--cmd", help="commande qui a produit la sortie (choisit les règles : installation, tests, build, git…)")
     s.add_argument("--stats", action="store_true", help="ce que les sorties compactées ont épargné")
+    s.add_argument("--decouvrir", action="store_true", help="le bruit qui revient dans les sorties gardées (suggestions)")
+    s.add_argument("--apprendre", metavar="COMMANDE", help="filtre proposé pour cette commande, appris de ses sorties")
+    s.add_argument("--enregistrer", action="store_true", help="avec --apprendre : l'ajouter à compact.filtres")
     s = cmd("history", cmd_history, "instantanés du cerveau (pour revenir en arrière) — --diff <n°|date>", ["historique"])
     s.add_argument("-n", type=int, default=15)
     s.add_argument("--diff", help="ce qui a changé depuis un instantané (n°) ou une date")

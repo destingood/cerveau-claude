@@ -8,6 +8,8 @@ Mesuré : sur des listes « - titre `id` », un tableau allonge le texte (« | �
 sert que pour les lignes à étiquettes répétées (sessions : « dernière demande : … — modifiés : … »)."""
 import re
 
+from .common import short, tokenize
+
 _E = r"(?:de |d['’])"  # « de » ou « d' » élidé
 _RULES = [(re.compile(p, re.I), r) for p, r in (
     (rf"\bafin {_E}", "pour "), (r"\bafin que\b", "pour que"), (rf"\bdans le but {_E}", "pour "),
@@ -56,3 +58,46 @@ def table(cols, rows) -> list:
     """En-tête puis une ligne par élément, colonnes séparées par « | » (une barre dans une valeur devient « / »)."""
     cell = lambda v: " ".join(str(v or "—").replace("|", "/").split())
     return [" | ".join(cols)] + [" | ".join(cell(v) for v in r) for r in rows]
+
+
+_SENT = re.compile(r"(?<=[.!?;])\s+|\n+")
+
+
+def _window(s, q, n) -> str:
+    """Phrase trop longue : la fenêtre qui commence un peu avant le premier mot du message."""
+    if len(s) <= n:
+        return s
+    for m in re.finditer(r"\w+", s):
+        if m.start() > n // 2 and set(tokenize(m.group())) & q:
+            a = s.rfind(" ", 0, m.start() - 40) + 1
+            return "… " + short(s[a:], n - 2)
+        if set(tokenize(m.group())) & q:
+            break
+    return short(s, n)
+
+
+def relevant(base, body, query, chars, skip="") -> str:
+    """Phrases d'un souvenir qui répondent au message (idée du moteur Relevance d'OmniRoute), dans leur ordre, si elles
+    montrent plus de mots du message que le début du résumé ; sinon "" (on garde le début). `skip` : mots déjà lus
+    (le titre)."""
+    q = set(tokenize(query)) - set(tokenize(skip))
+    if not q:
+        return ""
+    start = short(concis(base), chars)
+    sents, seen = [], set()
+    for part in _SENT.split(f"{base}\n{body}"):
+        s = concis(part.strip(" \t#*->|`"))
+        if len(s) >= 12 and s not in seen:
+            seen.add(s)
+            sents.append(_window(s, q, chars))
+    hits = sorted(((len(q & set(tokenize(s))), i, s) for i, s in enumerate(sents)), key=lambda x: (-x[0], x[1]))
+    picked, got, used = [], set(), 0
+    for k, i, s in hits:
+        new = q & set(tokenize(s)) - got
+        if not k or not new or (used and used + len(s) + 3 > chars):
+            continue
+        picked.append((i, s))
+        got |= new
+        used += len(s) + 3
+    out = short(" … ".join(s for _, s in sorted(picked)), chars)
+    return out if len(q & set(tokenize(out))) > len(q & set(tokenize(start))) else ""
