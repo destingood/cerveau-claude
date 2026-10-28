@@ -565,16 +565,27 @@ def accept_recall(r, min_cov, min_score=0.0, query=None) -> bool:
     """Filtre anti-bruit du rappel automatique : assez de termes du message ET une bonne part de leur poids
     (un seul mot en commun avec un long message ne suffit jamais). Un long souvenir attrape des mots au hasard
     (« coupe du monde » → « coupé ») : sans couverture forte, son titre ou ses étiquettes doivent parler du sujet."""
+    return not recall_refusal(r, min_cov, min_score, query)
+
+
+def recall_refusal(r, min_cov, min_score=0.0, query=None) -> str:
+    """Pourquoi le filtre du rappel écarte ce résultat ('' : accepté) : la règle d'`accept_recall` elle-même, donc
+    le diagnostic (`brain recall --pourquoi`) ne peut pas s'en écarter."""
     nq = r["nq"]
     need = 1 if nq == 1 else 2 if nq <= 4 else 3
-    if not (r["matched"] >= need and r.get("cov", 0) >= min_cov and r["score"] >= min_score):
-        return False
+    if r["matched"] < need:
+        return f"trop peu de mots du message retrouvés ({r['matched']}/{nq}, il en faut {need})"
+    if r.get("cov", 0) < min_cov:
+        return f"couverture {r.get('cov', 0):.3f} < min_cov {min_cov} : les mots retrouvés pèsent peu dans le message"
+    if r["score"] < min_score:
+        return f"score {r['score']} < min_score {min_score}"
     node = r.get("node")
     if query is not None and node is not None and len(node.get("body") or "") >= LONG_BODY and r.get("cov", 0) < LONG_COV:
-        return _head_hit(node, set(tokenize(query)))
+        return "" if _head_hit(node, set(tokenize(query))) else \
+            f"long souvenir, couverture {r.get('cov', 0):.3f} < {LONG_COV} et ni le titre ni les mots-clés ne parlent du sujet"
     # Termes épars : message pas entièrement retrouvé, titre muet, et ses mots semés loin les uns des autres → coïncidence
     # (342 rappels réels rejoués : 9 inutiles coupés, aucun utile perdu ; tous les mots retrouvés → la règle d'avant).
     if query is not None and node is not None and 2 <= r["matched"] < r["nq"] and r.get("vars") \
             and not _head_hit(node, set(tokenize(query))) and not _near(node, r["vars"]):
-        return False
-    return True
+        return f"mots épars : retrouvés à plus de {NEAR} mots l'un de l'autre, titre muet (coïncidence probable)"
+    return ""

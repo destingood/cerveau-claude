@@ -242,7 +242,7 @@ check(mem and mem[0]["source"] == "auto" and "noté le" in mem[0]["body"] and "p
 ID = mem[0]["id"] if mem else "?"
 check(f"Déjà enregistré tel quel (`{ID}`)" in ctx and "edit" in ctx and "seulement si c'est utile" in ctx
       and "enregistre-le avec" not in ctx, "Claude reçoit « Déjà enregistré tel quel » au lieu d'avoir à faire `add`", ctx)
-check("Souvenirs pertinents" not in ctx, "le souvenir tout juste créé n'est pas aussi « rappelé »", ctx)
+check("Souvenirs liés" not in ctx, "le souvenir tout juste créé n'est pas aussi « rappelé »", ctx)
 c, ctx = W.prompt("retiens que je préfère les réponses courtes")
 check(c == 0 and len(W.memories()) == 1 and "Déjà enregistré" in ctx and ID in ctx,
       "même demande redite : aucun doublon, toujours « Déjà enregistré »", W.memories())

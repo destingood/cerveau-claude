@@ -1724,8 +1724,9 @@ def build_digest(meta, files, pr, comms, pid) -> str:
         return ("**🗺️ Carte du dossier** : aucun fichier visible (dossier vide ou seulement des fichiers cachés) — "
                 "le travail de ce projet se fait ailleurs ; voir les sessions et souvenirs ci-dessus.")
     kinds = Counter(_kind(f) for f in files.values())
-    parts = [f"**🗺️ Carte du dossier** ({fmt_date(meta['generated'])}) : {len(files)} fichiers — {kinds['code']} code, "
-             f"{kinds['doc']} docs, {kinds['data']} données, {kinds['asset']} médias."]
+    counts = ", ".join(f"{kinds[k]} {w}" for k, w in (("code", "code"), ("doc", "docs"), ("data", "données"),
+                                                       ("asset", "médias")) if kinds[k])
+    parts = [f"**🗺️ Carte du dossier** ({fmt_date(meta['generated'])}) : {len(files)} fichiers — {counts}."]
     if meta["stack"].get("summary"):
         parts.append(f"Stack : {short(meta['stack']['summary'], 200)}")
     if meta["entries"]:
@@ -1750,8 +1751,7 @@ def build_digest(meta, files, pr, comms, pid) -> str:
             t = files[r].get("title") or files[r].get("doc") or ""
             return f"`{r}`" + (f" « {short(t, 50)} »" if t else "")
         parts.append("Docs récents : " + " · ".join(label(r) for r in docs))
-    parts.append(f"→ Avant d'explorer : `brain files \"sujet\"` · `brain where <symbole>` · `brain explain <fichier>` · "
-                 f"avant de modifier : `brain impact <x>` · carte complète : `{PROJECTS_DIR / pid / 'MAP.md'}`")
+    parts.append(f"→ Carte complète : `{PROJECTS_DIR / pid / 'MAP.md'}`")  # files/where/explain/impact : bloc CLAUDE.md
     text = "\n".join(parts)
     return text if len(text) <= 1900 else text[:1899] + "…"
 

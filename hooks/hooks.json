@@ -1,5 +1,5 @@
 {
-  "description": "Cerveau : injection au démarrage, rappel à chaque message, mémorisation en fin de tâche",
+  "description": "Cerveau : injection au démarrage, rappel à chaque message, sorties de commandes compactes, mémorisation en fin de tâche",
   "hooks": {
     "SessionStart": [
       {
@@ -106,6 +106,25 @@
               "session-end"
             ],
             "timeout": 15
+          }
+        ]
+      }
+    ],
+    "PostToolUse": [
+      {
+        "matcher": "Bash",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "python",
+            "args": [
+              "-I",
+              "-S",
+              "${CLAUDE_PLUGIN_ROOT}/brain.py",
+              "hook",
+              "post-bash"
+            ],
+            "timeout": 10
           }
         ]
       }

@@ -9,6 +9,10 @@ décisions et de ce qu'il a appris, d'une session à l'autre.
 - **En fin de tâche** : Claude note ce qui mérite d'être retenu (décisions, pièges, préférences).
 - Cartes de tes projets (fichiers clés, où est défini quoi), à-faire datés, vue 3D, serveur MCP.
 - **Nouveau — le mode éco** : moins de tokens sans rien perdre — les sorties de commandes très longues vont dans un fichier (aperçu seul dans la conversation), la conversation est résumée plus tôt, et `brain eco` liste les plugins jamais utilisés ; posé une fois au démarrage, `brain eco --annuler` pour revenir.
+- **Nouveau — encore moins de tokens** : les sorties de commandes sont compactées avant d'arriver à Claude, le texte
+  injecté au démarrage, à chaque message et dans la liste des outils est plus court ; `brain recall --pourquoi` dit
+  pourquoi un souvenir n'est pas remonté ; `brain tokens` donne aussi le coût au tarif de l'API, en dollars ; et la
+  skill `/cerveau:securite` relit le code exposé (site, API, formulaire) avant de le livrer.
 - **Nouveau — le cerveau en wiki** (le « LLM Wiki » d'Andrej Karpathy) : `brain wiki init <dossier>` range chaque
   souvenir dans une page Markdown d'un dossier que tu ouvres dans Obsidian (idéalement un dépôt GitHub privé). Tu y
   déposes des sources (articles, PDF, transcriptions, notes) ; Claude les lit et tient à jour des pages de synthèse
@@ -30,6 +34,7 @@ décisions et de ce qu'il a appris, d'une session à l'autre.
   ta page Facebook, ton Instagram pro ou YouTube une fois l'accès officiel branché, après ton « oui » sur le lot de la
   semaine ; ailleurs, il prépare et tu cliques. Le contexte de chaque boutique reste dans ta mémoire, chez toi.
 
+- **Nouveau — Perplexity** (skill `/cerveau:perplexity`) : dis « branche perplexity » et Claude ajoute le serveur officiel de Perplexity sur ton PC, puis te guide pour te connecter avec ton propre compte (payant à l'appel, à ta charge, rien de partagé). Ensuite, « cherche sur perplexity … » : recherche web filtrée par sites, langue, pays ou date, ou recherche approfondie avec sources. Sans ce mot, Claude garde sa recherche web intégrée, sans frais.
 - **Nouveau — le suivi de tes boutiques** : le cerveau suit chaque boutique comme un copilote. Un plan décollage daté
   (72 h, 14 jours, 30-60-90) dont les échéances te sont rappelées ; chaque lundi, les chiffres de la semaine avec un
   test statistique qui dit si une hausse est réelle ou du hasard, le canal qui rapporte le plus par heure et le goulot
@@ -122,4 +127,4 @@ invite tes amis (Settings → Collaborators → Add people), puis rejoins-le le 
 
 `/plugin uninstall cerveau@cerveau`. Tes souvenirs restent dans `~/.claude/brain` (supprime ce dossier pour tout effacer).
 
-Version 8.12.3.
+Version 8.13.0.

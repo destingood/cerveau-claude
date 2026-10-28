@@ -6,6 +6,7 @@ import datetime as _dt
 import re
 
 from . import journal
+from .concis import concis, table
 from .common import (CMD, EXPORT_FILE, GRAPH_FILE, INDEX_FILE, JOURNAL_FILE, PROJECTS_DIR, budget_chars, fmt_date,
                      load_config, now_iso, short, write_text)
 from .store import TYPES, priority
@@ -36,6 +37,8 @@ def _allocate(needs, weights, total):
     return alloc
 # Lignes du résumé de carte utiles au cartographe mais rarement à Claude : servies en dernier s'il reste de la place.
 DIGEST_LAST = ("Entrées", "Scripts npm", "Copies identiques")
+# Dernière ligne des cartes d'avant la v8.13 : ses commandes répétaient le bloc CLAUDE.md du cerveau.
+_OLD_TAIL = re.compile(r"^→ Avant d'explorer : .*carte complète : (`[^`]+`)\s*$")
 
 
 def _fit(lines, budget):
@@ -119,8 +122,8 @@ def build_index(brain, cfg=None, focus=None, previews=None) -> str:
         return sorted((n for n in act if pred(n)), key=lambda n: -score(n))
 
     def line(n, chars):
-        body = short((n.get("meta") or {}).get("resume") or n.get("body", ""), chars)
-        return f"- **{n['title']}**" + (f" — {body}" if body else "") + f" `{n['id']}`"
+        body = short(concis((n.get("meta") or {}).get("resume") or n.get("body", "")), chars)
+        return f"- {n['title']}" + (f" — {body}" if body else "") + f" `{n['id']}`"
 
     def title_line(n):
         return f"- {n['title']} `{n['id']}`"
@@ -153,7 +156,7 @@ def build_index(brain, cfg=None, focus=None, previews=None) -> str:
         return lambda a: [title_line(n) if focus else line(n, chars) for n in nodes]
 
     sections = [
-        ("⏰ Échéances", lambda a: [f"- **{n['title']}** — {dates.human(d)} `{n['id']}`" for _, n, d in dues][:6]),
+        ("⏰ Échéances", lambda a: [f"- {n['title']} — {dates.human(d)} `{n['id']}`" for _, n, d in dues][:6]),
         ("👤 Profil", lambda a: core(nodes_of(lambda n: n["type"] == "user")[:8], a)),
         ("📏 Règles & préférences", lambda a: core(nodes_of(lambda n: n["type"] == "feedback")[:12], a)),
         ("📂 Projets" if not focus else "📂 Autres projets", lambda a: others),
@@ -168,7 +171,7 @@ def build_index(brain, cfg=None, focus=None, previews=None) -> str:
                     for n in friends[:8]]),
     ]
     header = f"# 🧠 Cerveau — mémoire persistante (index du {fmt_date(now_iso())})"
-    footer = f"_{len(act)} souvenirs · {len(brain.edges)} liens — `show <id>` pour le détail._"
+    footer = f"_{len(act)} souvenirs — `show <id>` : détail · « … +N » : `q` ou `ls`._"
     if focus and projects:
         footer = "_Autres projets : " + " · ".join(f"`{p['id']}`" for p in projects[:12]) + " — " + footer[1:]
     lines = [header]
@@ -184,8 +187,8 @@ def build_index(brain, cfg=None, focus=None, previews=None) -> str:
             previews.extend(ID_RE.findall("\n".join(block[1:])))
         hidden = len(items) - (len(block) - 1)
         if hidden > 0:
-            lines.append(f"- … +{hidden} (`q` ou `ls`)")
-            used += 20
+            lines.append(f"- … +{hidden}")
+            used += 10
         return used
 
     full = [make(10 ** 6) for _, make in sections]
@@ -221,19 +224,19 @@ def ensure_index(brain, cfg=None) -> str:
 def fit_digest(digest, budget):
     """Résumé de carte borné : lignes entières (240 car. max chacune), les moins utiles en dernier, renvoi au détail.
     Avant : ajouté en entier hors budget (≈ 850 tokens pour la boutique, relus à chaque requête)."""
-    lines = [ln for ln in digest.splitlines() if ln.strip()]
+    lines = [_OLD_TAIL.sub(r"→ Carte complète : \1", ln) for ln in digest.splitlines() if ln.strip()]
     if sum(len(x) + 1 for x in lines) <= budget:
         return "\n".join(lines)
+    tail = lines.pop() if lines[-1].startswith("→") else ""  # le renvoi à la carte complète reste toujours
     lines = lines[:1] + [x for x in lines[1:] if not x.startswith(DIGEST_LAST)] + \
         [x for x in lines[1:] if x.startswith(DIGEST_LAST)]
-    out, used = [], 0
+    out, used = [], len(tail) + 1 if tail else 0
     for ln in lines:
         ln = short(ln, 240)
         if used + len(ln) + 1 <= budget:
             out.append(ln)
             used += len(ln) + 1
-    out.append("_Carte abrégée — détail : `brain files <mot>` · `explain <fichier>` · MAP.md du projet._")
-    return "\n".join(out)
+    return "\n".join(out + ([tail] if tail else []))
 
 
 def project_card(brain, p, cfg=None, exclude_session=None, previews=None):
@@ -243,10 +246,10 @@ def project_card(brain, p, cfg=None, exclude_session=None, previews=None):
     cfg = cfg or load_config()
     budget = budget_chars(cfg["inject"], "project_tokens")
     meta = p.get("meta") or {}
-    head = [f"## 📂 Projet courant : {p['title']} (`{p['id']}`) — `{meta.get('path', '?')}`"]
-    if p.get("body"):
-        head.append(short(p["body"], 320))
     digest_file = PROJECTS_DIR / p["id"] / "DIGEST.md"
+    head = [f"## 📂 Projet courant : {p['title']} (`{p['id']}`) — `{meta.get('path', '?')}`"]
+    if p.get("body") and not (meta.get("auto_body") and digest_file.exists()):  # auto : la carte dit pareil
+        head.append(short(concis(p["body"]), 320))
     try:
         digest = digest_file.read_text(encoding="utf-8").strip() if digest_file.exists() else ""
     except OSError:
@@ -258,23 +261,23 @@ def project_card(brain, p, cfg=None, exclude_session=None, previews=None):
     mems = sorted(brain.project_members(p["id"]), key=lambda n: -priority(n))
     mem_lines = [f"- [{TYPES.get(n['type'], n['type'])}] {n['title']} `{n['id']}`" for n in mems[:12]]
     sessions = journal.recent(project=p["id"], limit=3, exclude=exclude_session)
-    sess_lines = [journal.session_line(s) for s in sessions]
+    sess_lines = table(["date", "titre", "dernière demande", "modifiés"], [journal.session_row(s) for s in sessions])
     cont = (f"↪ Fin de la dernière session : « {short(sessions[0]['answer'], 230)} »"
             if sessions and sessions[0].get("answer") else "")  # reprendre où on en était : place réservée
     rest = budget - sum(len(x) + 1 for x in head) - len(digest) - 2 - (len(cont) + 1 if cont else 0)
     out = list(head)
     if mem_lines:
-        block = _fit(["**Souvenirs du projet** (titres ; le contenu revient tout seul quand la demande s'y rapporte) :"]
+        block = _fit(["**Souvenirs du projet** (titres ; contenu rappelé au besoin) :"]
                      + mem_lines, max(300, int(rest * 0.62)))
         if previews is not None:
             previews.extend(ID_RE.findall("\n".join(block[1:])))
         hidden = len(mems) - (len(block) - 1)
         if hidden > 0:
-            block.append(f"- … +{hidden} autres (`brain ls -p {p['id']}`)")
+            block.append(f"- … +{hidden} (`ls -p {p['id']}`)")
         out += block
         rest -= sum(len(x) + 1 for x in block)
-    if sess_lines and rest > 200:
-        block = _fit(["**Dernières sessions ici :**"] + sess_lines, rest)
+    if sessions and rest > 200:  # tableau : « dernière demande : … — modifiés : … » ne se répète plus à chaque ligne
+        block = _fit(["**Dernières sessions ici** — " + sess_lines[0] + " :"] + sess_lines[1:], rest)
         out += block
         rest -= sum(len(x) + 1 for x in block)
     if cont:

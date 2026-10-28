@@ -40,7 +40,7 @@ DEFAULT_CONFIG = {
     # Budgets de ce qui est injecté, en tokens (relus à chaque requête jusqu'à la compaction) : total au démarrage,
     # index hors projet / dans un projet, fiche du projet, résumé de carte, ajout après compaction, nouveautés à la reprise.
     # Les anciennes clés en caractères (max_chars, index_chars…) restent prioritaires si elles sont dans config.json.
-    "inject": {"max_tokens": 2600, "index_tokens": 1650, "index_tokens_project": 1150, "project_tokens": 1250,
+    "inject": {"max_tokens": 2600, "index_tokens": 1650, "index_tokens_project": 1150, "project_tokens": 1100,
                "digest_tokens": 330, "compact_recall_tokens": 450, "resume_items": 5},
     # Rappel automatique à chaque message : souvenirs + fichiers pertinents, seulement si vraiment liés.
     # min_score 5 : sur 27 vrais messages (72 h), les faux rappels notaient 2,4–4,8 et le plus faible vrai 9,3.
@@ -73,6 +73,10 @@ DEFAULT_CONFIG = {
     # sans usage depuis 30 jours et coupe les skills claude.ai si aucune n'a servi.
     "eco": {"auto": True, "bash_output_max_chars": 10000, "auto_compact_window": 200000,
             "alerte_contexte": [150000, 300000], "alerte_pause": True, "cache": "auto", "plugins_auto": False},
+    # Sorties compactes (`brainkit/compact.py`) : après une commande bavarde (installation, tests, build, git log…), Claude
+    # ne lit que l'essentiel ; la sortie brute reste keep_days jours dans state/sorties/. Rien n'est touché sous min_chars
+    # caractères ni si le gain est sous min_gain (part) ou min_saved (caractères).
+    "compact": {"enabled": True, "min_chars": 1500, "min_gain": 0.3, "min_saved": 600, "keep_days": 3, "max_files": 40},
     # Cartographie automatique (en arrière-plan) des dossiers de projet.
     "auto_map": {"enabled": True, "refresh_minutes": 10},
     "map": {"max_files": 15000, "max_file_kb": 768},

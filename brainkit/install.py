@@ -25,6 +25,7 @@ S'en servir AVANT d'explorer ou de redemander. Outil : `{CMD} <cmd>` (Bash/Power
    learning (piège, solution), reference, todo (`--due`) — après un `q` anti-doublon.
 3. Jamais : secrets, mots de passe, paiement, santé ou vie privée de tiers, ce que le code ou git disent déjà.
 4. Fait qui change → `add … --replaces <id>` ; erreur → `edit`/`rm` ; vérifier un souvenir ancien avant d'agir.
+Code : le moins qui marche (réutiliser l'existant ; ni abstraction, ni option, ni fichier non demandés) ; code exposé (web, API, entrées) → skill `securite` avant de livrer.
 Tokens : filtrer les sorties Bash (`| tail -n 30`, `grep -c`, `-q`) ; gros fichier → `explain`/Grep puis Read offset/limit ; Edit plutôt que réécrire un fichier ; chaque appel relit tout le contexte : grouper les lectures (plusieurs plages ou fichiers par commande) et les appels indépendants dans un même message ; ToolSearch : un seul `select:a,b,c` ; web : get_page_text/find plutôt que read_page entier ou capture (sinon `scale: 0.5`) ; sous-agent (repart de ~90 k) seulement pour une très large recherche ; pas de relecture ; réponses courtes, résultat vérifié.
 <!-- BRAIN:END -->
 """
@@ -195,19 +196,21 @@ variables d'env, documents, cycles, TODO, fichiers sensibles jamais lus).
 `consolidate [--dry-run]` fusion doublons/obsolètes · `dream` rêve (entretien : conflits, doublons, corrections entendues ; `--done`) · `stats` · `doctor` diagnostic (`doctor --fix` répare tout) ·
 `bench` banc d'essai (qualité du rappel, faux rappels, tokens par démarrage, vitesse des hooks) · `tokens [--hours 48]` où partent les tokens (contexte relu, coût fixe au démarrage, relances, habitudes coûteuses, mesuré sur les transcripts) · `report` rapport du graphe ·
 `eco` mode éco, moins de tokens sans rien perdre : état + plugins jamais utilisés · `eco --appliquer` (sorties de commandes longues mises en fichier, résumé de la conversation plus tôt, liste des skills réduite, mémoire auto coupée ; posé tout seul au 1er démarrage) · `eco --annuler` · `eco --poser ID` / `eco --retirer ID` (réglages sur accord : outils, connecteurs, git, effort, lecture, sous-agents — seulement après accord explicite de l'utilisateur) · `eco --cache auto|5m|1h|off` (durée du cache de prompt ; auto = choisie chaque jour d'après les pauses réelles) · `eco --desactiver nom@marketplace` (demande d'abord à l'utilisateur) · `eco --plugins-auto [on|off]` (veille quotidienne : désactive tout seul plugins et skills claude.ai jamais utilisés en 30 j ; seulement si l'utilisateur le demande) ·
+`compact` sorties de commandes compactes (installations, tests, builds, `git log`, clone : Claude ne lit que l'essentiel, sortie brute dans le fichier indiqué en pied) : statistiques · `compact sortie.txt --cmd "npm install"` essai · `config compact.enabled false` coupe ·
 `pc` état du PC (RAM/CPU/GPU) et ce qu'on peut libérer (sessions inactives, serveurs MCP) · `pc --clean` ferme les serveurs MCP orphelins (parent mort) · `pc --history [h]` mesures de la veille ·
 `skill` skills perso et des plugins actifs (+ combien de fois soufflées et chargées) · `skill test "message"` laquelle se déclencherait · `skill check` contrôle (déclencheurs, liens, longueur) · `skill new <nom> -d "À utiliser quand… « … » Ne pas utiliser pour…" --body-file f` créer · `skill trig plugin:skill "déclencheur" …` déclencheurs en français pour une skill de plugin ·
 `viz --open` vue 3D (`~/.claude/brain/cerveau.html`, régénérée en fin de session) · `export` (MEMOIRES.md lisible) ·
 `config recall.enabled false` · `config skills.paste auto|propose|off` · `install` réparer.
 """
 
-EVENTS = [
-    ("SessionStart", "session-start", 20, "🧠 Chargement du cerveau…"),
-    ("UserPromptSubmit", "prompt", 8, None),
-    ("Stop", "stop", 10, None),
-    ("PreCompact", "pre-compact", 15, None),
-    ("PostCompact", "post-compact", 10, None),
-    ("SessionEnd", "session-end", 15, None),
+EVENTS = [  # (événement, argument de `brain hook`, délai max en s, message d'attente, outils visés)
+    ("SessionStart", "session-start", 20, "🧠 Chargement du cerveau…", None),
+    ("UserPromptSubmit", "prompt", 8, None, None),
+    ("Stop", "stop", 10, None, None),
+    ("PreCompact", "pre-compact", 15, None, None),
+    ("PostCompact", "post-compact", 10, None, None),
+    ("SessionEnd", "session-end", 15, None, None),
+    ("PostToolUse", "post-bash", 10, None, "Bash"),  # sorties de commandes compactes (compact.py)
 ]
 
 
@@ -306,13 +309,13 @@ def _is_ours(entry) -> bool:
 def merged_settings(settings: dict, remove_only=False) -> dict:
     out = dict(settings)
     hooks = dict(out.get("hooks") or {})
-    for event, arg, timeout, status in EVENTS:
+    for event, arg, timeout, status, matcher in EVENTS:
         entries = [e for e in hooks.get(event, []) if not (isinstance(e, dict) and _is_ours(e))]
         if not remove_only:
             hook = {"type": "command", "command": f"{launcher()} hook {arg}", "timeout": timeout}
             if status:
                 hook["statusMessage"] = status
-            entries.append({"hooks": [hook]})
+            entries.append({**({"matcher": matcher} if matcher else {}), "hooks": [hook]})
         if entries:
             hooks[event] = entries
         else:

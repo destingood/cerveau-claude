@@ -13,6 +13,7 @@ from pathlib import Path
 
 from . import index as idx
 from . import journal, search
+from .concis import concis
 from .common import (BRAIN_DIR, BRAIN_PY, CMD, SESSIONS_DIR, STATE_DIR, budget_chars, days_since, fold, load_config, log,
                      now_iso, parse_iso, read_json, read_stdin_json, set_config, short, tokenize, write_json)
 from .store import TYPES, Brain, bump_hits, bump_used
@@ -70,7 +71,7 @@ def context_query(raw, query) -> str:
 
 def gist(n, chars=220) -> str:
     """Ce qu'on montre d'un souvenir : le résumé d'une page du wiki s'il existe, sinon le début de son contenu."""
-    return short((n.get("meta") or {}).get("resume") or n.get("body", ""), chars)
+    return short(concis((n.get("meta") or {}).get("resume") or n.get("body", "")), chars)
 
 
 def label(n) -> str:
@@ -698,7 +699,7 @@ def on_prompt(data, cfg):
     emit("UserPromptSubmit", ctx, alert)
 
 
-MEM_HEADER = "🧠 Souvenirs pertinents (cerveau) :"
+MEM_HEADER = "🧠 Souvenirs liés :"
 
 
 def memory_line(n, full=True) -> str:
@@ -849,7 +850,7 @@ def recall_context(data, cfg, raw, saved="") -> str:
     shown_mem, shown_files = [], []
     groups = [(MEM_HEADER, picks, shown_mem)]
     if files:
-        groups.append((f"📁 Fichiers probablement concernés (carte `{proj['id']}`) :",
+        groups.append((f"📁 Fichiers liés (carte `{proj['id']}`) :",
                        [(f, f"- `{f['path']}` — {short(f['desc'], 100)}") for f in files], shown_files))
     for title, items, shown in groups:
         block, cost = [], len(title) + 1
@@ -926,6 +927,82 @@ def skill_reflex(raw, st, cfg, cwd=None) -> tuple:
     except Exception as exc:
         log(f"skills : {exc!r}")
         return [], []
+
+
+# ------------------------------------------------------------------------------------------ Rappel raté : pourquoi
+def diagnose(raw, cwd, cfg, shown_text="", expected=None) -> str:
+    """`brain recall --pourquoi` : chaque étape du rappel, dans l'ordre où elle peut échouer (idée de la carte des
+    pannes de WFGY : nommer la panne plutôt que deviner) — rappel coupé ou message ignoré, souvenir absent ou
+    archivé, vocabulaire différent, filtre anti-bruit, battu au classement, budget, déjà montré dans la session.
+    `shown_text` : ce que le rappel injecterait (simulation) ; `expected` : id du souvenir attendu."""
+    rc, raw = cfg["recall"], (raw or "").strip()
+    out = [f"🔎 Rappel pour « {short(raw, 90)} »"]
+    if not rc["enabled"]:
+        return "\n".join(out + [f"✗ rappel coupé (recall.enabled false) → `{CMD} config recall.enabled true`"])
+    if raw.startswith("/") or len(raw) < 6:
+        return "\n".join(out + ["✗ message ignoré : commande « / » ou moins de 6 caractères"])
+    query = recall_query(raw)
+    terms = tokenize(query)
+    if not terms:
+        return "\n".join(out + ["✗ aucun mot porteur de sens dans le message (mots vides seulement)"])
+    brain = Brain.load()
+    proj = brain.project_for_path(cwd) if cwd else None
+    found = search.search_memories(brain, query, limit=80, project=proj["id"] if proj else None, expand=False)
+    found = [r for r in found if r["node"]["type"] != "project"]
+    picked = {n["id"] for n, _ in pick_memories(brain, query, rc, proj["id"] if proj else None, raw=raw)}
+    shown = set(re.findall(r"`([a-z0-9][a-z0-9\-]*)`", shown_text or ""))
+    from . import neurone
+    learned = rc.get("neurone", "auto") != "off" and neurone.load() is not None
+    beaten = ("✓ accepté, le neurone du rappel en a préféré d'autres" if learned else "✓ accepté, battu au classement") \
+        + f" (au plus {rc['max_items']} par message)"
+    out.append(f"Mots cherchés : {' · '.join(terms)}" + (f" — projet courant : `{proj['id']}` (×1,3)" if proj else ""))
+
+    def verdict(r):
+        why = search.recall_refusal(r, rc["min_cov"], rc["min_score"], query=query)
+        nid = r["node"]["id"]
+        return ("✓ montré" if nid in shown else "✓ choisi, coupé par le budget (recall.max_chars "
+                f"{rc['max_chars']})" if nid in picked else beaten if not why else f"✗ {why}")
+
+    out.append("Candidats (score · mots retrouvés · couverture) :" if found else "Aucun souvenir ne contient ces mots.")
+    for i, r in enumerate(found, 1):  # les 6 premiers, puis ceux qui sont montrés plus loin (choix du neurone)
+        if i <= 6 or r["node"]["id"] in picked:
+            out.append(f"{i}. {short(r['node']['title'], 60)} `{r['node']['id']}` — {r['score']} · "
+                       f"{r['matched']}/{r['nq']} · {r.get('cov', 0):.2f} → {verdict(r)}")
+    if not expected:
+        return "\n".join(out)
+    n = brain.nodes.get(expected)
+    if not n:
+        return "\n".join(out + [f"✗ `{expected}` : aucun souvenir de cet id — jamais mémorisé ? (`{CMD} q \"…\"`)"])
+    if n.get("status", "active") != "active":
+        return "\n".join(out + [f"✗ `{expected}` : {n.get('status')} — le rappel ne montre que les souvenirs actifs"])
+    if n["type"] == "project":
+        return "\n".join(out + [f"✗ `{expected}` : fiche de projet — montrée au démarrage et sur « où en est … », "
+                                "jamais par le rappel ordinaire"])
+    rank = next((i for i, r in enumerate(found, 1) if r["node"]["id"] == expected), None)
+    keys = " ".join(((n.get("meta") or {}).get("keys") or "").split())  # `edit --keys` remplace : on garde les anciens
+    new = " ".join(t for t in terms if t not in set(tokenize(keys)))
+    keys_cmd = f"`{CMD} edit {expected} --keys \"{keys + ', ' + new if keys and new else keys or new}\"`"
+    if rank is None:
+        out.append(f"✗ vocabulaire différent : aucun mot du message ne retrouve « {short(n['title'], 60)} » → "
+                   f"{keys_cmd} (mots-clés indexés)")
+    else:
+        r = found[rank - 1]
+        v = verdict(r)
+        out.append(f"Attendu : rang {rank} — {v}")
+        if v == beaten and learned:
+            out.append("  le neurone classe d'après les souvenirs que Claude a vraiment repris lors des échanges passés "
+                       f"(`{CMD} config recall.neurone off` : la règle fixe seule)")
+        elif v.startswith("✗") and "score" not in v:  # des mots-clés le relient au message
+            out.append(f"  → {keys_cmd} (mots-clés indexés)")
+        if proj and n.get("project") and n["project"] != proj["id"]:
+            out.append(f"  souvenir du projet `{n['project']}` : ici, pas de bonus du projet courant")
+    last = max(SESSIONS_DIR.glob("*.json"), key=lambda p: p.stat().st_mtime, default=None) if SESSIONS_DIR.exists() else None
+    st = read_json(last, {}) or {} if last else {}
+    if expected in st.get("injected", []):
+        out.append("⚠ déjà montré dans la dernière session : le rappel ne répète pas un souvenir dans une session")
+    if st.get("recalled", 0) >= rc["session_cap_items"]:
+        out.append(f"⚠ dernière session : plafond de {rc['session_cap_items']} souvenirs atteint (recall.session_cap_items)")
+    return "\n".join(out)
 
 
 # ------------------------------------------------------------------------------------------ Montré ≠ utilisé

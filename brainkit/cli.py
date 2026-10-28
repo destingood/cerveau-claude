@@ -778,6 +778,9 @@ def cmd_recall(a):
         hooks.bump_hits = saved
     out = buf.getvalue()
     ctx = (json.loads(out).get("hookSpecificOutput") or {}).get("additionalContext") if out else None
+    if a.pourquoi or a.attendu:
+        print(hooks.diagnose(data["prompt"], data["cwd"], load_config(), ctx or "", a.attendu))
+        return
     print(ctx or "(rien ne serait injecté pour ce message)")
 
 
@@ -1025,7 +1028,7 @@ def cmd_doctor(a):
         hooks = (json.loads(settings.read_text(encoding="utf-8")).get("hooks") or {}) if settings.exists() else {}
     except Exception:
         hooks = {}
-    wanted = ("SessionStart", "UserPromptSubmit", "Stop", "PreCompact", "PostCompact", "SessionEnd")
+    wanted = ("SessionStart", "UserPromptSubmit", "Stop", "PreCompact", "PostCompact", "SessionEnd", "PostToolUse")
     present = [ev for ev in wanted if "brain.py" in json.dumps(hooks.get(ev, []))]
     import re as _re
     exes = {m.group(1) for ev in wanted for h in hooks.get(ev, []) for x in h.get("hooks", [])
@@ -1215,6 +1218,24 @@ def cmd_eco(a):
                          a.poser, a.retirer, a.cache, a.refuser, a.rendre)
     print(text)
     return code
+
+
+def cmd_compact(a):
+    from . import compact
+    if a.stats or not (a.fichier or a.cmd):
+        print(compact.stats_text())
+        return 0
+    if not a.cmd:
+        die("donne la commande qui a produit la sortie : --cmd \"npm install\" (elle choisit les règles)")
+    text = sys.stdin.read() if a.fichier in (None, "-") else Path(a.fichier).read_text(encoding="utf-8", errors="replace")
+    cfg = dict(load_config().get("compact") or {}, min_chars=0, min_gain=0, min_saved=0)
+    kind = compact.family(a.cmd)
+    if not kind:
+        print(f"« {a.cmd} » : commande non reconnue comme bavarde — sa sortie resterait telle quelle.")
+        return 0
+    done = compact.compact_output(a.cmd, text, "", cfg)
+    print(done[0] if done else text)
+    return 0
 
 
 def cmd_history(a):
@@ -1684,6 +1705,9 @@ def cmd_config(a):
 
 
 def cmd_hook(a):
+    if a.event == "post-bash":
+        from . import compact
+        return compact.hook()
     from . import hooks
     return hooks.run(a.event)
 
@@ -1859,9 +1883,11 @@ def build_parser():
     s.add_argument("--print", action="store_true")
     s = cmd("context", cmd_context, "voir ce qui est injecté au démarrage d'une session ici")
     s.add_argument("--cwd")
-    s = cmd("recall", cmd_recall, "tester le rappel automatique pour un message")
+    s = cmd("recall", cmd_recall, "tester le rappel automatique pour un message (--pourquoi : diagnostic)")
     s.add_argument("text", nargs="+")
     s.add_argument("--cwd")
+    s.add_argument("--pourquoi", action="store_true", help="chaque étape du rappel : mots, candidats, filtre, choix")
+    s.add_argument("--attendu", metavar="ID", help="souvenir attendu : pourquoi il n'est pas montré")
     s = cmd("journal", cmd_journal, "sessions passées (--backfill : importer l'historique)")
     s.add_argument("-p", "--project")
     s.add_argument("-n", type=int, default=12)
@@ -1922,6 +1948,11 @@ def build_parser():
     s.add_argument("--cache", choices=["auto", "5m", "1h", "off"],
                    help="durée du cache de prompt : auto (choisie chaque jour d'après tes pauses), 5m, 1h, "
                         "off (le cerveau n'y touche plus)")
+    s = cmd("compact", cmd_compact, "sorties de commandes compactes (hook après chaque commande bavarde) : statistiques, "
+            "ou essai sur une sortie enregistrée — compact sortie.txt --cmd \"npm install\" · config compact.enabled false")
+    s.add_argument("fichier", nargs="?", help="sortie enregistrée à compacter (« - » : entrée standard)")
+    s.add_argument("--cmd", help="commande qui a produit la sortie (choisit les règles : installation, tests, build, git…)")
+    s.add_argument("--stats", action="store_true", help="ce que les sorties compactées ont épargné")
     s = cmd("history", cmd_history, "instantanés du cerveau (pour revenir en arrière) — --diff <n°|date>", ["historique"])
     s.add_argument("-n", type=int, default=15)
     s.add_argument("--diff", help="ce qui a changé depuis un instantané (n°) ou une date")
@@ -2043,7 +2074,8 @@ def build_parser():
     s.add_argument("key", nargs="?")
     s.add_argument("value", nargs="?")
     s = cmd("hook", cmd_hook, "point d'entrée des hooks Claude Code (usage interne)")
-    s.add_argument("event", choices=["session-start", "prompt", "stop", "pre-compact", "post-compact", "session-end"])
+    s.add_argument("event", choices=["session-start", "prompt", "stop", "pre-compact", "post-compact", "session-end",
+                                     "post-bash"])
     s = cmd("install", cmd_install, "installer/réparer : CLAUDE.md, skill /brain, hooks (--mcp : serveur MCP de l'app)")
     s.add_argument("--dry-run", action="store_true")
     s.add_argument("--uninstall", action="store_true")

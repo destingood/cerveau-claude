@@ -246,18 +246,34 @@ def last_seen_by_project(journal=None) -> dict:
     return out
 
 
+def _ask(s) -> tuple:
+    """Dernière demande tapée, sinon la consigne de la session qui a lancé celle-ci → (texte, lancée par une autre)."""
+    if s.get("last") and (s.get("last") != s.get("first") or s.get("title")):
+        return short(s["last"], 110), False
+    return (short(s["brief"], 110), True) if s.get("brief") else ("", False)
+
+
+def _edits(s) -> str:
+    e = s.get("edits") or []
+    return ", ".join(os.path.basename(x) for x in e[:4]) + (f" +{len(e) - 4}" if len(e) > 4 else "")
+
+
 def session_line(s) -> str:
     title = s.get("title") or s.get("first") or s.get("brief") or "?"
     parts = [f"- {fmt_date(s.get('end'))} « {short(title, 70)} »"]
-    if s.get("last") and (s.get("last") != s.get("first") or s.get("title")):
-        parts.append(f"dernière demande : « {short(s['last'], 110)} »")
-    elif s.get("brief"):
-        parts.append(f"lancée par une autre session : « {short(s['brief'], 110)} »")
+    ask, other = _ask(s)
+    if ask:
+        parts.append(f"{'lancée par une autre session' if other else 'dernière demande'} : « {ask} »")
     if s.get("edits"):
-        names = ", ".join(os.path.basename(e) for e in s["edits"][:4])
-        more = f" +{len(s['edits']) - 4}" if len(s["edits"]) > 4 else ""
-        parts.append(f"modifiés : {names}{more}")
+        parts.append(f"modifiés : {_edits(s)}")
     return " — ".join(parts)
+
+
+def session_row(s) -> tuple:
+    """La même session en colonnes pour un tableau : date, titre, dernière demande, fichiers modifiés."""
+    title = s.get("title") or s.get("first") or s.get("brief") or "?"
+    ask, other = _ask(s)
+    return fmt_date(s.get("end")), short(title, 70), ("(autre session) " if other else "") + ask, _edits(s)
 
 
 def transcripts() -> list:

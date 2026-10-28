@@ -1,8 +1,8 @@
 """Où partent les tokens — mesuré sur les transcripts Claude Code des dernières heures (lecture locale, zéro token).
 Contexte relu par requête, taille des premières requêtes, coût fixe au démarrage (skills, MCP, outils différés, hooks),
 relances du cerveau, et habitudes coûteuses avec ce qu'elles « portent » : leur taille multipliée par le nombre de
-requêtes qui la relisent jusqu'à la compaction suivante. Poids réel aux prix relatifs de l'API (`weigh`) : écritures et
-lectures du cache, sortie, compactions, pauses, cache de 5 min et de 1 h simulés. Les leviers renvoient à `brain eco`."""
+requêtes qui la relisent jusqu'à la compaction suivante. Poids réel aux prix relatifs de l'API, et en $ au tarif du jour (`weigh`) :
+écritures et lectures du cache, sortie, compactions, pauses, cache de 5 min et de 1 h simulés. Les leviers renvoient à `brain eco`."""
 from __future__ import annotations
 
 import json
@@ -398,6 +398,40 @@ TTL_SIM = {"5m": (300, 1.25), "1h": (3600, 2.0)}  # cache de prompt : durée (s)
 BIG_WRITE = 20_000  # écriture de cache assez grosse pour en chercher la cause
 PAUSES = (("< 1 min", 60), ("1-5 min", 300), ("5-60 min", 3600), ("> 1 h", math.inf))
 CAUSES = ("début", "compaction", "pause > 1 h", "pause > 5 min", "invalidation")
+# Tarifs de l'API Anthropic au 06/10/2026 (docs, skill claude-api), $ par million de tokens : entrée, sortie, lecture du
+# cache ; écriture du cache 1,25 × l'entrée à 5 min, 2 × à 1 h. Haiku 5.5 au-delà de 100 k tokens de prompt : 0,50 / 2,50.
+# Mode rapide, autres fournisseurs, modèle inconnu : pas de prix.
+PRICES = {"claude-fable-5-1": (10, 50, 0.25), "claude-fable-5": (10, 50, 1.0), "claude-opus-5-5": (4, 20, 0.2),
+          "claude-opus-5": (5, 25, 0.5), "claude-opus-4-8": (5, 25, 0.5), "claude-opus-4-7": (5, 25, 0.5),
+          "claude-opus-4-6": (5, 25, 0.5), "claude-sonnet-5-5": (2, 10, 0.2), "claude-sonnet-5": (2, 10, 0.2),
+          "claude-sonnet-4-6": (3, 15, 0.3), "claude-haiku-5-5": (0.1, 0.5, 0.01), "claude-haiku-4-5": (1, 5, 0.1)}
+HAIKU_LONG = (100_000, (0.5, 2.5, 0.05))
+
+
+def _price_key(model):
+    """L'identifiant du tarif d'un modèle (« claude-opus-5-5 », aussi daté ou suffixé « [1m] »), ou None."""
+    m = str(model or "")
+    return next((k for k in PRICES if re.fullmatch(re.escape(k) + r"(-\d{8})?(\[\w+\])?", m)), None)
+
+
+def price(r):
+    """Coût en $ d'une requête {model, fast, in, w5, w1h, read, out} au tarif de l'API, ou None (pas de tarif)."""
+    key = _price_key(r.get("model"))
+    if not key or r.get("fast"):
+        return None
+    i, o, rd = PRICES[key]
+    if key == "claude-haiku-5-5" and r["in"] + r["read"] + r["w5"] + r["w1h"] > HAIKU_LONG[0]:
+        i, o, rd = HAIKU_LONG[1]
+    return (r["in"] * i + r["w5"] * 1.25 * i + r["w1h"] * 2 * i + r["read"] * rd + r["out"] * o) / 1e6
+
+
+def model_name(model) -> str:
+    """« claude-opus-5-5 » → « Opus 5.5 »."""
+    key = _price_key(model)
+    if not key:
+        return str(model or "?")
+    p = key.removeprefix("claude-").split("-")
+    return f"{p[0].capitalize()} {'.'.join(p[1:])}"
 
 
 def _epoch(value) -> float:
@@ -415,7 +449,7 @@ def _num(d, key) -> int:
 
 
 def _events(path, seen, sub) -> tuple:
-    """Un transcript → (événements dans l'ordre, titre). ("R", requête {t, in, w5, w1h, read, out, main}) ou ("C", heure,
+    """Un transcript → (événements dans l'ordre, titre). ("R", requête {t, in, w5, w1h, read, out, main, model, fast}) ou ("C", heure,
     contexte avant, après) pour une compaction. Une requête écrite sur plusieurs lignes, ou recopiée dans un autre
     transcript (`seen`), ne compte qu'une fois, avec sa sortie la plus grande."""
     ev, mine, title, ai = [], {}, None, None
@@ -440,7 +474,8 @@ def _events(path, seen, sub) -> tuple:
                 w1h = min(w, _num(u.get("cache_creation"), "ephemeral_1h_input_tokens"))
                 r = {"t": _epoch(o.get("timestamp")), "in": _num(u, "input_tokens"), "w5": w - w1h, "w1h": w1h,
                      "read": _num(u, "cache_read_input_tokens"), "out": _num(u, "output_tokens"),
-                     "main": not sub and not o.get("isSidechain")}
+                     "main": not sub and not o.get("isSidechain"), "model": m.get("model"),
+                     "fast": u.get("speed") == "fast"}
                 if key:
                     mine[key] = r
                 ev.append(("R", r))
@@ -470,7 +505,8 @@ def weigh(hours=168.0) -> dict:
     conversation principale), ttl {"5m", "1h" : coût du contexte simulé avec ce cache sur ces pauses, reqs, regime : le
     cache en service}, fenetre (compaction la moins chère B + √(20·K·g) : B contexte après une compaction, g croissance par
     requête sur les segments qui finissent en compaction, K coût d'une compaction ; ou None), fenetre_calc (B, g, K),
-    sessions (les 3 plus lourdes)}."""
+    sessions (les 3 plus lourdes), usd (le même au tarif de l'API, `PRICES`), sans_prix (requêtes sans tarif), modeles
+    (requêtes par modèle)}."""
     root = CLAUDE_HOME / "projects"
     cut = time.time() - hours * 3600
     files = []
@@ -485,7 +521,9 @@ def weigh(hours=168.0) -> dict:
     causes = {c: [0, 0.0] for c in CAUSES}
     gaps = {label: 0 for label, _ in PAUSES}
     sim = dict.fromkeys(TTL_SIM, 0.0)
-    acc = {"reqs": 0, "main": 0.0, "sub": 0.0, "hidden": 0.0, "compactions": 0, "sim": 0, "w5": 0, "w1h": 0}
+    acc = {"reqs": 0, "main": 0.0, "sub": 0.0, "hidden": 0.0, "compactions": 0, "sim": 0, "w5": 0, "w1h": 0,
+           "usd": 0.0, "sans_prix": 0}
+    models = {}  # modèle → requêtes
     after, kcost, slopes = [], [], []  # après une compaction : contexte, coût ; (croissance, requêtes) par segment
     for f in sorted(files):
         sub = "subagents" in f.parts
@@ -496,13 +534,15 @@ def weigh(hours=168.0) -> dict:
             continue
         s = sessions.setdefault(sid, [0.0, None, 0, 0, 0.0])  # poids, titre, requêtes, compactions, dernière requête
         s[1] = s[1] or (None if sub else title)
-        prev, pending, seg = None, None, None  # requête principale précédente (heure, contexte en cache, contexte) ;
-        for e in ev:  # compaction en attente ; segment en cours [contexte au début, requêtes depuis]
+        prev, pending, seg, model = None, None, None, None  # requête principale précédente (heure, contexte en cache,
+        for e in ev:  # contexte) ; compaction en attente ; segment en cours [contexte au début, requêtes depuis] ; modèle
             if e[0] == "C":
                 pending = 0.1 * e[2] + 5 * e[3]  # le résumé : relecture de la conversation + sortie du résumé
                 if not e[1] or e[1] >= cut:
                     acc["hidden"] += pending
                     acc["compactions"] += 1
+                    usd = price({"model": model, "in": 0, "w5": 0, "w1h": 0, "read": e[2], "out": e[3]})
+                    acc["usd"] += usd or 0.0
                     s[0] += pending
                     s[3] += 1
                     if seg and seg[1] and e[2] > seg[0]:  # pente réelle d'un segment qui finit en compaction
@@ -520,8 +560,15 @@ def weigh(hours=168.0) -> dict:
                 s[2] += 1
                 s[4] = max(s[4], r["t"])
                 acc["main" if r["main"] else "sub"] += cost
+                usd = price(r)
+                if usd is not None:
+                    acc["usd"] += usd
+                    models[model_name(r["model"])] = models.get(model_name(r["model"]), 0) + 1
+                elif cost:
+                    acc["sans_prix"] += 1
             if not r["main"]:
                 continue
+            model = r["model"] or model
             w = r["w5"] + r["w1h"]
             cached = r["read"] + w
             ctx = cached + r["in"]
@@ -568,7 +615,8 @@ def weigh(hours=168.0) -> dict:
     return {"hours": hours, "files": len(files), "reqs": acc["reqs"], "total": sum(parts.values()) + acc["hidden"],
             "parts": parts, "hidden": acc["hidden"], "compactions": acc["compactions"], "main": acc["main"],
             "sub": acc["sub"], "causes": causes, "gaps": gaps, "ttl": {**sim, "reqs": acc["sim"], "regime": regime},
-            "fenetre": fen, "fenetre_calc": calc, "sessions": top, "detail": detail}
+            "fenetre": fen, "fenetre_calc": calc, "sessions": top, "detail": detail, "usd": acc["usd"],
+            "sans_prix": acc["sans_prix"], "modeles": models}
 
 
 # Garde de consommation : une session qui mange la journée (souvent une session autonome qui tourne et se résume en
@@ -641,6 +689,13 @@ def _weigh_lines(b) -> list:
          f"  - lecture du cache {_pc(p['read'], total)} · écriture 1 h {_pc(p['w1h'], total)} · écriture 5 min "
          f"{_pc(p['w5'], total)} · sortie {_pc(p['out'], total)} · entrée {_pc(p['in'], total)} · résumés de "
          f"compaction (cachés) {_pc(b['hidden'], total)} ({b['compactions']}) · sous-agents {_pc(b['sub'], total)}"]
+    if b.get("usd"):
+        n = sum(b["modeles"].values())
+        mix = ", ".join(f"{k} {_pc(v, n)}" for k, v in sorted(b["modeles"].items(), key=lambda x: -x[1]))
+        L.append(f"  - au tarif de l'API : ≈ {b['usd']:,.2f} $".replace(",", " ").replace(".", ",")
+                 + f" ({mix} des requêtes ; lecture du cache à 0,05 × l'entrée sur Opus 5.5, 0,025 × sur Fable 5.1) ; "
+                 "abonnement : c'est le quota qui s'use, pas une facture"
+                 + (f" ; {b['sans_prix']} requête(s) sans tarif (autre fournisseur, mode rapide)" if b["sans_prix"] else ""))
     big = [(c, n, w) for c, (n, w) in b["causes"].items() if n]
     if big:
         L.append(f"  - grosses écritures du cache (> {BIG_WRITE // 1000} k) : "
