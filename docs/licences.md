@@ -192,6 +192,7 @@ Aucune nouvelle dépendance : `httpx` et Pydantic lisent les API. Conditions lue
 | Source | Licence ou conditions | Usage dans CERVEAU |
 |---|---|---|
 | API Recherche d'entreprises (DINUM, données INSEE et INPI) | Données des registres publics (SIRENE, RNE) ; aucune licence écrite sur la page de l'API, Licence Ouverte 2.0 attendue : `A_VERIFIER` ; spécification OpenAPI sous licence MIT ; API ouverte sans compte, 7 requêtes par seconde et par IP | `entreprises` (`company_search`, ADR-062) : lecture seule, 2 requêtes par seconde, cache 24 h de la seule sortie filtrée sous `var/business/` ; ni dirigeant, ni recherche par personne ou adresse, siège d'une personne physique omis (I4) |
+| API Melodi de l'Insee (`api.insee.fr/melodi`) | Licence Ouverte 2.0 (etalab-2.0) : citer « Source : Insee » et la date de mise à jour ; accès anonyme, 30 appels par minute (portail) ; les CGU indiquent 20 par seconde, écart noté au backlog | `insee_stats` (`stats_series`, plan P6 I3) : lecture seule de trois jeux en liste fermée (populations de référence, créations d'entreprises, Filosofi), 20 requêtes par minute, cache 7 jours de la seule sortie filtrée sous `var/business/` ; chaque valeur est une Figure, toute unité inconnue est omise |
 
 ## Licences restrictives ou à surveiller
 - **Redis 7.4 (RSALv2 / SSPLv1, depuis le 2024-03-20)** : interdit surtout de revendre Redis comme

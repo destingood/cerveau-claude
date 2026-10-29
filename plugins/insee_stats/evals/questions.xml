@@ -1,0 +1,53 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  Questions d'évaluation du plugin insee_stats (R8). Elles servent aux évals live, avec le
+  consentement de Lucas pour chaque campagne ; aucun résultat n'est stocké ici. Elles portent
+  sur les bornes de l'outil, fixées par le code, et sur la citation de la source : aucune ne
+  dépend d'une valeur publiée par l'Insee, qui change à chaque millésime.
+-->
+<evaluation>
+  <qa_pair>
+    <question>Combien d'observations l'outil stats_series rend-il au plus pour une demande ? Réponds par un nombre.</question>
+    <answer>50</answer>
+  </qa_pair>
+  <qa_pair>
+    <question>Combien de filtres de dimension l'outil stats_series accepte-t-il au plus ? Réponds par un nombre.</question>
+    <answer>3</answer>
+  </qa_pair>
+  <qa_pair>
+    <question>Combien de jeux de données l'outil stats_series peut-il lire ? Réponds par un nombre.</question>
+    <answer>3</answer>
+  </qa_pair>
+  <qa_pair>
+    <question>Quel identifiant de jeu donne les populations de référence dans stats_series ? Réponds par l'identifiant seul.</question>
+    <answer>DS_POPULATIONS_REFERENCE</answer>
+  </qa_pair>
+  <qa_pair>
+    <question>Quel identifiant de jeu donne les créations d'entreprises et d'établissements dans stats_series ? Réponds par l'identifiant seul.</question>
+    <answer>DS_SIDE_CREA_DEP_REG_NAT</answer>
+  </qa_pair>
+  <qa_pair>
+    <question>Quel identifiant de jeu donne les revenus et le niveau de vie (Filosofi) dans stats_series ? Réponds par l'identifiant seul.</question>
+    <answer>DS_FILOSOFI_CC</answer>
+  </qa_pair>
+  <qa_pair>
+    <question>Comment écrit-on la géographie du département de Loire-Atlantique (44) pour stats_series ? Réponds par le code seul.</question>
+    <answer>DEP-44</answer>
+  </qa_pair>
+  <qa_pair>
+    <question>Comment écrit-on la géographie de la France entière pour stats_series ? Réponds par le code seul.</question>
+    <answer>FRANCE</answer>
+  </qa_pair>
+  <qa_pair>
+    <question>Le jeu Filosofi de stats_series répond-il pour la France entière ? Réponds par oui ou non.</question>
+    <answer>non</answer>
+  </qa_pair>
+  <qa_pair>
+    <question>Quelle mention de source faut-il citer avec une valeur rendue par stats_series ? Réponds par la mention seule.</question>
+    <answer>Source : Insee</answer>
+  </qa_pair>
+  <qa_pair>
+    <question>Le jeu des créations d'entreprises de stats_series répond-il pour une commune ? Réponds par oui ou non.</question>
+    <answer>non</answer>
+  </qa_pair>
+</evaluation>

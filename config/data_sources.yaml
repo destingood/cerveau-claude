@@ -114,8 +114,8 @@ sources:
       Licence Ouverte 2.0 (etalab-2.0) : citer « Source : Insee » et la date de mise à jour
       (portail des API de l'Insee, lu le 2026-10-29)
     terms: >-
-      Accès anonyme limité à 30 appels par minute ; jeux lus dans une liste fermée
-      (domain_packs/business/knowledge/sources.yaml) ; schéma des réponses à confirmer (A_VERIFIER)
+      Accès anonyme limité à 30 appels par minute ; trois jeux lus dans une liste fermée
+      (plugins/insee_stats/catalog.py) ; schéma de /data et /catalog vérifié le 2026-10-29
     rate: 20 requêtes par minute (I9) ; cache 7 jours sous var/business/
 # ADR-058 : un domaine listé ne lit le web que sur ces hôtes et leurs sous-domaines ; chaque
 # entrée a sa licence vérifiée (H5, lue le 2026-10-27, détail dans docs/licences.md).
