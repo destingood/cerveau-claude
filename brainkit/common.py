@@ -355,14 +355,14 @@ pourquoi qu quand que quel quelle quelles quels qui quoi s sa sans se ses si son
 te tes toi ton tous tout toute toutes très tres tu un une vers via voici voila voilà vos votre vous y oui
 non alors aussi bien bon juste veux veut vouloir merci dis donne donner mets mettre pouvoir dois doit
 maintenant aujourd hui demain hier toujours jamais rien chose choses truc trucs ok okay vsy bonjour salut
-parfait parfaite super genial top nickel cool excellent impeccable continue continuer go bravo
+parfait parfaite super genial top nickel cool excellent impeccable continue continuer go bravo réessayer réessaie
 combien fois font quel quels lequel laquelle lesquels lesquelles autre autres beaucoup trop tant"""
 _STOP_EN = """about above after again all also am an and any are as at be because been before being below
 between both but by can could did do does doing done down during each few for from further had has have
 having he her here hers him his how i if in into is it its itself just me more most my no nor not now of
 off on once only or other our ours out over own same she should so some such than that the their theirs
 them then there these they this those through to too under until up very was we were what when where
-which while who whom why will with would you your yours please make get let"""
+which while who whom why will with would you your yours please make get let retry"""
 STOPWORDS = {fold(w) for w in (_STOP_FR + " " + _STOP_EN).split()}
 
 _CAMEL = re.compile(r"(?<=[a-z])(?=[A-Z])|(?<=[A-Z])(?=[A-Z][a-z])")

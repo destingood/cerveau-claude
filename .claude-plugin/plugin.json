@@ -1,6 +1,6 @@
 {
   "name": "cerveau",
-  "version": "8.15.3",
+  "version": "8.15.4",
   "description": "Cerveau persistant pour Claude Code : souvenirs en graphe, rappel automatique à chaque message, wiki Markdown tenu par Claude (sources ingérées, coffre Obsidian, dépôt git), cartes de projets, à-faire datés, serveur MCP, et un cerveau e-commerce qui suit chaque boutique (clients sans pub, SEO, GEO, tunnel de vente, chiffres de la semaine). Tout reste chez toi.",
   "author": {
     "name": "Lucas"
