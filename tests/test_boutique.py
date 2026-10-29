@@ -243,7 +243,8 @@ fiche_id = shop_file()["fiche"]
 check(("boutique:atelier-lumiere", fiche_id) in links and ("boutique:atelier-lumiere", "skill:ecommerce") in links
       and sum(1 for s_, t in links if t == "boutique:atelier-lumiere") >= 17,
       "vue 3D : boutique reliée à sa fiche, au cerveau e-commerce et à son plan")
-check(data["stats"].get("shops") == 1 and data["stats"].get("skills") == 1
+from brainkit.install import skill_sources  # noqa: E402
+check(data["stats"].get("shops") == 1 and data["stats"].get("skills") == len(skill_sources())
       and data["stats"].get("memories") == sum(1 for n in data["nodes"] if n["t"] not in ("project", "skill", "boutique")),
       "vue 3D : compteurs (boutiques, compétences ; les souvenirs ne les comptent pas)", data["stats"])
 check({"Cerveau e-commerce", "Boutiques suivies"} <= {c_["label"] for c_ in data["comms"]},

@@ -901,7 +901,8 @@ check(tokens.guard(168, now=T0 + 600)["alertes"] == [], "garde : sous 20 M, jama
 eco.set_config("garde", None)
 W = World("garde")
 c, msg, out = W.hook("session-start", "g1")
-check(c == 0 and W.config("garde.lance_le"), "démarrage : garde lancée en arrière-plan, heure notée", out[-300:])
+check(c == 0 and (W.config("garde.lance_le") or W.config("garde.le")),  # tâche de fond déjà finie : elle réécrit « garde »
+      "démarrage : garde lancée en arrière-plan, heure notée", out[-300:])
 check(wait_for(lambda: quiet(lambda: W.config("garde.le"))), "la tâche de fond (tokens --garde) garde son calcul",
       quiet(lambda: W.config("garde")))
 lance = W.config("garde.le")
