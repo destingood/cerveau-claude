@@ -4,7 +4,7 @@
 UV ?= uv
 COMPOSE ?= docker compose -f infra/docker-compose.yml
 BOT := interfaces/discord_bot
-GATE_COVERAGE := --cov=core/risk_gate --cov=core/policy --cov=core/approvals --cov=core/governance --cov=core.execution.live --cov=core/net --cov=core/research --cov=core/code --cov=plugins/legifrance --cov=core/business --cov=plugins/business_calc --cov-branch --cov-fail-under=100 --cov-report=term-missing:skip-covered
+GATE_COVERAGE := --cov=core/risk_gate --cov=core/policy --cov=core/approvals --cov=core/governance --cov=core.execution.live --cov=core/net --cov=core/research --cov=core/code --cov=plugins/legifrance --cov=core/business --cov=plugins/business_calc --cov=plugins/entreprises --cov-branch --cov-fail-under=100 --cov-report=term-missing:skip-covered
 
 export PROMPTFOO_DISABLE_TELEMETRY := 1
 export PROMPTFOO_DISABLE_UPDATE := 1

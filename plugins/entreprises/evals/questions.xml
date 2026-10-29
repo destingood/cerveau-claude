@@ -1,0 +1,57 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  Questions d'évaluation du plugin entreprises (R8). Elles servent aux évals live, avec le
+  consentement de Lucas pour chaque campagne ; aucun résultat n'est stocké ici. Elles portent
+  sur les bornes de l'outil, fixées par le code, et sur le refus de rendre une personne (I4) :
+  aucune ne dépend d'une entreprise réelle, dont les données changent.
+-->
+<evaluation>
+  <qa_pair>
+    <question>Combien de résultats l'outil company_search rend-il au plus pour une recherche ? Réponds par un nombre.</question>
+    <answer>10</answer>
+  </qa_pair>
+  <qa_pair>
+    <question>Pour combien d'exercices au plus l'outil company_search rend-il le chiffre d'affaires et le résultat net d'une entreprise ? Réponds par un nombre.</question>
+    <answer>5</answer>
+  </qa_pair>
+  <qa_pair>
+    <question>Quelle est la longueur minimale, en caractères, d'un texte de recherche accepté par company_search ? Réponds par un nombre.</question>
+    <answer>3</answer>
+  </qa_pair>
+  <qa_pair>
+    <question>Quelle est la longueur maximale, en caractères, d'un texte de recherche accepté par company_search ? Réponds par un nombre.</question>
+    <answer>100</answer>
+  </qa_pair>
+  <qa_pair>
+    <question>Combien de chiffres compte un numéro SIREN ? Réponds par un nombre.</question>
+    <answer>9</answer>
+  </qa_pair>
+  <qa_pair>
+    <question>Quel algorithme de clé de contrôle company_search vérifie-t-il sur un SIREN ? Réponds par son seul nom.</question>
+    <answer>Luhn</answer>
+  </qa_pair>
+  <qa_pair>
+    <question>L'outil company_search accepte-t-il le SIREN 356000001 ? Réponds par oui ou non.</question>
+    <answer>non</answer>
+  </qa_pair>
+  <qa_pair>
+    <question>L'outil company_search rend-il le nom des dirigeants d'une entreprise ? Réponds par oui ou non.</question>
+    <answer>non</answer>
+  </qa_pair>
+  <qa_pair>
+    <question>Quelle valeur du filtre etat_administratif de company_search désigne une entreprise cessée ? Réponds par la seule lettre.</question>
+    <answer>C</answer>
+  </qa_pair>
+  <qa_pair>
+    <question>Le filtre departement de company_search accepte-t-il la valeur 20 ? Réponds par oui ou non.</question>
+    <answer>non</answer>
+  </qa_pair>
+  <qa_pair>
+    <question>Quel code de département de la Corse-du-Sud le filtre departement de company_search accepte-t-il ? Réponds par le seul code.</question>
+    <answer>2A</answer>
+  </qa_pair>
+  <qa_pair>
+    <question>Pendant combien d'heures une recherche de company_search reste-t-elle servie par le cache ? Réponds par un nombre.</question>
+    <answer>24</answer>
+  </qa_pair>
+</evaluation>

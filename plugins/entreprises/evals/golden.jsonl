@@ -1,0 +1,16 @@
+{"id": "es-001", "tool": "company_search", "arguments": {}, "expected": {"is_error": true, "contains": "une seule forme"}}
+{"id": "es-002", "tool": "company_search", "arguments": {"recherche": "matcha", "siren": "356000000"}, "expected": {"is_error": true, "contains": "une seule forme"}}
+{"id": "es-003", "tool": "company_search", "arguments": {"siren": "356000001"}, "expected": {"is_error": true, "contains": "Luhn"}}
+{"id": "es-004", "tool": "company_search", "arguments": {"siren": "12345678"}, "expected": {"is_error": true, "contains": "validation"}}
+{"id": "es-005", "tool": "company_search", "arguments": {"siren": "３５６０００００ ０"}, "expected": {"is_error": true, "contains": "Luhn"}}
+{"id": "es-006", "tool": "company_search", "arguments": {"recherche": "ab"}, "expected": {"is_error": true, "contains": "3 à 100 caractères"}}
+{"id": "es-007", "tool": "company_search", "arguments": {"recherche": "xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx"}, "expected": {"is_error": true, "contains": "validation"}}
+{"id": "es-008", "tool": "company_search", "arguments": {"recherche": "matcha\u0007atelier"}, "expected": {"is_error": true, "contains": "caractère de contrôle"}}
+{"id": "es-009", "tool": "company_search", "arguments": {"recherche": "matcha​atelier"}, "expected": {"is_error": true, "contains": "caractère de contrôle"}}
+{"id": "es-010", "tool": "company_search", "arguments": {"recherche": "356 000 000"}, "expected": {"is_error": true, "contains": "champ siren"}}
+{"id": "es-011", "tool": "company_search", "arguments": {"recherche": "matcha", "code_postal": "6900A"}, "expected": {"is_error": true, "contains": "code_postal"}}
+{"id": "es-012", "tool": "company_search", "arguments": {"recherche": "matcha", "departement": "20"}, "expected": {"is_error": true, "contains": "departement"}}
+{"id": "es-013", "tool": "company_search", "arguments": {"recherche": "matcha", "departement": "975"}, "expected": {"is_error": true, "contains": "departement"}}
+{"id": "es-014", "tool": "company_search", "arguments": {"recherche": "matcha", "activite_principale": "4791BB"}, "expected": {"is_error": true, "contains": "activite_principale"}}
+{"id": "es-015", "tool": "company_search", "arguments": {"recherche": "matcha", "etat_administratif": "X"}, "expected": {"is_error": true, "contains": "validation"}}
+{"id": "es-016", "tool": "company_search", "arguments": {"recherche": "   ab   "}, "expected": {"is_error": true, "contains": "3 à 100 caractères"}}

@@ -101,8 +101,9 @@ sources:
       licence propre à l'API : à confirmer (A_VERIFIER, docs/licences.md) ; spécification OpenAPI
       sous licence MIT (lue le 2026-10-29)
     terms: >-
-      API ouverte sans compte ; entreprises non diffusibles exclues par l'API ; les dirigeants et
-      la recherche de personnes ne sont ni demandés ni rendus (I4, RGPD)
+      API ouverte sans compte ; entreprises non diffusibles exclues par l'API ; les dirigeants ne
+      sont ni demandés ni rendus, une recherche textuelle ne garde que les entreprises nommées
+      d'après le texte, le siège d'une personne physique est omis (I4, RGPD)
     rate: 2 requêtes par seconde (I9 ; plafond de l'API 7/s par IP) ; cache 24 h sous var/business/
   insee_melodi:
     enabled: true

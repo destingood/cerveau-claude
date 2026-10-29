@@ -185,6 +185,14 @@ omettre.
 | `cnil.fr` | CC BY-ND 4.0 FR : source, lien et date, sans modification du contenu | pages citées, jamais adaptées ni stockées |
 | `conseil-etat.fr` | Réutilisation libre sans altération, avec la source et la date | pages citées, jamais adaptées ni stockées ; la jurisprudence (Judilibre, décisions administratives) reste au backlog (H2) |
 
+## Sources du pack `business` (phase 6, P6)
+Aucune nouvelle dépendance : `httpx` et Pydantic lisent les API. Conditions lues le 2026-10-29
+(`config/data_sources.yaml`).
+
+| Source | Licence ou conditions | Usage dans CERVEAU |
+|---|---|---|
+| API Recherche d'entreprises (DINUM, données INSEE et INPI) | Données des registres publics (SIRENE, RNE) ; aucune licence écrite sur la page de l'API, Licence Ouverte 2.0 attendue : `A_VERIFIER` ; spécification OpenAPI sous licence MIT ; API ouverte sans compte, 7 requêtes par seconde et par IP | `entreprises` (`company_search`, ADR-062) : lecture seule, 2 requêtes par seconde, cache 24 h de la seule sortie filtrée sous `var/business/` ; ni dirigeant, ni recherche par personne ou adresse, siège d'une personne physique omis (I4) |
+
 ## Licences restrictives ou à surveiller
 - **Redis 7.4 (RSALv2 / SSPLv1, depuis le 2024-03-20)** : interdit surtout de revendre Redis comme
   service. Usage interne non modifié : sans effet. Alternative libre à évaluer : Valkey (backlog).
