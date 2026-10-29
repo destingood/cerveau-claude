@@ -423,7 +423,7 @@ ALERT = (
     "ALERTE : la configuration live est activée alors qu'aucun adaptateur live n'existe (R3) : "
     "toute action est refusée"
 )
-DOMAINS = ("generaliste", "finance", "recherche", "test", "inconnu")
+DOMAINS = ("generaliste", "finance", "recherche", "code", "business", "test", "inconnu")
 
 
 def test_order_constants() -> None:
@@ -544,20 +544,28 @@ def test_a_risk_gate_answer_for_a_non_financial_action_is_refused(action_class: 
 
 
 def _phase_3_executes(domain: str, action_class: str, level: str, kill: bool) -> bool:
-    """Phase 3's rule, written apart: ``auto`` for reading everywhere and computing in finance."""
+    """The rule, written apart: ``auto`` for reading everywhere, computing in finance, code and
+    business (ADR-022, ADR-048, ADR-063), isolated execution in code alone (ADR-051)."""
     cell = SPEC_MATRIX[action_class][LEVELS.index(level)]
+    granted = {
+        ("CALCUL", "finance"),
+        ("CALCUL", "code"),
+        ("CALCUL", "business"),
+        ("EXECUTION_ISOLEE", "code"),
+    }
     return (
         domain != "inconnu"
         and not kill
         and cell == "auto"
-        and (action_class == "LECTURE" or (action_class, domain) == ("CALCUL", "finance"))
+        and (action_class == "LECTURE" or (action_class, domain) in granted)
     )
 
 
 def test_no_path_is_more_permissive_than_phase_3() -> None:
     """Every domain, level, class, kill switch, live state and gate answer, for both entry points.
 
-    ``decide`` still executes exactly what phase 3 executed, without live and without a gate
+    ``decide`` executes exactly what phases 3 to 6 granted (reading, computing in finance, code and
+    business, isolated execution in code), without live and without a gate
     answer, and nothing else; ``decide_order`` never executes: it drafts at N1, sends to paper
     at N2 and files for approval at N3 an order the gate accepted or reduced, without the kill
     switch and without live.
@@ -642,3 +650,39 @@ def test_kill_switch_unknown_state_counts(tmp_path: Path, monkeypatch: pytest.Mo
 
 def test_repository_kill_switch_is_not_engaged() -> None:
     assert kill_switch_engaged(REPO_ROOT) is False
+
+
+# The plugin's max_autonomy_level caps the domain's level, never raises it (B292) ----------------
+
+
+def test_the_plugin_ceiling_caps_the_domain_level() -> None:
+    """generaliste at N1, a plugin capped at N0: the matrix is read at N0."""
+    capped = _decide(
+        _at("N1", domain="generaliste"), "generaliste", "ECRITURE_INTERNE", max_level="N0"
+    )
+    assert (capped.autonomy_level, capped.decision) == ("N0", "refus")
+    assert "plafonné à N0 par le manifeste du plugin" in capped.reasons[0]
+
+
+def test_a_higher_ceiling_changes_nothing() -> None:
+    autonomy = _at("N1", domain="generaliste")
+    for ceiling in ("N1", "N4"):
+        decision = _decide(autonomy, "generaliste", "LECTURE", max_level=ceiling)
+        assert decision == _decide(autonomy, "generaliste", "LECTURE")
+
+
+@given(
+    level=st.sampled_from(LEVELS),
+    ceiling=st.sampled_from(LEVELS),
+    action_class=st.sampled_from(ACTION_CLASSES),
+    domain=st.sampled_from(("generaliste", "finance", "code", "business")),
+)
+def test_the_ceiling_never_raises_a_level_nor_grants_more(
+    level: str, ceiling: str, action_class: str, domain: str
+) -> None:
+    autonomy = _at(level, domain=domain)
+    plain = _decide(autonomy, domain, action_class)
+    capped = _decide(autonomy, domain, action_class, max_level=ceiling)
+    assert LEVELS.index(capped.autonomy_level) == min(LEVELS.index(level), LEVELS.index(ceiling))
+    # Whatever the capped decision grants, the uncapped one grants too.
+    assert capped.effect == "refuser" or capped.effect == plain.effect

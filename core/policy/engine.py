@@ -31,7 +31,7 @@ from typing import TYPE_CHECKING, Any, Literal
 
 from pydantic import BaseModel, ConfigDict, Field
 
-from core.config.loader import ActionClass, AutonomyConfig, Level, MatrixDecision
+from core.config.loader import LEVELS, ActionClass, AutonomyConfig, Level, MatrixDecision
 
 if TYPE_CHECKING:
     from core.risk_gate.gate import RiskGateResult
@@ -143,8 +143,12 @@ def decide(
     action_classes: frozenset[ActionClass] | None = None,
     decisions: frozenset[MatrixDecision] = PHASE_DECISIONS,
     risk_gate: RiskGateResult | None = None,
+    max_level: Level | None = None,
 ) -> PolicyDecision:
     """Decision for one action of ``action_class`` in ``domain``.
+
+    ``max_level`` is the plugin's ``max_autonomy_level`` (Annex C.1): the domain's level is capped
+    at it, never raised (B292).
 
     The kill switch overrides everything (R4); an unknown domain is refused, and so is every
     action while the live configuration is enabled (R3). Otherwise the matrix cell for the
@@ -176,6 +180,9 @@ def decide(
     if spec is None:
         return refuse("N0", f"domaine « {domain} » absent de autonomy.yaml : refus")
     level = spec.level
+    capped = max_level is not None and LEVELS.index(max_level) < LEVELS.index(level)
+    if max_level is not None and capped:
+        level = max_level
     if live_enabled:
         return refuse(
             level,
@@ -184,6 +191,8 @@ def decide(
         )
     cell = autonomy.matrix[action_class][level]
     matrix = f"matrice {action_class} × {level} : {cell}"
+    if capped:
+        matrix += f" (niveau {spec.level} plafonné à {level} par le manifeste du plugin, B292)"
     if cell == "refus":
         return refuse(level, matrix)
     if cell not in decisions:

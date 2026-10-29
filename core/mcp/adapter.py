@@ -283,6 +283,7 @@ class McpPlugin:
             action_class=spec.action_class,
             kill_switch=kill_switch_engaged(scope.project_root),
             live_enabled=scope.live_enabled,
+            max_level=self.manifest.max_autonomy_level,
         )
 
     def _refusal(self, spec: ToolSpec) -> str | None:
