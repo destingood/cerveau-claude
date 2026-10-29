@@ -1,0 +1,469 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "type": "object",
+  "$defs": {
+    "CacLtv": {
+      "additionalProperties": false,
+      "description": "Customer acquisition cost, lifetime value on gross margin and their ratio.",
+      "properties": {
+        "operation": {
+          "const": "cac_ltv",
+          "title": "Operation",
+          "type": "string"
+        },
+        "depenses_acquisition": {
+          "anyOf": [
+            {
+              "exclusiveMinimum": 0.0,
+              "maximum": 1000000000000.0,
+              "type": "number"
+            },
+            {
+              "type": "string"
+            }
+          ],
+          "description": "Dépenses d'acquisition de la période, en €",
+          "title": "Depenses Acquisition"
+        },
+        "nouveaux_clients": {
+          "description": "Nouveaux clients de la même période",
+          "maximum": 1000000000,
+          "minimum": 1,
+          "title": "Nouveaux Clients",
+          "type": "integer"
+        },
+        "panier_moyen_ht": {
+          "anyOf": [
+            {
+              "exclusiveMinimum": 0.0,
+              "maximum": 1000000000000.0,
+              "type": "number"
+            },
+            {
+              "type": "string"
+            }
+          ],
+          "description": "Panier moyen HT, en €",
+          "title": "Panier Moyen Ht"
+        },
+        "achats_par_an": {
+          "anyOf": [
+            {
+              "exclusiveMinimum": 0.0,
+              "maximum": 366.0,
+              "type": "number"
+            },
+            {
+              "type": "string"
+            }
+          ],
+          "description": "Nombre moyen d'achats par client et par an",
+          "title": "Achats Par An"
+        },
+        "duree_vie_ans": {
+          "anyOf": [
+            {
+              "exclusiveMinimum": 0.0,
+              "maximum": 100.0,
+              "type": "number"
+            },
+            {
+              "type": "string"
+            }
+          ],
+          "description": "Durée de vie moyenne d'un client, en années",
+          "title": "Duree Vie Ans"
+        },
+        "taux_marge_brute": {
+          "anyOf": [
+            {
+              "exclusiveMinimum": 0.0,
+              "maximum": 1.0,
+              "type": "number"
+            },
+            {
+              "type": "string"
+            }
+          ],
+          "description": "Marge brute en part du chiffre d'affaires HT : 0.6 pour 60 %",
+          "title": "Taux Marge Brute"
+        }
+      },
+      "required": [
+        "operation",
+        "depenses_acquisition",
+        "nouveaux_clients",
+        "panier_moyen_ht",
+        "achats_par_an",
+        "duree_vie_ans",
+        "taux_marge_brute"
+      ],
+      "title": "CacLtv",
+      "type": "object"
+    },
+    "Marge": {
+      "additionalProperties": false,
+      "description": "Margin, mark-up rate, margin rate and multiplier from a price and a cost.",
+      "properties": {
+        "operation": {
+          "const": "marge",
+          "title": "Operation",
+          "type": "string"
+        },
+        "prix_vente_ht": {
+          "anyOf": [
+            {
+              "exclusiveMinimum": 0.0,
+              "maximum": 1000000000000.0,
+              "type": "number"
+            },
+            {
+              "type": "string"
+            }
+          ],
+          "description": "Prix de vente HT, en €",
+          "title": "Prix Vente Ht"
+        },
+        "cout_achat_ht": {
+          "anyOf": [
+            {
+              "exclusiveMinimum": 0.0,
+              "maximum": 1000000000000.0,
+              "type": "number"
+            },
+            {
+              "type": "string"
+            }
+          ],
+          "description": "Coût d'achat HT, en €",
+          "title": "Cout Achat Ht"
+        }
+      },
+      "required": [
+        "operation",
+        "prix_vente_ht",
+        "cout_achat_ht"
+      ],
+      "title": "Marge",
+      "type": "object"
+    },
+    "PrixDeVente": {
+      "additionalProperties": false,
+      "description": "The selling price HT that reaches a target margin rate, mark-up rate or multiplier.",
+      "properties": {
+        "operation": {
+          "const": "prix_de_vente",
+          "title": "Operation",
+          "type": "string"
+        },
+        "cout_achat_ht": {
+          "anyOf": [
+            {
+              "exclusiveMinimum": 0.0,
+              "maximum": 1000000000000.0,
+              "type": "number"
+            },
+            {
+              "type": "string"
+            }
+          ],
+          "description": "Coût d'achat HT, en €",
+          "title": "Cout Achat Ht"
+        },
+        "cible": {
+          "description": "Cible : taux de marge (sur le coût), taux de marque (sur le prix) ou coefficient multiplicateur HT/HT (prix de vente HT ÷ coût d'achat HT)",
+          "enum": [
+            "taux_marge",
+            "taux_marque",
+            "coefficient"
+          ],
+          "title": "Cible",
+          "type": "string"
+        },
+        "valeur": {
+          "anyOf": [
+            {
+              "exclusiveMinimum": 0.0,
+              "maximum": 100.0,
+              "type": "number"
+            },
+            {
+              "type": "string"
+            }
+          ],
+          "description": "Valeur de la cible en fraction : 0.4 pour 40 % (taux de marge ≤ 10, taux de marque < 1) ; coefficient 1.8",
+          "title": "Valeur"
+        }
+      },
+      "required": [
+        "operation",
+        "cout_achat_ht",
+        "cible",
+        "valeur"
+      ],
+      "title": "PrixDeVente",
+      "type": "object"
+    },
+    "SeuilRentabilite": {
+      "additionalProperties": false,
+      "description": "Break-even revenue and day from the revenue, variable costs and fixed costs of a year.",
+      "properties": {
+        "operation": {
+          "const": "seuil_rentabilite",
+          "title": "Operation",
+          "type": "string"
+        },
+        "chiffre_affaires_ht": {
+          "anyOf": [
+            {
+              "exclusiveMinimum": 0.0,
+              "maximum": 1000000000000.0,
+              "type": "number"
+            },
+            {
+              "type": "string"
+            }
+          ],
+          "description": "Chiffre d'affaires HT annuel, en €",
+          "title": "Chiffre Affaires Ht"
+        },
+        "charges_variables_ht": {
+          "anyOf": [
+            {
+              "maximum": 1000000000000.0,
+              "minimum": 0.0,
+              "type": "number"
+            },
+            {
+              "type": "string"
+            }
+          ],
+          "description": "Charges variables HT annuelles, en €",
+          "title": "Charges Variables Ht"
+        },
+        "charges_fixes": {
+          "anyOf": [
+            {
+              "maximum": 1000000000000.0,
+              "minimum": 0.0,
+              "type": "number"
+            },
+            {
+              "type": "string"
+            }
+          ],
+          "description": "Charges fixes annuelles, en €",
+          "title": "Charges Fixes"
+        }
+      },
+      "required": [
+        "operation",
+        "chiffre_affaires_ht",
+        "charges_variables_ht",
+        "charges_fixes"
+      ],
+      "title": "SeuilRentabilite",
+      "type": "object"
+    },
+    "Tcac": {
+      "additionalProperties": false,
+      "description": "Compound annual growth rate between two values over a number of years.",
+      "properties": {
+        "operation": {
+          "const": "tcac",
+          "title": "Operation",
+          "type": "string"
+        },
+        "valeur_initiale": {
+          "anyOf": [
+            {
+              "exclusiveMinimum": 0.0,
+              "maximum": 1000000000000.0,
+              "type": "number"
+            },
+            {
+              "type": "string"
+            }
+          ],
+          "title": "Valeur Initiale"
+        },
+        "valeur_finale": {
+          "anyOf": [
+            {
+              "exclusiveMinimum": 0.0,
+              "maximum": 1000000000000.0,
+              "type": "number"
+            },
+            {
+              "type": "string"
+            }
+          ],
+          "title": "Valeur Finale"
+        },
+        "annees": {
+          "anyOf": [
+            {
+              "exclusiveMinimum": 0.0,
+              "maximum": 100.0,
+              "type": "number"
+            },
+            {
+              "type": "string"
+            }
+          ],
+          "description": "Durée en années entre les deux valeurs (12 mois = 1)",
+          "title": "Annees"
+        }
+      },
+      "required": [
+        "operation",
+        "valeur_initiale",
+        "valeur_finale",
+        "annees"
+      ],
+      "title": "Tcac",
+      "type": "object"
+    },
+    "Tva": {
+      "additionalProperties": false,
+      "description": "HT to TTC or TTC to HT at a rate of ``config/business.yaml``.",
+      "properties": {
+        "operation": {
+          "const": "tva",
+          "title": "Operation",
+          "type": "string"
+        },
+        "montant": {
+          "anyOf": [
+            {
+              "exclusiveMinimum": 0.0,
+              "maximum": 1000000000000.0,
+              "type": "number"
+            },
+            {
+              "type": "string"
+            }
+          ],
+          "description": "Montant de départ, en €, au centime",
+          "title": "Montant"
+        },
+        "sens": {
+          "enum": [
+            "ht_vers_ttc",
+            "ttc_vers_ht"
+          ],
+          "title": "Sens",
+          "type": "string"
+        },
+        "taux": {
+          "description": "Taux de la configuration : normal, intermediaire, reduit ou particulier",
+          "enum": [
+            "normal",
+            "intermediaire",
+            "reduit",
+            "particulier"
+          ],
+          "title": "Taux",
+          "type": "string"
+        }
+      },
+      "required": [
+        "operation",
+        "montant",
+        "sens",
+        "taux"
+      ],
+      "title": "Tva",
+      "type": "object"
+    },
+    "Variation": {
+      "additionalProperties": false,
+      "description": "Change between two values, as a share of the first.",
+      "properties": {
+        "operation": {
+          "const": "variation",
+          "title": "Operation",
+          "type": "string"
+        },
+        "valeur_initiale": {
+          "anyOf": [
+            {
+              "exclusiveMinimum": 0.0,
+              "maximum": 1000000000000.0,
+              "type": "number"
+            },
+            {
+              "type": "string"
+            }
+          ],
+          "title": "Valeur Initiale"
+        },
+        "valeur_finale": {
+          "anyOf": [
+            {
+              "maximum": 1000000000000.0,
+              "minimum": 0.0,
+              "type": "number"
+            },
+            {
+              "type": "string"
+            }
+          ],
+          "title": "Valeur Finale"
+        }
+      },
+      "required": [
+        "operation",
+        "valeur_initiale",
+        "valeur_finale"
+      ],
+      "title": "Variation",
+      "type": "object"
+    }
+  },
+  "properties": {
+    "calcul": {
+      "description": "L'opération et ses paramètres ; montants en euros",
+      "discriminator": {
+        "mapping": {
+          "cac_ltv": "#/$defs/CacLtv",
+          "marge": "#/$defs/Marge",
+          "prix_de_vente": "#/$defs/PrixDeVente",
+          "seuil_rentabilite": "#/$defs/SeuilRentabilite",
+          "tcac": "#/$defs/Tcac",
+          "tva": "#/$defs/Tva",
+          "variation": "#/$defs/Variation"
+        },
+        "propertyName": "operation"
+      },
+      "oneOf": [
+        {
+          "$ref": "#/$defs/Marge"
+        },
+        {
+          "$ref": "#/$defs/PrixDeVente"
+        },
+        {
+          "$ref": "#/$defs/Tva"
+        },
+        {
+          "$ref": "#/$defs/SeuilRentabilite"
+        },
+        {
+          "$ref": "#/$defs/CacLtv"
+        },
+        {
+          "$ref": "#/$defs/Variation"
+        },
+        {
+          "$ref": "#/$defs/Tcac"
+        }
+      ],
+      "title": "Calcul"
+    }
+  },
+  "required": [
+    "calcul"
+  ],
+  "title": "biz_calcArguments"
+}

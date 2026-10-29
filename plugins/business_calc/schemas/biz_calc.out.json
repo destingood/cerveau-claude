@@ -1,0 +1,101 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$defs": {
+    "Figure": {
+      "additionalProperties": false,
+      "description": "A number for the planner. ``unit``: a currency code, ``%`` (``value`` is a fraction),\n``XXX/EUR`` (units of XXX for one euro), ``titres``, ``jours``, ``séances``, ``ans`` or\n``score`` (in [0, 1]).",
+      "properties": {
+        "id": {
+          "maxLength": 200,
+          "minLength": 1,
+          "title": "Id",
+          "type": "string"
+        },
+        "value": {
+          "title": "Value",
+          "type": "number"
+        },
+        "display": {
+          "title": "Display",
+          "type": "string"
+        },
+        "unit": {
+          "title": "Unit",
+          "type": "string"
+        }
+      },
+      "required": [
+        "id",
+        "value",
+        "display",
+        "unit"
+      ],
+      "title": "Figure",
+      "type": "object"
+    }
+  },
+  "additionalProperties": false,
+  "properties": {
+    "operation": {
+      "title": "Operation",
+      "type": "string"
+    },
+    "inputs": {
+      "description": "Paramètres repris tels que reçus",
+      "items": {
+        "$ref": "#/$defs/Figure"
+      },
+      "title": "Inputs",
+      "type": "array"
+    },
+    "results": {
+      "items": {
+        "$ref": "#/$defs/Figure"
+      },
+      "title": "Results",
+      "type": "array"
+    },
+    "formulas": {
+      "items": {
+        "type": "string"
+      },
+      "title": "Formulas",
+      "type": "array"
+    },
+    "conventions": {
+      "description": "Arrondis et conventions appliqués, rien d'autre",
+      "items": {
+        "type": "string"
+      },
+      "title": "Conventions",
+      "type": "array"
+    },
+    "source": {
+      "anyOf": [
+        {
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "description": "Article qui fixe le taux de TVA employé",
+      "title": "Source"
+    },
+    "notice": {
+      "default": "Calcul déterministe de biz_calc : citer les affichages tels quels, ne pas les recalculer (R1). Aide à la décision personnelle, pas un conseil (R16).",
+      "title": "Notice",
+      "type": "string"
+    }
+  },
+  "required": [
+    "operation",
+    "inputs",
+    "results",
+    "formulas",
+    "conventions",
+    "source"
+  ],
+  "title": "BizCalc",
+  "type": "object"
+}
