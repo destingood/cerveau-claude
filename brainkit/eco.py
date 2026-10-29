@@ -938,7 +938,8 @@ def _announce(line):
 
 
 def take_annonce(cfg=None) -> str:
-    """Les annonces laissées par les tâches de fond (plugins, cache) : montrées une seule fois, au démarrage suivant."""
+    """Les annonces laissées par les tâches de fond (plugins, cache, filtres) : montrées une seule fois, au démarrage
+    suivant ou au message suivant d'une session ouverte."""
     if not ((cfg or load_config()).get("eco") or {}).get("annonce"):
         return ""
     taken = []

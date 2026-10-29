@@ -175,6 +175,23 @@ check(c == 0 and __version__ in out, "registre vers un dossier absent : le lance
 REGISTRE.write_text("{ illisible", encoding="utf-8")
 c, out = py(BRAIN / "brain.py", "--version", home=HOME)
 check(c == 0 and __version__ in out, "registre illisible : le lanceur garde sa version", out)
+REGISTRE.write_text(json.dumps({"version": 2, "plugins": {"cerveau@cerveau": [
+    {"scope": "user", "installPath": str(SUIVANT), "version": "9.9.9"}]}}), encoding="utf-8")
+# une session ouverte avant la mise à jour garde son CLAUDE_PLUGIN_ROOT (8.4.1) : ses hooks passent le relais à la
+# version installée dès l'événement suivant ; jamais vers une version plus ancienne, jamais depuis le dossier de dev
+c, out = py(PLUGIN2 / "brain.py", "--version", home=HOME)
+check(c == 0 and "9.9.9" in out, "session ouverte (copie 8.4.1) : la version installée prend le relais", out)
+c, out = hook(PLUGIN2, "session-start", HOME, sid="s4")
+check(c == 0 and "Cerveau persistant" in out and vise(SUIVANT), "session ouverte : ses hooks tournent sur la version installée",
+      out[-300:])
+c, out = py(SUIVANT / "brain.py", "--version", home=HOME)
+check(c == 0 and "9.9.9" in out, "version installée : elle-même, sans boucle", out)
+c, out = py(CODE / "brain.py", "--version", home=HOME)
+check(c == 0 and __version__ in out and "9.9.9" not in out, "dossier de dev : jamais de relais", out)
+REGISTRE.write_text(json.dumps({"version": 2, "plugins": {"cerveau@cerveau": [
+    {"scope": "user", "installPath": str(PLUGIN), "version": "8.4.0"}]}}), encoding="utf-8")
+c, out = py(SUIVANT / "brain.py", "--version", home=HOME)
+check(c == 0 and "9.9.9" in out, "registre vers une version plus ancienne : pas de relais", out)
 
 # ------------------------------------------------------------------ 4. garder le cerveau classique exprès
 HOME2 = TMP / "garde" / ".claude"

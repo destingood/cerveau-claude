@@ -605,6 +605,13 @@ check("⚡ Mode éco : 1 plugin(s) inutilisé(s)" in ctx and "skills claude.ai n
       "démarrage suivant : l'annonce est montrée (et effacée)", out[-500:])
 c, msg, out = W.hook("session-start", "v2")
 check(c == 0 and "skills claude.ai non chargées" not in context_of(msg), "l'annonce n'est montrée qu'une fois", out[-300:])
+# une annonce arrivée pendant une session ouverte : dite au message suivant, sans attendre un démarrage
+W.run("config", "eco.annonce", "🧹 Filtre appris pour monoutil sync")
+c, msg, out = W.hook("prompt", "v2", prompt="Bonjour, on continue le travail")
+check(c == 0 and "🧹 Filtre appris pour monoutil sync" in context_of(msg) and "dis-le à l'utilisateur" in context_of(msg)
+      and not W.config("eco.annonce"), "session ouverte : l'annonce passe au message suivant (et s'efface)", out[-400:])
+c, msg, out = W.hook("prompt", "v2", prompt="Bonjour, on continue le travail")
+check(c == 0 and "🧹" not in context_of(msg), "annonce au message : une seule fois", out[-300:])
 c, out = W.run("eco")
 check("veille quotidienne des plugins inutilisés : oui" in out and "plugins-auto off" in out, "eco : la veille est dite active", out)
 c, out = W.run("eco", "--annuler")

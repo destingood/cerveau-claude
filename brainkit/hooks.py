@@ -700,6 +700,14 @@ def on_prompt(data, cfg):
             log(f"mémorisation automatique : {exc!r}")
     ctx = recall_context(data, cfg, raw, saved) if cfg["recall"]["enabled"] and len(raw) >= 6 and not raw.startswith("/") \
         else saved
+    if (cfg.get("eco") or {}).get("annonce"):
+        try:  # annonce d'une tâche de fond (filtre appris, plugins…) : dite dans la session ouverte, sans attendre un démarrage
+            from . import eco
+            note = eco.take_annonce(cfg)
+            if note:
+                ctx = f"{ctx}\n\n{note} (dis-le à l'utilisateur en une phrase au début de ta réponse)".strip()
+        except Exception as exc:
+            log(f"éco (annonce) : {exc!r}")
     emit("UserPromptSubmit", ctx, alert)
 
 
