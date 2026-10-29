@@ -7,7 +7,7 @@
 ## Contexte
 La phase 7 se clôt après quatre semaines de rapports sans intervention (§17). Il faut donc des
 rapports produits seuls, vérifiables et sans chiffre de LLM (R1), et une preuve du critère.
-Lucas a choisi le Planificateur de tâches Windows (D2). Un rapport qui échoue en silence ne prouve
+L'utilisateur a choisi le Planificateur de tâches Windows (D2). Un rapport qui échoue en silence ne prouve
 rien : l'échec doit se voir (R11, ADR-038 pour les alertes). Les sorties des outils de sécurité
 peuvent citer ce qu'elles trouvent, y compris un secret : elles ne doivent pas être recopiées (R6).
 
@@ -41,14 +41,14 @@ pas de déclencheur mensuel ; `New-ScheduledTaskSettingsSet -StartWhenAvailable`
   (gravité 4) sur les canaux configurés.
 - `infra/windows/install-schedule.ps1` (à côté de `protect-live.ps1`, et non dans
   `infra/scripts/` comme le prévoyait le plan) installe deux tâches hebdomadaires, lancées par
-  Lucas : lundi 07:00 évals hors ligne puis rapport ; lundi 07:30 rapport de sécurité seulement si
+  l'utilisateur : lundi 07:00 évals hors ligne puis rapport ; lundi 07:30 rapport de sécurité seulement si
   celui du mois manque, faute de déclencheur mensuel.
 
 ## Conséquences
 - Plus simple : un rapport se rejoue à l'identique ; aucun appel payant (les évals planifiées
   sont hors ligne ; la red team réelle reste sur accord, D8).
 - Limites : les SLO des plugins ne sont pas mesurés (« non mesuré » dans le rapport, R7) ; les
-  tâches ne tournent que si Lucas est connecté (pas de mot de passe enregistré), le rattrapage
+  tâches ne tournent que si l'utilisateur est connecté (pas de mot de passe enregistré), le rattrapage
   couvre l'arrêt du PC ; la série suppose une horloge système juste.
 - Réversible : `install-schedule.ps1 -Remove` supprime les tâches ; les rapports restent.
 - Backlog : B349 (SLO des plugins mesurés dans le rapport hebdomadaire).

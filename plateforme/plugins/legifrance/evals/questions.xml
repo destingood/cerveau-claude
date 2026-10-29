@@ -1,7 +1,7 @@
 <?xml version="1.0" encoding="utf-8"?>
 <!--
   Questions d'évaluation du plugin legifrance (R8). Elles servent aux évals live, avec le
-  consentement de Lucas pour chaque campagne (H12) ; aucun résultat n'est stocké ici.
+  consentement de l'utilisateur pour chaque campagne (H12) ; aucun résultat n'est stocké ici.
   Les questions portent sur des numéros d'articles stables depuis plusieurs années et sur les
   bornes des outils, fixées par le code. A_VERIFIER au premier appel réel : les identifiants
   LEGIARTI ne sont pas cités ici, ils seront relevés dans les réponses de l'API.

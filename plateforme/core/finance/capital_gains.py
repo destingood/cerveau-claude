@@ -1,4 +1,4 @@
-"""The sales of a calendar year, exported for Lucas's own records (plan of phase 2, F9).
+"""The sales of a calendar year, exported for the user's own records (plan of phase 2, F9).
 
 For each sale of a security the export gives the weighted average price of the position it came
 from (account by account, as the book keeps it), the fees and the gross gain, in the trade
@@ -118,7 +118,7 @@ class CapitalGains:
     year: int
     as_of: datetime
     until: date  # the last day the export covers: 31 December, or the reading date
-    rules: str  # compliance › fiscal.regime_plus_values, as written by Lucas
+    rules: str  # compliance › fiscal.regime_plus_values, as written by the user
     disposals: list[Disposal]
     warnings: list[str]
 
@@ -190,7 +190,7 @@ FORMULA_START = ("=", "+", "-", "@", "\t", "\r")
 
 def _text(value: str) -> str:
     """A text cell a spreadsheet shows as written: a leading quote keeps a formula from running
-    (a file name or an account typed by Lucas may start with « = » or « @ »)."""
+    (a file name or an account typed by the user may start with « = » or « @ »)."""
     return f"'{value}" if value.startswith(FORMULA_START) else value
 
 

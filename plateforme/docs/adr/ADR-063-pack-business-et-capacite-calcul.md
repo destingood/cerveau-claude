@@ -1,6 +1,6 @@
 # ADR-063 — Pack Business & commerce : capacité CALCUL, évals hors ligne, remplacement de `pack-business-absent`
 
-- Statut : **proposé** (élargissement de ce que la phase peut exécuter, décidé par Lucas le
+- Statut : **proposé** (élargissement de ce que la phase peut exécuter, décidé par l'utilisateur le
   2026-10-29 ; à confirmer au compte rendu de P6)
 - Date : 2026-10-29
 - Phase : 6 (P6, décisions I1, I4, I5, I8, I11)
@@ -12,7 +12,7 @@ N1) avec quatre plugins : `business_calc` (ADR-061), `entreprises` (ADR-062), `i
 change ». C'est faux : `core/policy/engine.py` n'accorde `CALCUL` qu'aux domaines `finance`
 (ADR-022) et `code` (ADR-049). Sans élargissement, l'adaptateur MCP écarte `biz_calc` (« aucune
 capacité CALCUL pour le domaine business ») et R1 ne peut plus être tenu : aucun outil ne calcule
-une marge ni une TVA. Lucas a tranché le 2026-10-29 : accorder `CALCUL`.
+une marge ni une TVA. L'utilisateur a tranché le 2026-10-29 : accorder `CALCUL`.
 
 Le pack s'évalue sans réseau, comme les packs cyber (ADR-057) et juridique (ADR-060). Le cas de
 comportement `pack-business-absent` (groupe `pack_generaliste`, ADR-021) attend l'absence du pack :

@@ -29,7 +29,7 @@ evals:
   questions: evals/questions.xml
   golden: evals/golden.jsonl
 slo:
-  # Provisoire, à confirmer par Lucas après les premières mesures.
+  # Provisoire, à confirmer par l'utilisateur après les premières mesures.
   success_rate_min: 0.9
   p95_latency_ms: A_DEFINIR
 # mcp (MIT), httpx (BSD-3-Clause), defusedxml (PSF-2.0), PyYAML (MIT) : docs/licences.md.

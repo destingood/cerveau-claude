@@ -1,11 +1,11 @@
 # ADR-035 — Approbations N3 : machine à états, code TOTP, lien à l'intention
 
-- Statut : accepté (D2, D3, D4, D18 et D19 du plan de phase 5, validées par Lucas le 21/10/2026)
+- Statut : accepté (D2, D3, D4, D18 et D19 du plan de phase 5, validées par l'utilisateur le 21/10/2026)
 - Date : 2026-10-21
 - Phase : 5
 
 ## Contexte
-En N3, une action FINANCIERE n'est exécutée qu'après l'approbation de Lucas, une par une (§8.3).
+En N3, une action FINANCIERE n'est exécutée qu'après l'approbation de l'utilisateur, une par une (§8.3).
 `autonomy.yaml` porte déjà `approval: { channel: discord, one_time_code: true, expiry_minutes:
 A_DEFINIR }` et le journal accepte l'événement `APPROVAL`, mais aucun code ne crée, ne vérifie ni
 ne consomme une approbation. Un code affiché dans Discord ne prouverait rien si le compte Discord
@@ -36,20 +36,20 @@ Option 3.
   sur un instantané frais ; un refus ou une autre quantité refuse l'approbation.
 - **Essais (D3)** : `expiry_minutes` = 10, 3 essais de code par demande puis REFUSEE ; 5 échecs en
   15 min verrouillent toutes les approbations et lèvent une alerte.
-- **Secret** : variable d'environnement `CERVEAU_TOTP_SECRET` (base32), posée par Lucas. Absente ou
+- **Secret** : variable d'environnement `CERVEAU_TOTP_SECRET` (base32), posée par l'utilisateur. Absente ou
   invalide ⇒ tout code est refusé. `cerveau approvals enroll` génère le secret et l'URI
-  `otpauth://` dans le terminal de Lucas seulement.
+  `otpauth://` dans le terminal de l'utilisateur seulement.
 - **Journal** : une entrée `APPROVAL` par transition et par essai de code (`approval_id`,
   `intent_id`, état, raison ; jamais le code). Acteur `policy` pour la demande, une expiration, un
   refus de la Porte réévaluée ou le dernier code faux ; `interface` pour un refus ou un code faux
-  venus d'une interface ; `lucas` pour un accord vérifié par code (seul acteur admis par la base
+  venus d'une interface ; `owner` pour un accord vérifié par code (seul acteur admis par la base
   pour ACCORDEE). Le kill switch et les expirations groupées écrivent une seule entrée.
 - **Kill switch** : toute demande ouverte passe à REFUSEE.
 - **Compteurs N3 → N4** : approbations, refus et expirations comptés dès maintenant.
 
 ## Conséquences
 - Ni le bot, ni l'API, ni Claude Code ne peuvent approuver sans le code de l'application
-  d'authentification de Lucas.
+  d'authentification de l'utilisateur.
 - Les hooks protègent `var/approvals/` et refusent `cerveau approvals enroll` (D18) ; la
   protection effective reste l'ACL (ADR-003).
 - **Tests** : vecteurs de l'annexe B de la RFC 6238 (SHA-1, SHA-256, SHA-512, 8 chiffres),

@@ -2,7 +2,7 @@
 pii:
   language: fr
   spacy_model: fr_core_news_md
-  # Seuil de score Presidio : décision de Lucas (valeur proposée dans le plan : 0.5).
+  # Seuil de score Presidio : décision de l'utilisateur (valeur proposée dans le plan : 0.5).
   score_threshold: A_DEFINIR
   # Libellé du pseudonyme (<PERSONNE_1>...) par type d'entité ; toutes sont pseudonymisées.
   entities:

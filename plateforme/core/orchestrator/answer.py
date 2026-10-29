@@ -1,12 +1,12 @@
 """Node 6: the answer in format 7.3, and its Markdown rendering (section 7.3, annex D).
 
 Every text the models wrote goes through ``strip_foreign_links``: a link or an image may only
-point to a source that was read or to an address Lucas gave (R5, no exfiltration through a
+point to a source that was read or to an address the user gave (R5, no exfiltration through a
 URL). What was dropped, masked or refused on the way is listed under « Signalements ».
 
 The pseudonyms are put back only after the graph. A link that holds one (``…?d=<EMAIL_1>``) would
-then carry Lucas's data to a domain that a domain check allows: such a link survives only when it
-is exactly an address Lucas gave or a source that was read.
+then carry the user's data to a domain that a domain check allows: such a link survives only when it
+is exactly an address the user gave or a source that was read.
 
 A committee session (D15) answers in the same format, with its decision, horizon, invalidation
 conditions, unresolved disagreements and verdict on top: an « analyse » at N0, a « proposition

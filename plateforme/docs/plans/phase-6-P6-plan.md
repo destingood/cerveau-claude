@@ -156,7 +156,7 @@ Refus vérifiés par les comportements et la red team :
 - **Campagne réelle P6** : environ 32 cas du golden, une dizaine de cas de red team et les suites relancées, soit **5 à 15 $** (même base que P2 à P5). Elle n'a lieu qu'avec ton accord, après celles déjà en attente.
 - Budgets journalier et mensuel `A_DEFINIR` : tout appel réel reste bloqué (R7).
 
-## 11. Décisions demandées à Lucas
+## 11. Décisions demandées à l'utilisateur
 
 | # | Décision | Options | Ma recommandation |
 |---|---|---|---|

@@ -1,6 +1,6 @@
 # ADR-062 — Plugin `entreprises` : lecteur du registre des entreprises, sans personne
 
-- Statut : **proposé** (à valider par Lucas au compte rendu de P6)
+- Statut : **proposé** (à valider par l'utilisateur au compte rendu de P6)
 - Date : 2026-10-29
 - Phase : 6 (P6, décisions I4, I9, I10)
 
@@ -57,7 +57,7 @@ Option 3.
 ## Conséquences
 - Aucune personne ne sort du code, même si l'API change ; une dénomination d'entrepreneur
   individuel reste, car c'est le nom légal de l'entreprise, mais sans commune ni code postal (I4).
-  Choix par défaut le plus protecteur, que Lucas peut revoir (autre option : exclure ces
+  Choix par défaut le plus protecteur, que l'utilisateur peut revoir (autre option : exclure ces
   entreprises des recherches textuelles).
 - Risque accepté : le nom d'un fichier du cache est l'empreinte SHA-256, sans sel, de la requête ;
   le texte cherché peut donc être retrouvé par dictionnaire sur le disque local (`var/`, ignoré

@@ -31,7 +31,7 @@ UNLISTED = [
     "mcp__Claude_Browser__form_input",
     "mcp__Claude_Browser__javascript_tool",
     "mcp__Claude_Browser__preview_start",  # starts a command from launch.json
-    "mcp__claude-in-chrome__navigate",  # Lucas's own browser and sessions
+    "mcp__claude-in-chrome__navigate",  # the user's own browser and sessions
     "mcp__computer-use__left_click",
     "mcp__ccd_pr__set_auto_merge",  # a merge into main
     "mcp__ccd_session__move_to_cloud",

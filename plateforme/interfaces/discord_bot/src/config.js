@@ -1,4 +1,4 @@
-// The bot's settings come from Lucas's environment only, and no value is ever printed (R6).
+// The bot's settings come from the user's environment only, and no value is ever printed (R6).
 // Whom it answers comes from the API (`GET /bot/settings`), read from config/interfaces.yaml.
 
 export const DISCORD_TOKEN_ENV = 'DISCORD_BOT_TOKEN';
@@ -42,11 +42,11 @@ export function loopbackUrl(raw) {
   return url.origin;
 }
 
-/** Lucas's Discord identifier as the API gives it; anything else stops the bot. */
+/** the user's Discord identifier as the API gives it; anything else stops the bot. */
 export function ownerId(settings) {
   const id = settings?.owner_user_id;
   if (typeof id !== 'string' || !SNOWFLAKE.test(id)) {
-    throw new BotError("identifiant Discord de Lucas illisible dans la réponse de l'API");
+    throw new BotError("identifiant Discord de l'utilisateur illisible dans la réponse de l'API");
   }
   return id;
 }

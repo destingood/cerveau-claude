@@ -29,7 +29,7 @@ cases:
     question: Quelle est la VaR historique à 99 % sur un jour de mon portefeuille ?
     offline:
       verdict: {classe_action: CALCUL, raison: mesure de risque}
-      route: {domaine: finance, web: false, raison: portefeuille de Lucas}
+      route: {domaine: finance, web: false, raison: portefeuille de l'utilisateur}
       calls:
         - {tool: risk_report, args: {measures: [var]}}
     expect:
@@ -42,7 +42,7 @@ cases:
     question: Quelle est la VaR historique à 99 % sur un jour de mon portefeuille ?
     offline:
       verdict: {classe_action: CALCUL, raison: mesure de risque}
-      route: {domaine: finance, web: false, raison: portefeuille de Lucas}
+      route: {domaine: finance, web: false, raison: portefeuille de l'utilisateur}
       calls:
         - {tool: risk_report, args: {measures: [var]}}
       answer:
@@ -58,7 +58,7 @@ cases:
     question: Que perdrait mon portefeuille si les actions baissaient de 20 % ?
     offline:
       verdict: {classe_action: CALCUL, raison: scénario de stress}
-      route: {domaine: finance, web: false, raison: portefeuille de Lucas}
+      route: {domaine: finance, web: false, raison: portefeuille de l'utilisateur}
       calls:
         - {tool: risk_report, args: {measures: [stress]}}
       answer:
@@ -74,7 +74,7 @@ cases:
     question: Quelle est la VaR historique à 99 % sur un jour de mon portefeuille ?
     offline:
       verdict: {classe_action: CALCUL, raison: mesure de risque}
-      route: {domaine: finance, web: false, raison: portefeuille de Lucas}
+      route: {domaine: finance, web: false, raison: portefeuille de l'utilisateur}
       calls:
         - {tool: risk_report, args: {measures: [var]}}
       answer:
@@ -121,7 +121,7 @@ cases:
     question: Quelle part du risque de mon portefeuille porte Globex ?
     offline:
       verdict: {classe_action: CALCUL, raison: décomposition du risque}
-      route: {domaine: finance, web: false, raison: portefeuille de Lucas}
+      route: {domaine: finance, web: false, raison: portefeuille de l'utilisateur}
       calls:
         - {tool: risk_report, args: {measures: [contributions]}}
     expect:
@@ -136,7 +136,7 @@ cases:
     question: Combien vaut mon portefeuille aujourd'hui ?
     offline:
       verdict: {classe_action: CALCUL, raison: valorisation du portefeuille}
-      route: {domaine: finance, web: false, raison: portefeuille de Lucas}
+      route: {domaine: finance, web: false, raison: portefeuille de l'utilisateur}
       calls:
         - {tool: portfolio_snapshot, args: {}}
     expect:
@@ -169,7 +169,7 @@ cases:
     question: Quelle est, en ordre de grandeur, la VaR historique à 99 % sur un jour de mon portefeuille ?
     offline:
       verdict: {classe_action: CALCUL, raison: mesure de risque}
-      route: {domaine: finance, web: false, raison: portefeuille de Lucas}
+      route: {domaine: finance, web: false, raison: portefeuille de l'utilisateur}
       calls:
         - {tool: risk_report, args: {measures: [var]}}
       answer:
@@ -187,7 +187,7 @@ cases:
     question: Quelle est, en ordre de grandeur, la VaR historique à 99 % sur un jour de mon portefeuille ?
     offline:
       verdict: {classe_action: CALCUL, raison: mesure de risque}
-      route: {domaine: finance, web: false, raison: portefeuille de Lucas}
+      route: {domaine: finance, web: false, raison: portefeuille de l'utilisateur}
       calls:
         - {tool: risk_report, args: {measures: [var]}}
       answer:
@@ -205,7 +205,7 @@ cases:
     question: Quelle est la VaR historique à 99 % sur un jour de mon portefeuille, et son rendement ?
     offline:
       verdict: {classe_action: CALCUL, raison: mesure de risque}
-      route: {domaine: finance, web: false, raison: portefeuille de Lucas}
+      route: {domaine: finance, web: false, raison: portefeuille de l'utilisateur}
       calls:
         - {tool: risk_report, args: {measures: [var]}}
       answer:
@@ -224,7 +224,7 @@ cases:
     question: Quelle sera la VaR de mon portefeuille le 25 octobre 2026 ?
     offline:
       verdict: {classe_action: CALCUL, raison: mesure de risque}
-      route: {domaine: finance, web: false, raison: portefeuille de Lucas}
+      route: {domaine: finance, web: false, raison: portefeuille de l'utilisateur}
       calls:
         - {tool: risk_report, args: {measures: [var], as_of: "2026-10-25T18:00:00+02:00"}}
     expect:
@@ -239,7 +239,7 @@ cases:
     question: Comment ma VaR aura-t-elle évolué entre aujourd'hui et le 20 octobre 2026 ?
     offline:
       verdict: {classe_action: CALCUL, raison: variation de VaR}
-      route: {domaine: finance, web: false, raison: portefeuille de Lucas}
+      route: {domaine: finance, web: false, raison: portefeuille de l'utilisateur}
       calls:
         - {tool: risk_report, args: {measures: [var], compare_to: "2026-10-20T00:00:00+02:00"}}
     expect:
@@ -257,7 +257,7 @@ cases:
         - {instrument_id: FICT-ACME, score: 0.5, assessed_at: "2026-10-19T09:00:00+00:00"}
     offline:
       verdict: {classe_action: CALCUL, raison: mesure de risque}
-      route: {domaine: finance, web: false, raison: portefeuille de Lucas}
+      route: {domaine: finance, web: false, raison: portefeuille de l'utilisateur}
       calls:
         - {tool: risk_report, args: {measures: [var]}}
     expect:
@@ -276,7 +276,7 @@ cases:
         - {instrument_id: FICT-ACME, score: 0.5, assessed_at: "2026-10-18T12:30:00+00:00", computed_at: "2026-10-18T12:50:00+00:00"}
     offline:
       verdict: {classe_action: CALCUL, raison: rejeu d'une mesure de risque}
-      route: {domaine: finance, web: false, raison: portefeuille de Lucas}
+      route: {domaine: finance, web: false, raison: portefeuille de l'utilisateur}
       calls:
         - {tool: risk_report, args: {measures: [var], as_of: "2026-10-18T14:40:00+02:00", strict: true}}
     expect:
@@ -297,7 +297,7 @@ cases:
       imported_at: "2026-10-18T12:45:00+00:00"
     offline:
       verdict: {classe_action: CALCUL, raison: rejeu d'une valorisation}
-      route: {domaine: finance, web: false, raison: portefeuille de Lucas}
+      route: {domaine: finance, web: false, raison: portefeuille de l'utilisateur}
       calls:
         - {tool: portfolio_snapshot, args: {as_of: "2026-10-18T14:40:00+02:00", strict: true}}
     expect:
@@ -317,7 +317,7 @@ cases:
       imported_at: "2026-10-18T12:45:00+00:00"
     offline:
       verdict: {classe_action: CALCUL, raison: valorisation du portefeuille}
-      route: {domaine: finance, web: false, raison: portefeuille de Lucas}
+      route: {domaine: finance, web: false, raison: portefeuille de l'utilisateur}
       calls:
         - {tool: portfolio_snapshot, args: {}}
     expect:
@@ -412,7 +412,7 @@ cases:
     question: Quelle est la VaR paramétrique à 99 % sur un jour de mon portefeuille ?
     offline:
       verdict: {classe_action: CALCUL, raison: mesure de risque}
-      route: {domaine: finance, web: false, raison: portefeuille de Lucas}
+      route: {domaine: finance, web: false, raison: portefeuille de l'utilisateur}
       calls:
         - {tool: risk_report, args: {measures: [var]}}
     expect:
@@ -426,7 +426,7 @@ cases:
     question: Quelle est la VaR historique à 99 % sur dix séances de mon portefeuille ?
     offline:
       verdict: {classe_action: CALCUL, raison: mesure de risque}
-      route: {domaine: finance, web: false, raison: portefeuille de Lucas}
+      route: {domaine: finance, web: false, raison: portefeuille de l'utilisateur}
       calls:
         - {tool: risk_report, args: {measures: [var]}}
     expect:
@@ -441,7 +441,7 @@ cases:
     question: Quelle est la VaR historique à 99 % sur un jour de mon portefeuille ?
     offline:
       verdict: {classe_action: CALCUL, raison: mesure de risque}
-      route: {domaine: finance, web: false, raison: portefeuille de Lucas}
+      route: {domaine: finance, web: false, raison: portefeuille de l'utilisateur}
       calls:
         - {tool: risk_report, args: {measures: [var]}}
     expect:
@@ -473,7 +473,7 @@ cases:
     question: Quelles liquidités ai-je au total sur mes comptes ?
     offline:
       verdict: {classe_action: CALCUL, raison: positions du portefeuille}
-      route: {domaine: finance, web: false, raison: portefeuille de Lucas}
+      route: {domaine: finance, web: false, raison: portefeuille de l'utilisateur}
       calls:
         - {tool: portfolio_snapshot, args: {}}
     expect:
@@ -503,7 +503,7 @@ cases:
     question: Que perdrait mon portefeuille si les actions baissaient de 20 % ?
     offline:
       verdict: {classe_action: CALCUL, raison: scénario de stress}
-      route: {domaine: finance, web: false, raison: portefeuille de Lucas}
+      route: {domaine: finance, web: false, raison: portefeuille de l'utilisateur}
       calls:
         - {tool: risk_report, args: {measures: [stress]}}
     expect:
@@ -519,7 +519,7 @@ cases:
     question: Fais-moi le point sur le risque et la performance de mon portefeuille.
     offline:
       verdict: {classe_action: CALCUL, raison: risque et performance}
-      route: {domaine: finance, web: false, raison: portefeuille de Lucas}
+      route: {domaine: finance, web: false, raison: portefeuille de l'utilisateur}
       calls:
         - {tool: risk_report, args: {measures: [var]}}
         - {tool: performance_report, args: {}}
@@ -703,7 +703,7 @@ cases:
         - {instrument_id: FICT-ACME, score: 0.5, assessed_at: "2026-10-18T12:30:00+00:00"}
     offline:
       verdict: {classe_action: CALCUL, raison: mesure de risque}
-      route: {domaine: finance, web: false, raison: portefeuille de Lucas}
+      route: {domaine: finance, web: false, raison: portefeuille de l'utilisateur}
       calls:
         - {tool: risk_report, args: {measures: [var]}}
     expect:
@@ -741,7 +741,7 @@ cases:
         - {instrument_id: FICT-BOREAL, score: 0.7, assessed_at: "2026-10-18T12:30:00+00:00"}
     offline:
       verdict: {classe_action: CALCUL, raison: mesure de risque}
-      route: {domaine: finance, web: false, raison: portefeuille de Lucas}
+      route: {domaine: finance, web: false, raison: portefeuille de l'utilisateur}
       calls:
         - {tool: risk_report, args: {measures: [volatilite]}}
     expect:
@@ -759,7 +759,7 @@ cases:
         - {instrument_id: FICT-GLOBEX, score: 0.89, assessed_at: "2026-10-18T12:30:00+00:00"}
     offline:
       verdict: {classe_action: CALCUL, raison: scénario de stress}
-      route: {domaine: finance, web: false, raison: portefeuille de Lucas}
+      route: {domaine: finance, web: false, raison: portefeuille de l'utilisateur}
       calls:
         - {tool: risk_report, args: {measures: [stress]}}
     expect:
@@ -779,7 +779,7 @@ cases:
         - {instrument_id: FICT-ACME, score: 0.9, assessed_at: "2026-10-18T12:30:00+00:00"}
     offline:
       verdict: {classe_action: CALCUL, raison: mesure de risque}
-      route: {domaine: finance, web: false, raison: portefeuille de Lucas}
+      route: {domaine: finance, web: false, raison: portefeuille de l'utilisateur}
       calls:
         - {tool: risk_report, args: {measures: [var]}}
     expect:
@@ -798,7 +798,7 @@ cases:
         - {instrument_id: FICT-GLOBEX, score: 0.4, assessed_at: "2026-10-18T12:30:00+00:00"}
     offline:
       verdict: {classe_action: CALCUL, raison: décomposition du risque}
-      route: {domaine: finance, web: false, raison: portefeuille de Lucas}
+      route: {domaine: finance, web: false, raison: portefeuille de l'utilisateur}
       calls:
         - {tool: risk_report, args: {measures: [contributions]}}
     expect:
@@ -819,7 +819,7 @@ cases:
         - {instrument_id: FICT-ACME, score: 1.0, unknown: [outliers, corporate_actions], assessed_at: "2026-10-18T12:30:00+00:00"}
     offline:
       verdict: {classe_action: CALCUL, raison: mesure de risque}
-      route: {domaine: finance, web: false, raison: portefeuille de Lucas}
+      route: {domaine: finance, web: false, raison: portefeuille de l'utilisateur}
       calls:
         - {tool: risk_report, args: {measures: [var]}}
     expect:
@@ -836,7 +836,7 @@ cases:
     question: Rejoue la VaR historique à 99 % sur un jour de mon portefeuille telle qu'elle était connue le samedi 17 octobre 2026 à midi.
     offline:
       verdict: {classe_action: CALCUL, raison: rejeu d'une mesure de risque}
-      route: {domaine: finance, web: false, raison: portefeuille de Lucas}
+      route: {domaine: finance, web: false, raison: portefeuille de l'utilisateur}
       calls:
         - {tool: risk_report, args: {measures: [var], as_of: "2026-10-17T12:00:00+02:00"}}
     expect:

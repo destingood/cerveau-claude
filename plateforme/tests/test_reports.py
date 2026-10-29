@@ -135,7 +135,7 @@ def test_weekly_reads_every_source(root: Path, journal: AuditJournal) -> None:
     journal.append(actor="orchestrator", event="DECISION", payload={"status": "ok"}, now=IN_WEEK)
     journal.append(actor="orchestrator", event="DECISION", now=IN_WEEK)
     journal.append(actor="policy", event="POLICY", payload={"notification": {}}, now=IN_WEEK)
-    journal.append(actor="lucas", event="LEARNING", payload={"pack": "x"}, now=IN_WEEK)
+    journal.append(actor="owner", event="LEARNING", payload={"pack": "x"}, now=IN_WEEK)
     journal.append(actor="orchestrator", event="ERROR", payload=["x"], now=IN_WEEK)
     journal.append(actor="orchestrator", event="ERROR", now=NOW)  # outside the week
     with ForecastStore.open(paths["forecasts"]) as store:
@@ -250,7 +250,7 @@ def test_weekly_refuses_an_impossible_history(root: Path, journal: AuditJournal)
 def test_weekly_detects_a_tampered_journal(root: Path, journal: AuditJournal) -> None:
     journal.append(actor="orchestrator", event="DECISION", payload={"status": "ok"}, now=IN_WEEK)
     entry = json.loads(journal.path.read_text(encoding="utf-8"))
-    entry["actor"] = "lucas"
+    entry["actor"] = "owner"
     journal.path.write_text(json.dumps(entry) + "\n", encoding="utf-8")
     weekly = _build(root, journal)
     assert "coûts : dépenses illisibles dans le journal" in weekly.reasons

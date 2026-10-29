@@ -5,8 +5,9 @@ descriptions and schemas, same policy check, budget charge and TOOL_CALL entry a
 Only the network is replaced: the search provider and the page reader answer from the case's
 pages and ``evals/fixtures/web.yaml``. The five finance servers run for real too, in memory, on
 a copy of the fictitious reference store read at ``REFERENCE_READ_AT`` (ADR-023): never on the
-store of Lucas. A case that adds files or quality scores to the store gets a copy of its own,
-built with the real import functions: a trapped file is refused as Lucas's import would refuse it.
+store of the user. A case that adds files or quality scores to the store gets a copy of its own,
+built with the real import functions: a trapped file is refused as the user's import would refuse
+it.
 
 Offline (CI), scripted models answer instead of Claude. They follow the case: the classifier and
 the router return its verdicts, the reader returns its honest extracts (or the trap of a page when
@@ -22,7 +23,7 @@ and cite the case's expected figures by the call that computed them; the news an
 reads and cites the checked extracts; the debaters cite the findings; the manager treats every
 argument and proposes to wait; the controller prices a stress scenario and blocks whenever a
 limit is unknown or exceeded. The research server reads a project root of its own: the
-repository's registry, and no trial nor report of Lucas.
+repository's registry, and no trial nor report of the user.
 
 The scholarly and feeds servers run for real too, on the case's records and on the feeds of its
 own allow-list. A deep research (``--approfondi``, ADR-045) runs the real engine: the scripted
@@ -151,7 +152,7 @@ FINANCE_NOW = REFERENCE_READ_AT
 IMPORTED_AT = REFERENCE_FETCHED_AT + timedelta(minutes=30)  # a case's files, before it is read
 FIXTURE_PROVIDER = "fixtures"
 CHARS_PER_TOKEN = 4  # offline cost estimate: no tokenizer, no cache (labelled « simulé »)
-# Values an offline run needs and the repository leaves to Lucas (R7): a temporary copy only.
+# Values an offline run needs and the repository leaves to the user (R7): a temporary copy only.
 OFFLINE_BUDGETS = {"daily": "100.00", "monthly": "1000.00"}
 OFFLINE_COMMITTEE = {"max_tokens": 400000, "max_seconds": 600, "max_tool_calls": 40}
 OFFLINE_RESEARCH = {"max_tokens": 400000, "max_seconds": 600, "max_tool_calls": 40}
@@ -164,12 +165,12 @@ _SOURCE = re.compile(r'<donnees_externes source="(https?://[^"]+)">')
 _HIT = re.compile(r"^\d+\. .* — (https?://\S+)$", re.MULTILINE)
 _SOURCE_NUMBER = re.compile(r"^Source \[(\d+)\] :", re.MULTILINE)
 _EXTRACT = re.compile(r"^- (.+)\n  Citation : « (.+) »$", re.MULTILINE)
-_QUESTION = re.compile(r"Question de Lucas :\n(.*?)\n\nAdresses web", re.DOTALL)
+_QUESTION = re.compile(r"Question de l'utilisateur :\n(.*?)\n\nAdresses web", re.DOTALL)
 _REPAIRS = (FORMAT_REPAIR.split("{", 1)[0], REPAIR.split("{", 1)[0])
 WEB_TOOLS = frozenset({"web_search", "web_read"})
 RESEARCH_TOOLS = frozenset({"feed_read", "scholar_search", "scholar_record"})  # read, never compute
 # What the deep research shows its planner and its writer (core/research/engine.py).
-_RESEARCH_HEAD = re.compile(r"Question de Lucas :\n(.*?)\n\nDate du jour", re.DOTALL)
+_RESEARCH_HEAD = re.compile(r"Question de l'utilisateur :\n(.*?)\n\nDate du jour", re.DOTALL)
 _PLAN_TASK = "\n\nPropose au plus "
 _WRITE_TASK = "\n\nSous-questions étudiées :\n"
 _RESEARCH_EXTRACT = re.compile(r"^- \[(\d+\.\d+)\] (.+)\n  Citation : « (.+) »$", re.MULTILINE)
@@ -179,7 +180,7 @@ MAX_SYNTHESIS_CLAIMS = 5  # the synthesis of a complex answer has 3 to 5 sentenc
 MAX_SECTION_CLAIMS = 12
 # What the committee engine shows a member (core/committee/engine.py).
 _CALL = re.compile(r'<donnees_externes source="([a-z_]+:([a-z_]+)#[0-9]+)">')
-_ASKED = re.compile(r"^Question de Lucas : (.*)$", re.MULTILINE)
+_ASKED = re.compile(r"^Question de l'utilisateur : (.*)$", re.MULTILINE)
 _OFFERED = re.compile(r"^Outils à ta disposition : (.*)\.$", re.MULTILINE)
 _CONSTAT = re.compile(r"^(C[0-9]+) \[([a-z_]+)\] (.*)$", re.MULTILINE)
 _ARGUMENT = re.compile(r"^([DX][0-9]+\.[0-9]+) \[", re.MULTILINE)
@@ -474,7 +475,7 @@ class FixtureFeedReader:
 
 def fixture_feeds(case: Case, log: WebLog) -> ToolboxOpener:
     """The real feeds server and MCP adapter, in memory, on the case's own allow-list (the
-    repository's stays empty until Lucas fills it, D18)."""
+    repository's stays empty until the user fills it, D18)."""
     catalog = {
         feed.id: FeedSource(
             id=feed.id,
@@ -535,7 +536,7 @@ def case_store(case: Case, directory: Path) -> tuple[Path, tuple[str, ...]]:
     """The store the case's run reads, and the reasons of the imports refused (R5).
 
     Without ``case.store``, the shared reference store. Otherwise a copy of it in ``directory``,
-    to which the case's CSV files are imported as Lucas would import them (instruments first,
+    to which the case's CSV files are imported as the user would import them (instruments first,
     then transactions), then its quality scores recorded. A refused file changes nothing.
     """
     fixture = case.store
@@ -601,7 +602,7 @@ FINANCE_SERVERS: dict[str, ServerFactory] = {
 @cache
 def research_root() -> Path:
     """A project root for the research server: the repository's registry and no ``var/``, so
-    that a run never reads the trials nor the protocol reports of Lucas (N stays that of the
+    that a run never reads the trials nor the protocol reports of the user (N stays that of the
     fixture) and never writes next to them."""
     root = Path(tempfile.mkdtemp(prefix="cerveau-eval-research-"))
     shutil.copytree(REPO_ROOT / REGISTRY_DIR, root / REGISTRY_DIR)
@@ -2119,7 +2120,7 @@ def offline_config(source: Path = REPO_ROOT / "config", *, agent_budget: bool = 
     The euro budgets, the committee's, the deep research's and the code agent's budgets, the PII
     threshold and the code pack's repositories, images and request cap stay ``A_DEFINIR`` in the
     repository (R7); the copy gives the scripted run room to work. Its costs are estimates and are
-    labelled as such. ``agent_budget=False`` leaves ``per_code_agent`` unset, as Lucas left it.
+    labelled as such. ``agent_budget=False`` leaves ``per_code_agent`` unset, as the user left it.
     """
     directory = Path(tempfile.mkdtemp(prefix="cerveau-eval-config-")) / "config"
     shutil.copytree(source, directory)

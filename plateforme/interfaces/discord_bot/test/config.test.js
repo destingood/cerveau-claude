@@ -56,7 +56,7 @@ test('the API is reached on the loopback only (D16)', () => {
   }
 });
 
-test("Lucas's identifier must be a Discord snowflake given as text", () => {
+test("The user's identifier must be a Discord snowflake given as text", () => {
   assert.equal(ownerId({ owner_user_id: '123456789012345678' }), '123456789012345678');
   for (const settings of [
     { owner_user_id: 123456789012345678 },

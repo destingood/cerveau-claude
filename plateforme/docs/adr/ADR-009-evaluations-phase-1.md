@@ -24,11 +24,11 @@ Option 1.
 - Deux modes : **hors ligne** (CI, `make eval`) avec modèles factices et pages fixtures, qui
   vérifie la plomberie et tous les contrôles déterministes ; **réel** (`make eval-live`), avec
   vrais modèles, pages fixtures pour la reproductibilité et un petit lot en web réel, lancé
-  seulement avec l'accord de Lucas pour chaque campagne (D8).
+  seulement avec l'accord de l'utilisateur pour chaque campagne (D8).
 - Seuil du golden Généraliste : 0,80, écrit dans `config/evals.yaml` avant la première mesure (D6).
-  Le golden set est gelé après validation de Lucas.
+  Le golden set est gelé après validation de l'utilisateur.
 - Rapport : `evals/reports/phase-1-<date>.md` + JSON (scores, taux, coût, latence) et un
-  échantillon de 20 jugements à relire par Lucas.
+  échantillon de 20 jugements à relire par l'utilisateur.
 
 ## Conséquences
 - Plus simple : un seul outil d'éval, déjà épinglé ; le mode hors ligne tourne à chaque commit.

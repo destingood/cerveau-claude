@@ -12,9 +12,9 @@ R8, ADR-022), and in the code pack, whose checks run in a networkless, read-only
 (ADR-048, ADR-049), and in the business pack, whose calculator takes only the figures it is given
 (ADR-061, ADR-063): their effect is ``executer``. So is ``EXECUTION_ISOLEE`` in the code pack,
 whose agent works on a disposable copy in a container without Internet and returns a patch that
-Lucas applies himself (ADR-051). The paper loop alone carries out an
+the user applies himself (ADR-051). The paper loop alone carries out an
 order intent of the finance pack (``decide_order``): ``proposition`` at N1 drafts it, ``paper`` at
-N2 sends it to the paper adapter, ``approbation`` at N3 files it for Lucas's approval before it
+N2 sends it to the paper adapter, ``approbation`` at N3 files it for the user's approval before it
 is sent (ADR-035, ADR-036), and all three need the Risk Gate's answer (R2). ``approbation`` has an
 effect for ``FINANCIERE`` alone: ``COMMUNICATION_EXTERNE`` and ``IRREVERSIBLE`` stay refused at
 every level (D5). Every other cell, including ``brouillon`` or ``simule``, is refused with its
@@ -36,7 +36,7 @@ from core.config.loader import LEVELS, ActionClass, AutonomyConfig, Level, Matri
 if TYPE_CHECKING:
     from core.risk_gate.gate import RiskGateResult
 
-# What phase 2 can carry out. Widening any of these is a phase decision (ADR, evals, Lucas).
+# What phase 2 can carry out. Widening any of these is a phase decision (ADR, evals, the user).
 PHASE_ACTION_CLASSES: frozenset[ActionClass] = frozenset({"LECTURE"})  # in every domain
 # A pack computes only with deterministic tools that are tested and evaluated (R1, R8, ADR-022);
 # the code pack's checks run the repository's tools in a sandbox (ADR-048, ADR-049) and its agent
@@ -55,7 +55,7 @@ ROUTED_ACTION_CLASSES: frozenset[ActionClass] = (
 )
 PHASE_DECISIONS: frozenset[MatrixDecision] = frozenset({"auto"})
 # What the paper loop can carry out (ADR-030, ADR-036): an order intent of the finance pack,
-# drafted at N1, sent to the paper adapter at N2 and filed for Lucas's approval at N3. The
+# drafted at N1, sent to the paper adapter at N2 and filed for the user's approval at N3. The
 # orchestrator never carries one out.
 ORDER_DOMAIN = "finance"
 ORDER_ACTION_CLASSES: frozenset[ActionClass] = frozenset({"FINANCIERE"})

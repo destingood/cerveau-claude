@@ -1,6 +1,6 @@
 # ADR-061 — Plugin `business_calc` : calculateur business déterministe
 
-- Statut : **proposé** (à valider par Lucas au compte rendu de P6)
+- Statut : **proposé** (à valider par l'utilisateur au compte rendu de P6)
 - Date : 2026-10-29
 - Phase : 6 (P6, décisions I1, I2, I7)
 
@@ -47,7 +47,7 @@ Option 3, dans `core/business/calc.py` (calcul pur) et `plugins/business_calc/` 
 ## Conséquences
 - Plus simple : une réponse business cite un outil pour chaque chiffre ; les propriétés
   (HT + TVA = TTC, prix rebâti par le coefficient, formule du TCAC) sont testées par Hypothesis.
-- Plus difficile : seul le taux normal est utilisable tant que Lucas n'a pas relu les trois autres
+- Plus difficile : seul le taux normal est utilisable tant que l'utilisateur n'a pas relu les trois autres
   dans le CGI (backlog) ; la table doit être reprise avant le 01/01/2027 (CIBS).
 - Réversible : ajouter une opération est un ajout à l'union, avec ses tests et ses évals (R8, R9).
 - Hors périmètre : règles d'arrondi par ligne de facture, régimes particuliers (DOM, Corse,

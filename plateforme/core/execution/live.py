@@ -10,7 +10,7 @@ own clock (B230):
 2. ``config/live.yaml``, ``governance/approvals/`` and every file in it belong to the
    Administrators group, which alone with SYSTEM may write them, or to root, as
    ``protect-live.ps1`` leaves them (B1, B2, ADR-003);
-3. Lucas signed N3 or above for finance, citing a promotion report that exists (ADR-036, D7);
+3. The user signed N3 or above for finance, citing a promotion report that exists (ADR-036, D7);
 4. the effective finance level, min(written, signed), is N3 or above (D6);
 5. the kill switch is not engaged (R4);
 6. the intent has a granted, unexpired approval for ``live``, bound to its very content (D4);
@@ -19,7 +19,7 @@ own clock (B230):
    exists yet, so this condition fails for every order (B200, B353, R7): live stays closed.
 
 Every condition is read again from disk at each submission: nothing is cached, so a change by
-Lucas, or the kill switch, applies to the next call. A false condition raises
+the user, or the kill switch, applies to the next call. A false condition raises
 :class:`LiveDisabled`, which names every failing condition, and the client is never called. Once
 all seven hold, the approval is spent, once, before the submission (D4).
 
@@ -186,7 +186,7 @@ class ActivationCheck:
 
     def _acl(self) -> str | None:
         """Why the live file, the signatures folder or a file in it is not out of reach, or
-        None: a signature left writable could be replaced by one Lucas never wrote."""
+        None: a signature left writable could be replaced by one the user never wrote."""
         folder = self.root / SIGNATURES_DIR
         paths = [self.root / LIVE_FILE, folder]
         try:

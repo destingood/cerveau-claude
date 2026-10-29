@@ -1,6 +1,6 @@
 # ADR-038 — Notifications : ntfy et Discord, contenu minimal, jamais bloquantes
 
-- Statut : accepté (D14 et D23 du plan de phase 5, validées par Lucas le 21/10/2026)
+- Statut : accepté (D14 et D23 du plan de phase 5, validées par l'utilisateur le 21/10/2026)
 - Date : 2026-10-21
 - Phase : 5
 
@@ -21,7 +21,7 @@ Option 2.
   interne).
 - **Configuration** : URL du serveur `A_DEFINIR` dans `config/interfaces.yaml`. Le sujet (au moins
   32 caractères aléatoires) et le jeton vivent dans `NTFY_TOPIC` et `NTFY_TOKEN`, posés par
-  Lucas : le sujet vaut un mot de passe, il ne va pas dans le dépôt.
+  l'utilisateur : le sujet vaut un mot de passe, il ne va pas dans le dépôt.
 - **Événements** : kill switch engagé, annulation non confirmée (B172), incident d'exécution, écart
   de réconciliation, limite dépassée, approbations verrouillées, budget à 50, 80 et 100 % (B46),
   rapport quotidien prêt.

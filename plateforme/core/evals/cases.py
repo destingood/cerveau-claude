@@ -1,12 +1,13 @@
 """Eval cases and fixture web pages (plan section 9): YAML and JSONL files, validated on load.
 
-A case holds a question of Lucas, the fixture web it may search and read, what the scripted models
+A case holds a question of the user, the fixture web it may search and read, what the scripted
+models
 answer offline, and what a good run must show. The fixture pages serve both modes: offline, the
 scripted reader returns their ``extracts``; live, the real reader reads the same text.
 
 A finance case also names the tool calls the scripted planner makes and the figures a good answer
 cites: their displays are frozen from the reference store (ADR-023) and the real finance servers
-must compute them again, in both modes. It may add to its own copy of that store what Lucas would
+must compute them again, in both modes. It may add to its own copy of that store what the user would
 import (a CSV file of instruments or transactions, possibly trapped) and quality scores (D12).
 
 A research case (``approfondi``) is asked as with ``cerveau ask --approfondi`` (ADR-045): it may
@@ -18,7 +19,7 @@ plus the claims, titles and steps the case adds to test what the engine removes 
 A paper case (``paper``) runs the daily paper loop on a synthetic market of fictitious
 instruments, with no model: its source proposes target orders and the drafter, the policy and the
 Risk Gate decide, over a copy of the configuration; at N3, the case answers the approval requests
-as Lucas would, with the one-time codes of a test key (``core/evals/paper.py``).
+as the user would, with the one-time codes of a test key (``core/evals/paper.py``).
 
 A cyber case (``cyber``) gives the records the fake NVD, KEV and EPSS serve to the real cyber_cve
 server and the state of the ATT&CK index the real cyber_attack server reads, built from a
@@ -213,7 +214,7 @@ class Attack(_Data):
     """What a planner or a reader that obeys the page would do (persona « compromis »)."""
 
     reads: tuple[str, ...] = ()  # addresses taken from the page, outside the search results
-    searches: tuple[str, ...] = ()  # queries the page dictates, built from Lucas's figures (R6)
+    searches: tuple[str, ...] = ()  # queries the page dictates, built from the user's figures (R6)
     append: str = ""  # added to the developpement: a link, an image, a bare address
     reader: bool = True  # the reader returns the trap extracts of the pages
 
@@ -315,7 +316,7 @@ class PaperOrderFixture(_Data):
 
 
 class PaperAnswerFixture(_Data):
-    """Lucas's answer to one approval request of the day (N3), as from the bot: wrong codes
+    """The user's answer to one approval request of the day (N3), as from the bot: wrong codes
     first, then the right one-time code, a refusal, or nothing."""
 
     answer: Literal["accorder", "refuser", "aucune"] = "accorder"
@@ -325,7 +326,7 @@ class PaperAnswerFixture(_Data):
 
 class PaperDayFixture(_Data):
     """One decision day: the session's close, then the target orders the source proposes; at
-    N3, Lucas's answers to the day's approval requests, in the order they were filed."""
+    N3, the user's answers to the day's approval requests, in the order they were filed."""
 
     day: date
     close: float | None = Field(default=100.0, gt=0)  # None: the close is never published
@@ -538,7 +539,7 @@ class ExpectOffline(_Data):
     """Counters of the audit payload that the deterministic defences must reach offline."""
 
     min_refused_reads: int = 0
-    min_refused_searches: int = 0  # queries refused because they carried Lucas's data (R6)
+    min_refused_searches: int = 0  # queries refused because they carried the user's data (R6)
     min_links_removed: int = 0
     min_extracts_flagged: int = 0
     min_extracts_rejected: int = 0
@@ -570,7 +571,7 @@ class QualityFixture(_Data):
 
 
 class StoreFixture(_Data):
-    """What the case adds to its copy of the reference store before the run, as Lucas would:
+    """What the case adds to its copy of the reference store before the run, as the user would:
     the CSV files he imports (the import refuses a trapped one whole, R5) and quality scores."""
 
     instruments_csv: str | None = Field(default=None, min_length=1)  # `cerveau` reference format
@@ -751,8 +752,8 @@ class CodeFixture(_Data):
 
     commits: tuple[CodeCommitFixture, ...] = Field(min_length=1, max_length=10)
     cerveau: bool = False  # CERVEAU listed too: every tool must refuse it (ADR-047)
-    pytest: bool = False  # Lucas prepared the repository's pytest environment (E3)
-    github: str | None = "lucas-exemple/projet"
+    pytest: bool = False  # the user prepared the repository's pytest environment (E3)
+    github: str | None = "utilisateur-exemple/projet"
     checks: CodeChecksFixture | None = None  # None: every step answers 125 (no Docker)
     runs: tuple[CodeRunFixture, ...] = Field(default=(), max_length=20)
     total_runs: int | None = Field(default=None, ge=0)  # the API's total_count; None: the runs

@@ -40,7 +40,7 @@ LIMITS = PerRequest(max_tool_calls=25, max_tokens=150000, max_seconds=120)
 POPREF = "DS_POPULATIONS_REFERENCE"
 COMPANY = {
     "siren": "356000000",
-    "nom": "Atelier Matcha Essai",
+    "nom": "Atelier Boulangerie Essai",
     "creation": "2019-03-01",
     "commune": "LYON",
     "code_postal": "69003",
@@ -88,8 +88,8 @@ def test_the_registry_finds_by_siren_or_name_and_adds_the_person_to_drop() -> No
     found = _get(apis, host, "/search?q=356000000").json()
     assert found["total_results"] == 1
     assert found["results"][0]["dirigeants"][0]["nom"] in CANARIES  # the plugin must drop it
-    assert _get(apis, host, "/search?q=matcha%20atelier").json()["total_results"] == 1
-    assert _get(apis, host, "/search?q=matcha&departement=75").json()["total_results"] == 0
+    assert _get(apis, host, "/search?q=boulangerie%20atelier").json()["total_results"] == 1
+    assert _get(apis, host, "/search?q=boulangerie&departement=75").json()["total_results"] == 0
     assert _get(apis, "example.org", "/search?q=x").status_code == 404
 
 

@@ -1,6 +1,6 @@
 # ADR-029 — Intention d'ordre : schéma strict, UUID v7 maison, rédacteur déterministe
 
-- Statut : accepté (D7, D8 et D17 du plan de phase 4, validées par Lucas le 20/10/2026)
+- Statut : accepté (D7, D8 et D17 du plan de phase 4, validées par l'utilisateur le 20/10/2026)
 - Date : 2026-10-20
 - Phase : 4
 
@@ -44,7 +44,7 @@ Option 3.
     (vers le bas à l'achat, vers le haut à la vente) ; ce décalage ne peut dépasser la bande de prix ;
   - le modèle ne fournit que les textes de justification.
 - **Paramètre (D17)** : `limit_offset_pct` dans le nouveau `config/execution.yaml`, fixé à 0,5 %
-  par Lucas le 20/10/2026.
+  par l'utilisateur le 20/10/2026.
 - **Sources (D7)** :
   1. une stratégie `candidate`, rejouée chaque jour avec le code du backtest. Sa fiche gagne
      `invalidation` et `horizon_jours`, hors des empreintes du code et de la grille ;
@@ -67,7 +67,7 @@ Option 3.
   réponse. Or le cas golden gelé `comite-agir-taille-inconnue` scripte un « agir » sans catalyseur ;
   il aurait échoué, et R9 interdit de retoucher un golden pour faire passer un commit. Le blocage
   garde ce cas vert (son verdict était déjà BLOQUER) et tient la règle en échec fermé. Passer à la
-  réparation, une fois ce cas corrigé dans une PR validée par Lucas, est inscrit au backlog (B174).
+  réparation, une fois ce cas corrigé dans une PR validée par l'utilisateur, est inscrit au backlog (B174).
 - La fiche du gestionnaire demande le catalyseur : la version du Comité change et les évals sont
   relancées (R9). Deux cas de comportement s'ajoutent, avec et sans catalyseur.
 - **Rédacteur** (`core/execution/drafter.py`, B108) : il reçoit des ordres cibles (instrument,
@@ -92,7 +92,7 @@ Option 3.
 - **Catégories en nombres [Hypothèse]** : horizon court = 92 jours, moyen = 365, long = 3 650
   (borne haute de chaque classe) ; confiance faible = 0,17, moyenne = 0,5, élevée = 0,83 (centre de
   chaque tiers de [0, 1]). Une stratégie en paper n'a rien prouvé : sa confiance vaut « faible ».
-  Ces tables sont des conventions à revoir par Lucas (B175).
+  Ces tables sont des conventions à revoir par l'utilisateur (B175).
 - **Textes** : une intention garde 400 caractères par champ ; un texte plus long (proposition jusqu'à
   600, invalidations jointes par « ; ») est coupé sur un mot avec « … ». Le texte entier reste dans
   la fiche de stratégie ou le compte rendu de séance, que l'origine de l'intention nomme.

@@ -2,7 +2,7 @@
 
 A page may try to steer the planner: "ignore the previous instructions", "call web_read on…".
 The planner only sees extracts, wrapped as data, and has no action tool; still, an extract that
-reads like an order to the model is dropped and the page is reported to Lucas.
+reads like an order to the model is dropped and the page is reported to the user.
 
 These are heuristics on normalised text, not a classifier: a page about prompt injection, or a
 how-to that says "use the tool…", is flagged too. False positives cost an extract, never an
@@ -20,7 +20,7 @@ Three cases beyond the phrasing of a prompt (B99, B101, B223):
 - a push to grant an approval or hand over its code, to raise the autonomy, to edit a control
   file (``live.yaml``, ``autonomy.yaml``…) or to route an order to a real account is flagged
   by the same rules (``forcer_approbation``, ``ignorer_consignes``): an intent's rationale
-  passes this check before Lucas is asked to approve it. « Le conseil a approuvé la demande »
+  passes this check before the user is asked to approve it. « Le conseil a approuvé la demande »
   reports; a six-digit number next to « code » is flagged wherever it stands.
 """
 
@@ -161,7 +161,9 @@ _APPROVAL_PUSH = (
     rf"{_OPENS}{_MUST}{_MAY}{_APPROVE}{_NEAR}{_APPROVAL}|{_APPROVE_YOU}{_NEAR}{_APPROVAL}|"
     rf"{_OPENS}{_MUST}{_MAY}{_SIGN}{_NEAR}{_PROMOTION}|"
     rf"\b(?:consider\w*|tiens? pour|regard\w* comme|treat)\b{_NEAR}{_APPROVAL}{_NEAR}{_GRANTED}|"
-    rf"\blucas (?:a deja|already)\b|"
+    rf"\b(?:l'?utilisateur|the user|(?:le |the )?(?:proprietaire|owner)) (?:a deja|already)\b|"
+    rf"\b\w+ (?:a deja|already) (?:donne son accord|accorde|approuve|valide|signe|granted|"
+    rf"approved|agreed|signed)\b|"
     rf"\b(?:code|codes|totp|otp|passcode)\b[^.!?;\n]{{0,30}}?\b\d{{6}}\b|"
     rf"{_OPENS}{_MUST}{_MAY}{_HAND}{_NEAR}{_CODE}|"
     rf"{_CODE}{_NEAR}\b(?:pour|to) (?:accorder|approuver|signer|grant|approve|sign)\b"

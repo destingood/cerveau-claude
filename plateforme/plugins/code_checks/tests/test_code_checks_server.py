@@ -197,7 +197,7 @@ def test_each_container_gets_the_hardened_command(example: Path, tmp_path: Path)
 
     assert check.arguments == expected(check, IMAGE, "ruff", RUFF_CHECK)
     assert form.arguments == expected(form, IMAGE, "ruff", RUFF_FORMAT)
-    # pytest runs in the repository's own image, prepared by Lucas (E3).
+    # pytest runs in the repository's own image, prepared by the user (E3).
     assert tests.arguments == expected(tests, REPO_IMAGE, "python", PYTEST)
 
 
@@ -537,7 +537,7 @@ def test_the_settings_are_read_at_each_call(example: Path, tmp_path: Path) -> No
 # --- configuration and entry point ------------------------------------------------------------
 
 
-def test_the_checks_are_blocked_while_lucas_has_not_set_the_image() -> None:
+def test_the_checks_are_blocked_while_owner_has_not_set_the_image() -> None:
     with pytest.raises(SandboxError, match=re.escape("fonction bloquée « code.checks »")):
         load_settings(REPO_ROOT / "config")
 

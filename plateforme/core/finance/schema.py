@@ -95,7 +95,7 @@ MIGRATIONS: tuple[tuple[int, tuple[str, ...]], ...] = (
     ),
     (
         2,
-        # Lucas's ledger and his broker's statements (ADR-018): every imported file is kept, so
+        # the user's ledger and his broker's statements (ADR-018): every imported file is kept, so
         # the effective history can be replayed as it was known at any time. Decimals are text.
         (
             """CREATE TABLE portfolio_files (

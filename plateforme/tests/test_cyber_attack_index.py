@@ -300,7 +300,7 @@ def test_a_missing_index_names_the_command(tmp_path: Path) -> None:
     with pytest.raises(AttackError) as caught:
         read_index(index_path(tmp_path, VERSION), VERSION)
     assert str(caught.value) == (
-        "index ATT&CK 20.0 absent : lancer `cerveau cyber attack-fetch --version 20.0` (Lucas)"
+        "index ATT&CK 20.0 absent : lancer `cerveau cyber attack-fetch --version 20.0` (the user)"
     )
 
 

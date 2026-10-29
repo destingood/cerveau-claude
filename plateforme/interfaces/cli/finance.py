@@ -1,4 +1,4 @@
-"""`cerveau finance`: Lucas fills the point-in-time store and exports from it; every run is
+"""`cerveau finance`: the user fills the point-in-time store and exports from it; every run is
 journaled.
 
 `sync` is the only writer of the finance store (ADR-012) and the only one that reaches the
@@ -119,7 +119,7 @@ def _refuse(
 ) -> NoReturn:
     # These messages never quote a downloaded value (R5): see providers.base.
     AuditJournal(journal or default_journal_path(project_root())).append(
-        actor="lucas",
+        actor="owner",
         event="ERROR",
         request_id=request_id,
         versions={"config": config.digest},
@@ -140,7 +140,7 @@ def _run(
     except (ProviderError, FinanceStoreError) as exc:
         _refuse(command, journal, config, request_id, exc)
     audit.append(
-        actor="lucas",
+        actor="owner",
         event="TOOL_CALL",
         request_id=request_id,
         versions={"config": config.digest},
@@ -268,7 +268,8 @@ def sync_prices(
     outside: OutsideVarOpt = False,
     config_dir: ConfigDirOpt = None,
 ) -> None:
-    """Clôtures exportées par Lucas : date, identifiant, cloture, devise[, volume] (ADR-017)."""
+    """Clôtures exportées par l'utilisateur : date, identifiant, cloture, devise[, volume]
+    (ADR-017)."""
     store, journal = finance_paths(store, journal, outside=outside)
     config = load(config_dir)
     with _store(store, "prices", journal, config) as db:
@@ -345,7 +346,7 @@ def capital_gains_command(
     except (CapitalGainsError, FinanceStoreError, PortfolioError, SchemaError, OSError) as exc:
         # These messages name a file, a line, an account or an identifier, never an amount.
         audit.append(
-            actor="lucas",
+            actor="owner",
             event="ERROR",
             request_id=request_id,
             versions=versions,
@@ -353,7 +354,7 @@ def capital_gains_command(
         )
         fail(f"Refus : {exc}. Aucun export écrit ; requête {request_id}.", EXIT_ERROR)
     audit.append(
-        actor="lucas",
+        actor="owner",
         event="TOOL_CALL",
         request_id=request_id,
         versions=versions,

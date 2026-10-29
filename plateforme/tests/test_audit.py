@@ -90,7 +90,7 @@ def test_modified_entry_is_detected(tmp_path: Path) -> None:
     journal = make_journal(tmp_path)
     content = lines(journal)
     entry = json.loads(content[2])
-    entry["actor"] = "lucas"
+    entry["actor"] = "owner"
     content[2] = json.dumps(entry)
     write_lines(journal, content)
     report = verify(journal.path)
@@ -162,7 +162,7 @@ def test_append_refuses_to_chain_on_a_tampered_tail(tmp_path: Path) -> None:
     journal = make_journal(tmp_path, 2)
     content = lines(journal)
     entry = json.loads(content[-1])
-    entry["actor"] = "lucas"
+    entry["actor"] = "owner"
     content[-1] = json.dumps(entry)
     write_lines(journal, content)
     with pytest.raises(AuditError, match="hash"):

@@ -8,7 +8,7 @@ threshold still ``A_DEFINIR`` or a measure that cannot be made leaves its criter
 
 The report signs nothing. It opens with a YAML header that ``signatures.py`` reads: a signature
 from N3 on counts only when the report it cites is about the same domain and level and concludes
-``promotion_possible``. Lucas copies the proposed signature text into ``governance/approvals/``
+``promotion_possible``. The user copies the proposed signature text into ``governance/approvals/``
 himself (ADR-036); no code writes there.
 """
 
@@ -366,7 +366,7 @@ def paper_backtest_gap(
 
 def gap_criterion(gap: Gap | Unavailable) -> Criterion:
     """§8.3 asks the gap measured and explained, without a threshold: the criterion is reached
-    once it is measured, and its detail is the explanation Lucas reads before signing."""
+    once it is measured, and its detail is the explanation the user reads before signing."""
     name = "Écart paper/backtest"
     source = "`engine.run` (moteur maison, ADR-024) contre `LoopLog.valuations` et le carnet"
     shown = "mesuré et expliqué (§8.3) ; aucun seuil d'écart dans autonomy.yaml"
@@ -423,7 +423,7 @@ def nightly_criterion() -> Criterion:
 
 @dataclass(frozen=True)
 class Decisions:
-    """Lucas's answers to N3 approval requests, in live: granted with his code, or refused."""
+    """The user's answers to N3 approval requests, in live: granted with his code, or refused."""
 
     granted: int
     refused: int
@@ -433,9 +433,9 @@ class Decisions:
         return self.granted + self.refused
 
 
-def lucas_decisions(journal: AuditJournal) -> Decisions | Unavailable:
-    """Every live approval Lucas decided, from the verified journal: ``ACCORDEE`` by ``lucas``
-    (his code), ``REFUSEE`` from an interface or by ``lucas``. A refusal by the policy (wrong
+def owner_decisions(journal: AuditJournal) -> Decisions | Unavailable:
+    """Every live approval the user decided, from the verified journal: ``ACCORDEE`` by ``owner``
+    (his code), ``REFUSEE`` from an interface or by ``owner``. A refusal by the policy (wrong
     codes, a Risk Gate that no longer agrees) and an expiry are not his answer and do not count."""
     if not journal.path.exists():
         return Decisions(0, 0)
@@ -454,9 +454,9 @@ def lucas_decisions(journal: AuditJournal) -> Decisions | Unavailable:
             if not isinstance(payload, Mapping) or payload.get("environment") != "live":
                 continue
             actor, state = entry.get("actor"), payload.get("state")
-            if state == "ACCORDEE" and actor == "lucas":
+            if state == "ACCORDEE" and actor == "owner":
                 granted += 1
-            elif state == "REFUSEE" and actor in ("lucas", "interface"):
+            elif state == "REFUSEE" and actor in ("owner", "interface"):
                 refused += 1
     except (AuditError, OSError, ValueError) as exc:
         return Unavailable(f"journal d'audit illisible ({type(exc).__name__})")
@@ -464,13 +464,13 @@ def lucas_decisions(journal: AuditJournal) -> Decisions | Unavailable:
 
 
 _DECISIONS_SOURCE = (
-    "journal d'audit vérifié : entrées APPROVAL en live, ACCORDEE par lucas ou REFUSEE depuis "
+    "journal d'audit vérifié : entrées APPROVAL en live, ACCORDEE par owner ou REFUSEE depuis "
     "une interface (ADR-035)"
 )
 
 
 def approvals_count(found: Decisions | Unavailable, minimum: int | str) -> Criterion:
-    name = "Approbations N3 décidées par Lucas"
+    name = "Approbations N3 décidées par l'utilisateur"
     threshold = _threshold(minimum)
     shown = f"≥ {minimum}"
     if isinstance(found, Unavailable):
@@ -483,8 +483,8 @@ def approvals_count(found: Decisions | Unavailable, minimum: int | str) -> Crite
 
 
 def agreement_rate(found: Decisions | Unavailable, minimum: float | str) -> Criterion:
-    """The share of CERVEAU's N3 proposals Lucas granted: his agreement with CERVEAU."""
-    name = "Taux d'accord Lucas / CERVEAU"
+    """The share of CERVEAU's N3 proposals the user granted: his agreement with CERVEAU."""
+    name = "Taux d'accord l'utilisateur / CERVEAU"
     threshold = _threshold(minimum)
     shown = f"≥ {minimum}"
     if isinstance(found, Unavailable):
@@ -678,7 +678,7 @@ def build_report(
     rule = getattr(config.autonomy.promotion.finance, key)
     journal = AuditJournal(default_journal_path(root))
     if key == "N3_to_N4":
-        decisions = lucas_decisions(journal)
+        decisions = owner_decisions(journal)
         n2_n3 = config.autonomy.promotion.finance.N2_to_N3
         criteria: tuple[Criterion, ...] = (
             current_level(effective_level(config.autonomy, root, domain), required="N3"),

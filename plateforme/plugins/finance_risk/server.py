@@ -1,7 +1,7 @@
 """MCP stdio server of the ``finance_risk`` plugin: ``risk_report`` (CALCUL).
 
 The server reads the finance store read only and ``config/risk.yaml`` at each call, so a value
-Lucas changes applies at the next call and a marker blocks it (R7). It returns the market risk
+the user changes applies at the next call and a marker blocks it (R7). It returns the market risk
 of the portfolio known at ``as_of``: volatility and GARCH, VaR and CVaR by three methods,
 backtest, drawdown, beta, correlations, concentration, Euler contributions, stresses and the
 split of a VaR change (ADR-014). Every number is a figure with its French display and an id
@@ -53,7 +53,7 @@ ANNOTATIONS = ToolAnnotations(
     read_only_hint=True, idempotent_hint=True, destructive_hint=False, open_world_hint=False
 )
 INSTRUCTIONS = (
-    "Mesures de risque du portefeuille de Lucas, calculées sur la base finance locale. Les "
+    "Mesures de risque du portefeuille de l'utilisateur, calculées sur la base finance locale. Les "
     "chiffres viennent de l'outil : les citer avec leur affichage et leurs hypothèses, ne jamais "
     "les recalculer ni les extrapoler (R1)."
 )

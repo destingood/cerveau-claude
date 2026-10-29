@@ -2,7 +2,7 @@
 
 One tool, one closed list of operations (I2): the arithmetic lives in ``core/business/calc.py``
 and every number leaves as a figure with its French display (R1). The VAT operation reads
-``config/`` at each call, so a rate Lucas sets applies at the next call and a marker refuses it
+``config/`` at each call, so a rate the user sets applies at the next call and a marker refuses it
 (R7). Nothing leaves the machine: no network, no file written. ``CERVEAU_HOME`` names the served
 project, the only variable the MCP adapter passes through.
 
@@ -46,7 +46,7 @@ ANNOTATIONS = ToolAnnotations(
     read_only_hint=True, idempotent_hint=True, destructive_hint=False, open_world_hint=False
 )
 INSTRUCTIONS = (
-    "Calculs commerciaux de Lucas : marges, prix, TVA, seuil de rentabilité, CAC et LTV, "
+    "Calculs commerciaux de l'utilisateur : marges, prix, TVA, seuil de rentabilité, CAC et LTV, "
     "croissance. Les chiffres viennent de l'outil : les citer avec leur affichage et leur "
     "formule, ne jamais les recalculer (R1). Une entrée manquante se demande, elle ne se devine "
     "pas. Aide à la décision personnelle, pas un conseil (R16)."

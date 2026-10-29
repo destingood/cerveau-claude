@@ -35,7 +35,7 @@ ROOT = PLUGIN.parents[1]
 MANIFEST = yaml.safe_load((PLUGIN / "plugin.yaml").read_text(encoding="utf-8"))
 SPECS = {tool["name"]: tool for tool in MANIFEST["tools"]}
 SHA256 = sha256_of(bundle())
-MISSING = "index ATT&CK 20.0 absent : lancer `cerveau cyber attack-fetch --version 20.0` (Lucas)"
+MISSING = "index ATT&CK 20.0 absent : lancer `cerveau cyber attack-fetch --version 20.0` (the user)"
 
 
 def _home(tmp_path: Path, *, recorded: bool = True, indexed: bool = True) -> Path:
@@ -241,7 +241,7 @@ def test_an_unknown_digest_names_the_command(tmp_path: Path) -> None:
     home = _home(tmp_path, recorded=False)
     text = error_text(call(_server(home), {"query": "T1059"}))
     assert text.endswith(
-        ": index absent : lancer `cerveau cyber attack-fetch --version 20.0` (Lucas)"
+        ": index absent : lancer `cerveau cyber attack-fetch --version 20.0` (the user)"
     )
 
 

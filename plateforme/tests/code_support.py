@@ -16,7 +16,7 @@ GIT_ENV = {
     "GIT_AUTHOR_DATE": "2026-10-20T10:00:00+02:00",
     "GIT_COMMITTER_DATE": "2026-10-20T10:00:00+02:00",
 }
-IDENTITY = ("-c", "user.name=Lucas Test", "-c", "user.email=lucas@example.test")
+IDENTITY = ("-c", "user.name=Utilisateur Test", "-c", "user.email=utilisateur@example.test")
 
 
 def git(

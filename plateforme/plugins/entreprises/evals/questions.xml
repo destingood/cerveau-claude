@@ -1,7 +1,7 @@
 <?xml version="1.0" encoding="utf-8"?>
 <!--
   Questions d'évaluation du plugin entreprises (R8). Elles servent aux évals live, avec le
-  consentement de Lucas pour chaque campagne ; aucun résultat n'est stocké ici. Elles portent
+  consentement de l'utilisateur pour chaque campagne ; aucun résultat n'est stocké ici. Elles portent
   sur les bornes de l'outil, fixées par le code, et sur le refus de rendre une personne (I4) :
   aucune ne dépend d'une entreprise réelle, dont les données changent.
 -->

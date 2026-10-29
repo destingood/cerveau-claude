@@ -1,6 +1,6 @@
 # ADR-023 — Horloge et chiffres gelés des évals du pack Finance
 
-- Statut : **proposé** (les chiffres gelés du golden set Finance attendent la validation de Lucas
+- Statut : **proposé** (les chiffres gelés du golden set Finance attendent la validation de l'utilisateur
   avant le gel, R9 ; plan de phase 2, D17)
 - Date : 2026-10-18
 - Phase : 2
@@ -41,10 +41,10 @@ le produise (R1), et le juge doit pouvoir noter l'exactitude d'un chiffre sans l
 - Les cas hors ligne Finance sont reproductibles et gratuits ; toute modification d'un calcul qui
   change un affichage fait échouer au moins un cas (R9 : on ne retouche pas le cas, on justifie).
 - Les chiffres gelés dépendent de la base de référence : la régénérer (`generate.py`) impose de
-  revalider le golden set avec Lucas.
+  revalider le golden set avec l'utilisateur.
 - En mesure réelle, les chiffres dépendent des arguments que le planificateur passe aux outils
   (méthode, horizon, date de comparaison) : un argument différent donne un autre chiffre et le cas
-  échoue. La campagne réelle le mesure ; elle n'est lancée qu'avec l'accord de Lucas (D8).
+  échoue. La campagne réelle le mesure ; elle n'est lancée qu'avec l'accord de l'utilisateur (D8).
 - Tests : `tests/test_evals.py` (golden Finance, grille Finance, appel en échec, limites),
   `tests/test_cli_ask_eval.py`.
 

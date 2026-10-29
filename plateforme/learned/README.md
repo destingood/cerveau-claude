@@ -1,7 +1,7 @@
 # Couche apprise de CERVEAU (`learned/`)
 
 Ce dossier contient ce que CERVEAU apprend de ses erreurs et des retours (ADR-011, ADR-065).
-Il est versionné (décision D3 de Lucas, 29/10/2026) : chaque changement se relit dans git.
+Il est versionné (décision D3 de l'utilisateur, 29/10/2026) : chaque changement se relit dans git.
 
 ## Liste fermée
 
@@ -29,4 +29,4 @@ symbolique ou une jonction.
 
 ## Protection
 
-Les droits d'écriture sur ce dossier (ACL Windows) sont à poser par Lucas (backlog B77).
+Les droits d'écriture sur ce dossier (ACL Windows) sont à poser par l'utilisateur (backlog B77).

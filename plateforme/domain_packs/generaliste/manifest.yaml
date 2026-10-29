@@ -3,7 +3,7 @@
 id: generaliste
 version: 0.1.0
 # « expérimental » tant que le golden set n'a pas atteint son seuil en mesure réelle (section 9.3) ;
-# seul Lucas passe le pack en « actif », au vu du rapport d'évals.
+# seul l'utilisateur passe le pack en « actif », au vu du rapport d'évals.
 statut: experimental
 perimetre:
   - Questions générales de connaissance, d'explication et de raisonnement.

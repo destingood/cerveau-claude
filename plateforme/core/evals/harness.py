@@ -216,7 +216,7 @@ def committee_texts(root: Path, payload: dict[str, Any]) -> tuple[str, ...]:
 
 def paper_limits(config: Config, case: Case) -> PaperRiskLimits:
     """The paper limits of the run: the configuration's, or the case's values over a copy of
-    them (never the file, which only Lucas changes)."""
+    them (never the file, which only the user changes)."""
     given = case.offline.paper_limits
     if given is None:
         return config.risk_limits_paper
@@ -471,7 +471,7 @@ async def _live(case: Case, root: Path, run: str) -> CaseResult:
         roles=roles,
         texts=texts,
         unknown=unknown_limits(config.risk_limits_paper),
-        # Live, the journal is Lucas's: only what the request wrote is read.
+        # Live, the journal is the user's: only what the request wrote is read.
         written=tuple(json.dumps(p, ensure_ascii=False, default=str) for p in (payload, *roles)),
     )
     judgement = None

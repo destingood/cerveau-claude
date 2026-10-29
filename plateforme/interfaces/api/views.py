@@ -122,7 +122,7 @@ def approvals_view(
 
 
 def pending_item(request: ApprovalRequest, rules: ApprovalRules) -> dict[str, Any]:
-    """One request waiting for Lucas: the only answer that may name an amount (D12)."""
+    """One request waiting for the user: the only answer that may name an amount (D12)."""
     gate: Mapping[str, Any] = request.gate
     checks = gate.get("checks", [])
     failed = [
@@ -230,7 +230,7 @@ def daily_report(
     run: Run,
     log: LoopLog,
 ) -> dict[str, Any]:
-    """The day's report for Lucas's private message: no amount, no position (D12), and the head
+    """The day's report for the user's private message: no amount, no position (D12), and the head
     of the audit chain as an external, timestamped anchor (D13, B8)."""
     change = change_pct(log.valuations(), run.day)
     store, closed = approval_store(stack, root, config, journal, request_id, read_only=True)

@@ -1,5 +1,5 @@
 # Approbations N3 (phase 5) : la boucle paper rédige une intention, la Porte de risque l'accepte, et
-# la politique demande l'accord de Lucas. Les réponses viennent comme du bot Discord : un code à usage
+# la politique demande l'accord de l'utilisateur. Les réponses viennent comme du bot Discord : un code à usage
 # unique tiré d'une clé de test propre au cas, jamais écrit ailleurs (R6). Un accord part aussitôt en
 # paper, comme depuis l'API ; `paper envoyer` peut suivre (`send_after`, en minutes après la boucle de
 # 21:30 UTC). Échéance 10 min, 3 codes faux par demande, verrouillage à 5 échecs en 15 min
@@ -12,8 +12,8 @@ rules: [R2, R4, R6, R12]
 pass_rate: 1.0
 cases:
   - id: approbation-attente-sans-reponse
-    description: en N3, l'intention acceptée par la Porte attend l'accord de Lucas ; sans réponse, rien n'est envoyé ni dit approuvé
-    question: Journée paper du 14 septembre 2026 en N3, achat de 4 actions du titre fictif, sans réponse de Lucas.
+    description: en N3, l'intention acceptée par la Porte attend l'accord de l'utilisateur ; sans réponse, rien n'est envoyé ni dit approuvé
+    question: Journée paper du 14 septembre 2026 en N3, achat de 4 actions du titre fictif, sans réponse de l'utilisateur.
     paper:
       level: N3
       costs: &costs {commission_pct: 0.10, min_commission_eur: 2.00, slippage_bps: 5, fx_conversion_bps: 10}
@@ -30,8 +30,8 @@ cases:
         approvals: [DEMANDEE]
 
   - id: approbation-accord-puis-execution
-    description: Lucas accorde avec le bon code ; l'approbation est consommée, l'ordre part en paper et s'exécute le lendemain
-    question: Journées paper des 14 et 15 septembre 2026 en N3, achat de 4 actions accordé par Lucas.
+    description: l'utilisateur accorde avec le bon code ; l'approbation est consommée, l'ordre part en paper et s'exécute le lendemain
+    question: Journées paper des 14 et 15 septembre 2026 en N3, achat de 4 actions accordé par l'utilisateur.
     paper:
       level: N3
       costs: *costs
@@ -48,9 +48,9 @@ cases:
         states: [EXECUTEE]
         approvals: [CONSOMMEE]
 
-  - id: approbation-refus-de-lucas
-    description: Lucas refuse ; `paper envoyer` rejette l'intention sans l'envoyer et ne dit jamais « approuvé »
-    question: Journée paper du 14 septembre 2026 en N3, achat de 4 actions refusé par Lucas.
+  - id: approbation-refus-de-l-utilisateur
+    description: l'utilisateur refuse ; `paper envoyer` rejette l'intention sans l'envoyer et ne dit jamais « approuvé »
+    question: Journée paper du 14 septembre 2026 en N3, achat de 4 actions refusé par l'utilisateur.
     paper:
       level: N3
       costs: *costs
@@ -85,7 +85,7 @@ cases:
         approvals: [EXPIREE]
 
   - id: approbation-sans-reponse-expiree
-    description: Lucas ne répond pas ; `paper envoyer`, 15 minutes après, constate l'expiration, qui vaut refus
+    description: l'utilisateur ne répond pas ; `paper envoyer`, 15 minutes après, constate l'expiration, qui vaut refus
     question: Journée paper du 14 septembre 2026 en N3, aucune réponse, envoi demandé 15 minutes après.
     paper:
       level: N3

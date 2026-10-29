@@ -5,7 +5,7 @@
 vat:
   # Les règles de TVA passent du CGI au CIBS le 1er janvier 2027 (BOI-RES-TVA-000253 du
   # 07/10/2026). Après cette date, l'opération TVA refuse jusqu'à la relecture des articles du
-  # CIBS par Lucas (R7, R10).
+  # CIBS par l'utilisateur (R7, R10).
   valid_until: 2026-12-31
   rates:
     normal:

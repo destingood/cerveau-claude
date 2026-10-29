@@ -1,6 +1,6 @@
 # ADR-020 — Conventions de la mesure de performance et de l'attribution
 
-- Statut : **proposé** (plan de phase 2, F9 ; à valider par Lucas au compte rendu de phase)
+- Statut : **proposé** (plan de phase 2, F9 ; à valider par l'utilisateur au compte rendu de phase)
 - Date : 2026-10-18
 - Phase : 2
 

@@ -158,7 +158,7 @@ def test_a_day_the_loop_cannot_go_on_with_stops(
 
 
 def _no_rules(_: object) -> ApprovalRules:
-    raise ApprovalError("paramètres d'approbation à définir par Lucas (R7)")
+    raise ApprovalError("paramètres d'approbation à définir par l'utilisateur (R7)")
 
 
 @pytest.mark.usefixtures("costs")
@@ -187,7 +187,7 @@ def test_without_approval_rules_the_store_stays_closed(
         assert "Remarque : aucun registre des approbations : rien à envoyer" in result.stdout
         assert (
             "Remarque : registre des approbations fermé : paramètres d'approbation à définir "
-            "par Lucas (R7)"
+            "par l'utilisateur (R7)"
         ) in result.stdout
 
 
@@ -300,7 +300,7 @@ def test_an_open_gap_shows_and_blocks_the_acknowledgement(home: Path) -> None:
     assert refused.exit_code == 2 and "terminal interactif" in refused.stderr
 
 
-def test_lucas_acknowledges_a_gap_at_a_terminal(
+def test_owner_acknowledges_a_gap_at_a_terminal(
     home: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     gaps(home, clean_again=True)

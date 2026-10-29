@@ -1,9 +1,9 @@
 """`cerveau paper` and `cerveau status`: the paper day by hand, and what stands (ADR-033, B54).
 
 ``paper run`` treats the decision day of now, never another (R10); ``paper envoyer`` sends the
-intents Lucas approved since, as paper orders while the live is disabled (D10). ``status``,
+intents the user approved since, as paper orders while the live is disabled (D10). ``status``,
 ``orders`` and ``report`` only read: a file that does not exist yet is reported, never created.
-``acquitter`` is Lucas's alone, at an interactive terminal (D14).
+``acquitter`` is the user's alone, at an interactive terminal (D14).
 """
 
 from __future__ import annotations
@@ -114,7 +114,7 @@ def run(
 def send(
     journal: JournalOpt = None, config_dir: ConfigDirOpt = None, outside: OutsideVarOpt = False
 ) -> None:
-    """Envoie au simulateur les intentions approuvées par Lucas (ADR-036, D10).
+    """Envoie au simulateur les intentions approuvées par l'utilisateur (ADR-036, D10).
 
     Chacune repasse la Porte de risque et la politique avant que son approbation soit consommée ;
     une approbation refusée, échue ou déjà consommée rejette l'intention, jamais envoyée. Codes
@@ -184,7 +184,7 @@ def _paper_lines(root: Path) -> list[str]:
     gaps = default_log_path(root)
     if gaps.is_file():
         audit = AuditJournal(default_journal_path(root))  # read only: nothing is recorded
-        recorder = Recorder(audit, "lucas", _request_id("status"))
+        recorder = Recorder(audit, "owner", _request_id("status"))
         with ReconciliationLog.open(gaps, recorder) as rec:
             count, waiting = rec.open_gaps(), rec.awaiting_acknowledgement()
         if waiting:
@@ -256,14 +256,15 @@ def report(
 
 @paper_app.command("acquitter")
 def acknowledge(journal: JournalOpt = None, outside: OutsideVarOpt = False) -> None:
-    """Lève le blocage après un écart réconcilié : Lucas seul, en terminal interactif (D14)."""
+    """Lève le blocage après un écart réconcilié : l'utilisateur seul, en terminal interactif
+    (D14)."""
     root = project_root()
     journal = var_path(journal, default_journal_path(root), option="--journal", outside=outside)
     path = default_log_path(root)
     if not path.is_file():
         fail("Aucune réconciliation enregistrée : rien à acquitter.", EXIT_ERROR)
     audit = AuditJournal(journal)
-    with ReconciliationLog.open(path, Recorder(audit, "lucas", _request_id("ack"))) as log:
+    with ReconciliationLog.open(path, Recorder(audit, "owner", _request_id("ack"))) as log:
         try:
             gaps = log.acknowledge(interactive=interactive_terminal)
         except ReconciliationError as exc:
@@ -277,7 +278,9 @@ def status_command(config_dir: ConfigDirOpt = None) -> None:
     if kill_switch_engaged(root):  # before the config: a stop is reported even if it is invalid
         stop = recorded_stop(root)
         detail = f"{stop.trigger}, {stop.engaged_at}" if stop else "fichier KILL créé à la main"
-        typer.echo(f"Kill switch : ENGAGÉ ({detail}) ; réarmement par Lucas (`cerveau rearm`).")
+        typer.echo(
+            f"Kill switch : ENGAGÉ ({detail}) ; réarmement par l'utilisateur (`cerveau rearm`)."
+        )
     else:
         typer.echo("Kill switch : armé.")
     config = load(config_dir)

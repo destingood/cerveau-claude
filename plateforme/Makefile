@@ -38,7 +38,7 @@ format:
 eval:
 	$(UV) run cerveau eval
 
-# Paid: only for a campaign Lucas agreed to (D8). make eval-live CAMPAIGN=<name> SUITES="<suites>"
+# Paid: only for a campaign the user agreed to (D8). make eval-live CAMPAIGN=<name> SUITES="<suites>"
 eval-live:
 	$(UV) run cerveau eval --live --campaign "$(CAMPAIGN)" $(SUITES)
 

@@ -1,10 +1,10 @@
 # Plan — Phase 2 : pack Finance en lecture (N0–N1) : F1, F2, F3, F4, F9, F10
 
-Date : 18/10/2026 · Statut : **validé par Lucas le 18/10/2026**, avec les recommandations D1 à D21 du §12.
+Date : 18/10/2026 · Statut : **validé par l'utilisateur le 18/10/2026**, avec les recommandations D1 à D21 du §12.
 
 ## 0. En une phrase
 
-Lucas importe son portefeuille (CSV), `cerveau finance sync` charge cours, change et taux dans une base point-in-time contrôlée, et `cerveau ask` répond aux cinq questions du §10.10 avec des chiffres qui viennent tous de cinq outils déterministes (données, portefeuille, risque, optimisation, performance), chacun relié à l'appel d'outil qui l'a produit (R1). Aucune action : la finance reste en N0 tant que Lucas ne la promeut pas à la main, et un rééquilibrage n'est jamais qu'une proposition.
+L'utilisateur importe son portefeuille (CSV), `cerveau finance sync` charge cours, change et taux dans une base point-in-time contrôlée, et `cerveau ask` répond aux cinq questions du §10.10 avec des chiffres qui viennent tous de cinq outils déterministes (données, portefeuille, risque, optimisation, performance), chacun relié à l'appel d'outil qui l'a produit (R1). Aucune action : la finance reste en N0 tant que l'utilisateur ne la promeut pas à la main, et un rééquilibrage n'est jamais qu'une proposition.
 
 ## 1. Vérifié aujourd'hui (sources officielles, 18/10/2026)
 
@@ -51,10 +51,10 @@ Une approximation n'est jamais présentée comme une parité : l'étiquette figu
 
 **Point-in-time (R10).** Toute lecture prend une date `as_of`. Une ligne n'est visible que si `published_at ≤ as_of`, dans sa dernière révision publiée avant cette date. Les cours ajustés sont calculés à la lecture avec les seules opérations connues à `as_of`. Une série ajustée en arrière, comme celle que livrent les fournisseurs, intègre en effet des splits futurs : c'est une fuite d'information. `ingested_at` sert à l'audit et au mode strict « connu à », que l'on utilisera pour rejouer une décision passée.
 
-**Ingestion.** `cerveau finance sync` (CLI lancée par Lucas, réseau, écriture journalisée) est séparée des outils, qui ne font que lire la base (classe LECTURE). Fournisseurs derrière une interface `MarketDataProvider` :
+**Ingestion.** `cerveau finance sync` (CLI lancée par l'utilisateur, réseau, écriture journalisée) est séparée des outils, qui ne font que lire la base (classe LECTURE). Fournisseurs derrière une interface `MarketDataProvider` :
 
 - `fixtures` : hors ligne, pour les tests et les évals ;
-- `csv` : cours exportés par Lucas, par exemple depuis son courtier ;
+- `csv` : cours exportés par l'utilisateur, par exemple depuis son courtier ;
 - `ecb` : change de référence, €STR et taux (httpx, sans clé) ;
 - le fournisseur de cours choisi en D1.
 
@@ -70,10 +70,10 @@ Le score est le **minimum** des quatre : aucun poids à régler, et une seule an
 ## 4. Portefeuille (F2)
 
 - **Format CERVEAU** (CSV documenté) : date, compte, type (achat, vente, dividende, frais, dépôt, retrait, change), identifiant, quantité, prix, devise, frais. Un adaptateur par courtier convertit l'export réel (D4).
-- **Import** : `cerveau portfolio import <fichier> --format <courtier>`, lancé par Lucas. L'import est idempotent (empreinte du fichier) et journalisé, et le planificateur n'a pas cet outil. Le CSV est un contenu externe : ses champs texte sont bornés en longueur et passent `injection_signals` (R5).
+- **Import** : `cerveau portfolio import <fichier> --format <courtier>`, lancé par l'utilisateur. L'import est idempotent (empreinte du fichier) et journalisé, et le planificateur n'a pas cet outil. Le CSV est un contenu externe : ses champs texte sont bornés en longueur et passent `injection_signals` (R5).
 - **Positions** : reconstruites depuis les transactions (quantité et prix moyen pondéré), cash par devise, valeur en EUR au change BCE.
 - **Rapprochement** : `cerveau portfolio reconcile <relevé>` compare les positions calculées au relevé de positions du courtier. Tout écart produit une alerte dans la CLI et le journal, et marque `rapprochement: ecart` dans chaque sortie d'outil. Le blocage des intentions arrive en phase 4 (il n'y a aucune intention avant).
-- **IBKR** : export CSV ou Flex téléchargé par Lucas, via l'adaptateur CSV (D5). Aucune connexion de compte par Claude Code.
+- **IBKR** : export CSV ou Flex téléchargé par l'utilisateur, via l'adaptateur CSV (D5). Aucune connexion de compte par Claude Code.
 - **Portefeuille de référence fictif** : `tests/fixtures/finance/reference/`. Il contient une dizaine d'instruments fictifs (`FICT-…`), répartis entre actions, ETF, obligations et or, en EUR, USD et GBP, avec du cash EUR et USD. Il est accompagné de trois ans de cours **synthétiques**, générés par un script à graine fixe (script et CSV versionnés). Aucune donnée d'un fournisseur n'est commise, à cause de leurs droits de redistribution et de l'ouverture publique prévue en phase 8. Anomalies placées volontairement :
   - un split, des dividendes ;
   - un trou, un cours aberrant ;
@@ -149,7 +149,7 @@ Le score est le **minimum** des quatre : aucun poids à régler, et une seule an
   - il contrôle aussi les dates, les petits entiers (**B33**) et le sens d'une variation (**B35**) ;
   - un nombre orphelin déclenche `[VERIFICATION REQUIRED]` ;
   - l'enregistrement d'audit garde la table nombre → appel d'outil, ce qui mesure le critère « 100 % des chiffres traçables ».
-- **Autonomie** : la finance reste en **N0** (`autonomy.yaml`), et Claude Code ne la change jamais. En N0, le résultat de l'optimiseur est présenté comme une analyse. La promotion N0 → N1 est faite par Lucas, à la main, après le rapport (D16).
+- **Autonomie** : la finance reste en **N0** (`autonomy.yaml`), et Claude Code ne la change jamais. En N0, le résultat de l'optimiseur est présenté comme une analyse. La promotion N0 → N1 est faite par l'utilisateur, à la main, après le rapport (D16).
 - **R16** : le rubric Finance exige la mention « aide à la décision personnelle, pas un conseil en investissement » dès qu'une réponse compare des choix. Toute demande d'ordre est refusée, puisqu'aucune classe FINANCIERE n'existe en phase 2.
 
 ## 9. Évaluations
@@ -201,7 +201,7 @@ Licences de numpy, pandas et scipy à confirmer par `pip-licenses` au moment de 
 
 `docs/licences.md` et `pip-audit` seront mis à jour.
 
-## 12. Décisions demandées à Lucas
+## 12. Décisions demandées à l'utilisateur
 
 | # | Décision | Options | Ma recommandation |
 |---|---|---|---|

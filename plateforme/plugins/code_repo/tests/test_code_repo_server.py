@@ -112,7 +112,7 @@ def test_the_log_lists_commits_newest_first_without_emails(server: Any) -> None:
     assert result["masked"] == 1
     assert result["more_commits"] is False
     first = result["commits"][0]
-    assert first["author"] == "Lucas Test"
+    assert first["author"] == "Utilisateur Test"
     assert first["date"] == "2026-10-20T10:00:00+02:00"
     assert len(first["sha"]) == 40
     assert "example.test" not in json.dumps(result)
@@ -128,9 +128,20 @@ def test_the_log_is_bounded_and_says_so(server: Any) -> None:
 
 
 def test_a_cut_log_keeps_whole_commits(example: Path, monkeypatch: pytest.MonkeyPatch) -> None:
-    monkeypatch.setattr(server_module, "MAX_LOG_BYTES", 120)
+    monkeypatch.setattr(server_module, "MAX_LOG_BYTES", 200)
     result = data(call(server_for([listed("exemple", example)]), "repo_log", {"repo": "exemple"}))
     assert [c["subject"] for c in result["commits"]] == ["rotation du jeton [MASQUÉ]"]
+
+
+def test_a_log_cut_inside_a_subject_drops_that_commit(
+    example: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    # The limit falls inside the newest subject: the token's head would no longer look like a
+    # secret, so the cut record is dropped rather than shown half masked.
+    monkeypatch.setattr(server_module, "MAX_LOG_BYTES", 120)
+    result = data(call(server_for([listed("exemple", example)]), "repo_log", {"repo": "exemple"}))
+    assert result["commits"] == []
+    assert TOKEN[:12] not in json.dumps(result)
 
 
 # --- repo_diff --------------------------------------------------------------------------------

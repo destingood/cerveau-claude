@@ -4,10 +4,10 @@
 id: business
 version: 0.1.0
 # « expérimental » tant que le golden set n'a pas atteint son seuil en mesure réelle (section 9.3) ;
-# seul Lucas passe le pack en « actif », au vu du rapport d'évals (D2).
+# seul l'utilisateur passe le pack en « actif », au vu du rapport d'évals (D2).
 statut: experimental
 perimetre:
-  - Calculs commerciaux déterministes sur les chiffres fournis par Lucas — marge, prix de vente,
+  - Calculs commerciaux déterministes sur les chiffres fournis par l'utilisateur — marge, prix de vente,
     coefficient, TVA, seuil de rentabilité, CAC et LTV, variation, taux de croissance annuel
     composé (biz_calc, ADR-061, R1).
   - Fiche publique d'une entreprise et petite étude de concurrence — SIREN, dénomination, activité,
@@ -21,7 +21,7 @@ perimetre:
 hors_perimetre:
   - Envoi, publication ou programmation de quoi que ce soit (courriel, message, publication,
     annonce) — aucun outil d'envoi n'existe (D22, I5).
-  - Conseil fiscal, social ou comptable appliqué à la situation de Lucas (régime, cotisations,
+  - Conseil fiscal, social ou comptable appliqué à la situation de l'utilisateur (régime, cotisations,
     impôt) — textes par le pack juridique_fr, conseil par un professionnel.
   - Profilage de personnes, recherche de dirigeants, prospection nominative, collecte de
     coordonnées (RGPD, R15, I4).
@@ -37,7 +37,7 @@ plugins:
   - web_research
 autonomie:
   # Niveau courant N0, niveau maximal N1 : config/autonomy.yaml, domains.business (D3). Le domaine
-  # a les capacités LECTURE et CALCUL (ADR-063). Seul Lucas promeut le pack, à la main.
+  # a les capacités LECTURE et CALCUL (ADR-063). Seul l'utilisateur promeut le pack, à la main.
   source: config/autonomy.yaml#domains.business
 sources_autorisees:
   # API Recherche d'entreprises (DINUM), en accès anonyme et en lecture seule (entreprises).

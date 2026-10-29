@@ -106,7 +106,7 @@ Seul `portion` est copyleft (faible) parmi ces transitives.
 **fsspec** : NautilusTrader 1.231.0 fixe `fsspec==2026.2.0`, touchée par PYSEC-2026-4217
 (CVE-2026-104851, exécution de code par les gabarits de `ReferenceFileSystem`, corrigée en
 2026.6.0). `pyproject.toml` la remplace par 2026.9.0 (`override-dependencies` de uv). Voir
-l'ADR-024 ; cet écart à une contrainte amont est soumis à Lucas.
+l'ADR-024 ; cet écart à une contrainte amont est soumis à l'utilisateur.
 `presidio-anonymizer` 2.2.364 n'est **pas** retenu : il impose `cryptography<49`, version touchée
 par PYSEC-2026-3554 et PYSEC-2026-3552 (correctifs en 49.0.0 et 50.0.0). La pseudonymisation est
 faite dans `core/guardrails/` à partir des résultats de `presidio-analyzer` (ADR-010).
@@ -128,7 +128,7 @@ Conditions lues le 2026-10-21 ; seules des métadonnées et des résumés sont l
 |---|---|---|---|
 | arXiv, API `export.arxiv.org` | sans clé ; une requête toutes les 3 s et une seule connexion, toutes machines confondues ([conditions d'utilisation](https://info.arxiv.org/help/api/tou.html)) | métadonnées sous CC0 1.0 ; texte intégral sous la licence de chaque article, non redistribuable par l'API | plugin `scholarly` : limiteur partagé `var/net/arxiv.*` ; résumé coupé à 2 000 caractères ; texte intégral jamais lu (ADR-044) |
 | Crossref, REST API `api.crossref.org` | pool public sans clé et sans `mailto` (D11) ; en-têtes du 2026-10-21 : 1 requête par seconde, 1 requête simultanée ([accès](https://www.crossref.org/documentation/retrieve-metadata/rest-api/access-and-authentication/)) | métadonnées bibliographiques libres de restriction ; **résumés sous le droit d'auteur** de leurs éditeurs ou auteurs ([licence des métadonnées](https://www.crossref.org/documentation/retrieve-metadata/rest-api/rest-api-metadata-license-information/)) | plugin `scholarly` : limiteur partagé `var/net/crossref.*` ; résumé coupé à 1 000 caractères, montré mais jamais stocké ni mis en cache (ADR-044) |
-| Flux RSS et Atom, liste blanche `flux` de `domain_packs/recherche/knowledge/sources.yaml` | aucun flux au 2026-10-22 (D18) ; chaque flux est ajouté par Lucas après lecture des CGU du site, qui tiennent lieu de robots.txt (R15) | licence notée flux par flux (`licence`) ; `A_VERIFIER` ou `A_DEFINIR` bloque la lecture (R7) | plugin `feeds` : titre, lien, date et résumé coupé à 1 000 caractères ; contenus complets ignorés, liens jamais suivis (ADR-044) |
+| Flux RSS et Atom, liste blanche `flux` de `domain_packs/recherche/knowledge/sources.yaml` | aucun flux au 2026-10-22 (D18) ; chaque flux est ajouté par l'utilisateur après lecture des CGU du site, qui tiennent lieu de robots.txt (R15) | licence notée flux par flux (`licence`) ; `A_VERIFIER` ou `A_DEFINIR` bloque la lecture (R7) | plugin `feeds` : titre, lien, date et résumé coupé à 1 000 caractères ; contenus complets ignorés, liens jamais suivis (ADR-044) |
 
 ## Outils et services du pack `code` (phase 6, P3a)
 git et Docker sont appelés en sous-processus, l'API de GitHub par `httpx`, déjà au verrou (plan
@@ -137,20 +137,20 @@ P3, §7). Conditions lues le 2026-10-22.
 | Composant | Licence ou conditions | Usage dans CERVEAU |
 |---|---|---|
 | git (2.56.0.windows.2 sur le poste) | GPL-2.0-only (`LICENSE.txt` de Git for Windows) | `code_repo` et la copie jetable des contrôles l'appellent en sous-processus, sans lien ni redistribution : aucune obligation pour CERVEAU |
-| Image des contrôles, `python:3.12-slim` avec ruff et pytest (E4) | Python : PSF-2.0 ; ruff et pytest : MIT (tableau des dépendances) ; paquets Debian de l'image sous leurs licences propres (`A_VERIFIER` à la construction) | construite par Lucas, jamais par CERVEAU (`--pull never`), non redistribuée |
+| Image des contrôles, `python:3.12-slim` avec ruff et pytest (E4) | Python : PSF-2.0 ; ruff et pytest : MIT (tableau des dépendances) ; paquets Debian de l'image sous leurs licences propres (`A_VERIFIER` à la construction) | construite par l'utilisateur, jamais par CERVEAU (`--pull never`), non redistribuée |
 | API REST de GitHub (Actions), `api.github.com` | [Conditions d'utilisation de GitHub](https://docs.github.com/en/site-policy/github-terms/github-terms-of-service), section H « API Terms », en vigueur depuis le 2026-04-27 : des requêtes abusives ou trop fréquentes peuvent suspendre l'accès à l'API ; aucun partage de jeton pour dépasser les limites | `code_ci` : lecture seule sans jeton (E6), une requête à la fois, pause respectée après un refus 403 ou 429 ; 60 requêtes par heure suffisent à un usage personnel |
 
 ## Agent de code `code_agent` (phase 6, P3b)
-L'agent tourne dans une image construite par Lucas : CERVEAU n'ajoute aucune dépendance
+L'agent tourne dans une image construite par l'utilisateur : CERVEAU n'ajoute aucune dépendance
 Python (plan P3b, §6). Faits relevés le 2026-10-22 (ADR-053, ADR-054, `infra/agent/README.md`).
 
 | Composant | Licence ou conditions | Usage dans CERVEAU |
 |---|---|---|
 | `claude-agent-sdk` 0.2.172 (publié sur PyPI le 2026-10-22) | MIT | installé dans l'image `cerveau-agent` seulement, figé par version et par empreinte (`requirements.txt`, `--require-hashes`) ; jamais dans `uv.lock` |
 | CLI de Claude Code, embarqué dans `claude-agent-sdk` (2.1.257 au moins) | « © Anthropic PBC. All rights reserved », usage soumis aux conditions commerciales d'Anthropic (`LICENSE.md` de `anthropics/claude-code`) : **licence restrictive** | lancé par le runner dans le conteneur de l'agent ; reste dans l'image, jamais copié dans le dépôt ni redistribué |
-| Image `cerveau-agent` : `python:3.12-slim`, ruff 0.17.1, pytest 9.1.1 | Python : PSF-2.0 ; ruff et pytest : MIT ; paquets Debian de l'image sous leurs licences propres (`A_VERIFIER` à la construction) | construite par Lucas, jamais par CERVEAU (`--pull never`), non redistribuée |
-| Image `cerveau-llm-proxy` : `python:3.12-slim` et `core/code/llm_proxy.py` | PSF-2.0 ; bibliothèque standard seulement | construite par Lucas, non redistribuée ; seul conteneur qui reçoit la clé et sort vers l'API (ADR-053) |
-| API Messages d'Anthropic, `api.anthropic.com` (`POST /v1/messages`) | conditions commerciales d'Anthropic, celles des appels de CERVEAU depuis la phase 1 ; texte non relu le 2026-10-22 (`A_VERIFIER`) | appelée par le proxy de la tâche avec la clé de Lucas : `claude-sonnet-5-5` (F6), 2 $ au plus par tâche (F5) ; le contenu des requêtes part chez Anthropic, comme pour toute utilisation de Claude |
+| Image `cerveau-agent` : `python:3.12-slim`, ruff 0.17.1, pytest 9.1.1 | Python : PSF-2.0 ; ruff et pytest : MIT ; paquets Debian de l'image sous leurs licences propres (`A_VERIFIER` à la construction) | construite par l'utilisateur, jamais par CERVEAU (`--pull never`), non redistribuée |
+| Image `cerveau-llm-proxy` : `python:3.12-slim` et `core/code/llm_proxy.py` | PSF-2.0 ; bibliothèque standard seulement | construite par l'utilisateur, non redistribuée ; seul conteneur qui reçoit la clé et sort vers l'API (ADR-053) |
+| API Messages d'Anthropic, `api.anthropic.com` (`POST /v1/messages`) | conditions commerciales d'Anthropic, celles des appels de CERVEAU depuis la phase 1 ; texte non relu le 2026-10-22 (`A_VERIFIER`) | appelée par le proxy de la tâche avec la clé de l'utilisateur : `claude-sonnet-5-5` (F6), 2 $ au plus par tâche (F5) ; le contenu des requêtes part chez Anthropic, comme pour toute utilisation de Claude |
 
 ## Sources du pack `cyber` (phase 6, P4)
 Aucune nouvelle dépendance : `httpx` et Pydantic lisent les API et le STIX en JSON, sans `stix2`
@@ -164,7 +164,7 @@ utilise la source (`core/orchestrator/notices.py`, G9) : aucun modèle ne peut l
 | Descriptions du programme CVE, reprises par le NVD | [Conditions du programme CVE](https://www.cve.org/Legal/TermsOfUse) : page rendue en JavaScript, non lue ; forme exacte de la mention `A_VERIFIER` (backlog) | descriptions citées en données (R5), avec un renvoi aux conditions du programme |
 | Catalogue KEV de la CISA, flux JSON | CC0 1.0 (`licenses/kev/license.txt` de la CISA) : ni le logo, ni un aval de la CISA ou du DHS | `cyber_cve` : catalogue lu en entier (10 Mo au plus) ; les champs `notes` et `forensicTriage` ne sont pas gardés ; mention « aucun aval » |
 | EPSS de FIRST, `api.first.org/data/v1/epss` | Scores publiés librement ; « Attribution is requested » dans une publication ou un produit ([FAQ](https://www.first.org/epss/faq)) ; forme exacte non publiée (`A_VERIFIER`) ; aucun débit publié trouvé (`A_VERIFIER`) | `cyber_cve` : score et centile de chaque CVE lue ; attribution à FIRST et à l'EPSS SIG |
-| MITRE ATT&CK Enterprise v20.0, `mitre-attack/attack-stix-data` | Licence propre à MITRE, non exclusive et gratuite ([conditions](https://attack.mitre.org/resources/legal-and-branding/terms-of-use/), `LICENSE.txt` du dépôt) : toute copie reproduit « © 2026 The MITRE Corporation. This work is reproduced and distributed with the permission of The MITRE Corporation. » et la licence ; ATT&CK est une marque déposée | bundle de 55 Mo téléchargé par Lucas seul (`cerveau cyber attack-fetch`, commit figé, SHA-256 consigné), index local sous `var/`, jamais dans git ; mention dans l'index, dans chaque résultat d'`attack_lookup` et sous la réponse |
+| MITRE ATT&CK Enterprise v20.0, `mitre-attack/attack-stix-data` | Licence propre à MITRE, non exclusive et gratuite ([conditions](https://attack.mitre.org/resources/legal-and-branding/terms-of-use/), `LICENSE.txt` du dépôt) : toute copie reproduit « © 2026 The MITRE Corporation. This work is reproduced and distributed with the permission of The MITRE Corporation. » et la licence ; ATT&CK est une marque déposée | bundle de 55 Mo téléchargé par l'utilisateur seul (`cerveau cyber attack-fetch`, commit figé, SHA-256 consigné), index local sous `var/`, jamais dans git ; mention dans l'index, dans chaque résultat d'`attack_lookup` et sous la réponse |
 | OWASP Top 10 for LLM Applications 2025 (LLM01 à LLM10), `genai.owasp.org` | CC BY-SA 4.0, « unless otherwise specified » : citation avec lien et mention ; une adaptation devrait garder la même licence | pages lues à la demande par `web_read` (`domain_packs/cyber/knowledge/sources.yaml`) ; aucun contenu adapté n'est stocké ; mention CC BY-SA sous la réponse |
 | Guides de l'ANSSI, de la CISA et du NIST CSRC | ANSSI : Licence Ouverte 2.0 d'Etalab (source secondaire, `A_VERIFIER` guide par guide) ; CISA et NIST : non vérifiées | non utilisés en P4 : ajoutés aux guides une fois leur licence vérifiée (backlog) ; la plupart sont des PDF, que `web_read` ne lit pas |
 
@@ -178,7 +178,7 @@ omettre.
 
 | Source | Licence ou conditions | Usage dans CERVEAU |
 |---|---|---|
-| API Légifrance de la DILA, par PISTE | Licence Ouverte 2.0 (etalab-2.0) : citer « Légifrance (DILA) » et la date de dernière mise à jour, sans laisser croire à un aval officiel ; seules les publications du Journal officiel font foi (non-opposabilité) ; CGU de l'API Légifrance V1.1 du 04/08/2020 : jeton OAuth à chaque requête, API en bêta, clés réinitialisées et DILA prévenue en cas de compromission. Version des CGU en vigueur sur PISTE, durée de vie du jeton et quotas `A_VERIFIER` (lisibles seulement dans PISTE) | `legifrance` (`legi_search`, `legi_article`, ADR-059) : lecture seule, 1 requête par seconde (H10), cache sous `var/juridique/` (H9) ; identifiants `PISTE_CLIENT_ID` et `PISTE_CLIENT_SECRET` lus dans l'environnement de Lucas, jamais journalisés (R6) ; environnement PISTE `A_DEFINIR` ; mention datée par article (version applicable, jour de lecture) |
+| API Légifrance de la DILA, par PISTE | Licence Ouverte 2.0 (etalab-2.0) : citer « Légifrance (DILA) » et la date de dernière mise à jour, sans laisser croire à un aval officiel ; seules les publications du Journal officiel font foi (non-opposabilité) ; CGU de l'API Légifrance V1.1 du 04/08/2020 : jeton OAuth à chaque requête, API en bêta, clés réinitialisées et DILA prévenue en cas de compromission. Version des CGU en vigueur sur PISTE, durée de vie du jeton et quotas `A_VERIFIER` (lisibles seulement dans PISTE) | `legifrance` (`legi_search`, `legi_article`, ADR-059) : lecture seule, 1 requête par seconde (H10), cache sous `var/juridique/` (H9) ; identifiants `PISTE_CLIENT_ID` et `PISTE_CLIENT_SECRET` lus dans l'environnement de l'utilisateur, jamais journalisés (R6) ; environnement PISTE `A_DEFINIR` ; mention datée par article (version applicable, jour de lecture) |
 | `legifrance.gouv.fr` (pages) | Licence Ouverte 2.0 (etalab-2.0), même mention | pages lues à la demande par `web_read` (liste fermée, ADR-058) ; jamais stockées |
 | `service-public.gouv.fr`, dont `entreprendre.service-public.gouv.fr` | Licence Ouverte 2.0 (etalab-2.0) : « Service Public / DILA » et date de mise à jour de la fiche ; logos et marques exclus de la licence | fiches lues à la demande par `web_read` ; mention avec la date lue sur la fiche ; aucun logo repris |
 | `impots.gouv.fr` | Licence Ouverte 2.0 : source et date de publication ; pour le BOFiP, référence et date de la publication citée | pages lues à la demande ; les PDF ne sont pas lus (backlog) |
@@ -206,7 +206,7 @@ Aucune nouvelle dépendance : `httpx` et Pydantic lisent les API. Conditions lue
 - **GNU make (GPL-3.0)** : outil de construction, sans lien avec le code de CERVEAU.
 - **CLI de Claude Code (« All rights reserved », conditions commerciales d'Anthropic)** :
   embarqué dans `claude-agent-sdk` (MIT), il n'existe que dans l'image `cerveau-agent`,
-  construite par Lucas et jamais redistribuée ; aucun de ses fichiers n'entre dans le dépôt
+  construite par l'utilisateur et jamais redistribuée ; aucun de ses fichiers n'entre dans le dépôt
   ni dans `uv.lock`. Retirer `code_agent` du pack suffit à ne plus l'utiliser (ADR-054).
   Redistribuer l'image ou servir des tiers (R16) exigerait de relire ces conditions.
 - **vectorbt (Apache-2.0 + Commons Clause v1.0)** : la clause interdit de « vendre » le
@@ -228,16 +228,16 @@ Aucune nouvelle dépendance : `httpx` et Pydantic lisent les API. Conditions lue
 
 ## Publication du code de CERVEAU
 - **Depuis le 2026-10-28**, le code source et son historique sont publiés dans le dépôt GitHub
-  **public** `destingood/cerveau-claude`, dossier `plateforme/` (PR 8, décision de Lucas). Le
-  dépôt local garde la référence ; chaque phase y est reportée par une PR que Lucas fusionne.
+  **public** `destingood/cerveau-claude`, dossier `plateforme/` (PR 8, décision de l'utilisateur). Le
+  dépôt local garde la référence ; chaque phase y est reportée par une PR que l'utilisateur fusionne.
 - **Ce qui est publié** : le code, la configuration (valeurs sensibles en `A_DEFINIR`, R7), les
   ADR, le modèle de menaces, les évals et des données de test fictives. Aucun secret (gitleaks
   sur tout l'historique, R6), ni `var/`, ni image Docker, ni copie d'une dépendance : les
   bibliothèques ne sont que référencées par `uv.lock` et `package-lock.json`.
-- **Licence de CERVEAU** : aucune n'est déclarée, donc tous droits réservés à Lucas par défaut ;
+- **Licence de CERVEAU** : aucune n'est déclarée, donc tous droits réservés à l'utilisateur par défaut ;
   les conditions de GitHub permettent seulement de voir et de copier le dépôt sur GitHub
   (`A_VERIFIER` : section D.5 des GitHub Terms of Service). Choisir une licence est une
-  décision de Lucas (`A_DEFINIR`, backlog).
+  décision de l'utilisateur (`A_DEFINIR`, backlog).
 - **Conséquences** : ce qui précède reste valable tant que CERVEAU n'est ni vendu ni servi à des
   tiers (R16, vectorbt) et que les images restent locales (CLI de Claude Code). Le modèle de
   menaces public aide un attaquant à connaître les défenses ; elles ne reposent pas sur leur

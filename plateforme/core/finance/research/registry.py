@@ -2,7 +2,8 @@
 
 One ``domain_packs/finance/strategies/<id>.yaml`` per strategy says, in French, what it bets on
 and how it decides, which module implements it, which grid the protocol tries and on which data.
-A new strategy is ``recherche``. Only Lucas makes it ``candidate``, by writing an approval by hand
+A new strategy is ``recherche``. Only the user makes it ``candidate``, by writing an approval by
+hand
 in ``governance/approvals/strategies/<id>.yaml``; no code here writes one. ``promotion_errors``
 gives every reason to refuse that status: ``cerveau config check`` fails on any of them.
 
@@ -127,7 +128,7 @@ class StrategySpec(_Strict):
 
 
 class StrategyApproval(_Strict):
-    """What Lucas writes by hand to promote a strategy to ``candidate`` (D14)."""
+    """What the user writes by hand to promote a strategy to ``candidate`` (D14)."""
 
     strategie: StrategyId
     rapport_sha256: Sha256
@@ -240,7 +241,7 @@ def load_strategy(spec: StrategySpec) -> Strategy:
 def approval_text(
     spec: StrategySpec, *, report_sha256: str, code: str, grid: str, day: date
 ) -> str:
-    """The approval Lucas may copy by hand into ``governance/approvals/strategies/<id>.yaml``."""
+    """The approval the user may copy by hand into ``governance/approvals/strategies/<id>.yaml``."""
     body = {
         "strategie": spec.id,
         "rapport_sha256": report_sha256,
@@ -250,7 +251,8 @@ def approval_text(
     }
     StrategyApproval.model_validate(body)
     header = (
-        f"# À recopier à la main par Lucas seul dans {APPROVALS_DIR.as_posix()}/{spec.id}.yaml\n"
+        f"# À recopier à la main par l'utilisateur seul dans "
+        f"{APPROVALS_DIR.as_posix()}/{spec.id}.yaml\n"
         "# (ADR-027, D14) ; aucune commande ne l'écrit.\n"
     )
     return header + yaml.safe_dump(body, allow_unicode=True, sort_keys=False)
@@ -280,7 +282,7 @@ def read_stamp(path: Path) -> ReportStamp:
 
 
 def audited_reports(journal: Path) -> frozenset[str]:
-    """The report prints ``cerveau strategy protocol`` journaled as Lucas's decisions (R11).
+    """The report prints ``cerveau strategy protocol`` journaled as the user's decisions (R11).
 
     The chain itself is checked by ``cerveau audit verify``; an unreadable line or payload
     refuses the lookup rather than hide a report.
@@ -291,7 +293,7 @@ def audited_reports(journal: Path) -> frozenset[str]:
     try:
         for line in journal.read_text(encoding="utf-8").splitlines():
             entry = json.loads(line)
-            if (entry.get("event"), entry.get("actor")) != ("DECISION", "lucas"):
+            if (entry.get("event"), entry.get("actor")) != ("DECISION", "owner"):
                 continue
             payload = audit.read_payload(entry["payload_ref"]) if entry["payload_ref"] else None
             if isinstance(payload, dict) and payload.get("command") == PROTOCOL_COMMAND:

@@ -3,7 +3,7 @@
 Décision D9 du plan de phase 5 ; ADR-039 et ADR-067 (adaptateur et sept conditions), ADR-036 (niveau effectif et
 signature), ADR-035 (approbations), ADR-034 (kill switch), ADR-003 (ACL).
 
-**Qui** : Lucas seul, à la main. Claude Code ne modifie jamais `config/live.yaml` ni
+**Qui** : l'utilisateur seul, à la main. Claude Code ne modifie jamais `config/live.yaml` ni
 `governance/approvals/`, ne lance jamais `protect-live.ps1` et n'a jamais accès aux clés du
 courtier (R3, §8.6).
 
@@ -48,7 +48,7 @@ live relèvent d'une phase dédiée, avec ses revues.
    `powershell -ExecutionPolicy Bypass -File infra\windows\protect-live.ps1 -Unprotect`.
 4. **Signer** : copier le texte affiché dans `governance/approvals/AAAA-MM-JJ-finance-N3.md`. Son
    en-tête YAML porte `domain: finance`, `level: N3`, la date, `promotion_report_sha256` et
-   `signed_by: lucas`. Une signature dont le nom, l'en-tête ou la date divergent, datée après
+   `signed_by: owner`. Une signature dont le nom, l'en-tête ou la date divergent, datée après
    aujourd'hui ou avant le jour du rapport qu'elle cite, ou qui cite un rapport absent, modifié ou
    négatif, est ignorée (ADR-036). Dater la signature du jour où elle est écrite.
 5. **Niveau** : dans `config/autonomy.yaml`, `domains.finance.level: N3`. Le niveau effectif est le

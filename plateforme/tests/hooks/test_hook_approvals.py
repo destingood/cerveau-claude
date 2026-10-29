@@ -136,9 +136,9 @@ def test_reading_testing_and_installing_stay_allowed(command: str, powershell: b
 
 def test_refusals_name_their_rule() -> None:
     enroll = guard.analyse("uv run cerveau approvals enroll", False, CWD)
-    assert enroll and "D2" in enroll and "Lucas" in enroll
+    assert enroll and "D2" in enroll and "utilisateur" in enroll
     bot = guard.analyse("node interfaces/discord_bot/index.js", False, CWD)
-    assert bot and "D22" in bot and "Lucas" in bot
+    assert bot and "D22" in bot and "utilisateur" in bot
     rearm = guard.analyse("uv run cerveau rearm", False, CWD)
     assert rearm and "R4" in rearm
     for api in ("uv run cerveau api serve", "uv run uvicorn x:app"):

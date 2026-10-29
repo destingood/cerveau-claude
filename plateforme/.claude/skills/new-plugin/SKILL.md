@@ -1,6 +1,6 @@
 ---
 name: new-plugin
-description: Crée un plugin MCP CERVEAU conforme à l'Annexe C.1 (manifeste plugin.yaml, serveur, tests, évals) et le valide avec le registre. À utiliser quand Lucas ou la phase en cours demande un nouveau plugin.
+description: Crée un plugin MCP CERVEAU conforme à l'Annexe C.1 (manifeste plugin.yaml, serveur, tests, évals) et le valide avec le registre. À utiliser quand l'utilisateur ou la phase en cours demande un nouveau plugin.
 argument-hint: "<nom_du_plugin> [domaine]"
 ---
 # Nouveau plugin : $ARGUMENTS
@@ -20,6 +20,6 @@ argument-hint: "<nom_du_plugin> [domaine]"
    uv run pytest -q
    ```
 5. Vérifie la licence de chaque dépendance ajoutée et mets à jour `docs/licences.md` (R14).
-6. N'ajoute rien à `.mcp.json` : l'activation est faite par Lucas.
+6. N'ajoute rien à `.mcp.json` : l'activation est faite par l'utilisateur.
 
 Termine par : fichiers créés, résultat de la validation, `A_DEFINIR` rencontrés.

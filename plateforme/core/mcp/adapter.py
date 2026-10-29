@@ -105,7 +105,7 @@ class RequestScope:
 
 def patch_digest(result: Any) -> str | None:
     """The SHA-256 of the patch an isolated task returned (``patch.sha256``), journaled so that
-    the patch Lucas applies can be traced to its request (R11); ``None`` when there is none."""
+    the patch the user applies can be traced to its request (R11); ``None`` when there is none."""
     patch = result.get("patch") if isinstance(result, Mapping) else None
     digest = patch.get("sha256") if isinstance(patch, Mapping) else None
     return digest if isinstance(digest, str) and DIGEST.fullmatch(digest) else None
@@ -366,7 +366,8 @@ class McpPlugin:
     ) -> tuple[str, dict[str, Any]]:
         """One checked, counted, time-limited and journaled call; errors become ToolException.
 
-        ``journaled`` stands for ``arguments`` in the journal when these hold data about Lucas that
+        ``journaled`` stands for ``arguments`` in the journal when these hold data about the user
+        that
         the journal must not keep (R6): an address he gave goes there in its masked form.
         """
         shown = arguments if journaled is None else journaled

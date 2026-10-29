@@ -7,7 +7,7 @@ that remembers the password cannot be led to approve, refuse or stop anything. E
 CERVEAU's files opened read only and renders with Jinja2's autoescaping; it carries no script
 and no form, which its Content-Security-Policy forbids anyway. A risk figure shows the display
 and the identifier the finance_risk tool gave it (R1). Amounts and positions may show here, on
-Lucas's machine, unlike in Discord (D12).
+the user's machine, unlike in Discord (D12).
 """
 
 from __future__ import annotations
@@ -188,7 +188,7 @@ def _error_text(journal: AuditJournal, ref: object) -> dict[str, str]:
 def _approvals(
     stack: ExitStack, root: Path, loaded: Config | None, now: datetime
 ) -> dict[str, Any]:
-    """The requests waiting for Lucas, from the approval store opened read only."""
+    """The requests waiting for the user, from the approval store opened read only."""
     seen: dict[str, Any] = {"problem": None, "pending": [], "counts": None, "locked": False}
     if loaded is None:
         return seen | {"problem": INVALID_CONFIG}
@@ -326,7 +326,7 @@ def dashboard_router(
 
     @router.get("/decisions", response_class=HTMLResponse)
     def decisions() -> HTMLResponse:
-        """The approval requests waiting for Lucas and the open orders of the paper book."""
+        """The approval requests waiting for the user and the open orders of the paper book."""
         now, loaded = clock(), config()
         with ExitStack() as stack:
             approvals = _approvals(stack, root, loaded, now)

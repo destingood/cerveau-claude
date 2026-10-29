@@ -1,4 +1,4 @@
-# CERVEAU — local infrastructure (phase 0). Claude Code never starts it; Lucas does.
+# CERVEAU — local infrastructure (phase 0). Claude Code never starts it; the user does.
 #
 # Profiles
 #   core           PostgreSQL 17 + pgvector (memory, registry and audit mirror in later phases)

@@ -4,7 +4,7 @@ The commands read the registry under domain_packs/finance/strategies/ and write 
 the trial journal of the store, the reports under var/finance/research/reports/ and the audit
 journal. A synthetic entry runs on its own store, var/finance/research/synthetique.db, so the
 fictitious dataset never mixes with the point-in-time base that `cerveau finance sync` fills.
-No command writes an approval: `show` prints the text Lucas may copy by hand (ADR-027, D14).
+No command writes an approval: `show` prints the text the user may copy by hand (ADR-027, D14).
 """
 
 from __future__ import annotations
@@ -221,7 +221,7 @@ class Run:
 
     def record(self, event: str, payload: Mapping[str, Any]) -> None:
         self.audit.append(
-            actor="lucas",
+            actor="owner",
             event=event,
             request_id=self.request_id,
             versions=self.versions,

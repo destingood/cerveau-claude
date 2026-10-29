@@ -35,7 +35,7 @@ STATEMENT_CHARS = 500
 SOURCE_CHARS = 200
 Kind = Literal["probabilite", "estimation"]
 KINDS: tuple[Kind, ...] = ("probabilite", "estimation")
-Actor = Literal["lucas", "orchestrator", "scheduler"]
+Actor = Literal["owner", "orchestrator", "scheduler"]
 _DOMAIN = re.compile(r"^[a-z][a-z0-9_]{0,39}$")
 
 MIGRATIONS: tuple[tuple[int, tuple[str, ...]], ...] = (
@@ -234,7 +234,7 @@ class ForecastStore:
         value: float,
         due_on: date,
         now: datetime,
-        actor: Actor = "lucas",
+        actor: Actor = "owner",
         request_id: str | None = None,
     ) -> Forecast:
         if not _DOMAIN.fullmatch(domain):
@@ -290,7 +290,7 @@ class ForecastStore:
         actual: float | None = None,
         source: str,
         now: datetime,
-        actor: Actor = "lucas",
+        actor: Actor = "owner",
     ) -> Forecast:
         forecast = self.get(forecast_id)
         if forecast.resolved:

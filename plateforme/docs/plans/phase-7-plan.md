@@ -1,6 +1,6 @@
 # Plan — Phase 7 : amélioration continue et préparation de N4
 
-- Statut : **validé par Lucas le 29/10/2026** (« Vsy »), avec les recommandations D2, D3, D4 et D6
+- Statut : **validé par l'utilisateur le 29/10/2026** (« Vsy »), avec les recommandations D2, D3, D4 et D6
   du §11 ; D1 et D5 restent `A_DEFINIR` (R7)
 - Date : 2026-10-29
 - Base : §17 (phase 7), §8.3, §11 (boucle d'apprentissage), §12, ADR-011 (accepté), backlog B74 à B78
@@ -10,7 +10,7 @@
 CERVEAU enregistre ses prévisions et les note à l'échéance (score de Brier). Il apprend de ses
 erreurs derrière une porte champion / challenger, sans toucher au noyau verrouillé, et produit
 seul ses rapports hebdomadaires et mensuels. Les critères de passage en N4 sont mesurés, mais
-N4 reste activable par Lucas seul.
+N4 reste activable par l'utilisateur seul.
 
 ## 1. Existant (lu dans le code le 29/10/2026)
 
@@ -34,7 +34,7 @@ N4 reste activable par Lucas seul.
 | Rapport hebdomadaire | lot 7.3 | — |
 | Red teaming hebdomadaire | lot 7.3 : suites hors ligne, chaque semaine | red team réelle (payante), à lancer sur accord |
 | Revue sécurité mensuelle | lot 7.3 : contrôles automatiques et rapport | revue par agent sur demande |
-| Critères N4 instrumentés | lot 7.4 | activation de N4 : Lucas seul (R3) |
+| Critères N4 instrumentés | lot 7.4 | activation de N4 : l'utilisateur seul (R3) |
 
 **Critère de sortie (§17)** : les rapports sont générés automatiquement 4 semaines de suite, sans
 intervention. Le code peut être prêt en quelques jours, mais **le compte rendu de phase 7 arrive
@@ -56,7 +56,7 @@ au plus tôt 4 semaines après la mise en route de la planification**.
   - Le LLM ne calcule aucun score (R1).
 - **Résolution**, avec R10 (aucune donnée postérieure n'entre dans la prévision, seulement dans sa
   note) :
-  - `cerveau forecast resolve <id> {oui|non|valeur}`, acteur `lucas` ;
+  - `cerveau forecast resolve <id> {oui|non|valeur}`, acteur `owner` ;
   - en finance, résolution automatique depuis le store point-in-time.
 - **Scores déterministes**, sous tests de propriétés (Hypothesis) :
   - Brier, avec sa décomposition de Murphy (fiabilité, résolution, incertitude) ;
@@ -74,7 +74,7 @@ au plus tôt 4 semaines après la mise en route de la planification**.
 - **Noyau verrouillé** : tout ce que liste ADR-011.
   - Le moteur refuse d'écrire hors de la couche apprise par une liste fermée de chemins, testée,
     et non par une liste d'exclusion.
-  - La protection effective reste l'ACL (ADR-003), que Lucas pose (B77).
+  - La protection effective reste l'ACL (ADR-003), que l'utilisateur pose (B77).
 - **Apprentissage** : lecture des `ERROR` et `FEEDBACK` et des notes (marquées non fiables, R5).
   - Regroupement par motif.
   - Proposition d'un challenger : leçon ou exemple ajouté à une section apprise.
@@ -121,7 +121,7 @@ au plus tôt 4 semaines après la mise en route de la planification**.
   - les dépendances dépassées.
 - **Planification** (D2) : le script `infra/scripts/install-schedule.ps1` (Planificateur de tâches
   Windows, rattrapage si le PC était éteint).
-  - **Lucas le lance lui-même** : c'est une configuration persistante du système.
+  - **L'utilisateur le lance lui-même** : c'est une configuration persistante du système.
   - Chaque exécution laisse une entrée `scheduler` dans le journal.
   - Un échec produit un rapport « échec » plutôt qu'un silence, et une alerte si ntfy ou Discord
     sont activés.
@@ -132,7 +132,7 @@ au plus tôt 4 semaines après la mise en route de la planification**.
 
 - Le rapport de promotion N3 → N4 (B220) donne :
   - le nombre d'approbations N3 ;
-  - le taux d'accord entre Lucas et CERVEAU ;
+  - le taux d'accord entre l'utilisateur et CERVEAU ;
   - les conditions de risque ;
   - l'état de chaque déclencheur de rétrogradation.
 - Les bornes de `PromotionN3N4` (B248) bloquent un minimum nul ou un taux hors de [0, 1].
@@ -185,7 +185,7 @@ Aucune prévue : scores en Python standard, planification par le système.
 - Rédiger des challengers et lancer la red team réelle chaque semaine coûte des appels LLM : non
   estimé ici, plafonné par les budgets, qui sont à `A_DEFINIR`.
 
-## 11. Décisions demandées à Lucas
+## 11. Décisions demandées à l'utilisateur
 
 **[QUESTIONS DE CLARIFICATION]**
 

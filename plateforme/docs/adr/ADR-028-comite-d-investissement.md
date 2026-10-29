@@ -1,6 +1,6 @@
 # ADR-028 — Mode Comité : sous-graphe enregistré, débat contrôlé par le code, verdict déterministe
 
-- Statut : accepté (D15 à D22 du plan de phase 3, validées par Lucas le 19/10/2026 ; le budget d'une
+- Statut : accepté (D15 à D22 du plan de phase 3, validées par l'utilisateur le 19/10/2026 ; le budget d'une
   séance reste `A_DEFINIR` jusqu'à sa décision)
 - Date : 2026-10-19
 - Phase : 3
@@ -84,7 +84,7 @@ Option 3.
   conditions d'invalidation, les désaccords, le verdict du contrôleur, l'identifiant de séance et
   la mention R16.
 - **Coût** : une dizaine d'appels de modèle par séance. Hors ligne, les modèles sont scriptés ; en
-  réel, il faut le budget et l'accord de Lucas pour chaque campagne.
+  réel, il faut le budget et l'accord de l'utilisateur pour chaque campagne.
 - **Plus tard** : la confiance et l'horizon sont enregistrés dès maintenant pour une calibration
   (backlog). Le moteur est générique : les Comités des autres packs viendront avec leurs fiches.
 - **Tests** :

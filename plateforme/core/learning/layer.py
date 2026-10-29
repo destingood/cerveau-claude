@@ -5,7 +5,7 @@ A closed list of paths, not a list of exclusions: for each domain pack, ``lesson
 (ADR-011: live and autonomy settings, budgets, Risk Gate limits, golden sets and thresholds,
 hooks, Annex D principles, the code of learning and of its gate) and is refused, whatever the
 path looks like once resolved. The effective protection of the core remains the operating
-system's access rights, which Lucas sets (ADR-003, B77).
+system's access rights, which the user sets (ADR-003, B77).
 
 A section is text CERVEAU wrote from untrusted material: it is checked as external content (R5)
 when written and again when loaded, and the prompt presents it as unverified lessons that change

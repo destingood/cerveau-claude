@@ -5,7 +5,7 @@ description = "CERVEAU: personal multi-domain AI platform (Phase 0 foundations).
 readme = "README.md"
 requires-python = ">=3.12,<3.13"
 license = { text = "Proprietary - personal use" }
-authors = [{ name = "Lucas" }]
+authors = [{ name = "owner" }]
 dependencies = [
     "arch==8.0.0",
     "defusedxml==0.7.1",

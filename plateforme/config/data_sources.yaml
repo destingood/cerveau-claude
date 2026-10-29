@@ -8,7 +8,7 @@ sources:
   ecb:
     enabled: true                     # D2
     url: https://data-api.ecb.europa.eu/service/
-    # ADR-017 : la courbe des taux (yield_curve) est retirée tant que Lucas n'a pas lu ses
+    # ADR-017 : la courbe des taux (yield_curve) est retirée tant que l'utilisateur n'a pas lu ses
     # conditions propres, plus restrictives (D22).
     categories: [fx_reference_rates, estr]
     usage: personnel
@@ -62,7 +62,7 @@ sources:
     categories: [enterprise]
     usage: personnel
     version: "20.0"
-    # Empreinte du bundle Enterprise, inscrite par `cerveau cyber attack-fetch` que Lucas lance
+    # Empreinte du bundle Enterprise, inscrite par `cerveau cyber attack-fetch` que l'utilisateur lance
     # (G5) ; tant qu'elle manque, cyber_attack ne répond pas.
     sha256: A_VERIFIER
     licence: >-
@@ -72,10 +72,10 @@ sources:
       (attack.mitre.org/resources/legal-and-branding/terms-of-use/, lue le 2026-10-22)
     rate: une lecture par commande attack-fetch, jamais automatique (G5)
   # Pack Juridique FR (phase 6, P5). Lu par le plugin legifrance (ADR-059) ; identifiants PISTE en
-  # variables d'environnement de Lucas (PISTE_CLIENT_ID, PISTE_CLIENT_SECRET), jamais ici (R6).
+  # variables d'environnement de l'utilisateur (PISTE_CLIENT_ID, PISTE_CLIENT_SECRET), jamais ici (R6).
   legifrance:
     enabled: true                     # H1
-    # Environnement à choisir par Lucas (H4) : bac à sable https://sandbox-api.piste.gouv.fr ou
+    # Environnement à choisir par l'utilisateur (H4) : bac à sable https://sandbox-api.piste.gouv.fr ou
     # production https://api.piste.gouv.fr, chemin /dila/legifrance/lf-engine-app. Tant qu'il
     # manque, le plugin répond « source officielle indisponible » (R7).
     url: A_DEFINIR

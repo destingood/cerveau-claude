@@ -1,13 +1,13 @@
 # Pack Code
 
 Pack P3 de CERVEAU (section 9.2, complément de plan P3, parties P3a et P3b) : lecture des dépôts
-git de Lucas (historique, différences, fichiers commités), contrôles ruff et pytest dans un
+git de l'utilisateur (historique, différences, fichiers commités), contrôles ruff et pytest dans un
 conteneur isolé, état des derniers runs GitHub Actions, et tâche de code confiée à un agent
 Claude Code (`code_agent`, ADR-053, ADR-054) sur une copie isolée, dont le patch est enregistré
 sous `var/code/agent/<id>/` sans être appliqué. Autonomie courante N0 (`config/autonomy.yaml`,
 `domains.code`, D3, F9) : le pack lit, contrôle et propose un patch, il n'écrit rien dans un
-dépôt ; Lucas relit et applique lui-même. N2 (branche locale et PR en brouillon) n'est pas livré :
-il se gagnera par les évals réelles (R9). Statut : **expérimental** jusqu'à ce que Lucas le passe
+dépôt ; l'utilisateur relit et applique lui-même. N2 (branche locale et PR en brouillon) n'est pas livré :
+il se gagnera par les évals réelles (R9). Statut : **expérimental** jusqu'à ce que l'utilisateur le passe
 en « actif » au vu d'une mesure réelle du golden set (section 9.3, D2).
 
 Chaque compte (tests, diagnostics, lignes) et chaque citation viennent de l'outil qui les a lus

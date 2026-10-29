@@ -228,7 +228,7 @@ def rollback_command(
             journal=_journal(journal, outside_var),
             history=default_history_path(project_root()),
             now=datetime.now().astimezone(),
-            reason="demande de Lucas",
+            reason="demande de l'utilisateur",
         )
     except (ChampionError, LockedCoreError, AuditError) as exc:
         fail(f"Refus : {exc}", EXIT_ERROR)

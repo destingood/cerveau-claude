@@ -1,6 +1,6 @@
 """Nodes 1 to 3: request context, input guard, routing (section 7.1).
 
-The question is pseudonymised before any model sees it (ADR-007). The URLs Lucas gave are
+The question is pseudonymised before any model sees it (ADR-007). The URLs the user gave are
 pseudonymised one by one and remembered in the ``Run``, so that web_read can open the address
 he wrote while the models only see its masked form. A failing classifier refuses (prudence); a
 failing router falls back to the most careful route. An action class this phase grants to some
@@ -49,11 +49,11 @@ TIMEZONE = "Europe/Paris"
 CODE_AGENT_FEATURE = "code.agent"
 KILL_MESSAGE = (
     "Le kill switch est engagé : CERVEAU est à l'arrêt et ne traite aucune requête (R4). "
-    "Seul Lucas peut le désengager."
+    "Seul l'utilisateur peut le désengager."
 )
 LIVE_MESSAGE = (
     "ALERTE : la configuration live est activée alors qu'aucun adaptateur live n'existe : "
-    "CERVEAU ne traite aucune requête (R3). Seul Lucas peut la désactiver, à la main."
+    "CERVEAU ne traite aucune requête (R3). Seul l'utilisateur peut la désactiver, à la main."
 )
 
 
@@ -273,7 +273,7 @@ async def route_node(run: Run, state: CerveauState) -> dict[str, Any]:
         verdict = _prudent_route("routage indisponible : route la plus prudente par défaut")
     requested = verdict.domaine.strip().lower() or DEFAULT_DOMAIN
     domain = requested if requested in run.packs else DEFAULT_DOMAIN
-    if run.research_forced:  # Lucas chose the deep research, hence its pack (D14)
+    if run.research_forced:  # the user chose the deep research, hence its pack (D14)
         domain = requested = _research_domain(run, domain)
     needs_web = verdict.web or bool(guarded.urls)
     refused = _routed_refusal(run, guarded, domain)

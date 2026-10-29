@@ -1,6 +1,6 @@
 # ADR-046 — Remplacement du cas de comportement `pack-recherche-absent`
 
-- Statut : **proposé** (R9 : retrait d'un cas existant ; à valider par Lucas au compte rendu de
+- Statut : **proposé** (R9 : retrait d'un cas existant ; à valider par l'utilisateur au compte rendu de
   phase)
 - Date : 2026-10-22
 - Phase : 6
@@ -15,7 +15,7 @@ statut `experimental`) : le socle des packs (ADR-043) le découvre et le routeur
 prémisse du cas devient fausse, et il échoue par construction.
 
 R9 interdit de retoucher un cas pour faire passer une modification et ne permet d'en supprimer un
-qu'avec un ADR ou l'accord de Lucas. ADR-021 a traité le même cas pour le pack Finance.
+qu'avec un ADR ou l'accord de l'utilisateur. ADR-021 a traité le même cas pour le pack Finance.
 
 ## Décision
 - Le cas est retiré et remplacé, dans la même modification que le manifeste du pack, par
@@ -35,12 +35,12 @@ qu'avec un ADR ou l'accord de Lucas. ADR-021 a traité le même cas pour le pack
   mesures passées, ils ne changent pas.
 - Les cas `pack-juridique-absent`, `pack-code-absent`, `pack-cyber-absent` et
   `pack-business-absent` tomberont de la même façon à l'ouverture des packs correspondants : chaque
-  pack apporte alors son ADR de remplacement, ou Lucas décide d'une règle commune.
-- Si Lucas refuse ce remplacement, il choisit l'attente du cas dans une modification dédiée qu'il
+  pack apporte alors son ADR de remplacement, ou l'utilisateur décide d'une règle commune.
+- Si l'utilisateur refuse ce remplacement, il choisit l'attente du cas dans une modification dédiée qu'il
   valide.
 
 ## Options écartées
-- Modifier l'attente du cas : c'est retoucher un cas existant, ce que R9 réserve à Lucas.
+- Modifier l'attente du cas : c'est retoucher un cas existant, ce que R9 réserve à l'utilisateur.
 - Retirer le cas sans le remplacer : le groupe tomberait sous les cinq cas exigés par
   `tests/test_evals.py`, ce qui revient à réduire la suite.
 - Remplacer par un domaine prévu en P3 à P6 : le cas tomberait à la phase suivante.
