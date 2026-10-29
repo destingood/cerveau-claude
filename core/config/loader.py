@@ -449,9 +449,18 @@ class EvalThresholds(_Strict):
         return self
 
 
+class Calibration(_Strict):
+    """When a calibration drift demotes (section 8.3, ADR-064)."""
+
+    min_resolved: Annotated[int, Field(ge=1)] | Marker
+    window_days: Annotated[int, Field(ge=7)] | Marker
+    brier_drift_max: Annotated[float, Field(ge=0, le=1, allow_inf_nan=False)] | Marker
+
+
 class EvalsConfig(_Strict):
     thresholds: EvalThresholds
     judge_human_review_sample_weekly: int = Field(ge=0)
+    calibration: Calibration
 
 
 Seconds = Annotated[float, Field(gt=0, allow_inf_nan=False)]
@@ -1064,6 +1073,9 @@ FEATURES: dict[str, Feature] = {
     "evals.gate.business": Feature(
         "Seuil du golden set Business",
         ("evals:thresholds.business_golden_min_score", "evals:thresholds.regression_block_delta"),
+    ),
+    "learning.calibration_drift": Feature(
+        "Dérive de calibration des prévisions (rétrogradation, ADR-064)", ("evals:calibration",)
     ),
     "finance.market_risk": Feature(
         "Mesures de risque de marché (VaR, CVaR, Kupiec, stress hypothétiques)",

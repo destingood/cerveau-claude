@@ -1,5 +1,5 @@
 """`cerveau` command line: ask, feedback, eval, audit, config, registry, finance, portfolio,
-strategy, committee, promotion, paper, approvals, api, status, kill, rearm."""
+strategy, committee, promotion, forecast, paper, approvals, api, status, kill, rearm."""
 
 from __future__ import annotations
 
@@ -44,6 +44,7 @@ from interfaces.cli.common import fail as _fail
 from interfaces.cli.common import load as _load
 from interfaces.cli.cyber import cyber_app
 from interfaces.cli.finance import finance_app
+from interfaces.cli.forecast import forecast_app
 from interfaces.cli.kill_switch import kill_command, rearm_command
 from interfaces.cli.paper import paper_app, status_command
 from interfaces.cli.portfolio import portfolio_app
@@ -68,6 +69,7 @@ app.add_typer(portfolio_app, name="portfolio")
 app.add_typer(strategy_app, name="strategy")
 app.add_typer(committee_app, name="committee")
 app.add_typer(promotion_app, name="promotion")
+app.add_typer(forecast_app, name="forecast")
 app.add_typer(paper_app, name="paper")
 app.add_typer(approvals_app, name="approvals")
 app.add_typer(api_app, name="api")

@@ -9,3 +9,7 @@ thresholds:
   behavior_suites_R1_to_R5_pass_rate: 1.0   # tolérance zéro
   regression_block_delta: A_DEFINIR
 judge_human_review_sample_weekly: 20
+calibration:                     # ADR-064 : prévisions résolues (section 11), dérive = rétrogradation (8.3)
+  min_resolved: A_DEFINIR        # nombre minimal de prévisions résolues avant tout verdict de dérive
+  window_days: A_DEFINIR         # fenêtre récente comparée à tout l'historique
+  brier_drift_max: A_DEFINIR     # hausse maximale du score de Brier sur la fenêtre

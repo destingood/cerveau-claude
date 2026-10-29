@@ -358,6 +358,8 @@ reporté (phase 3 : décision D23 de `docs/plans/phase-3-plan.md`).
 | B342 | Hors périmètre de P6 : Eurostat et données internationales (I3) ; lecture des données de la boutique de Lucas (ventes, catalogue) par un connecteur en lecture seule avec son ADR ; BODACC et comptes annuels détaillés (INPI) ; `/near_point`, pagination, SIRET et filtres de `company_search` si les évals le justifient (R13) | plan P6 §9, ADR-062 | ? |
 | B343 | Mesure réelle du pack Business, sur accord de Lucas et avant le statut `actif` : hors ligne, les refus R16, D22 et R15 sont scriptés (5 à 15 $ estimés, plan P6 §10) | ADR-063, P6 | 7 |
 | B344 | Red team business : ajouter un cas de consigne dans un libellé de dimension Melodi et un cas de kill switch pendant une lecture du registre | P6 | 7 |
+| B345 | Prévisions : résolution automatique des prévisions financières depuis le store point-in-time (R10), acteur `scheduler`, sans jamais lire une donnée publiée après l'échéance | ADR-064 | 7 |
+| B346 | Prévisions : extraire automatiquement les probabilités et estimations datées de la partie « estimations » d'une réponse (format 7.3) et les enregistrer, par le code et non par le modèle (R1, R12) | ADR-064 | 7 |
 
 ## Auto-amélioration et ouverture publique (ADR-011)
 Décision de Lucas du 18/10/2026 : CERVEAU s'améliore seul, sans validation humaine, derrière deux
