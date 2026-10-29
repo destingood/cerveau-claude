@@ -1,4 +1,5 @@
-"""The N2 → N3 promotion report (ADR-040, B181): its criteria, its verdict and its signature."""
+"""The N2 → N3 and N3 → N4 promotion reports (ADR-040, B181, ADR-067): criteria, verdict and
+signature."""
 
 from __future__ import annotations
 
@@ -23,20 +24,26 @@ from core.execution.states import OrderState
 from core.finance.research import engine
 from core.finance.research.execution import Costs
 from core.finance.store import FinanceStore, default_store_path
+from core.governance.demotion import demotions_path
 from core.governance.promotion_report import (
     Criterion,
+    Decisions,
     Gap,
     Incident,
     PromotionReport,
     PromotionReportError,
     StrategyBacktest,
     Unavailable,
+    agreement_rate,
+    approvals_count,
     build_report,
     current_level,
+    demotions_criterion,
     evals_criterion,
     execution_incidents,
     gap_criterion,
     incidents,
+    lucas_decisions,
     paper_backtest_gap,
     paper_decisions,
     paper_drawdown,
@@ -537,12 +544,125 @@ def test_the_gap_needs_the_book_the_strategy_and_its_backtest(tmp_path: Path) ->
     assert "trading_costs" in value
 
 
-@pytest.mark.parametrize(
-    ("domain", "level"), [("finance", "N4"), ("finance", "N2"), ("code", "N3")]
-)
-def test_there_is_a_report_for_finance_n3_only(tmp_path: Path, domain: str, level: str) -> None:
-    with pytest.raises(PromotionReportError, match="finance N3 seulement"):
+@pytest.mark.parametrize(("domain", "level"), [("finance", "N2"), ("code", "N3"), ("code", "N4")])
+def test_there_is_a_report_for_finance_n3_and_n4_only(
+    tmp_path: Path, domain: str, level: str
+) -> None:
+    with pytest.raises(PromotionReportError, match="finance N3 ou N4 seulement"):
         build_report(tmp_path, BASE, domain=domain, level=level, at=AT)
+
+
+# N3 → N4 (ADR-067) -------------------------------------------------------------------------------
+
+
+def _decide(journal: AuditJournal, actor: str, state: str, environment: str = "live") -> None:
+    payload = {"approval_id": "a", "environment": environment, "state": state, "reason": "r"}
+    journal.append(actor=actor, event="APPROVAL", payload=payload)
+
+
+def test_only_lucas_answers_in_live_are_decisions(tmp_path: Path) -> None:
+    journal = AuditJournal(tmp_path / "journal.jsonl")
+    assert lucas_decisions(journal) == Decisions(0, 0)
+    _decide(journal, "lucas", "ACCORDEE")
+    _decide(journal, "lucas", "ACCORDEE")
+    _decide(journal, "interface", "REFUSEE")
+    _decide(journal, "policy", "REFUSEE")  # wrong codes or the Risk Gate: not Lucas
+    _decide(journal, "policy", "EXPIREE")
+    _decide(journal, "lucas", "ACCORDEE", environment="paper")
+    _decide(journal, "policy", "DEMANDEE")
+    journal.append(actor="lucas", event="DECISION", payload={"state": "ACCORDEE"})
+    assert lucas_decisions(journal) == Decisions(2, 1)
+
+
+def test_an_altered_journal_decides_nothing(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    journal = AuditJournal(tmp_path / "journal.jsonl")
+    _decide(journal, "lucas", "ACCORDEE")
+    text = journal.path.read_text(encoding="utf-8")
+    journal.path.write_text(text.replace('"lucas"', '"policy"'), encoding="utf-8")
+    found = lucas_decisions(journal)
+    assert isinstance(found, Unavailable)
+    assert approvals_count(found, 5).status == "non_evaluable"
+    assert agreement_rate(found, 0.9).status == "non_evaluable"
+    clean = AuditJournal(tmp_path / "propre.jsonl")
+    _decide(clean, "lucas", "ACCORDEE")
+
+    def unreadable(self: AuditJournal, payload_ref: str) -> Any:
+        raise PermissionError(payload_ref)
+
+    monkeypatch.setattr(AuditJournal, "read_payload", unreadable)
+    assert lucas_decisions(clean) == Unavailable("journal d'audit illisible (PermissionError)")
+
+
+@pytest.mark.parametrize(
+    ("decisions", "minimum", "value", "status"),
+    [
+        (Decisions(3, 2), 5, "5", "atteint"),
+        (Decisions(3, 1), 5, "4", "non_atteint"),
+        (Decisions(9, 9), "A_DEFINIR", "18", "non_evaluable"),
+    ],
+)
+def test_the_approvals_are_counted_against_their_minimum(
+    decisions: Decisions, minimum: Any, value: str, status: str
+) -> None:
+    criterion = approvals_count(decisions, minimum)
+    assert (criterion.value, criterion.status) == (value, status)
+
+
+@pytest.mark.parametrize(
+    ("decisions", "minimum", "value", "status"),
+    [
+        (Decisions(9, 1), 0.9, "0.9000", "atteint"),
+        (Decisions(8, 2), 0.9, "0.8000", "non_atteint"),
+        (Decisions(9, 1), "A_DEFINIR", "0.9000", "non_evaluable"),
+        (Decisions(0, 0), 0.5, "aucune décision", "non_evaluable"),
+    ],
+)
+def test_the_agreement_rate_is_the_share_lucas_granted(
+    decisions: Decisions, minimum: Any, value: str, status: str
+) -> None:
+    criterion = agreement_rate(decisions, minimum)
+    assert (criterion.value, criterion.status) == (value, status)
+
+
+def test_a_standing_demotion_refuses_n4(tmp_path: Path) -> None:
+    assert demotions_criterion(tmp_path, "finance").status == "atteint"
+    path = demotions_path(tmp_path)
+    path.parent.mkdir(parents=True)
+    line = {
+        "at": "2026-10-29T07:00:00+01:00",
+        "domain": "finance",
+        "from_level": "N3",
+        "to_level": "N2",
+        "trigger": "nightly_eval_failure",
+        "reason": "hebdo",
+    }
+    path.write_text(json.dumps(line) + "\n", encoding="utf-8")
+    criterion = demotions_criterion(tmp_path, "finance")
+    assert (criterion.value, criterion.status) == ("1", "non_atteint")
+    assert "N3 → N2 (nightly_eval_failure)" in criterion.details[0]
+    assert demotions_criterion(tmp_path, "code").status == "atteint"
+    path.write_text("{", encoding="utf-8")
+    assert demotions_criterion(tmp_path, "finance").status == "non_evaluable"
+
+
+def test_the_n4_report_asks_n3_in_force_and_cannot_pass_today(tmp_path: Path) -> None:
+    journal = AuditJournal(default_journal_path(tmp_path))
+    for _ in range(3):
+        _decide(journal, "lucas", "ACCORDEE")
+    sign(tmp_path, "finance", "N2")
+    report = build_report(tmp_path, config(), domain="finance", level="N4", at=AT)
+    found = _criteria(report)
+    assert report.level == "N4"
+    assert found["Niveau en vigueur"] == ("N2", "non_atteint")
+    assert found["Approbations N3 décidées par Lucas"] == ("3", "non_evaluable")
+    assert found["Taux d'accord Lucas / CERVEAU"] == ("1.0000", "non_evaluable")
+    assert found["Incidents d'exécution"] == ("0", "atteint")
+    assert found["Drawdown live"][1] == "non_evaluable"
+    assert found["Rétrogradations en vigueur"] == ("0", "atteint")
+    assert report.verdict == "promotion_impossible"
+    assert "# Rapport de promotion finance N3 → N4" in render(report)
 
 
 # Rendering, writing and signing ------------------------------------------------------------------
@@ -640,7 +760,7 @@ def test_the_command_writes_and_journals_a_refused_report(home: Path, config_dir
 
 
 def test_the_command_refuses_a_level_without_a_report(home: Path, config_dir: Path) -> None:
-    result = _invoke(config_dir, "--to", "N4")
+    result = _invoke(config_dir, "--to", "N2")
     assert result.exit_code == 1
     assert "Rapport impossible" in result.output
     assert list(home.iterdir()) == []

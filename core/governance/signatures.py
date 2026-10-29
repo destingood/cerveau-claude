@@ -39,6 +39,7 @@ from pydantic import AwareDatetime, BaseModel, ConfigDict, Field, ValidationErro
 
 from core.config.loader import LEVELS, AutonomyConfig, Level
 from core.finance.model import local_date
+from core.governance.demotion import floors, read_demotions
 
 SIGNATURES_DIR = Path("governance") / "approvals"
 PROMOTION_DIR = Path("var") / "promotion"
@@ -258,7 +259,7 @@ def effective_autonomy(
     today: date | None = None,
 ) -> EffectiveAutonomy:
     """``autonomy`` with each promoted domain at min(written level, highest level signed by
-    ``today``)."""
+    ``today``), then every domain at or below its demotions (ADR-067)."""
     signed = read_signatures(root, today=today) if signed is None else signed
     domains = dict(autonomy.domains)
     capped: list[str] = []
@@ -268,10 +269,22 @@ def effective_autonomy(
         if LEVELS.index(spec.level) > LEVELS.index(ceiling):
             domains[domain] = spec.model_copy(update={"level": ceiling})
             capped.append(f"{domain} : {spec.level} écrit, {ceiling} signé")
+    demotions = read_demotions(root)
+    problems = signed.problems
+    if isinstance(demotions, str):  # unreadable: every domain held at N0 (ADR-067)
+        problems += (demotions,)
+        lowest = dict.fromkeys(domains, LEVELS[0])
+    else:
+        lowest = floors(demotions)
+    for domain, floor in sorted(lowest.items()):
+        spec = domains.get(domain)
+        if spec is not None and LEVELS.index(spec.level) > LEVELS.index(floor):
+            domains[domain] = spec.model_copy(update={"level": floor})
+            capped.append(f"{domain} : {spec.level}, rétrogradé à {floor}")
     return EffectiveAutonomy(
         autonomy=autonomy.model_copy(update={"domains": domains}),
         capped=tuple(capped),
-        problems=signed.problems,
+        problems=problems,
     )
 
 

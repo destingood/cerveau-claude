@@ -149,8 +149,10 @@ class PromotionN2N3(_Strict):
 
 
 class PromotionN3N4(_Strict):
-    approvals_min: int | Marker
-    agreement_rate_min: float | Marker
+    """B248: bounded like N2 → N3; a rate is a share of the N3 approvals Lucas accepted."""
+
+    approvals_min: Annotated[int, Field(strict=True, ge=1)] | Marker
+    agreement_rate_min: Annotated[float, Field(gt=0, le=1, allow_inf_nan=False)] | Marker
     manual_signature: Literal["required"]
 
 
