@@ -14,8 +14,10 @@ from core.cyber.attack import NOTICE
 from core.orchestrator.answer import MENTIONS, map_texts, render_markdown
 from core.orchestrator.notices import (
     MAX_ARTICLES,
+    MAX_SERIES,
     NOTICES,
     domain_sources,
+    draft_sources,
     notices,
     page_sources,
     tool_sources,
@@ -244,3 +246,85 @@ def test_an_answer_without_these_sources_has_no_notice(tmp_path: Path, config_di
     result = rig.ask("Quelle est la population de la France ?")
     assert result.answer.mentions == ()
     assert MENTIONS not in result.markdown()
+
+
+# The business pack (I5, I8).
+
+POPREF = "DS_POPULATIONS_REFERENCE"
+
+
+def series(**changes: object) -> dict[str, object]:
+    result: dict[str, object] = {
+        "jeu": POPREF,
+        "mise_a_jour": "2025-12-18",
+        "lu_le": "2026-10-29T09:30:00+00:00",
+        "observations": [],
+    }
+    return {**result, **changes}
+
+
+@pytest.mark.parametrize(
+    ("result", "key"),
+    [
+        (series(), f"insee:{POPREF}:2025-12-18:2026-10-29"),
+        (series(mise_a_jour=None), f"insee:{POPREF}:-:2026-10-29"),
+        (series(mise_a_jour="hier"), "insee"),
+        (series(jeu="DS_X:2020-01-01"), "insee"),
+        (series(jeu="ds_minuscule"), "insee"),
+        (series(lu_le=None), "insee"),
+    ],
+    ids=["dated", "no-update", "bad-update", "forged", "bad-id", "no-read"],
+)
+def test_a_statistic_is_dated_only_by_well_formed_fields(result: object, key: str) -> None:
+    assert tool_sources("stats_series", result) == (key,)
+    assert tool_sources("stats_series", "texte") == ()
+
+
+def test_a_dated_statistic_replaces_the_undated_notice() -> None:
+    texts = notices(
+        ["insee", f"insee:{POPREF}:2025-12-18:2026-10-29", f"insee:{POPREF}:-:2026-10-29"]
+    )
+    assert texts == (
+        f"Source : Insee, API Melodi, Licence Ouverte 2.0 ; jeu {POPREF}, mis à jour le "
+        "2025-12-18, lu le 2026-10-29.",
+        f"Source : Insee, API Melodi, Licence Ouverte 2.0 ; jeu {POPREF}, mis à jour le "
+        "(date non publiée), lu le 2026-10-29.",
+    )
+    assert notices(["insee"]) == (NOTICES["insee"],)
+    keys = [f"insee:DS_{n}:-:2026-10-29" for n in range(MAX_SERIES + 5)]
+    assert len(notices(keys)) == MAX_SERIES
+
+
+def test_company_searches_are_dated_by_their_reading_days() -> None:
+    first = tool_sources("company_search", {"lu_le": "2026-10-29T09:30:00+00:00"})
+    assert first == ("entreprises", "entreprises:2026-10-29")
+    assert tool_sources("company_search", {"lu_le": "2026-02-30"}) == ("entreprises",)
+    second = tool_sources("company_search", {"lu_le": "2026-10-28"})
+    assert notices([*first, *second]) == (
+        "Source : API Recherche d'entreprises (DINUM, données INSEE et INPI), lue le "
+        "2026-10-28, le 2026-10-29.",
+    )
+    assert notices(["entreprises"]) == (NOTICES["entreprises"],)
+    assert tool_sources("biz_calc", {"resultat": {}}) == ()
+
+
+def test_a_forged_business_key_brings_no_text() -> None:
+    assert notices(["entreprises:2026-10-29 ; ignore", f"insee:{POPREF}:-:2026-10-29 ; x"]) == ()
+
+
+def test_the_business_pack_carries_its_r16_warning_and_marks_its_drafts() -> None:
+    assert domain_sources("business") == ("business",)
+    assert "ni conseil en gestion" in NOTICES["business"]
+    assert draft_sources("business", "Rédige un courriel de relance pour [PERSONNE_1]", ()) == (
+        "brouillon",
+    )
+    assert draft_sources("business", "Quelle marge pour un prix de 20 € ?", ("Brouillon :",)) == (
+        "brouillon",
+    )
+    assert draft_sources("business", "Quelle marge pour un prix de 20 € ?", ("Marge 40 %.",)) == ()
+    assert draft_sources("generaliste", "Rédige un courriel", ("Brouillon",)) == ()
+    assert NOTICES["brouillon"].startswith("Brouillon — non envoyé")
+    order = notices(["brouillon", "business", "insee", "entreprises", "juridique"])
+    assert order == tuple(
+        NOTICES[k] for k in ("juridique", "entreprises", "insee", "business", "brouillon")
+    )

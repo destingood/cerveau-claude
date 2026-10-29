@@ -26,7 +26,7 @@ from core.committee.schemas import HORIZONS
 from core.guardrails.injection import injection_signals
 from core.guardrails.pii import PSEUDONYM
 from core.orchestrator.intake import KILL_MESSAGE, LIVE_MESSAGE
-from core.orchestrator.notices import domain_sources, notices, page_sources
+from core.orchestrator.notices import domain_sources, draft_sources, notices, page_sources
 from core.orchestrator.packs import experimental_note
 from core.orchestrator.planner import LIMIT_TEXT, MAX_PLANNER_TURNS
 from core.orchestrator.runtime import Run
@@ -380,7 +380,9 @@ async def output_node(run: Run, state: CerveauState) -> dict[str, Any]:
     if research is not None:
         notes += research_notes(research)
     pages = page_sources(draft.sources)
-    keys = [*draft.data_sources, *pages, *domain_sources(route.domain)]
+    texts = (answer.synthese, answer.developpement, *answer.prochaines_etapes)
+    marker = draft_sources(route.domain, guarded.question, texts)  # D22: by the code (I5)
+    keys = [*draft.data_sources, *pages, *domain_sources(route.domain), *marker]
     update = {
         "signalements": tuple(notes),
         "non_verifies": unverified,
