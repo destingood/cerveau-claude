@@ -109,7 +109,7 @@ def _rev(description: str) -> object:
 def _log(
     reader: RepoReader, repo: Repository, sha: str, max_count: int
 ) -> tuple[list[Commit], bool, int]:
-    raw, _ = reader.read(
+    raw, cut = reader.read(
         repo.root,
         [
             "log",
@@ -123,9 +123,12 @@ def _log(
     )
     commits: list[Commit] = []
     masked = 0
-    for record in raw.split(b"\0"):
+    records = raw.split(b"\0")
+    if cut:  # the last record stops at the byte limit: a secret cut there would escape masking
+        records = records[:-1]
+    for record in records:
         fields = record.decode("utf-8", errors="replace").split("\x1f", 3)
-        if len(fields) != 4:  # an empty tail, or the last record cut at the byte limit
+        if len(fields) != 4:  # an empty tail
             continue
         full, author, date, subject = fields
         subject, count = mask_secrets(clean_text(subject))
