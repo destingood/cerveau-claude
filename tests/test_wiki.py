@@ -518,6 +518,22 @@ hook("session-end", {"session_id": "s1", "cwd": str(WORK)})
 check("session | hors projet" in page("log.md"), "fin de session : entrée « session » au journal", page("log.md")[-400:])
 check("Rappeler le torréfacteur de Shizuoka" in page("Cerveau.md"), "fin de session : page Cerveau à jour (nouvel à-faire)",
       page("Cerveau.md")[:800])
+# rêve (v8.15) : une source du wiki à ingérer suffit pour la ligne du démarrage, et Claude la traite lui-même
+DREAM = TMP / "brain" / "state" / "dream.json"
+code, out = brain("dream")
+st_d = json.loads(DREAM.read_text(encoding="utf-8"))
+check(code == 0 and (st_d.get("sources") or 0) >= 1, "rêve : sources du wiki à ingérer comptées", (st_d, out[-300:]))
+brain("config", "dream.min_items", "999")
+o = hook("session-start", {"session_id": "r1", "cwd": str(WORK)})
+check("🌙" in o and "source(s) du wiki à ingérer" in o and "sans sous-agent" in o and "dream --done" in o,
+      "rêve : ligne au démarrage dès une source à ingérer, à traiter par Claude lui-même", o[-800:])
+check("🌙" not in hook("session-start", {"session_id": "r2", "cwd": str(WORK)}), "rêve : une seule fois par jour")
+brain("config", "dream.auto", "false")
+write_json(DREAM, {**json.loads(DREAM.read_text(encoding="utf-8")), "notified": None})
+o = hook("session-start", {"session_id": "r3", "cwd": str(WORK)})
+check("🌙" in o and "sous-agent en arrière-plan" in o and "sans sous-agent" not in o,
+      "dream.auto false : la ligne le propose seulement", o[-600:])
+brain("dream", "--done")
 
 # ------------------------------------------------------------------ 10 bis. veille automatique (brain auto), sans Claude
 from brainkit import auto  # noqa: E402

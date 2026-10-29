@@ -17,8 +17,12 @@ décisions et de ce qu'il a appris, d'une session à l'autre.
   à ton message, pas seulement son début ; `brain compact --decouvrir` repère le bruit qui revient dans les sorties de
   tes commandes et `brain compact --apprendre <commande> --enregistrer` en fait un filtre appliqué tout seul (erreurs
   gardées) ; une liste JSON arrive en tableau, une sortie déjà lue dans la session renvoie vers la première ; et le
-  style de réponse « concis » (l'action d'abord, sans préambule ni récapitulatif), au choix :
-  `/output-style cerveau:concis`.
+  style de réponse « concis » (l'action d'abord, sans préambule ni récapitulatif) : `/output-style cerveau:concis`.
+- **Nouveau — tout s'active seul, sans commande** : le style concis devient ton style par défaut (sauf si tu en avais
+  déjà choisi un ; `brain config style off` pour revenir) ; l'entretien du jour repère le bruit qui revient dans les
+  sorties de tes commandes et en fait un filtre, annoncé une fois (erreurs toujours gardées ; `brain compact --oublier
+  <commande>` pour le retirer) ; et Claude ingère tout seul les sources déposées dans le wiki et tranche les points du
+  rêve (ce qui est sûr est appliqué, un doute est laissé et cité, rien n'est inventé).
 - **Nouveau — le cerveau en wiki** (le « LLM Wiki » d'Andrej Karpathy) : `brain wiki init <dossier>` range chaque
   souvenir dans une page Markdown d'un dossier que tu ouvres dans Obsidian (idéalement un dépôt GitHub privé). Tu y
   déposes des sources (articles, PDF, transcriptions, notes) ; Claude les lit et tient à jour des pages de synthèse
@@ -133,4 +137,4 @@ invite tes amis (Settings → Collaborators → Add people), puis rejoins-le le 
 
 `/plugin uninstall cerveau@cerveau`. Tes souvenirs restent dans `~/.claude/brain` (supprime ce dossier pour tout effacer).
 
-Version 8.14.0.
+Version 8.15.0.

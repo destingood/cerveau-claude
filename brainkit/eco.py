@@ -38,8 +38,8 @@ import shutil
 import time
 from pathlib import Path
 
-from .common import CHARS_PER_TOKEN, CLAUDE_HOME, CMD, days_since, load_config, log, now_iso, read_json, set_config, \
-    update_config, write_json
+from .common import CHARS_PER_TOKEN, CLAUDE_HOME, CMD, CODE_DIR, PLUGIN, days_since, load_config, log, now_iso, \
+    read_json, set_config, update_config, write_json
 
 OUT_KEY, WIN_KEY = "bashOutputMaxChars", "autoCompactWindow"
 OUT_RANGE, WIN_RANGE = (4000, 128000), (100000, 1000000)
@@ -52,7 +52,8 @@ OWN_PLUGIN = "cerveau"  # jamais proposé : c'est ce plugin-ci
 CLAUDE_AI = "anthropic-skills"  # préfixe des skills de claude.ai synchronisées dans Claude Code
 SYNC_KEY = "syncClaudeAiSkills"  # le réglage (documenté) qui coupe cette synchronisation
 ABSENT = object()      # « clé absente » (jamais écrit dans un fichier)
-LEVIERS = 2            # version des leviers posés tout seuls : une installation plus ancienne reçoit les nouveaux, une fois
+LEVIERS = 3            # version des leviers posés tout seuls : une installation plus ancienne reçoit les nouveaux, une fois
+STYLE_KEY, STYLE_OFF = "outputStyle", ("off", "non", "aucun", "none", "")  # style de réponse par défaut (/output-style)
 SKILLS_KEY, SKILLS_FRACTION = "skillListingBudgetFraction", 0.005
 MEMORY_KEY, MEMORY_ENV = "autoMemoryEnabled", "CLAUDE_CODE_DISABLE_AUTO_MEMORY"
 CACHE_KEY, CACHE_CHOICES = "promptCacheTtl", ("5m", "1h")
@@ -380,6 +381,11 @@ def apply_eco(out=None, win=None, force=False, cfg=None, nouveaux=False) -> tupl
         else:
             wants.append(("cle", key, value))
     wants.append(("cle", SKILLS_KEY, SKILLS_FRACTION))
+    style, cur = wanted_style(cfg), settings.get(STYLE_KEY)
+    if style and (cur in (None, style) or _same(_section(cfg, "pose")["cles"].get(STYLE_KEY, ABSENT), cur)):
+        wants.append(("cle", STYLE_KEY, style))  # jamais à la place d'un style choisi par l'utilisateur, même --forcer
+    elif style:
+        lignes.append(f"✓ {STYLE_KEY} : ton style {_val(STYLE_KEY, cur)} gardé")
     mem, note, attente = _memory_lever(settings, force)
     if mem:
         wants.append(("cle", MEMORY_KEY, False))
@@ -413,12 +419,41 @@ def summary(posees) -> str:
         parts.append("mémoire auto de Claude Code coupée (le cerveau la remplace, tout y est importé)")
     if CACHE_KEY in posees:
         parts.append(f"cache gardé {_ttl(posees[CACHE_KEY])}")
+    if STYLE_KEY in posees:
+        parts.append("réponses au style concis (l'action d'abord, sans préambule ni récapitulatif)")
     return ", ".join(parts)
 
 
 def notice(posees, titre="Mode éco activé") -> str:
     """La ligne annoncée à l'utilisateur quand des réglages du mode éco viennent d'être posés."""
-    return f"⚡ {titre} : {summary(posees)} · `{CMD} eco --annuler` pour revenir" if posees else ""
+    off = f" (style seul : `{CMD} config style off`)" if STYLE_KEY in posees else ""
+    return f"⚡ {titre} : {summary(posees)} · `{CMD} eco --annuler` pour revenir{off}" if posees else ""
+
+
+def wanted_style(cfg=None) -> str | None:
+    """Style de réponse à poser (config `style`), ou None : « off », ou style du plugin absent (cerveau classique)."""
+    v = (cfg or load_config()).get("style")
+    if not isinstance(v, str) or v.strip().lower() in STYLE_OFF:
+        return None
+    owner, _, name = v.strip().rpartition(":")
+    if owner == OWN_PLUGIN and not (PLUGIN and (CODE_DIR / "output-styles" / f"{name}.md").is_file()):
+        return None
+    return v.strip()
+
+
+def sync_style(cfg=None) -> str:
+    """Après `config style …` : pose le style demandé (choix explicite : il remplace le style d'avant, retenu pour
+    `eco --annuler`), ou remet l'état d'avant si c'est « off ». → les lignes à afficher."""
+    cfg = cfg or load_config()
+    style = wanted_style(cfg)
+    if style:
+        return "\n".join(commit([("cle", STYLE_KEY, style)], force=True)[2])
+    if STYLE_KEY in _section(cfg, "avant")["cles"]:
+        return "\n".join(_restore(only=[STYLE_KEY])[1])
+    v = cfg.get("style")
+    if isinstance(v, str) and v.strip().lower() in STYLE_OFF:
+        return ""
+    return f"⚠ style {_val(STYLE_KEY, v)} : livré seulement par le plugin cerveau — rien de posé"
 
 
 def _int(v, default=0) -> int:

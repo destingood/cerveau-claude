@@ -73,10 +73,17 @@ DEFAULT_CONFIG = {
     # sans usage depuis 30 jours et coupe les skills claude.ai si aucune n'a servi.
     "eco": {"auto": True, "bash_output_max_chars": 10000, "auto_compact_window": 200000,
             "alerte_contexte": [150000, 300000], "alerte_pause": True, "cache": "auto", "plugins_auto": False},
+    # Style de réponse par défaut (outputStyle de Claude Code, terminal et app de bureau), posé une fois avec le mode éco
+    # quand le plugin le livre, jamais à la place d'un style choisi par l'utilisateur. "off" : ne rien poser (et retirer
+    # celui que le cerveau avait posé : `brain config style off`).
+    "style": "cerveau:concis",
     # Sorties compactes (`brainkit/compact.py`) : après une commande bavarde (installation, tests, build, git log…), Claude
     # ne lit que l'essentiel ; la sortie brute reste keep_days jours dans state/sorties/. Rien n'est touché sous min_chars
-    # caractères ni si le gain est sous min_gain (part) ou min_saved (caractères).
-    "compact": {"enabled": True, "min_chars": 1500, "min_gain": 0.3, "min_saved": 600, "keep_days": 3, "max_files": 40},
+    # caractères ni si le gain est sous min_gain (part) ou min_saved (caractères). `echantillons` : les sorties des
+    # commandes non reconnues sont gardées aussi (sans secret) ; l'entretien du jour y repère le bruit qui revient et en
+    # fait un filtre (`apprendre_auto`), annoncé une fois ; `brain compact --oublier "<commande>"` le retire pour de bon.
+    "compact": {"enabled": True, "min_chars": 1500, "min_gain": 0.3, "min_saved": 600, "keep_days": 3, "max_files": 40,
+                "echantillons": True, "apprendre_auto": True},
     # Cartographie automatique (en arrière-plan) des dossiers de projet.
     "auto_map": {"enabled": True, "refresh_minutes": 10},
     "map": {"max_files": 15000, "max_file_kb": 768},
@@ -92,8 +99,10 @@ DEFAULT_CONFIG = {
     # Le cerveau en wiki (`brain wiki init <dossier>`) : les pages Markdown du dossier font foi. Synchronisation git
     # automatique sur le PC (pull au démarrage au plus toutes les sync_minutes, commit + push en fin de session).
     "wiki": {"path": None, "auto_sync": True, "sync_minutes": 30},
-    # Rêve : entretien quotidien hors conversation ; ligne au démarrage s'il y a au moins min_items points à trancher.
-    "dream": {"notice": True, "min_items": 3},
+    # Rêve : entretien quotidien hors conversation ; ligne au démarrage s'il y a au moins min_items points à trancher ou
+    # une source du wiki à ingérer. `auto` : Claude le traite lui-même (sources ingérées, partie sûre appliquée, doutes
+    # laissés et cités) ; false : la ligne le propose seulement.
+    "dream": {"notice": True, "min_items": 3, "auto": True},
     # PC (`brain pc`) : veille légère pendant les hooks (au plus toutes les check_minutes), fermeture seule des orphelins
     # sûrs (serveurs MCP et sessions Claude dont le parent est mort depuis orphan_min_minutes), une ligne pour Claude
     # seulement si la RAM est critique ou si une session tourne à vide (au plus toutes les alert_repeat_minutes).

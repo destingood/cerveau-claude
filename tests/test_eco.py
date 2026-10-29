@@ -221,9 +221,9 @@ check(c == 0 and "⚡ Mode éco — nouveaux réglages" in eco_line and "liste d
       and "mémoire auto de Claude Code coupée" in eco_line and "mises en fichier" not in eco_line,
       "nouveaux leviers d'une version plus récente : posés une fois, annonce « nouveaux réglages »", out[-400:])
 check(W.settings() == {"bashOutputMaxChars": 10000, "autoCompactWindow": 200000, "skillListingBudgetFraction": 0.005,
-                       "autoMemoryEnabled": False} and W.config("eco.leviers") == 2
+                       "autoMemoryEnabled": False} and W.config("eco.leviers") == 3
       and W.config("eco.applique_le") == "2026-10-01T00:00:00",
-      "nouveaux leviers : posés, eco.leviers à 2, date d'application d'origine gardée", (W.settings(), W.config("eco")))
+      "nouveaux leviers : posés, eco.leviers à 3, date d'application d'origine gardée", (W.settings(), W.config("eco")))
 c, msg, out = W.hook("session-start", "l2")
 check(c == 0 and "⚡ Mode éco" not in context_of(msg), "nouveaux leviers annoncés une seule fois", out[-300:])
 # cerveau classique (code dans le dossier des souvenirs, pas de .claude-plugin) : même ligne, ajoutée à l'injection
@@ -238,6 +238,33 @@ check(c == 0 and "⚡ Mode éco activé" in context_of(msg) and W.settings().get
       "cerveau classique : ligne « Mode éco activé » et réglages posés", out[-400:])
 c, msg, out = W.hook("session-start", "k2")
 check(c == 0 and "Mode éco activé" not in context_of(msg), "cerveau classique : annoncé une seule fois", out[-300:])
+check("outputStyle" not in W.settings(), "cerveau classique : aucun style posé (livré seulement par le plugin)", W.settings())
+
+# style de réponse (v8.15) : posé avec le mode éco quand le plugin le livre, jamais à la place du style de l'utilisateur
+plug = TMP / "plugin-code"
+plug.mkdir()
+shutil.copy2(CODE / "brain.py", plug / "brain.py")
+shutil.copytree(CODE / "brainkit", plug / "brainkit", ignore=shutil.ignore_patterns("__pycache__", "*.pyc"))
+shutil.copytree(CODE / "output-styles", plug / "output-styles")
+(plug / ".claude-plugin").mkdir()
+(plug / ".claude-plugin" / "plugin.json").write_text(json.dumps({"name": "cerveau", "version": "0.0.0"}), encoding="utf-8")
+W = World("style", code=plug)
+W.write_settings({"theme": "dark"})
+c, msg, out = W.hook("session-start", "y1")
+ctx = context_of(msg)
+check(c == 0 and W.settings().get("outputStyle") == "cerveau:concis" and "style concis" in ctx and "config style off" in ctx,
+      "plugin : style concis posé avec le mode éco, annoncé, retirable en une commande", (W.settings(), out[-600:]))
+c, out = W.run("config", "style", "off")
+check(c == 0 and "outputStyle" not in W.settings() and W.settings().get("theme") == "dark"
+      and W.settings().get("autoCompactWindow") == 200000, "config style off : style retiré, le reste gardé", (out, W.settings()))
+c, out = W.run("config", "style", "cerveau:concis")
+check(c == 0 and W.settings().get("outputStyle") == "cerveau:concis", "config style cerveau:concis : reposé", (out, W.settings()))
+W = World("style-perso", code=plug)
+W.write_settings({"outputStyle": "Explanatory"})
+c, msg, out = W.hook("session-start", "y2")
+check(c == 0 and W.settings().get("outputStyle") == "Explanatory" and W.settings().get("autoCompactWindow") == 200000
+      and "style concis" not in context_of(msg), "plugin : style choisi par l'utilisateur gardé, le reste du mode éco posé",
+      (W.settings(), out[-400:]))
 
 # ------------------------------------------------------------------ 6. ce qui l'emporte sur les réglages
 W = World("priorites")

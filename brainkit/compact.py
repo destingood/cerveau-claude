@@ -11,6 +11,11 @@ v8.14 (idées de rtk_discover / rtk_learn, des règles JSON de RTK et de Headroo
 (`compact.filtres` : `{"cmd": motif, "drop": [motifs]}`, proposés par `brain compact --decouvrir` / `--apprendre`),
 liste JSON d'objets → tableau en-tête + lignes sans perte, et une sortie identique à une précédente de la session
 devient un renvoi vers sa sortie brute (oublié à la compaction).
+
+v8.15 : les sorties non reconnues sont gardées par défaut (`compact.echantillons`, jamais une sortie qui contient un
+secret) et l'entretien du jour en apprend tout seul des filtres (`auto_learn`, `compact.apprendre_auto`) : bruit qui
+revient dans au moins 3 sorties d'une même commande, erreurs et résumés toujours gardés, annoncé une fois au démarrage ;
+`brain compact --oublier <commande>` le retire et n'en apprend plus pour elle.
 """
 from __future__ import annotations
 
@@ -390,8 +395,10 @@ def on_post_bash(data, cfg=None) -> dict | None:
     else:
         done, kind = compact_output(command, stdout, stderr, cc), kind_of(command, stdout, cc) or "json"
     if not done:
-        if cc.get("echantillons") and len(stdout) + len(stderr) >= cc.get("min_chars", 1500):
-            save_raw(command, stdout, stderr, cc)  # opt-in : matière de `brain compact --decouvrir`
+        if cc.get("echantillons", True) and len(stdout) + len(stderr) >= cc.get("min_chars", 1500):
+            from .privacy import find  # une sortie qui contient un secret n'est jamais gardée
+            if not find(stdout) and not find(stderr):
+                save_raw(command, stdout, stderr, cc)  # matière des filtres appris (entretien du jour, --decouvrir)
         return None
     new_out, new_err, n_in, n_out = done
     try:
@@ -505,7 +512,7 @@ def discover_text() -> str:
         out.append("- rien qui revienne assez souvent")
     else:
         out.append("Filtre pour une commande : brain compact --apprendre \"<commande>\" (puis --enregistrer)")
-    if not load_config().get("compact", {}).get("echantillons"):
+    if not load_config().get("compact", {}).get("echantillons", True):
         out.append(f"({hint})")
     return "\n".join(out)
 
@@ -539,3 +546,105 @@ def learn_text(command, files=(), save=False) -> str:
         cc["filtres"] = [f for f in cc.get("filtres") or [] if f.get("cmd") != filt["cmd"]] + [filt]
     update_config(change)
     return "\n".join(out + ["✓ Enregistré dans compact.filtres : appliqué tout seul (les erreurs et leurs traces restent)."])
+
+
+# --- Filtres appris tout seuls (v8.15) : l'entretien du jour en fait un du bruit qui revient, annoncé une fois ---
+_NOT_MAIN = frozenset("cd pushd popd export set source . tail head grep egrep rg sort uniq wc awk sed cut tr tee less "
+                      "more echo printf cat timeout xargs true false".split())
+_TOO_WIDE = frozenset("python python3 py node bash sh zsh npx uv uvx bun deno ruby perl pwsh powershell cmd".split())
+# sorties où chaque ligne compte (état, fichiers, recherche, réponses du cerveau) : jamais de filtre appris tout seul
+_ALL_SIGNAL = frozenset("git ls dir find tree diff gh jq curl wget type stat du df ps env printenv which where "
+                        "brain brain.py".split())
+
+
+def program(command) -> str:
+    """Programme principal d'une commande, jusqu'à 3 mots (« npm run build », « python brain.py publish ») : la première
+    commande simple qui n'est ni un `cd` ni un filtre de sortie (tail, grep…), arrêtée à une option, un guillemet, un
+    `=` ou un `$`. Un interpréteur seul (« python ») est trop large : ''."""
+    for part in _SPLIT.split(str(command or "")):
+        words = _PREFIX.sub("", part).split()
+        if not words or words[0].lower() in _NOT_MAIN:
+            continue
+        out = []
+        for w in words[:3]:
+            if w.startswith("-") or any(c in w for c in "\"'=$`<>*()&"):
+                break
+            out.append(w)
+        name = " ".join(out)
+        return "" if len(out) < 2 and name.lower() in _TOO_WIDE else name
+    return ""
+
+
+def _learnable(name) -> bool:
+    words = [Path(w).name.lower().removesuffix(".exe") for w in name.split()]
+    return bool(words) and not any(w in _ALL_SIGNAL for w in words[:2])
+
+
+def _forgotten(name, cc) -> bool:
+    return any(name == o or name.startswith(f"{o} ") for o in cc.get("oublies") or [] if isinstance(o, str))
+
+
+def auto_learn(cfg=None) -> list:
+    """Entretien du jour : un filtre par commande dont au moins 3 sorties gardées (state/sorties/) partagent du bruit
+    qui revient, s'il fait gagner au moins min_gain et min_saved car. par sortie ; jamais une commande déjà filtrée ni
+    oubliée (`--oublier`). Chaque filtre est annoncé une fois au démarrage suivant. → [(commande, avant, après)]."""
+    cc = (cfg or load_config()).get("compact") or {}
+    if not cc.get("enabled", True) or not cc.get("apprendre_auto", True):
+        return []
+    groups = {}
+    for cmd, text in _samples():
+        name = program(cmd)
+        if name and _learnable(name) and not _forgotten(name, cc) and not _rules(name, cc):
+            groups.setdefault(name, []).append((cmd, text))
+    new = []
+    for name, samples in sorted(groups.items()):
+        if len(samples) < 3:
+            continue
+        rows = recurrent(samples, 3)
+        if not rows:
+            continue
+        filt = {"nom": name, "cmd": re.escape(name) + r"(?=\s|$)", "drop": [r[5] for r in rows[:12]],
+                "auto": time.strftime("%Y-%m-%d")}
+        drop, kind = [re.compile(x) for x in filt["drop"]], family(name) or "perso"
+        before = sum(len(t if kind == "perso" else compact_text(t, kind)) for _, t in samples)
+        after = sum(len(compact_text(t, kind, drop)) for _, t in samples)
+        if before - after < max(cc.get("min_gain", 0.3) * before, cc.get("min_saved", 600) * len(samples)):
+            continue
+        new.append((filt, before, after))
+    if not new:
+        return []
+    from .common import CMD, update_config
+    from .eco import _announce
+
+    def change(c):
+        cur = c.setdefault("compact", {})
+        cur["filtres"] = (cur.get("filtres") or []) + [f for f, _, _ in new]
+    update_config(change)
+    for f, a, b in new:
+        _announce(f"🧹 Filtre de sortie appris pour « {f['nom']} » : {_num(a)} → {_num(b)} car. sur ses dernières sorties "
+                  f"(−{100 - 100 * b // max(1, a)} %), erreurs et traces toujours gardées · retirer : "
+                  f"`{CMD} compact --oublier \"{f['nom']}\"`")
+    return [(f["nom"], a, b) for f, a, b in new]
+
+
+def forget_filter(command) -> str:
+    """`brain compact --oublier <commande>` : retire les filtres qui s'appliquent à cette commande (appris ou
+    enregistrés) et n'en apprend plus pour elle."""
+    from .common import update_config
+    name = " ".join(str(command or "").split())
+    gone = []
+
+    def change(c):
+        cc = c.setdefault("compact", {})
+        keep = []
+        for f in cc.get("filtres") or []:
+            try:
+                hit = f.get("nom") == name or bool(re.match(f["cmd"], name))
+            except (re.error, KeyError, TypeError, AttributeError):
+                hit = False
+            (gone if hit else keep).append(f)
+        cc["filtres"] = keep
+        cc["oublies"] = sorted({*(cc.get("oublies") or []), name})
+    update_config(change)
+    what = f"{len(gone)} filtre(s) retiré(s)" if gone else "aucun filtre ne s'y appliquait"
+    return f"✓ « {name} » : {what} ; plus aucun ne sera appris pour cette commande"

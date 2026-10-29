@@ -7,8 +7,9 @@
 - Le reste demande du jugement et part dans un dossier compact (REVE.md) : corrections entendues mais jamais
   mémorisées, observations 🔴 qu'aucun souvenir ne reflète, conflits et doublons probables, règles proches à
   fusionner, souvenirs montrés sans jamais servir, décisions sans « pourquoi », à-faire en retard.
-- Au démarrage suivant (au plus une fois par jour, et seulement s'il y a assez à faire), une ligne propose de le
-  confier à un sous-agent en arrière-plan. `brain dream --done` le clôt."""
+- Au démarrage suivant (au plus une fois par jour, s'il y a assez à faire ou une source du wiki à ingérer), une ligne
+  demande à Claude de le traiter lui-même (v8.15, `dream.auto`) : sources ingérées, partie sûre appliquée, doutes
+  laissés et cités, rien d'inventé ; `dream.auto` false : la ligne le propose seulement. `brain dream --done` le clôt."""
 from __future__ import annotations
 
 import datetime as _dt
@@ -168,12 +169,15 @@ def prepare(apply_safe=True):
         red = observations.unsaved(brain, since)
     except Exception:
         red = []
-    wiki_rows = []
+    wiki_rows, sources = [], 0
     if (brain.data.get("wiki") or {}).get("root") and not brain.data["wiki"].get("missing"):
         try:  # le wiki : sa santé fait partie de l'entretien (pages à créer, sources en attente, pages dépassées…)
             from . import wiki
             rep = wiki.lint(brain, limit=5)
             wiki_rows = [(f"Wiki — {title}", rows) for title, rows in rep.items() if title in WIKI_DREAM]
+            if rep.get("Sources à ingérer"):  # le lint n'en montre que 5 : le vrai nombre pour la ligne du démarrage
+                from pathlib import Path
+                sources = len(wiki.pending(brain.data, Path(wiki.ws.root() or ""))) or len(rep["Sources à ingérer"])
         except Exception as exc:
             from .common import log
             log(f"rêve : lint du wiki : {exc!r}")
@@ -221,28 +225,37 @@ def prepare(apply_safe=True):
         lines.append("Rien à trancher : la mémoire est propre.")
     text = "\n".join(lines).rstrip() + "\n"
     write_text(DREAM_FILE, text)
-    st.update({"prepared": now_iso(), "pending": items})
+    st.update({"prepared": now_iso(), "pending": items, "sources": sources})
     _save(st)
     return text, items
 
 
 def done():
     st = _state()
-    st.update({"done": now_iso(), "pending": 0, "notified": None})
+    st.update({"done": now_iso(), "pending": 0, "sources": 0, "notified": None})
     _save(st)
 
 
 def notice() -> str:
-    """Ligne pour le démarrage quand un rêve attend (au plus une fois par jour, et s'il y a assez à faire)."""
+    """Ligne pour le démarrage quand un rêve attend (au plus une fois par jour, s'il y a assez à faire ou une source du
+    wiki à ingérer) : Claude le traite lui-même (`dream.auto`), ou la ligne le propose seulement."""
     cfg = load_config().get("dream", {})
     st = _state()
-    if not cfg.get("notice", True) or (st.get("pending") or 0) < cfg.get("min_items", 3):
+    pending, sources = st.get("pending") or 0, st.get("sources") or 0
+    if not cfg.get("notice", True) or (pending < cfg.get("min_items", 3) and not sources):
         return ""
     last = parse_iso(st.get("notified"))
     if last and (_dt.datetime.now() - last).total_seconds() < 86400:
         return ""
     st["notified"] = now_iso()
     _save(st)
-    return (f"🌙 Entretien du cerveau : {st['pending']} point(s) en attente (conflits, doublons, corrections entendues…). "
+    src = f", dont {sources} source(s) du wiki à ingérer" if sources else ""
+    if cfg.get("auto", True):  # choix de l'utilisateur (v8.15) : traité sans lui demander, et sans sous-agent (tokens)
+        return (f"🌙 Entretien du cerveau : {pending} point(s) en attente{src}. Après la première demande de "
+                f"l'utilisateur, le traiter toi-même, sans sous-agent : `{CMD} dream` ; ingérer chaque source selon le "
+                f"schéma du wiki (CLAUDE.md) sans attendre de validation, appliquer ce qui est sûr, laisser un point "
+                f"douteux et le citer en une ligne, ne jamais inventer un fait ; terminer par `{CMD} dream --done` et "
+                f"dire en une ligne ce qui a été fait.")
+    return (f"🌙 Entretien du cerveau : {pending} point(s) en attente{src} (conflits, doublons, corrections entendues…). "
             f"Quand la tâche le permet, le confier à un sous-agent en arrière-plan : `{CMD} dream`, appliquer ce qui "
             f"est sûr, puis `{CMD} dream --done`.")

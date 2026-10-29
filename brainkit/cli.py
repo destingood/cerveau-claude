@@ -893,6 +893,12 @@ def cmd_consolidate(a):
             log(f"rêve préparé : {pending} point(s) à trancher")
         except Exception as exc:
             log(f"rêve : {exc!r}")
+        try:  # filtres de sorties appris du bruit qui revient (annoncés une fois au prochain démarrage)
+            from . import compact
+            for name, before, after in compact.auto_learn():
+                log(f"filtre de sortie appris : {name} ({before} → {after} car.)")
+        except Exception as exc:
+            log(f"filtres appris : {exc!r}")
         return
     print("\n".join(actions) if actions else "✓ rien à consolider")
     if dry and actions:
@@ -1227,6 +1233,9 @@ def cmd_compact(a):
         return 0
     if a.apprendre:
         print(compact.learn_text(a.apprendre, [a.fichier] if a.fichier not in (None, "-") else (), a.enregistrer))
+        return 0
+    if a.oublier:
+        print(compact.forget_filter(a.oublier))
         return 0
     if a.stats or not (a.fichier or a.cmd):
         print(compact.stats_text())
@@ -1708,6 +1717,11 @@ def cmd_config(a):
         value = a.value
     set_config(a.key, value)
     print(f"✓ {a.key} = {json.dumps(value, ensure_ascii=False)}")
+    if a.key == "style":  # le réglage de Claude Code suit tout de suite (posé, ou remis comme avant pour « off »)
+        from . import eco
+        lines = eco.sync_style()
+        if lines:
+            print(lines)
 
 
 def cmd_hook(a):
@@ -1963,6 +1977,8 @@ def build_parser():
     s.add_argument("--decouvrir", action="store_true", help="le bruit qui revient dans les sorties gardées (suggestions)")
     s.add_argument("--apprendre", metavar="COMMANDE", help="filtre proposé pour cette commande, appris de ses sorties")
     s.add_argument("--enregistrer", action="store_true", help="avec --apprendre : l'ajouter à compact.filtres")
+    s.add_argument("--oublier", metavar="COMMANDE", help="retirer les filtres de cette commande (appris tout seuls ou "
+                   "enregistrés) et ne plus en apprendre pour elle")
     s = cmd("history", cmd_history, "instantanés du cerveau (pour revenir en arrière) — --diff <n°|date>", ["historique"])
     s.add_argument("-n", type=int, default=15)
     s.add_argument("--diff", help="ce qui a changé depuis un instantané (n°) ou une date")
