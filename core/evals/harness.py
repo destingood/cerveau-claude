@@ -26,6 +26,7 @@ from core.config.loader import Config, PaperRiskLimits
 from core.evals.cases import REPO_ROOT, Case, Suite
 from core.evals.checks import Check, Mode, Outcome, r5_breaches, run_checks, sourcing_ok
 from core.evals.judge import Judgement, golden_threshold, judge
+from core.evals.learning import learning_checks, run_learning
 from core.evals.offline import (
     FINANCE_NOW,
     FIXTURE_NOW,
@@ -525,11 +526,31 @@ def _paper(case: Case, mode: Mode, root: Path, run: str) -> CaseResult:
     )
 
 
+def _learning(case: Case, mode: Mode, root: Path, run: str) -> CaseResult:
+    learning = run_learning(case, root)
+    checks = tuple(learning_checks(case, learning))
+    return CaseResult(
+        case.id,
+        case.suite,
+        case.group,
+        mode,
+        run,
+        passed=all(check.passed for check in checks),
+        score=_score(checks),
+        checks=checks,
+        status="complete" if learning.verdict is None else learning.verdict.status,
+        elapsed_s=learning.elapsed_s,
+        markdown=learning.markdown,
+    )
+
+
 async def run_case(
     case: Case, mode: Mode, *, root: Path = REPO_ROOT, run: str = MANUAL_RUN
 ) -> CaseResult:
     """Runs one case; an exception fails the case, never the suite."""
     try:
+        if case.learning is not None:  # the learning loop's code, no model, both modes alike
+            return _learning(case, mode, root, run)
         if case.paper is not None:  # the paper loop, without a model, the same in both modes
             return _paper(case, mode, root, run)
         if mode == "offline":

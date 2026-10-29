@@ -116,7 +116,7 @@ def test_the_injection_suite_has_at_least_20_trapped_pages() -> None:
         # member's reply
         trapped = case.pages or case.hits or (case.store and case.store.files()) or case.code
         trapped = trapped or case.cyber or case.legal or case.business
-        assert trapped or case.offline.committee or case.paper, case.id
+        assert trapped or case.offline.committee or case.paper or case.learning, case.id
 
 
 def test_the_finance_golden_set_has_at_least_50_cases() -> None:
