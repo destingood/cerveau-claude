@@ -27,6 +27,10 @@ synthetic bundle in the run's temporary home (ADR-057); a source may be down or 
 A legal case (``legal``) gives the article versions and searches the fake Légifrance API serves
 to the real legifrance server, the PISTE environment of its configuration copy and whether it has
 stand-in credentials; the API may be down, answer too much or send another article (ADR-060).
+
+A business case (``business``) gives the companies the fake API Recherche d'entreprises finds and
+the INSEE datasets the fake Melodi API serves to the real entreprises and insee_stats servers; a
+company may carry a director and an address the plugin must drop, and an API may be down (ADR-063).
 """
 
 from __future__ import annotations
@@ -842,6 +846,61 @@ class LegalFixture(_Data):
         return self
 
 
+class CompanyYear(_Data):
+    """The published accounts of one year, in euros, as the API gives them."""
+
+    ca: int | None = None
+    resultat_net: int | None = None
+
+
+class CompanyFixture(_Data):
+    """One company of the fake API Recherche d'entreprises; every name and figure is invented. A
+    director, a birth date and a street are added to the reply: none may reach an answer (I4)."""
+
+    siren: str = Field(pattern=r"^[0-9]{9}$")
+    nom: str = Field(min_length=1, max_length=200)  # nom_complet, read as data (R5)
+    naf: str = Field(default="47.91B", pattern=r"^[0-9]{2}\.[0-9]{2}[A-Z]$")
+    categorie: str = Field(default="PME", pattern=r"^(PME|ETI|GE)$")
+    etat: Literal["A", "C"] = "A"
+    creation: date
+    fermeture: date | None = None
+    commune: str = Field(min_length=1, max_length=80)
+    code_postal: str = Field(pattern=r"^[0-9]{5}$")
+    departement: str = Field(pattern=r"^([0-9]{2,3}|2[AB])$")
+    effectif: str | None = Field(default="03", pattern=r"^([0-9]{2}|NN)$")
+    finances: dict[str, CompanyYear] = Field(default_factory=dict)  # year → accounts
+    mise_a_jour: date
+
+
+class StatsObservationFixture(_Data):
+    dimensions: dict[str, str] = Field(min_length=1, max_length=12)
+    value: float
+
+
+class StatsFixture(_Data):
+    """One Melodi dataset: its update date and the observations ``/data`` sends back, unfiltered;
+    the plugin keeps those that answer the query (R12)."""
+
+    updated: date
+    observations: tuple[StatsObservationFixture, ...] = ()
+
+
+class BusinessFixture(_Data):
+    """The fake APIs of a business case, served to the real entreprises and insee_stats servers
+    (``core/evals/business_fixtures.py``): no request leaves the machine, no cache is kept."""
+
+    companies: tuple[CompanyFixture, ...] = ()
+    datasets: dict[str, StatsFixture] = Field(default_factory=dict)  # Melodi id → dataset
+    down: tuple[Literal["entreprises", "insee_melodi"], ...] = ()  # answers HTTP 503
+
+    @model_validator(mode="after")
+    def _unique(self) -> BusinessFixture:
+        sirens = [company.siren for company in self.companies]
+        if len(set(sirens)) != len(sirens):
+            raise ValueError("companies : SIREN en double")
+        return self
+
+
 class Case(_Data):
     id: str = Field(pattern=CASE_ID)
     suite: Suite
@@ -860,6 +919,7 @@ class Case(_Data):
     code: CodeFixture | None = None  # the repository the code tools read (pack code)
     cyber: CyberFixture | None = None  # the sources the cyber tools read (pack cyber)
     legal: LegalFixture | None = None  # the Légifrance API the legal tools read
+    business: BusinessFixture | None = None  # the APIs the business tools read
     expect: Expect = Expect()
 
     @model_validator(mode="after")

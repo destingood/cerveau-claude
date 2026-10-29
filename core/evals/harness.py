@@ -34,6 +34,7 @@ from core.evals.offline import (
     Pilot,
     Recorder,
     WebLog,
+    business_toolboxes,
     case_store,
     code_toolboxes,
     cyber_toolboxes,
@@ -382,6 +383,7 @@ async def _offline(case: Case, root: Path, run: str) -> CaseResult:
                 **code_toolboxes(case, home, config),
                 **cyber_toolboxes(case, home, root / "config", lambda: now),
                 **legal_toolboxes(case, home, root / "config", lambda: now),
+                **business_toolboxes(case, home, root / "config", lambda: now, finance),
             },
             pseudonymiser=lambda: presidio(config),
             callbacks=(recorder,),
@@ -444,6 +446,9 @@ async def _live(case: Case, root: Path, run: str) -> CaseResult:
                 ),
                 **legal_toolboxes(
                     case, Path(tmp), live_config_dir(root), lambda: datetime.now(UTC)
+                ),
+                **business_toolboxes(
+                    case, Path(tmp), live_config_dir(root), lambda: datetime.now(UTC), finance
                 ),
             },
             pseudonymiser=lambda: presidio(config),
