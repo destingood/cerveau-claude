@@ -3,7 +3,7 @@
 Une mémoire persistante pour Claude Code, faite par Lucas : Claude se souvient de toi, de tes projets, de tes
 décisions et de ce qu'il a appris, d'une session à l'autre. Tout reste chez toi, sur ton PC.
 
-![Version 8.15.11](https://img.shields.io/badge/version-8.15.11-2ea44f) ![Python 3.10 ou plus](https://img.shields.io/badge/python-3.10%2B-3776ab) ![Windows, macOS, Linux](https://img.shields.io/badge/Windows_%C2%B7_macOS_%C2%B7_Linux-555)
+![Version 8.15.12](https://img.shields.io/badge/version-8.15.12-2ea44f) ![Python 3.10 ou plus](https://img.shields.io/badge/python-3.10%2B-3776ab) ![Windows, macOS, Linux](https://img.shields.io/badge/Windows_%C2%B7_macOS_%C2%B7_Linux-555)
 
 **Sommaire** — [Installer](#installer-une-seule-fois) · [Au quotidien](#au-quotidien) · [Ce que fait le cerveau](#ce-que-fait-le-cerveau) ·
 [Moins de tokens](#moins-de-tokens) · [Wiki et veille](#le-cerveau-en-wiki-et-la-veille-automatique) · [E-commerce](#le-cerveau-e-commerce) ·
@@ -149,6 +149,8 @@ et ne copie jamais une clé ou un jeton dans la conversation.
 | « installe spec kit dans ce projet », puis `/speckit-…` | `/cerveau:spec-kit` | construit ton appli à partir d'une spec écrite : principes, spec, plan, tâches, code, contrôle | Spec Kit (GitHub, MIT) |
 | « installe reverse api », puis « transforme ce site en API », « ce site n'a pas d'API » | `/cerveau:reverse-api-engineer` | lit les vraies requêtes d'un site et en tire un client d'API typé (10 langages), vérifié sur de vraies données | reverse-api-engineer (Kalil, MIT) |
 | « installe rea », puis « analyse ce binaire », « décompile cette fonction », « comment marche la recherche dans cette appli » | `/cerveau:rea` | lit en local un exécutable, une appli Electron, un APK, un firmware, une base SQLite ou une capture réseau, et explique avec preuves comment ça marche, pour t'aider à en refaire ta version | REA, Reverse Engineer Anything (morluto, MIT) |
+| « humanise ce texte », « sonne trop IA », « on dirait de l'IA » | `/cerveau:humanizer` | réécrit ton post, ta bio, ta lettre ou ta fiche produit pour qu'il sonne comme toi, sans rien ajouter ni changer à ce qu'il dit | Humanizer (blader, MIT) |
+| « ajoute une animation », « anime ce bouton », « transition de page », « rends le site plus vivant » | `/cerveau:motion-design` | anime ton site comme un motion designer : style, durées, courbes et ordre d'apparition, avec une version calme pour qui demande moins de mouvement | Motion Design Skill (LottieFiles, MIT) |
 
 <details>
 <summary>Le détail de chaque outil</summary>
@@ -164,6 +166,8 @@ et ne copie jamais une clé ou un jeton dans la conversation.
 - **Spec Kit** (skill `/cerveau:spec-kit`, d'après Spec Kit de GitHub, MIT) : dis « installe spec kit dans ce projet » et Claude installe sur ton PC l'outil `specify` (avec ton accord), puis le pose dans ton projet. Ensuite, tu construis ton appli à partir d'une spec écrite : les principes du projet, ce que tu veux et pourquoi, le plan technique, la liste des tâches, le code, puis un contrôle que le code colle bien à la spec. Tout reste en fichiers dans ton projet, pour reprendre plus tard ou le passer à quelqu'un. Les commandes `/speckit-…` ne partent que quand tu les tapes : elles ne coûtent rien tant que tu ne t'en sers pas.
 - **Reverse API Engineer** (skill `/cerveau:reverse-api-engineer`, d'après reverse-api-engineer de Kalil, MIT) : dis « installe reverse api » et Claude installe sur ton PC l'outil `rae` (avec ton accord), puis le règle. Ensuite, « transforme ce site en API », « ce site n'a pas d'API », « fais-moi un client API pour ce site » : un navigateur fait la tâche que tu décris (« toutes les offres de cette page carrières »), rae lit les vraies requêtes du site, et Claude en tire un client d'API propre et typé (Python, TypeScript, Go… 10 langages), avec son README, qu'il vérifie sur de vraies données avant de te le donner. Navigateur neuf par défaut ; ton vrai Chrome avec tes comptes seulement sur ton « oui ». Les captures (cookies, jetons) restent sur ton PC et ne vont jamais dans la conversation ; chaque capture coûte des tokens, Claude te dit combien.
 - **REA** (skill `/cerveau:rea`, d'après REA de morluto, MIT) : dis « installe rea » et Claude installe sur ton PC REA (Reverse Engineer Anything, avec ton accord) et le branche à Claude Code. Ensuite, « analyse ce binaire », « décompile cette fonction », « comment marche la recherche dans cette appli » : Claude lit en local un exécutable, une appli Electron, un APK, un firmware, une base SQLite ou une capture réseau, explique avec preuves comment ça marche et t'aide à en refaire ta version. Seulement pour un logiciel à toi ou que tu as le droit d'examiner ; jamais pour contourner une licence ou une protection. Les moteurs natifs (Ghidra, Hopper, IDA) restent facultatifs et à ta charge.
+- **Humanizer** (skill `/cerveau:humanizer`, d'après Humanizer de blader, MIT) : « humanise ce texte », « sonne trop IA », « on dirait de l'IA » et Claude réécrit ton post, ta bio, ta lettre de motivation ou ta fiche produit pour qu'il sonne comme toi, sans changer ce qu'il dit : il retire les tics d'écriture d'IA repérés par Wikipédia. Il n'ajoute aucun fait, chiffre ni compétence que tu n'as pas donnés. Il l'installe sur ton PC avec ton accord, ou le suit une fois sans rien installer.
+- **Motion design** (skill `/cerveau:motion-design`, d'après Motion Design Skill de LottieFiles, MIT) : « ajoute une animation », « anime ce bouton », « transition de page », « rends le site plus vivant » et Claude anime ton site comme un motion designer : il choisit d'abord le style (ludique, haut de gamme, sobre ou dynamique), puis la durée, la courbe et l'ordre d'apparition de chaque élément, en CSS, Framer Motion, GSAP ou Lottie. Toujours une version calme pour ceux qui demandent moins de mouvement, et rien qui distrait sur un formulaire ou une page de paiement. Il l'installe sur ton PC avec ton accord, ou la suit une fois sans rien installer.
 
 </details>
 
@@ -200,4 +204,4 @@ invite tes amis (Settings → Collaborators → Add people), puis rejoins-le le 
 
 `/plugin uninstall cerveau@cerveau`. Tes souvenirs restent dans `~/.claude/brain` (supprime ce dossier pour tout effacer).
 
-Version 8.15.11.
+Version 8.15.12.
