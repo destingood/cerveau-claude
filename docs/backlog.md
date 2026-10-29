@@ -346,6 +346,7 @@ reporté (phase 3 : décision D23 de `docs/plans/phase-3-plan.md`).
 | B330 | Fixtures de `core/evals/legifrance_fixtures.py` : forme des réponses PISTE (jeton, `getArticle`, `getArticleWithIdAndNum`, `search`) reproduite de la documentation lue le 2026-10-27 (A_VERIFIER) ; la comparer à un premier appel réel fait par Lucas et ajouter une fixture réelle (Licence Ouverte 2.0) | ADR-060, plan P5, §7 | 7 |
 | B331 | Identifiants `LEGITEXT` des codes fréquents (`domain_packs/juridique_fr/knowledge/sources.yaml`) : A_VERIFIER sur un appel réel ; fin ouverte `2999-01-01` des versions en vigueur A_VERIFIER | plan P5, §7 | 7 |
 | B332 | Mesure réelle du pack Juridique FR, sur accord de Lucas et avant le statut `actif` (ADR-060, H12) : hors ligne, les refus R16 et H8 sont scriptés et `juridique-rt-identifiant-piege` ne mesure que le refus du schéma ; qu'un modèle refuse un conseil personnalisé, un acte ou un calcul, et ne cite qu'une version qui couvre la date, ne se mesure qu'en réel (B60) | ADR-060, P5 | 7 |
+| B333 | Code publié dans le dépôt public `destingood/cerveau-claude` (`plateforme/`) depuis le 2026-10-28 : choisir une licence pour CERVEAU (A_DEFINIR, Lucas), vérifier la section D.5 des GitHub Terms of Service (A_VERIFIER), et relire avant chaque report de phase ce qui devient public (modèle de menaces, configuration) | `docs/licences.md`, R6, R14 | 7 |
 
 ## Auto-amélioration et ouverture publique (ADR-011)
 Décision de Lucas du 18/10/2026 : CERVEAU s'améliore seul, sans validation humaine, derrière deux
