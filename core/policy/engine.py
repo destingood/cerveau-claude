@@ -9,7 +9,8 @@ says, and only the decisions this phase can carry out are granted, each with an 
 The orchestrator and the plugins carry out ``auto`` for ``LECTURE`` in every domain and for
 ``CALCUL`` in the finance pack, whose computing tools are deterministic, tested and evaluated (R1,
 R8, ADR-022), and in the code pack, whose checks run in a networkless, read-only container
-(ADR-048, ADR-049): their effect is ``executer``. So is ``EXECUTION_ISOLEE`` in the code pack,
+(ADR-048, ADR-049), and in the business pack, whose calculator takes only the figures it is given
+(ADR-061, ADR-063): their effect is ``executer``. So is ``EXECUTION_ISOLEE`` in the code pack,
 whose agent works on a disposable copy in a container without Internet and returns a patch that
 Lucas applies himself (ADR-051). The paper loop alone carries out an
 order intent of the finance pack (``decide_order``): ``proposition`` at N1 drafts it, ``paper`` at
@@ -39,11 +40,13 @@ if TYPE_CHECKING:
 PHASE_ACTION_CLASSES: frozenset[ActionClass] = frozenset({"LECTURE"})  # in every domain
 # A pack computes only with deterministic tools that are tested and evaluated (R1, R8, ADR-022);
 # the code pack's checks run the repository's tools in a sandbox (ADR-048, ADR-049) and its agent
-# works in an isolated container whose only output is a patch (ADR-051).
+# works in an isolated container whose only output is a patch (ADR-051). The business pack's
+# biz_calc computes from the figures it is given, with a closed list of operations (ADR-063).
 PHASE_DOMAIN_ACTION_CLASSES: Mapping[str, frozenset[ActionClass]] = MappingProxyType(
     {
         "finance": frozenset({"LECTURE", "CALCUL"}),
         "code": frozenset({"LECTURE", "CALCUL", "EXECUTION_ISOLEE"}),
+        "business": frozenset({"LECTURE", "CALCUL"}),
     }
 )
 # Granted in some domains only: decided once the request is routed to its domain.
