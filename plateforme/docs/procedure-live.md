@@ -1,6 +1,6 @@
 # Procédure d'activation du live (finance)
 
-Décision D9 du plan de phase 5 ; ADR-039 (adaptateur et six conditions), ADR-036 (niveau effectif et
+Décision D9 du plan de phase 5 ; ADR-039 et ADR-067 (adaptateur et sept conditions), ADR-036 (niveau effectif et
 signature), ADR-035 (approbations), ADR-034 (kill switch), ADR-003 (ACL).
 
 **Qui** : Lucas seul, à la main. Claude Code ne modifie jamais `config/live.yaml` ni
@@ -16,6 +16,7 @@ courtier (R3, §8.6).
 | `config/live.yaml` | `enabled: false`, limites à 0, liste blanche vide | condition 1 fausse : tout envoi est refusé |
 | Signature N3 | aucune dans `governance/approvals/` | conditions 3 et 4 fausses |
 | ACL | non posée sur ce poste (B173) | condition 2 fausse |
+| Porte live | aucune (B353) : les limites de `live.yaml` ne sont vérifiées par rien | condition 7 fausse : tout ordre est refusé |
 | Rotation des clés | `keys.rotation_days: A_DEFINIR` (`config/risk.yaml`) | prérequis 7 non rempli |
 
 Ce document fixe ce qui devra être vrai et l'ordre des gestes. Le client de courtier et la boucle
@@ -66,8 +67,8 @@ live relèvent d'une phase dédiée, avec ses revues.
 
 ## 3. Ce que le code revérifie à chaque envoi
 
-Rien n'est gardé en mémoire : à chaque ordre, `LiveAdapter` relit le disque et exige les six
-conditions (ADR-039, D9). Une seule fausse lève `LiveDisabled`, qui les nomme toutes, et le
+Rien n'est gardé en mémoire : à chaque ordre, `LiveAdapter` relit le disque et exige les sept
+conditions (ADR-039, D9, B200). Une seule fausse lève `LiveDisabled`, qui les nomme toutes, et le
 courtier n'est pas appelé.
 
 1. `live.yaml` complet : `enabled`, courtier nommé, limites > 0, liste blanche non vide.
@@ -76,7 +77,11 @@ courtier n'est pas appelé.
 4. Niveau effectif de la finance ≥ N3.
 5. Kill switch non engagé.
 6. Approbation ACCORDEE pour `live`, non expirée, liée au contenu exact de l'intention ; elle est
-   consommée une seule fois, avant l'envoi.
+   consommée une seule fois, avant l'envoi. L'expiration se juge à l'horloge de l'adaptateur,
+   jamais à l'heure donnée par l'appelant (B230).
+7. Limites de `live.yaml` : instrument (symbole ou ISIN) dans la liste blanche, et taille, position,
+   perte du jour, ordres du jour et `allow` vérifiés par une Porte live. Cette Porte n'existe pas
+   encore (B353) : la condition est fausse pour tout ordre.
 
 L'annulation et la lecture restent permises sans condition : elles ne vont que dans le sens sûr.
 
@@ -104,7 +109,7 @@ enroll`) remplace l'ancien secret : les codes de l'ancien ne valent plus.
 
 ## 6. Limites connues
 
-- `cerveau status` affiche le niveau écrit, pas le niveau effectif ni les six conditions : le
+- `cerveau status` affiche le niveau écrit, pas le niveau effectif ni les sept conditions : le
   contrôle passe par `cerveau config check` (B225).
 - Le compte courant garde le contrôle des dossiers parents `config/` et `governance/` ; la
   vérification du propriétaire par l'adaptateur est la parade (`docs/threat-model.md`).

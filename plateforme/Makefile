@@ -4,7 +4,7 @@
 UV ?= uv
 COMPOSE ?= docker compose -f infra/docker-compose.yml
 BOT := interfaces/discord_bot
-GATE_COVERAGE := --cov=core/risk_gate --cov=core/policy --cov=core/approvals --cov=core/governance --cov=core.execution.live --cov=core/net --cov=core/research --cov=core/code --cov=plugins/legifrance --cov-branch --cov-fail-under=100 --cov-report=term-missing:skip-covered
+GATE_COVERAGE := --cov=core/risk_gate --cov=core/policy --cov=core/approvals --cov=core/governance --cov=core.execution.live --cov=core/net --cov=core/research --cov=core/code --cov=plugins/legifrance --cov=core/business --cov=plugins/business_calc --cov=plugins/entreprises --cov=plugins/insee_stats --cov=core.learning.calibration --cov=core.learning.forecasts --cov=core.learning.layer --cov=core.learning.gate --cov=core.learning.patterns --cov=core.learning.champion --cov=core/reports --cov=interfaces.cli.report --cov=core/cyber --cov=plugins.cyber_cve.common --cov=plugins.cyber_cve.epss --cov=plugins.cyber_cve.kev --cov=plugins.cyber_cve.models --cov=plugins.cyber_cve.nvd --cov=plugins.cyber_cve.priority --cov=plugins.cyber_cve.server --cov=plugins.cyber_cve.settings --cov=plugins.cyber_attack.models --cov=plugins.cyber_attack.search --cov=plugins.cyber_attack.server --cov-branch --cov-fail-under=100 --cov-report=term-missing:skip-covered
 
 export PROMPTFOO_DISABLE_TELEMETRY := 1
 export PROMPTFOO_DISABLE_UPDATE := 1

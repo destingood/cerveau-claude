@@ -1,0 +1,53 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  Questions d'évaluation du plugin business_calc (R8). Chacune se vérifie avec biz_calc et
+  config/ tel que versionné, au 29/10/2026 : seul le taux normal de TVA (20 %, CGI art. 278) est
+  renseigné, les autres valent A_VERIFIER. Les chiffres attendus sont les affichages de l'outil :
+  la réponse les cite, elle ne les recalcule pas (R1). Montants fictifs.
+-->
+<evaluation>
+  <qa_pair>
+    <question>J'achète un fouet 15 € HT et je le vends 25 € HT : quelle marge et quel taux de marque ?</question>
+    <answer>marge brute 10,00 €, taux de marque 40,00 %, taux de marge 66,67 %, coefficient 1,6667</answer>
+  </qa_pair>
+  <qa_pair>
+    <question>À quel prix HT vendre un article acheté 15 € HT pour un taux de marque de 40 % ?</question>
+    <answer>25,00 € HT, soit 10,00 € de marge brute</answer>
+  </qa_pair>
+  <qa_pair>
+    <question>Quel prix HT avec un coefficient de 2,2 sur un coût de 12 € HT ?</question>
+    <answer>26,40 € HT</answer>
+  </qa_pair>
+  <qa_pair>
+    <question>Combien de TVA dans un prix de 100 € TTC au taux normal ?</question>
+    <answer>16,67 € de TVA pour 83,33 € HT (taux normal 20 %, CGI art. 278)</answer>
+  </qa_pair>
+  <qa_pair>
+    <question>Quel prix TTC pour 49,90 € HT au taux normal ?</question>
+    <answer>59,88 € TTC, dont 9,98 € de TVA</answer>
+  </qa_pair>
+  <qa_pair>
+    <question>Calcule le TTC de 50 € HT au taux réduit de 5,5 %.</question>
+    <answer>Refusé : le taux réduit vaut A_VERIFIER dans config/business.yaml (R7)</answer>
+  </qa_pair>
+  <qa_pair>
+    <question>Chiffre d'affaires 120 000 € HT, charges variables 72 000 €, charges fixes 30 000 € : seuil de rentabilité et point mort ?</question>
+    <answer>seuil 75 000,00 €, point mort au 225,0e jour (année de 360 jours), marge de sécurité 45 000,00 €</answer>
+  </qa_pair>
+  <qa_pair>
+    <question>500 € de publicité pour 20 nouveaux clients, panier 35 € HT, 3 achats par an pendant 2 ans, marge brute 60 % : CAC, LTV et rapport ?</question>
+    <answer>CAC 25,00 €, LTV 126,00 €, rapport LTV/CAC 5,04</answer>
+  </qa_pair>
+  <qa_pair>
+    <question>Mes ventes passent de 8 000 € à 9 200 € : quelle variation ?</question>
+    <answer>15,00 % de hausse</answer>
+  </qa_pair>
+  <qa_pair>
+    <question>Le chiffre d'affaires double en 3 ans : quel taux de croissance annuel composé ?</question>
+    <answer>25,99 % par an</answer>
+  </qa_pair>
+  <qa_pair>
+    <question>Quel prix pour un taux de marque de 120 % ?</question>
+    <answer>Refusé : un taux de marque est inférieur à 100 % du prix</answer>
+  </qa_pair>
+</evaluation>

@@ -15,7 +15,9 @@ from core.net.guard import FetchError
 from tests.net_doubles import chunks
 
 
-def _read(data: bytes, limit: int, *, cut: bool, size: int = 64 * 1024, **headers: str) -> bytes:
+def _read(
+    data: bytes, limit: int, *, cut: bool, size: int = 64 * 1024, **headers: str | bytes
+) -> bytes:
     all_headers = {k.replace("_", "-"): v for k, v in headers.items()}
     response = httpx.Response(200, headers=all_headers, content=chunks(data, size))
     return asyncio.run(read_body(response, limit, cut=cut))
@@ -38,6 +40,11 @@ def test_another_encoding_is_refused(encoding: str, shown_as: str) -> None:
 def test_a_declared_length_over_the_limit_is_refused_before_reading() -> None:
     with pytest.raises(FetchError, match="trop volumineuse"):
         _read(b"", 10, cut=False, content_length="11")
+
+
+def test_a_declared_length_in_other_digits_is_ignored() -> None:
+    # The raw byte 0xB2 reads as "\u00b2", whose isdigit() is true but int() refuses it.
+    assert _read(b"abc", 10, cut=False, content_length=b"\xb2") == b"abc"
 
 
 def test_an_interrupt_stops_the_read_between_chunks() -> None:

@@ -1,5 +1,5 @@
 """`cerveau promotion`: whether a live eval report proves an autonomy promotion rule (B107), and
-the N2 → N3 promotion report (ADR-040, B181).
+the N2 → N3 and N3 → N4 promotion reports (ADR-040, B181, ADR-067).
 
 ``check`` reads and writes nothing else; ``report`` writes only its report under
 ``var/promotion/`` and its journal entry. Lucas signs ``governance/approvals/`` and changes
@@ -25,6 +25,7 @@ from core.governance.promotion_report import (
     VERDICT_TEXT,
     PromotionReportError,
     build_report,
+    previous_level,
     write_report,
 )
 from core.governance.signatures import REPORT_PASSED, signature_text
@@ -41,7 +42,7 @@ from interfaces.cli.common import load as _load
 
 promotion_app = typer.Typer(
     help="Promotion d'autonomie : vérifier un rapport d'évals réel (B107), générer le rapport "
-    "de promotion N2 → N3 (B181).",
+    "de promotion N2 → N3 ou N3 → N4 (B181, ADR-067).",
     no_args_is_help=True,
 )
 
@@ -104,7 +105,7 @@ MARKS = {"atteint": "✓", "non_atteint": "✗", "non_evaluable": "?", "sans_obj
 @promotion_app.command("report")
 def report(
     domain: Annotated[str, typer.Argument(help="Le domaine : finance.")],
-    to: Annotated[str, typer.Option("--to", help="Le niveau visé : N3.")],
+    to: Annotated[str, typer.Option("--to", help="Le niveau visé : N3 ou N4.")],
     evals: Annotated[
         Path | None,
         typer.Option(
@@ -114,7 +115,7 @@ def report(
     ] = None,
     config_dir: ConfigDirOpt = None,
 ) -> None:
-    """Génère le rapport de promotion finance N2 → N3 sous var/promotion/ (ADR-040, B181).
+    """Génère le rapport de promotion finance N2 → N3 ou N3 → N4 sous var/promotion/ (ADR-040).
 
     Chaque critère y figure avec sa valeur, son seuil, son statut et l'outil source (R1). Rien
     n'est signé : si la promotion est possible, le texte de signature s'affiche et tu le copies
@@ -147,7 +148,9 @@ def report(
             "criteres": {criterion.name: criterion.status for criterion in built.criteria},
         },
     )
-    typer.echo(f"Rapport de promotion {domain} N2 → {built.level} : {relative}")
+    typer.echo(
+        f"Rapport de promotion {domain} {previous_level(built.level)} → {built.level} : {relative}"
+    )
     typer.echo(f"SHA-256 : {digest} ; requête {request_id}")
     for criterion in built.criteria:
         typer.echo(

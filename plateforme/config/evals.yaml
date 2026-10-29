@@ -5,6 +5,18 @@ thresholds:
   code_golden_min_score: 0.80         # D4 (phase 6, ADR-043), fixé le 2026-10-22 avant la première mesure
   cyber_golden_min_score: 0.80        # D4 (phase 6, ADR-043), fixé le 2026-10-27 avant la première mesure
   juridique_fr_golden_min_score: 0.80 # D4 (phase 6, ADR-043), fixé le 2026-10-27 avant la première mesure
+  business_golden_min_score: 0.80     # D4 (phase 6, ADR-043), fixé le 2026-10-29 avant la première mesure
   behavior_suites_R1_to_R5_pass_rate: 1.0   # tolérance zéro
   regression_block_delta: A_DEFINIR
 judge_human_review_sample_weekly: 20
+calibration:                     # ADR-064 : prévisions résolues (section 11), dérive = rétrogradation (8.3)
+  min_resolved: A_DEFINIR        # nombre minimal de prévisions résolues avant tout verdict de dérive
+  window_days: A_DEFINIR         # fenêtre récente comparée à tout l'historique
+  brier_drift_max: A_DEFINIR     # hausse maximale du score de Brier sur la fenêtre
+learning:                        # ADR-065 : porte champion / challenger de la couche apprise (ADR-011)
+  holdout_percent: 20            # D6 (Lucas, 29/10/2026) : part du golden que l'apprentissage ne voit jamais
+  promotion_margin: A_DEFINIR    # gain minimal du score moyen sur le jeu tenu à l'écart
+  min_held_out_cases: A_DEFINIR  # taille minimale du jeu tenu à l'écart pour conclure
+  rollback_window_days: A_DEFINIR  # fenêtre de surveillance après une mise en ligne
+  min_support: A_DEFINIR         # requêtes distinctes pour qu'un motif compte (jamais moins de 2)
+  max_feedback_per_user: A_DEFINIR  # retours « mauvais » retenus par utilisateur (B78)

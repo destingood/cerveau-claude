@@ -25,6 +25,7 @@ AlertKind = Literal[
     "approbations_verrouillees",
     "budget",
     "rapport_quotidien",
+    "rapport_planifie_en_echec",
 ]
 ALERT_KINDS: tuple[AlertKind, ...] = get_args(AlertKind)
 NOTIFICATION_KEY = "notification"
@@ -38,6 +39,7 @@ LABELS: Mapping[AlertKind, str] = {
     "approbations_verrouillees": "approbations verrouillées : trop de codes faux",
     "budget": "seuil de budget atteint",
     "rapport_quotidien": "rapport quotidien prêt",
+    "rapport_planifie_en_echec": "rapport planifié en échec",
 }
 SEVERITIES: Mapping[AlertKind, int] = {
     "kill_switch": 5,
@@ -48,6 +50,7 @@ SEVERITIES: Mapping[AlertKind, int] = {
     "approbations_verrouillees": 4,
     "budget": 3,
     "rapport_quotidien": 2,
+    "rapport_planifie_en_echec": 4,
 }
 # Which kind a kill switch trigger gives; any other trigger is a plain "kill_switch".
 TRIGGER_KINDS: Mapping[str, AlertKind] = {

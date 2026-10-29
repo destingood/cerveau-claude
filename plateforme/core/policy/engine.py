@@ -9,7 +9,8 @@ says, and only the decisions this phase can carry out are granted, each with an 
 The orchestrator and the plugins carry out ``auto`` for ``LECTURE`` in every domain and for
 ``CALCUL`` in the finance pack, whose computing tools are deterministic, tested and evaluated (R1,
 R8, ADR-022), and in the code pack, whose checks run in a networkless, read-only container
-(ADR-048, ADR-049): their effect is ``executer``. So is ``EXECUTION_ISOLEE`` in the code pack,
+(ADR-048, ADR-049), and in the business pack, whose calculator takes only the figures it is given
+(ADR-061, ADR-063): their effect is ``executer``. So is ``EXECUTION_ISOLEE`` in the code pack,
 whose agent works on a disposable copy in a container without Internet and returns a patch that
 Lucas applies himself (ADR-051). The paper loop alone carries out an
 order intent of the finance pack (``decide_order``): ``proposition`` at N1 drafts it, ``paper`` at
@@ -30,7 +31,7 @@ from typing import TYPE_CHECKING, Any, Literal
 
 from pydantic import BaseModel, ConfigDict, Field
 
-from core.config.loader import ActionClass, AutonomyConfig, Level, MatrixDecision
+from core.config.loader import LEVELS, ActionClass, AutonomyConfig, Level, MatrixDecision
 
 if TYPE_CHECKING:
     from core.risk_gate.gate import RiskGateResult
@@ -39,11 +40,13 @@ if TYPE_CHECKING:
 PHASE_ACTION_CLASSES: frozenset[ActionClass] = frozenset({"LECTURE"})  # in every domain
 # A pack computes only with deterministic tools that are tested and evaluated (R1, R8, ADR-022);
 # the code pack's checks run the repository's tools in a sandbox (ADR-048, ADR-049) and its agent
-# works in an isolated container whose only output is a patch (ADR-051).
+# works in an isolated container whose only output is a patch (ADR-051). The business pack's
+# biz_calc computes from the figures it is given, with a closed list of operations (ADR-063).
 PHASE_DOMAIN_ACTION_CLASSES: Mapping[str, frozenset[ActionClass]] = MappingProxyType(
     {
         "finance": frozenset({"LECTURE", "CALCUL"}),
         "code": frozenset({"LECTURE", "CALCUL", "EXECUTION_ISOLEE"}),
+        "business": frozenset({"LECTURE", "CALCUL"}),
     }
 )
 # Granted in some domains only: decided once the request is routed to its domain.
@@ -140,8 +143,12 @@ def decide(
     action_classes: frozenset[ActionClass] | None = None,
     decisions: frozenset[MatrixDecision] = PHASE_DECISIONS,
     risk_gate: RiskGateResult | None = None,
+    max_level: Level | None = None,
 ) -> PolicyDecision:
     """Decision for one action of ``action_class`` in ``domain``.
+
+    ``max_level`` is the plugin's ``max_autonomy_level`` (Annex C.1): the domain's level is capped
+    at it, never raised (B292).
 
     The kill switch overrides everything (R4); an unknown domain is refused, and so is every
     action while the live configuration is enabled (R3). Otherwise the matrix cell for the
@@ -173,6 +180,9 @@ def decide(
     if spec is None:
         return refuse("N0", f"domaine « {domain} » absent de autonomy.yaml : refus")
     level = spec.level
+    capped = max_level is not None and LEVELS.index(max_level) < LEVELS.index(level)
+    if max_level is not None and capped:
+        level = max_level
     if live_enabled:
         return refuse(
             level,
@@ -181,6 +191,8 @@ def decide(
         )
     cell = autonomy.matrix[action_class][level]
     matrix = f"matrice {action_class} × {level} : {cell}"
+    if capped:
+        matrix += f" (niveau {spec.level} plafonné à {level} par le manifeste du plugin, B292)"
     if cell == "refus":
         return refuse(level, matrix)
     if cell not in decisions:
