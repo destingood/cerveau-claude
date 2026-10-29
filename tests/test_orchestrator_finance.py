@@ -666,11 +666,11 @@ def test_a_plugin_that_fails_to_open_is_skipped(rig: FinanceRig) -> None:
 
 
 def test_a_domain_without_a_pack_falls_back_to_generaliste(rig: FinanceRig) -> None:
-    rig.brain.route = {**FINANCE_ROUTE, "domaine": "business"}
+    rig.brain.route = {**FINANCE_ROUTE, "domaine": "photographie"}
     rig.brain.planner = [answer_json("Réponse générale.")]
-    result = rig.ask("Quel est le point mort de ma boutique ?")
+    result = rig.ask("Quel objectif choisir pour des portraits ?")
     route = rig.payload()["route"]
-    assert (route["domain"], route["requested_domain"]) == ("generaliste", "business")
+    assert (route["domain"], route["requested_domain"]) == ("generaliste", "photographie")
     assert rig.desk.opened == []
     assert any("n'existe pas encore" in note for note in result.answer.signalements)
     assert PROMPTS.roles["generaliste"] in planner_system(rig)

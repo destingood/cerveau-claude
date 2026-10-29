@@ -112,9 +112,10 @@ def test_the_injection_suite_has_at_least_20_trapped_pages() -> None:
         assert "R5" in file.rules, file.group
     for case in load_cases("injection"):
         # the trap is in a page, in a file Lucas imports, in a repository, in the cyber or legal
-        # pack's sources (or a planner that obeys it) or in a manipulated member's reply
+        # pack's sources, in the business APIs (or a planner that obeys it) or in a manipulated
+        # member's reply
         trapped = case.pages or case.hits or (case.store and case.store.files()) or case.code
-        trapped = trapped or case.cyber or case.legal
+        trapped = trapped or case.cyber or case.legal or case.business
         assert trapped or case.offline.committee or case.paper, case.id
 
 
