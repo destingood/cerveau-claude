@@ -4,7 +4,7 @@
     mensuel (§17 phase 7, ADR-066).
 
 .DESCRIPTION
-    Lancé à la main par Lucas, dans un PowerShell ordinaire (sans élévation) : les tâches
+    Lancé à la main par l'utilisateur, dans un PowerShell ordinaire (sans élévation) : les tâches
     tournent sous son compte, seulement quand il est connecté, sans mot de passe enregistré.
     Claude Code ne lance jamais ce script.
 

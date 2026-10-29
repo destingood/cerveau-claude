@@ -54,8 +54,8 @@ def test_a_siren_needs_nine_digits_and_its_key() -> None:
 
 
 def test_a_search_text_is_bounded_and_clean() -> None:
-    assert query_text("  Matcha \t atelier ") == "Matcha atelier"
-    for bad in ("ab", "x" * 101, "matcha\u0007", "matcha​"):
+    assert query_text("  Boulangerie \t atelier ") == "Boulangerie atelier"
+    for bad in ("ab", "x" * 101, "boulangerie\u0007", "boulangerie​"):
         with pytest.raises(RegistryError, match="caractère de contrôle"):
             query_text(bad)
     with pytest.raises(RegistryError, match="champ siren"):
@@ -83,9 +83,9 @@ def test_filters_match_their_expressions() -> None:
 
 def test_the_request_never_asks_for_a_person() -> None:
     chosen = filters("69003", None, None, "A")
-    by_text = search_params("matcha", None, chosen)
+    by_text = search_params("boulangerie", None, chosen)
     assert by_text == {
-        "q": "matcha",
+        "q": "boulangerie",
         "page": "1",
         "per_page": str(MAX_RESULTS),
         "minimal": "true",
@@ -107,8 +107,8 @@ def test_a_result_keeps_only_the_closed_list_of_fields() -> None:
         assert secret not in shown
     assert (kept.siren, kept.denomination, kept.sigle) == (
         SIREN,
-        "Matcha Atelier (MATCHA)",
-        "MATCHA",
+        "Boulangerie Atelier (BOULANGERIE)",
+        "BOULANGERIE",
     )
     assert (kept.siege_commune, kept.siege_code_postal, kept.siege_departement) == (
         "LYON 3EME",
@@ -141,10 +141,14 @@ def test_words_ignore_case_accents_and_punctuation() -> None:
 
 def test_a_result_is_named_after_every_word_of_the_text() -> None:
     raw = raw_company()
-    assert named(raw, "matcha") and named(raw, "atelier MATCHA") and named(raw, "MATCHA")
-    for text in ("Dupontel", "Josiane", "rue des Lilas", "Lyon", "matcha lilas"):
+    assert (
+        named(raw, "boulangerie")
+        and named(raw, "atelier BOULANGERIE")
+        and named(raw, "BOULANGERIE")
+    )
+    for text in ("Dupontel", "Josiane", "rue des Lilas", "Lyon", "boulangerie lilas"):
         assert not named(raw, text), text
-    assert not named("356000000", "matcha")
+    assert not named("356000000", "boulangerie")
     assert named(raw_company(nom_complet=None, nom_raison_sociale=None, sigle="TMX"), "tmx")
 
 
@@ -152,7 +156,7 @@ def test_malformed_fields_are_dropped_not_guessed() -> None:
     kept = company(
         raw_company(
             nom_complet=None,
-            nom_raison_sociale="  MATCHA  ",
+            nom_raison_sociale="  BOULANGERIE  ",
             sigle=12,
             activite_principale="47.91",
             categorie_entreprise="TPE",
@@ -169,7 +173,7 @@ def test_malformed_fields_are_dropped_not_guessed() -> None:
         )
     )
     assert kept is not None
-    assert kept.denomination == "MATCHA"
+    assert kept.denomination == "BOULANGERIE"
     assert kept.annee_categorie_entreprise == "2023"  # an integer year becomes text
     for name in (
         "sigle",
@@ -220,7 +224,7 @@ def test_a_reply_is_parsed_and_bounded() -> None:
     assert (total, len(found)) == (1, 1)
     total, found = parse_reply(json.dumps(reply(many, total=250)).encode(), "Josiane")
     assert (total, found) == (0, [])
-    total, found = parse_reply(json.dumps(reply(many, total=250)).encode(), "matcha")
+    total, found = parse_reply(json.dumps(reply(many, total=250)).encode(), "boulangerie")
     assert (total, len(found)) == (MAX_RESULTS, MAX_RESULTS)
 
 
@@ -245,7 +249,7 @@ def test_an_unreadable_reply_is_refused(body: bytes, reason: str) -> None:
 def test_every_number_of_the_output_is_a_figure() -> None:
     total, found = parse_reply(json.dumps(reply()).encode())
     output = CompanySearch(
-        recherche="matcha",
+        recherche="boulangerie",
         siren=None,
         filtres=Filters(),
         total=total_figure(total),

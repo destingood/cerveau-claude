@@ -213,7 +213,7 @@ def test_the_approval_text_needs_a_promotable_audited_report(
     assert "absente du journal d'audit" in unaudited.output
     assert "À recopier" not in unaudited.output
     AuditJournal(default_journal_path(home)).append(
-        actor="lucas",
+        actor="owner",
         event="DECISION",
         payload={"command": PROTOCOL_COMMAND, "rapport_sha256": written.sha256},
     )

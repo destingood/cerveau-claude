@@ -1,7 +1,7 @@
 """Signed promotions and the effective autonomy level (ADR-036, D6, D7).
 
 A domain under ``promotion`` in ``autonomy.yaml`` (today ``finance``) runs at the lower of its
-written level and the highest level Lucas signed in ``governance/approvals/``: editing
+written level and the highest level the user signed in ``governance/approvals/``: editing
 ``autonomy.yaml`` alone promotes nothing, while lowering it there demotes at once. N0 needs no
 signature; the other domains keep their written level, bounded by their ``max_level``.
 
@@ -12,7 +12,7 @@ A signature is ``governance/approvals/AAAA-MM-JJ-<domaine>-N<k>.md``, opening wi
     level: N3
     date: 2026-10-21
     promotion_report_sha256: "<64 chiffres hexadécimaux>"
-    signed_by: lucas
+    signed_by: owner
     ---
 
 It counts when its name, its header and its date agree and, from N3 on, when the promotion report
@@ -59,11 +59,11 @@ class _Header(BaseModel):
     level: Level
     date: date
     promotion_report_sha256: str = Field(pattern=r"^[0-9a-f]{64}$")
-    signed_by: Literal["lucas"]
+    signed_by: Literal["owner"]
 
 
 class _ReportHeader(BaseModel):
-    """What a signature needs from the report it cites; the other keys are for Lucas."""
+    """What a signature needs from the report it cites; the other keys are for the user."""
 
     model_config = ConfigDict(extra="ignore", frozen=True, strict=True)
 
@@ -297,14 +297,14 @@ def effective_level(
 def signature_text(
     domain: str, level: Level, day: date, report_sha256: str, *, body: Iterable[str] = ()
 ) -> str:
-    """The text of a signature file, for Lucas to copy and for the tests (never written here)."""
+    """The text of a signature file, for the user to copy and for the tests (never written here)."""
     lines = [
         "---",
         f"domain: {domain}",
         f"level: {level}",
         f"date: {day.isoformat()}",
         f'promotion_report_sha256: "{report_sha256}"',  # quoted: all digits would read as a number
-        "signed_by: lucas",
+        "signed_by: owner",
         "---",
         *body,
     ]

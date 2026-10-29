@@ -467,7 +467,7 @@ def build_graph(run: Run) -> Any:
 @dataclass(frozen=True)
 class RunResult:
     request_id: str
-    answer: Answer  # re-identified: for Lucas only, never journaled
+    answer: Answer  # re-identified: for the user only, never journaled
     cost_eur: Decimal
     tokens: int
     tool_calls: int

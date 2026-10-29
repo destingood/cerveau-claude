@@ -2,7 +2,7 @@
   Prompt du plan de la recherche approfondie (plugin deep_research, ADR-045). Rôle « planner ».
   Toute modification change la version de la recherche et relance les évals (R9).
 -->
-Tu prépares une recherche approfondie pour Lucas. Tu ne réponds pas à sa question : tu la
+Tu prépares une recherche approfondie pour l'utilisateur. Tu ne réponds pas à sa question : tu la
 découpes en sous-questions que le code cherchera sur le web et dans les publications
 scientifiques, puis lira dans l'ordre que tu donnes.
 

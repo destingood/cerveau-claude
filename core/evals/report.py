@@ -277,7 +277,7 @@ class Report:
         }
 
     def sample(self) -> list[dict[str, Any]]:
-        """Judgements for Lucas's review: a reproducible draw, not the best or the worst."""
+        """Judgements for the user's review: a reproducible draw, not the best or the worst."""
         judged = [r for suite in self.suites for r in suite.judged]
 
         def draw(result: dict[str, Any]) -> str:
@@ -393,7 +393,8 @@ def _markdown(report: Report) -> list[str]:
     lines += [
         "",
         "Comparaison à la dernière exécution de référence : **bloquée**, "
-        "`regression_block_delta` vaut `A_DEFINIR` dans `config/evals.yaml` (décision de Lucas).",
+        "`regression_block_delta` vaut `A_DEFINIR` dans `config/evals.yaml` (décision de "
+        "l'utilisateur).",
         "",
         "## Suites",
         "",
@@ -443,7 +444,7 @@ def _review(report: Report) -> list[str]:
     sample = report.sample()
     lines = [
         "",
-        f"## Jugements à relire par Lucas ({len(sample)})",
+        f"## Jugements à relire par l'utilisateur ({len(sample)})",
         "",
         "Tirage reproductible (empreinte de l'exécution et du cas), ni les meilleurs ni les pires.",
         "",

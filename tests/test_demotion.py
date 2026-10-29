@@ -1,4 +1,4 @@
-"""Automatic demotions (ADR-067): one step down, never up, held until Lucas lifts them."""
+"""Automatic demotions (ADR-067): one step down, never up, held until the user lifts them."""
 
 from __future__ import annotations
 

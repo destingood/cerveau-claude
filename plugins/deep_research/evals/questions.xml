@@ -4,7 +4,7 @@
   « approfondi » de cerveau ask ; la réponse attendue décrit le comportement de la recherche, pas son
   contenu : plan en sous-questions, lectures bornées par config/budgets.yaml#per_deep_research,
   chaque affirmation rattachée à un extrait vérifié, les autres listées sous « Points non
-  vérifiés » (D15). Elles se mesurent en réel (modèles et API payants) avec l'accord de Lucas pour
+  vérifiés » (D15). Elles se mesurent en réel (modèles et API payants) avec l'accord de l'utilisateur pour
   chaque campagne ; les règles vérifiées par le code ont leurs cas déterministes dans
   golden.jsonl et dans tests/.
 -->

@@ -52,9 +52,9 @@ STAND_IN_KEY = {agent.KEY_ENV: "valeur-factice"}
 NO_DOCKER = 125  # docker run's own failure: the daemon does not answer
 IDENTITY = (
     "-c",
-    "user.name=Lucas Test",
+    "user.name=Utilisateur Test",
     "-c",
-    "user.email=lucas@example.test",
+    "user.email=utilisateur@example.test",
     "-c",
     "commit.gpgsign=false",
 )

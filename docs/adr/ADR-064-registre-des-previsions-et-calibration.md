@@ -59,7 +59,7 @@ définitions sont classiques ; le code les teste par propriétés.
 ## Conséquences
 - Une prévision se note sans modèle, et la base refuse de la réécrire après coup.
 - Résolution :
-  - par Lucas (`resolve`) en phase 7 ;
+  - par l'utilisateur (`resolve`) en phase 7 ;
   - la résolution automatique en finance (point-in-time, depuis le store) et l'extraction
     automatique des prévisions des réponses restent à faire (backlog).
 - Le déclencheur de rétrogradation (lot 7.4) lit `calibration_drift` ; il ne fait rien tant que

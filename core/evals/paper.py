@@ -1,13 +1,14 @@
 """The paper loop's eval cases (plan §11): the real loop on a synthetic market, without a model.
 
 A case scripts a source that proposes target orders on given days, at an autonomy level, with
-limits and costs over a copy of the configuration (never the files, which only Lucas changes).
+limits and costs over a copy of the configuration (never the files, which only the user changes).
 Each day, the case's close is published five minutes after the session's close, then the loop
 runs at 21:30 UTC, past the decision cut-off, in a temporary home: its own journal, its own kill
 switch, its own signatures, its own reports. Nothing reaches ``var/``; no model is called, so a
 run costs nothing in both modes.
 
-At N3 (ADR-036), the loop files each intent for Lucas's approval. The case answers as Lucas does
+At N3 (ADR-036), the loop files each intent for the user's approval. The case answers as the user
+does
 from the bot, a few minutes after the run: wrong codes, then the right one-time code of a test key
 drawn from the case's id, a refusal, or nothing. A granted request is sent at once, as the
 internal API does; ``paper envoyer`` may run later. The level is signed on a promotion report
@@ -81,7 +82,7 @@ HISTORY = timedelta(days=70)  # enough sessions for the average volume and the s
 PUBLISHED_AFTER = timedelta(minutes=5)
 JOURNAL = Path("audit") / "journal.jsonl"
 SENT = frozenset(OrderState) - {OrderState.INTENTION, OrderState.REJETEE}
-REFUSED_BY_LUCAS = "refusée depuis l'API interne"  # the API's reason (interfaces/api)
+REFUSED_BY_OWNER = "refusée depuis l'API interne"  # the API's reason (interfaces/api)
 
 
 @dataclass
@@ -203,7 +204,7 @@ class PaperRun:
     level: Level = "N0"  # the effective level the loop ran at (ADR-036)
     sends: list[DayReport] = field(default_factory=list)  # each sending of approved intents
     sent_texts: list[str] = field(default_factory=list)  # what ``paper envoyer`` prints
-    summaries: list[str] = field(default_factory=list)  # what each request asks Lucas
+    summaries: list[str] = field(default_factory=list)  # what each request asks the user
     approvals: tuple[ApprovalState, ...] = ()  # each request at the end, in filing order
     consumed: frozenset[UUID] = frozenset()  # the intents whose approval was consumed
     codes_shown: int = 0  # right codes found in a text or the journal (R6)
@@ -272,7 +273,7 @@ def _kill(home: Path) -> None:
 
 
 def _key(case: Case) -> bytes:
-    """The case's TOTP key: drawn from its id, never Lucas's secret (R6)."""
+    """The case's TOTP key: drawn from its id, never the user's secret (R6)."""
     return hashlib.sha256(case.id.encode()).digest()[:SECRET_BYTES]
 
 
@@ -285,8 +286,8 @@ def _wrong_codes(key: bytes, when: datetime, count: int) -> list[str]:
 
 
 @dataclass
-class _Lucas:
-    """Lucas answering the approval requests of a case, from the bot (N3)."""
+class _Owner:
+    """The user answering the approval requests of a case, from the bot (N3)."""
 
     env: PaperDay
     approvals: ApprovalStore
@@ -321,7 +322,7 @@ class _Lucas:
                     self.sends.append(send_approved(self.env, now=when))
             elif answer.answer == "refuser":
                 self.approvals.refuse(
-                    approval_id, reason=REFUSED_BY_LUCAS, actor="interface", now=when
+                    approval_id, reason=REFUSED_BY_OWNER, actor="interface", now=when
                 )
         if item.send_after is not None:
             when = self.latest = run_at + timedelta(minutes=item.send_after)
@@ -374,7 +375,7 @@ def _run(case: Case, root: Path, home: Path) -> PaperRun:
             sources=(CaseSource(fixture),),
             approvals=approvals,
         )
-        lucas = None if approvals is None else _Lucas(env, approvals, _key(case))
+        owner = None if approvals is None else _Owner(env, approvals, _key(case))
         reports, markdowns = [], []
         for item in fixture.days:
             if item.close is not None:
@@ -393,9 +394,9 @@ def _run(case: Case, root: Path, home: Path) -> PaperRun:
             report = run_day(env, now=run_at)
             reports.append(report)
             markdowns.append(finish_day(env, report))
-            if lucas is not None:
-                lucas.latest = run_at
-                lucas.answer(item, run_at)
+            if owner is not None:
+                owner.latest = run_at
+                owner.answer(item, run_at)
         run = PaperRun(
             reports,
             markdowns,
@@ -405,17 +406,17 @@ def _run(case: Case, root: Path, home: Path) -> PaperRun:
             journal_errors=tuple(verify(home / JOURNAL).errors),
             level=effective_level(config.autonomy, home, "finance", today=fixture.days[-1].day),
         )
-        if lucas is not None and approvals is not None and lucas.latest is not None:
-            requests = approvals.requests(now=lucas.latest)
-            run.sends = lucas.sends
-            run.sent_texts = ["\n".join(render_sent(report)) for report in lucas.sends]
+        if owner is not None and approvals is not None and owner.latest is not None:
+            requests = approvals.requests(now=owner.latest)
+            run.sends = owner.sends
+            run.sent_texts = ["\n".join(render_sent(report)) for report in owner.sends]
             run.summaries = [request.summary for request in requests]
             run.approvals = tuple(request.state for request in requests)
             run.consumed = frozenset(
                 r.intent_id for r in requests if r.state is ApprovalState.CONSOMMEE
             )
             written = run.markdowns + run.sent_texts + run.summaries
-            run.codes_shown = _shown(lucas.codes, [*written, (home / JOURNAL).read_text("utf-8")])
+            run.codes_shown = _shown(owner.codes, [*written, (home / JOURNAL).read_text("utf-8")])
         return run
     finally:
         closables = (log, reconciliations, simulator, book, store)

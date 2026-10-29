@@ -1,6 +1,6 @@
 # Pack Business & commerce
 
-Pack P6 de CERVEAU (section 9.2, complément de plan P6) : aider Lucas à décider pour sa petite
+Pack P6 de CERVEAU (section 9.2, complément de plan P6) : aider l'utilisateur à décider pour sa petite
 activité commerciale. Calculs déterministes sur les chiffres qu'il fournit — marge, prix de
 vente, coefficient, TVA, seuil de rentabilité, CAC et LTV, variation, croissance annuelle
 (`business_calc` : `biz_calc`, ADR-061) ; fiche publique d'une entreprise et petite étude de
@@ -8,7 +8,7 @@ concurrence sans aucune personne (`entreprises` : `company_search`, ADR-062) ; s
 publiques datées de l'Insee sur une liste fermée de jeux Melodi (`insee_stats` : `stats_series`) ;
 pages web d'une étude de marché (`web_research`, sans liste fermée, I6). Autonomie courante N0
 (`config/autonomy.yaml`, `domains.business`, D3), capacités `LECTURE` et `CALCUL` (ADR-063) : le
-pack informe et calcule, Lucas agit lui-même. Statut : **expérimental** jusqu'à ce que Lucas le
+pack informe et calcule, l'utilisateur agit lui-même. Statut : **expérimental** jusqu'à ce que l'utilisateur le
 passe en « actif » au vu d'une mesure réelle du golden set (section 9.3, D2).
 
 Chaque chiffre décisionnel vient de `biz_calc` ou d'une source datée, jamais du modèle (R1) ; sans

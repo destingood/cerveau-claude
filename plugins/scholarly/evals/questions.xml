@@ -2,7 +2,7 @@
 <!--
   Questions d'évaluation du plugin scholarly (R8). Chacune se vérifie avec scholar_record ou
   scholar_search sur arXiv ou Crossref, et sa réponse est stable dans le temps (réponses
-  contrôlées sur les deux API le 2026-10-22). Elles servent aux évals live (consentement de Lucas
+  contrôlées sur les deux API le 2026-10-22). Elles servent aux évals live (consentement de l'utilisateur
   par campagne) ; aucun résultat n'est stocké ici.
 -->
 <evaluation>

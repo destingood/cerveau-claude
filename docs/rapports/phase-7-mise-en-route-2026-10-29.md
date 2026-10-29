@@ -2,7 +2,7 @@
 
 Compte rendu de mise en route (plan : `docs/plans/phase-7-plan.md`, §12 point 10), au format de la
 section 18. Le code de la phase 7 est livré ; le compte rendu de **fin** de phase arrivera au plus
-tôt quatre semaines après que Lucas aura lancé la planification (critère de sortie du §17 : rapports
+tôt quatre semaines après que l'utilisateur aura lancé la planification (critère de sortie du §17 : rapports
 générés automatiquement quatre semaines de suite, sans intervention).
 
 ### 1. Synthèse
@@ -88,7 +88,7 @@ régularité du planificateur (le compteur `streak` part de zéro).
   `promotion_margin` strictement positive. Restes au backlog : B355 à B358.
 - `risk-gate-auditor` (lot 7.4), `quant-reviewer` (Brier) et `eval-engineer` (red team) : non
   lancés, faute d'accord pour des sous-agents (coût en tokens) ; **autorevue** seulement, à
-  confirmer par ces agents si Lucas le demande.
+  confirmer par ces agents si l'utilisateur le demande.
 
 ### 5. Risques ouverts et dette technique
 
@@ -122,7 +122,7 @@ régularité du planificateur (le compteur `streak` part de zéro).
 - **À venir** : rédaction de challengers et red team réelle hebdomadaire, non estimées, plafonnées
   par les budgets (`A_DEFINIR`).
 
-### 7. Décisions demandées à Lucas
+### 7. Décisions demandées à l'utilisateur
 
 **[QUESTIONS DE CLARIFICATION]**
 
@@ -136,7 +136,7 @@ régularité du planificateur (le compteur `streak` part de zéro).
 | 6 | Revues par agents (`risk-gate-auditor`, `quant-reviewer`, `eval-engineer`) | lancer / s'en tenir à l'autorevue | lancer `risk-gate-auditor` sur le lot 7.4 au moins |
 | 7 | B353, Porte live | l'écrire en phase 8 / plus tard | avant toute idée de client live |
 
-Commande à lancer par Lucas, dans PowerShell, depuis la racine du dépôt :
+Commande à lancer par l'utilisateur, dans PowerShell, depuis la racine du dépôt :
 
 ```powershell
 powershell -ExecutionPolicy Bypass -File infra\windows\install-schedule.ps1

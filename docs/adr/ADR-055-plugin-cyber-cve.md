@@ -1,6 +1,6 @@
 # ADR-055 — Plugin `cyber_cve` : NVD, catalogue KEV et EPSS en lecture, tri déterministe
 
-- Statut : **proposé** (G1 à G4, G8 et G10 du complément de plan P4, validés par Lucas le
+- Statut : **proposé** (G1 à G4, G8 et G10 du complément de plan P4, validés par l'utilisateur le
   27/10/2026)
 - Date : 2026-10-27
 - Phase : 6 (P4)
@@ -48,14 +48,14 @@ Option 1, dans `plugins/cyber_cve` ; deux outils de classe LECTURE.
   - NVD : une requête toutes les 6 s sans clé, toutes les 0,6 s avec clé.
   - EPSS : une par seconde (hypothèse).
   - KEV : une par seconde ; le cache limite la lecture du flux à une fois par 24 h.
-- **Clé (G3)** : `NVD_API_KEY` facultative, posée par Lucas.
+- **Clé (G3)** : `NVD_API_KEY` facultative, posée par l'utilisateur.
   - Validation : `[A-Za-z0-9-]{1,64}` ; une autre valeur est ignorée.
   - Elle part dans l'en-tête `apiKey` du seul client NVD.
   - Elle n'apparaît jamais dans l'URL, la clé de cache, une sortie ou un journal.
 - **Cache** : `var/cyber/cache/{nvd,cisa_kev,epss}`, 24 h.
   - Nom du fichier : SHA-256 de l'URL. Empreinte du corps vérifiée à la lecture : elle détecte
     une copie abîmée, pas une falsification, puisqu'elle est rangée à côté du corps. Un processus
-    local qui écrit dans `var/` reste dans le périmètre de confiance (droits du compte de Lucas).
+    local qui écrit dans `var/` reste dans le périmètre de confiance (droits du compte de l'utilisateur).
   - Écriture atomique, au mieux. Seul un corps lisible est conservé.
   - Une fiche NVD absente n'est pas conservée, car elle peut être publiée le lendemain.
   - Un catalogue KEV dont la longueur diffère de son champ `count` (copie tronquée) est refusé.

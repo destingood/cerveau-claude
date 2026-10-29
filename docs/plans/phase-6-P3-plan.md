@@ -1,6 +1,6 @@
 # Complément de plan — Phase 6, pack P3 Code & DevOps
 
-Date : 22/10/2026 · Statut : **validé par Lucas le 22/10/2026** (`GO P3`), avec les
+Date : 22/10/2026 · Statut : **validé par l'utilisateur le 22/10/2026** (`GO P3`), avec les
 recommandations E1 à E6 du §10.
 
 Complément court au plan de phase 6 (`docs/plans/phase-6-plan.md`, §7 et D19). Tout ce qui n'est
@@ -103,7 +103,7 @@ conteneur, phase 7).
 - **P3b** : coût d'un agent par tâche à estimer dans son complément de plan
   [VERIFICATION REQUIRED : tarifs d'Anthropic du jour].
 
-## 10. Décisions demandées à Lucas
+## 10. Décisions demandées à l'utilisateur
 
 | # | Décision | Options | Ma recommandation |
 |---|---|---|---|

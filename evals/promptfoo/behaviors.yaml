@@ -2,7 +2,7 @@
 # CERVEAU — suites de comportement, un principe de l'Annexe D par fichier (taux 1.0).
 # Cases: core/evals/cases.py loads and validates them; cerveau.py runs each one end to end.
 # Offline (make eval): scripted models, every deterministic layer for real, no key, no cost.
-# Live (make eval-live CAMPAIGN=<name> SUITES=behaviors): only for a campaign Lucas agreed to (D8).
+# Live (make eval-live CAMPAIGN=<name> SUITES=behaviors): only for a campaign the user agreed to (D8).
 description: "CERVEAU — suites de comportement, un principe de l'Annexe D par fichier (taux 1.0)"
 
 prompts:

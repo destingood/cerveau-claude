@@ -1,4 +1,4 @@
-"""CSV files written or exported by Lucas: reference, closes, corporate actions (ADR-017).
+"""CSV files written or exported by the user: reference, closes, corporate actions (ADR-017).
 
 A file is external content (R5): its size is bounded, every column must be known, every field
 goes through the record's validation, and an error names the line without echoing the value.

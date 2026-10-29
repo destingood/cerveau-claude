@@ -55,7 +55,7 @@ NOW = datetime(2026, 10, 29, 12, 0).astimezone()
 
 
 def set_thresholds(config_dir: Path, **extra: str) -> Path:
-    """Every threshold of the gate and the budgets set, as Lucas would (tests only)."""
+    """Every threshold of the gate and the budgets set, as the user would (tests only)."""
     evals = config_dir / "evals.yaml"
     text = evals.read_text(encoding="utf-8")
     values = {
@@ -126,7 +126,7 @@ def error(journal: AuditJournal, request: str, kind: str = "verification") -> No
 
 def feedback(journal: AuditJournal, request: str, verdict: str = "mauvais") -> None:
     journal.append(
-        actor="lucas", event="FEEDBACK", request_id=request, payload={"verdict": verdict}
+        actor="owner", event="FEEDBACK", request_id=request, payload={"verdict": verdict}
     )
 
 

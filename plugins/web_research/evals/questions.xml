@@ -2,7 +2,7 @@
 <!--
   Questions d'évaluation du plugin web_research (R8). Chacune se vérifie avec web_search puis
   web_read sur une source publique, et sa réponse est stable dans le temps. Elles servent aux
-  évals live (consentement de Lucas par campagne, D8) ; aucun résultat n'est stocké ici.
+  évals live (consentement de l'utilisateur par campagne, D8) ; aucun résultat n'est stocké ici.
 -->
 <evaluation>
   <qa_pair>

@@ -19,5 +19,5 @@ Tu crées des plugins CERVEAU conformes à la section 6 et à l'Annexe C.1 de
 4. Crée les tests (`tests/plugins/<nom>/`) et au moins une suite d'évals (`evals/<nom>/`).
 5. Valide : `uv run cerveau registry validate plugins/<nom>` puis `uv run pytest`.
 
-Ne connecte aucun compte réel et n'ajoute aucun serveur à `.mcp.json` : Lucas l'active lui-même.
+Ne connecte aucun compte réel et n'ajoute aucun serveur à `.mcp.json` : l'utilisateur l'active lui-même.
 Termine par la liste des fichiers créés et le résultat de la validation.

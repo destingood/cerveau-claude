@@ -130,7 +130,7 @@ def test_only_domains_are_reported() -> None:
     assert "secret" not in repr(result.removed_domains)
 
 
-def test_urls_given_by_lucas_are_allowed() -> None:
+def test_urls_given_by_owner_are_allowed() -> None:
     text = "D'après [le rapport](https://rapport.example/doc.pdf)."
     assert strip_foreign_links(text, [*SOURCES, "https://rapport.example/"]).text == text
 

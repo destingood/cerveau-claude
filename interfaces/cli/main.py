@@ -258,7 +258,9 @@ def eval_suites(
     ] = None,
     live: Annotated[
         bool,
-        typer.Option("--live", help="Vrais modèles, payant : campagne acceptée par Lucas (D8)."),
+        typer.Option(
+            "--live", help="Vrais modèles, payant : campagne acceptée par l'utilisateur (D8)."
+        ),
     ] = False,
     campaign: Annotated[
         str | None, typer.Option("--campaign", help="Nom de la campagne réelle acceptée.")
@@ -449,7 +451,7 @@ def _echo_packs(config: Config, effective: AutonomyConfig) -> None:
     except PackError as exc:
         typer.echo(f"\nPacks de domaine invalides : {exc}", err=True)
         raise typer.Exit(1) from exc
-    typer.echo("\nPacks de domaine (ADR-043 ; seul Lucas passe un pack à « actif ») :")
+    typer.echo("\nPacks de domaine (ADR-043 ; seul l'utilisateur passe un pack à « actif ») :")
     for pack in packs.values():
         written = config.autonomy.domains.get(pack.id)
         levels = (

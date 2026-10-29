@@ -244,7 +244,7 @@ def test_the_status_follows_the_autonomy_level(store: Path, config_dir: Path) ->
     assert content["autonomy_level"] == "N1"
 
 
-def test_mean_variance_runs_once_lucas_sets_the_risk_aversion(
+def test_mean_variance_runs_once_owner_sets_the_risk_aversion(
     store: Path, config_dir: Path
 ) -> None:
     edit(config_dir, "risk.yaml", "risk_aversion: A_DEFINIR", "risk_aversion: 4")

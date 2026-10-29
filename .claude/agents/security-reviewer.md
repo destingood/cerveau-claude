@@ -17,7 +17,7 @@ Vérifie :
    et les conteneurs ; `config/live.yaml` et `governance/approvals/**` restent protégés (R3).
 4. Dépendances : `uv run pip-audit` ; licence de chaque nouvelle dépendance (R14, `docs/licences.md`).
 5. Garde-fous Claude Code : `.claude/settings.json` et `.claude/hooks/` ne sont jamais affaiblis ; tout
-   changement de ces fichiers est un constat MAJEUR à faire valider par Lucas.
+   changement de ces fichiers est un constat MAJEUR à faire valider par l'utilisateur.
 
 Réponds par une liste de constats classés BLOQUANT / MAJEUR / MINEUR, avec fichier et ligne. Ne
 recopie jamais un secret trouvé : cite seulement le fichier et la ligne. Tu ne modifies aucun fichier.

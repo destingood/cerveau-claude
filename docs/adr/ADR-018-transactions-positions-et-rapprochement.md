@@ -5,13 +5,13 @@
 - Phase : 2
 
 ## Contexte
-Le plan de phase 2 (§4, F2) reconstruit le portefeuille de Lucas à partir de ses transactions.
+Le plan de phase 2 (§4, F2) reconstruit le portefeuille de l'utilisateur à partir de ses transactions.
 Il fixe le format CERVEAU (date, compte, type, identifiant, quantité, prix, devise, frais),
 l'import par la CLI, la valorisation en euros au change BCE et le rapprochement avec le relevé
 du courtier. Il reste plusieurs choix à faire.
 - **L'arithmétique.** Un solde calculé en nombres flottants ne tombe pas juste au centime. Une
   tolérance de rapprochement serait alors un seuil à régler (R7).
-- **Les imports qui se recouvrent.** Lucas peut exporter tout l'historique chaque mois ou
+- **Les imports qui se recouvrent.** l'utilisateur peut exporter tout l'historique chaque mois ou
   seulement le dernier mois. Ajouter chaque fichier au précédent compterait deux fois les
   opérations communes.
 - **Le coût de revient** des titres, les splits, les dividendes et l'ordre des opérations d'une
@@ -59,7 +59,7 @@ avant la virgule et 10 après.
   transaction datée dans le futur refuse le fichier.
 - Chaque courtier a son adaptateur (D4). Il convertit son export dans ce format, ordre des
   lignes compris, et il est testé sur un vrai export anonymisé. Seul le format `cerveau` existe
-  tant que Lucas n'a pas désigné son courtier. L'API d'IBKR reste au backlog (D5).
+  tant que l'utilisateur n'a pas désigné son courtier. L'API d'IBKR reste au backlog (D5).
 
 **Arithmétique.** Quantités, prix, frais, cash et coûts de revient sont des `Decimal`, lus
 depuis le texte du fichier et stockés en texte. Le rejeu calcule avec 60 chiffres significatifs :
@@ -69,7 +69,7 @@ retirée par une vente (coût × q / quantité détenue) peut être arrondie, à
 conversion en flottant n'a lieu qu'à la valorisation (cours × change).
 
 **Imports.**
-- `cerveau portfolio import <fichier> --format cerveau` est lancé par Lucas. Ni le planificateur
+- `cerveau portfolio import <fichier> --format cerveau` est lancé par l'utilisateur. Ni le planificateur
   ni un outil MCP ne l'appellent.
 - L'empreinte SHA-256 du fichier rend l'import idempotent : le même fichier une seconde fois ne
   change rien.

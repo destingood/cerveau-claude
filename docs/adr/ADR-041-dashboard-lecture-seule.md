@@ -1,6 +1,6 @@
 # ADR-041 — Dashboard v1 : FastAPI + Jinja2, local, lecture seule
 
-- Statut : accepté (D15 et D16 du plan de phase 5, validées par Lucas le 21/10/2026)
+- Statut : accepté (D15 et D16 du plan de phase 5, validées par l'utilisateur le 21/10/2026)
 - Date : 2026-10-21
 - Phase : 5
 

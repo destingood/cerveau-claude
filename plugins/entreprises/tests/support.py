@@ -33,9 +33,9 @@ def company(siren: str = SIREN, **extra: Any) -> dict[str, Any]:
     """One result, with every field the code must drop."""
     body: dict[str, Any] = {
         "siren": siren,
-        "nom_complet": "Matcha Atelier (MATCHA)",
-        "nom_raison_sociale": "MATCHA ATELIER",
-        "sigle": "MATCHA",
+        "nom_complet": "Boulangerie Atelier (BOULANGERIE)",
+        "nom_raison_sociale": "BOULANGERIE ATELIER",
+        "sigle": "BOULANGERIE",
         "activite_principale": "47.91B",
         "categorie_entreprise": "PME",
         "annee_categorie_entreprise": "2023",

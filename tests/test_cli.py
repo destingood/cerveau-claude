@@ -58,7 +58,7 @@ def test_audit_verify_reports_tampering(journal_path: Path) -> None:
 
     content = journal_path.read_text(encoding="utf-8").splitlines()
     entry = json.loads(content[0])
-    entry["actor"] = "lucas"
+    entry["actor"] = "owner"
     content[0] = json.dumps(entry)
     journal_path.write_text("\n".join(content) + "\n", encoding="utf-8")
     failed = runner.invoke(app, ["audit", "verify"])

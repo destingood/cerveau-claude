@@ -134,7 +134,7 @@ def test_a_generated_secret_has_160_bits_and_no_padding() -> None:
 def test_the_provisioning_uri_follows_the_key_uri_format() -> None:
     secret = generate_secret()
     uri = urlsplit(provisioning_uri(secret))
-    assert (uri.scheme, uri.netloc, uri.path) == ("otpauth", "totp", "/CERVEAU%3Alucas")
+    assert (uri.scheme, uri.netloc, uri.path) == ("otpauth", "totp", "/CERVEAU%3Aowner")
     assert parse_qs(uri.query) == {
         "secret": [secret],
         "issuer": ["CERVEAU"],

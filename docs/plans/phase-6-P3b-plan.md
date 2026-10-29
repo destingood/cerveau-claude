@@ -130,7 +130,7 @@ de sortie par requête. Grosse tâche : 50 requêtes, 80 k jetons, 1,5 k en sort
   s'ajoute la campagne de P3a (5 à 15 $), toujours en attente.
 - Tes budgets journalier et mensuel restent `A_DEFINIR` : tout appel réel reste bloqué (R7).
 
-## 9. Décisions demandées à Lucas
+## 9. Décisions demandées à l'utilisateur
 
 | # | Décision | Options | Ma recommandation |
 |---|---|---|---|

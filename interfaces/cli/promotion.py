@@ -2,7 +2,7 @@
 the N2 → N3 and N3 → N4 promotion reports (ADR-040, B181, ADR-067).
 
 ``check`` reads and writes nothing else; ``report`` writes only its report under
-``var/promotion/`` and its journal entry. Lucas signs ``governance/approvals/`` and changes
+``var/promotion/`` and its journal entry. The user signs ``governance/approvals/`` and changes
 ``domains.<domain>.level`` in ``config/autonomy.yaml`` by hand, whatever they say.
 """
 
@@ -64,7 +64,7 @@ def check(
 ) -> None:
     """Vérifie qu'un rapport d'évals réel prouve la règle de promotion (D16, B107).
 
-    Rien n'est modifié : la signature et le changement de niveau restent à Lucas, à la main.
+    Rien n'est modifié : la signature et le changement de niveau restent à l'utilisateur, à la main.
     Codes de sortie : 0 règle prouvée, 1 règle non prouvée ou rapport illisible, 2 règle
     bloquée par un A_DEFINIR (R7).
     """
@@ -95,7 +95,7 @@ def check(
         _fail("Règle non prouvée par ce rapport : pas de promotion.", EXIT_ERROR)
     typer.echo(
         "Règle prouvée par ce rapport. La signature (governance/approvals/) et le changement de "
-        "niveau (config/autonomy.yaml) restent à Lucas, à la main."
+        "niveau (config/autonomy.yaml) restent à l'utilisateur, à la main."
     )
 
 
@@ -136,7 +136,7 @@ def report(
     relative = path.relative_to(root).as_posix()
     request_id = f"promotion-report-{uuid.uuid4().hex[:12]}"
     AuditJournal(default_journal_path(root)).append(
-        actor="lucas",
+        actor="owner",
         event="TOOL_CALL",
         request_id=request_id,
         versions={"config": config.digest},

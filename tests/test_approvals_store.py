@@ -96,7 +96,7 @@ def test_rules_come_from_the_validated_configuration() -> None:
     assert ApprovalRules.from_config(approval) == RULES
 
 
-def test_rules_left_to_lucas_block_every_approval() -> None:
+def test_rules_left_to_owner_block_every_approval() -> None:
     approval = Approval(
         channel="discord",
         one_time_code=True,
@@ -116,7 +116,7 @@ def test_the_store_lives_under_var_approvals(tmp_path: Path) -> None:
 # Requests -----------------------------------------------------------------------------------
 
 
-def test_a_request_waits_for_lucas_until_its_deadline(
+def test_a_request_waits_for_owner_until_its_deadline(
     store: ApprovalStore, journal: MemoryJournal
 ) -> None:
     approval_id = ask(store)
@@ -192,14 +192,14 @@ def test_an_unknown_approval_is_refused(store: ApprovalStore) -> None:
 # Codes --------------------------------------------------------------------------------------
 
 
-def test_the_right_code_grants_on_behalf_of_lucas(
+def test_the_right_code_grants_on_behalf_of_owner(
     store: ApprovalStore, journal: MemoryJournal
 ) -> None:
     approval_id = ask(store)
     outcome = store.approve(approval_id, totp(KEY, NOW), key=KEY, now=NOW)
     assert (outcome.state, outcome.accepted, outcome.locked) == (S.ACCORDEE, True, False)
     assert store.get(approval_id, now=NOW).state is S.ACCORDEE
-    assert journal.entries[-1]["actor"] == "lucas"
+    assert journal.entries[-1]["actor"] == "owner"
     assert totp(KEY, NOW) not in str(journal.entries)
 
 
@@ -311,7 +311,7 @@ def test_expire_due_records_every_overdue_request_in_one_entry(
 # Refusals and consumption -------------------------------------------------------------------
 
 
-def test_lucas_refuses_from_an_interface(store: ApprovalStore, journal: MemoryJournal) -> None:
+def test_owner_refuses_from_an_interface(store: ApprovalStore, journal: MemoryJournal) -> None:
     approval_id = ask(store)
     assert (
         store.refuse(approval_id, reason="pas maintenant", actor="interface", now=NOW) is S.REFUSEE
@@ -371,11 +371,11 @@ def test_the_kill_switch_refuses_every_open_request(
     store.approve(granted, totp(KEY, NOW), key=KEY, now=NOW)
     store.refuse(done, reason="non", actor="interface", now=NOW)
     before = len(journal.entries)
-    refused = store.refuse_open(reason="kill switch", actor="lucas", now=NOW)
+    refused = store.refuse_open(reason="kill switch", actor="owner", now=NOW)
     assert set(refused) == {waiting, granted}
     assert len(journal.entries) == before + 2  # the expiries, then the refusals
     assert store.get(overdue, now=NOW).state is S.EXPIREE
-    assert store.refuse_open(reason="kill switch", actor="lucas", now=NOW) == ()
+    assert store.refuse_open(reason="kill switch", actor="owner", now=NOW) == ()
     assert len(journal.entries) == before + 2
 
 
@@ -585,7 +585,7 @@ class ApprovalMachine(RuleBasedStateMachine):
         for approval_id in self.model:
             self._settle(approval_id)
         expected = {key for key, item in self.model.items() if item["state"] in OPEN}
-        refused = self.store.refuse_open(reason="kill switch", actor="lucas", now=self.now)
+        refused = self.store.refuse_open(reason="kill switch", actor="owner", now=self.now)
         assert set(refused) == expected
         for key in expected:
             self.model[key]["state"] = S.REFUSEE

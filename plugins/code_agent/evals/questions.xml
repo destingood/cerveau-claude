@@ -1,9 +1,9 @@
 <?xml version="1.0" encoding="utf-8"?>
 <!--
   Questions d'évaluation du plugin code_agent (R8). La liste blanche des dépôts, les images de
-  l'agent et du proxy et le nombre de requêtes restent A_DEFINIR tant que Lucas ne les a pas fixés
+  l'agent et du proxy et le nombre de requêtes restent A_DEFINIR tant que l'utilisateur ne les a pas fixés
   (E2, F5) : chaque question porte donc sur une borne ou un refus de l'outil, dont la réponse ne
-  dépend ni d'un dépôt ni de Docker. Elles servent aux évals live (consentement de Lucas par
+  dépend ni d'un dépôt ni de Docker. Elles servent aux évals live (consentement de l'utilisateur par
   campagne, F10) ; aucun résultat n'est stocké.
 -->
 <evaluation>
@@ -12,7 +12,7 @@
     <answer>non</answer>
   </qa_pair>
   <qa_pair>
-    <question>agent_task écrit-il les changements de l'agent directement dans le dépôt de Lucas ? Réponds par oui ou non.</question>
+    <question>agent_task écrit-il les changements de l'agent directement dans le dépôt de l'utilisateur ? Réponds par oui ou non.</question>
     <answer>non</answer>
   </qa_pair>
   <qa_pair>

@@ -4,11 +4,11 @@ per_request: { max_tool_calls: 25, max_tokens: 150000, max_seconds: 120 }
 # Décision D9 (2026-10-18) : à 100 % du budget, les nouvelles requêtes sont refusées.
 on_exceeded: [refuse_new_requests]
 # Séance du Comité d'investissement (ADR-028, D18) : elle dépasse le budget d'une requête. Les
-# valeurs attendent la décision de Lucas ; aucune séance réelle n'a lieu avant.
+# valeurs attendent la décision de l'utilisateur ; aucune séance réelle n'a lieu avant.
 per_committee: { max_tokens: A_DEFINIR, max_seconds: A_DEFINIR, max_tool_calls: A_DEFINIR }
 # Recherche approfondie du pack Recherche (ADR-045, D13) : au plus 5 sous-questions et 12 lectures,
 # des plafonds qui ne se relèvent pas ici. Jetons, secondes et appels d'outils attendent la décision
-# de Lucas ; aucune recherche réelle n'a lieu avant.
+# de l'utilisateur ; aucune recherche réelle n'a lieu avant.
 per_deep_research:
   max_tokens: A_DEFINIR
   max_seconds: A_DEFINIR
@@ -18,5 +18,5 @@ per_deep_research:
 # Tâche de l'agent de code (ADR-054, F5) : ses jetons, comptés par le proxy (ADR-053), entrent dans
 # max_tokens avec ceux de l'orchestrateur ; une tâche imputée de son plafond n'en compte aucun, d'où
 # une tâche par requête au plus. max_seconds couvre la tâche (au plus 15 min, code.yaml) et la
-# réponse. Les valeurs attendent la décision de Lucas ; aucune tâche réelle n'a lieu avant.
+# réponse. Les valeurs attendent la décision de l'utilisateur ; aucune tâche réelle n'a lieu avant.
 per_code_agent: { max_tokens: A_DEFINIR, max_seconds: A_DEFINIR, max_tool_calls: A_DEFINIR }

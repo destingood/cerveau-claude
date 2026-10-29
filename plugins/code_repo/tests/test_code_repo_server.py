@@ -112,7 +112,7 @@ def test_the_log_lists_commits_newest_first_without_emails(server: Any) -> None:
     assert result["masked"] == 1
     assert result["more_commits"] is False
     first = result["commits"][0]
-    assert first["author"] == "Lucas Test"
+    assert first["author"] == "Utilisateur Test"
     assert first["date"] == "2026-10-20T10:00:00+02:00"
     assert len(first["sha"]) == 40
     assert "example.test" not in json.dumps(result)

@@ -1,6 +1,6 @@
 # ADR-019 — Conventions de l'optimisation et de la proposition de rééquilibrage
 
-- Statut : **proposé** (plan de phase 2, F4 ; à valider par Lucas au compte rendu de phase)
+- Statut : **proposé** (plan de phase 2, F4 ; à valider par l'utilisateur au compte rendu de phase)
 - Date : 2026-10-18
 - Phase : 2
 
@@ -43,7 +43,7 @@ liquidités. Il faut les figer avant le golden set, comme ADR-014 l'a fait pour 
   version du solveur : les chiffres du golden set valent pour les versions de `uv.lock`.
 - **Moyenne-variance** : maximise rendement moyen − λ × variance quotidienne. La moyenne
   historique n'est pas une prévision `[Hypothèse]`. λ (`optimization.risk_aversion`) est une
-  décision de Lucas ; tant qu'il vaut `A_DEFINIR`, la fonction `finance.mean_variance` est bloquée
+  décision de l'utilisateur ; tant qu'il vaut `A_DEFINIR`, la fonction `finance.mean_variance` est bloquée
   (R7).
 - **Risque avant et après** : volatilité annualisée et VaR paramétrique sur une séance, avec la
   covariance de l'échantillon (ddof = 1) et les liquidités, comme `risk_report` : le « avant » est

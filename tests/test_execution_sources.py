@@ -61,7 +61,7 @@ CHOSEN = {"long": 50, "short": 5}
 
 
 def card(**changes: Any) -> dict[str, Any]:
-    """The demonstration card as a candidate on the test instrument, as Lucas would set it."""
+    """The demonstration card as a candidate on the test instrument, as the user would set it."""
     raw = yaml.safe_load(DEMO.read_text(encoding="utf-8"))
     return {
         **raw,
@@ -80,7 +80,7 @@ def sections(chosen: object = CHOSEN) -> list[dict[str, Any]]:
 
 
 def promoted(root: Path, *, audited: bool = True, **report: Any) -> StrategySpec:
-    """A candidate in ``root``: its card, its code, its report, Lucas's approval and journal."""
+    """A candidate in ``root``: its card, its code, its report, the user's approval and journal."""
     registry = root / REGISTRY_DIR
     registry.mkdir(parents=True)
     path = registry / "croisement_mm.yaml"
@@ -110,7 +110,7 @@ def promoted(root: Path, *, audited: bool = True, **report: Any) -> StrategySpec
     (approvals / "croisement_mm.yaml").write_text(text, encoding="utf-8")
     if audited:
         AuditJournal(default_journal_path(root)).append(
-            actor="lucas",
+            actor="owner",
             event="DECISION",
             payload={"command": PROTOCOL_COMMAND, "rapport_sha256": sha},
         )
@@ -226,7 +226,7 @@ def test_the_approved_report_is_found_by_its_print(tmp_path: Path) -> None:
     with pytest.raises(SourceError):
         approved_report(spec, tmp_path)
     approval.unlink()
-    with pytest.raises(SourceError, match="aucune approbation de Lucas"):
+    with pytest.raises(SourceError, match="aucune approbation de l'utilisateur"):
         approved_report(spec, tmp_path)
 
 

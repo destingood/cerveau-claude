@@ -1,6 +1,6 @@
 # ADR-022 — Capacité CALCUL du pack Finance, décidée après le routage
 
-- Statut : **proposé** (élargissement de ce que la phase peut exécuter : à confirmer par Lucas au
+- Statut : **proposé** (élargissement de ce que la phase peut exécuter : à confirmer par l'utilisateur au
   compte rendu de phase ; revue `risk-gate-auditor` demandée avant `promotion.finance.N0_to_N1`)
 - Date : 2026-10-18
 - Phase : 2
@@ -8,7 +8,7 @@
 ## Contexte
 Le moteur de politique (`core/policy/engine.py`) n'accordait en phase 1 que `auto` pour `LECTURE`,
 dans tous les domaines : « élargir l'un ou l'autre ensemble est une décision de phase (ADR, évals,
-Lucas) ». Le plan de phase 2 validé (D1–D21) classe trois outils du pack Finance en `CALCUL`
+l'utilisateur) ». Le plan de phase 2 validé (D1–D21) classe trois outils du pack Finance en `CALCUL`
 (`risk_report`, `rebalance_proposal`, `performance_report`, D15) et la matrice de
 `config/autonomy.yaml` donne `CALCUL` × N0 : `auto`. Sans élargissement :
 

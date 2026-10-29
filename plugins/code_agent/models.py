@@ -61,14 +61,14 @@ class FileChange(_Out):
     change: Change
     added: int
     removed: int
-    # Runs code or configures tools on Lucas's machine (CI, hooks, conftest.py…): to review.
+    # Runs code or configures tools on the user's machine (CI, hooks, conftest.py…): to review.
     risky: bool
     # Secret-looking strings masked in this file's hunk (R6).
     masked: int
 
 
 class PatchOut(_Out):
-    """The patch in ``folder``/patch.diff, for Lucas to review and apply with ``git apply``."""
+    """The patch in ``folder``/patch.diff, for the user to review and apply with ``git apply``."""
 
     folder: str
     sha256: str

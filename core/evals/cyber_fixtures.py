@@ -44,7 +44,7 @@ SOURCE_OF_HOST: dict[str, CyberSource] = {NVD_HOST: "nvd", KEV_HOST: "kev", EPSS
 STAND_IN_NVD_KEY = "canari-nvd-cle-factice"
 PUBLIC_V4 = "93.184.215.14"  # the address of every source name, so the network guard lets it be
 _METRICS = {"4.0": "cvssMetricV40", "3.1": "cvssMetricV31", "3.0": "cvssMetricV30"}
-# A digest already recorded (Lucas ran attack-fetch): the copy puts the marker back.
+# A digest already recorded (the user ran attack-fetch): the copy puts the marker back.
 _RECORDED = re.compile(rb"^(    sha256: )[0-9a-f]{64}([ \t]*(?:#[^\r\n]*)?\r?\n)", re.M)
 _VECTORS = {
     "4.0": "CVSS:4.0/AV:N/AC:L/AT:N/PR:N/UI:N/VC:H/VI:H/VA:H/SC:N/SI:N/SA:N",
@@ -228,7 +228,7 @@ class FixtureApis:
 
 def cyber_config(source: Path, folder: Path) -> Path:
     """A copy of the configuration files the case may change (the ATT&CK digest), never the
-    original. A digest Lucas has recorded goes back to its marker in the copy: the case records
+    original. A digest the user has recorded goes back to its marker in the copy: the case records
     the digest of its own bundle, whatever the repository holds."""
     target = folder / "config"
     if not target.exists():

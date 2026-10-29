@@ -3,7 +3,8 @@ and never upwards.
 
 A demotion is a line of ``var/governance/demotions.jsonl``, written by the program and journaled
 (``policy`` / ``DECISION``). ``effective_autonomy`` holds each domain at or below the lowest level
-a demotion set for it. No code lifts a demotion: Lucas removes its line by hand, after reading the
+a demotion set for it. No code lifts a demotion: the user removes its line by hand, after reading
+the
 journal (R2). An unreadable file holds every domain at N0: a demotion that cannot be read must not
 be lost.
 """

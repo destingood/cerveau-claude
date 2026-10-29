@@ -1,4 +1,4 @@
-"""Create infra/.env with fresh random secrets for the local stack (run by Lucas, once).
+"""Create infra/.env with fresh random secrets for the local stack (run by the user, once).
 
 Every empty ``KEY=`` line of the template receives a random hexadecimal secret (hex keeps the
 values safe inside connection URLs). The output file is created exclusively: an existing file is

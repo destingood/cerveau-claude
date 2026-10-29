@@ -5,7 +5,7 @@
 - Phase : 7 (lot 7.2 du plan validé le 2026-10-29)
 
 ## Contexte
-Lucas a décidé le 18/10/2026 une auto-amélioration « tout automatique, avec le test avant chaque
+l'utilisateur a décidé le 18/10/2026 une auto-amélioration « tout automatique, avec le test avant chaque
 mise en ligne et le noyau verrouillé » (ADR-011). Il faut donc :
 - un endroit borné où CERVEAU écrit ce qu'il apprend ;
 - un noyau que l'apprentissage ne touche jamais ;
@@ -66,7 +66,7 @@ golden sans mieux répondre ; d'où un jeu tenu à l'écart que l'apprentissage 
 
 ## Conséquences
 - Rien n'entre en service sans verdict « promouvable » sur des évals réelles, donc payantes et
-  soumises à l'accord de Lucas.
+  soumises à l'accord de l'utilisateur.
 - La couche peut seulement ajouter du texte de méthode ; les règles, seuils, autonomies et
   garde-fous restent hors d'atteinte.
 - Restent à faire (backlog B347) : paramètres de routage et de recherche appris.

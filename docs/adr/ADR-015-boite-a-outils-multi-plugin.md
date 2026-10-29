@@ -1,6 +1,6 @@
 # ADR-015 — Boîte à outils multi-plugin et démarrage déclaré dans le manifeste
 
-- Statut : **accepté par Lucas le 18/10/2026** (plan de phase 2, D15, D18)
+- Statut : **accepté par l'utilisateur le 18/10/2026** (plan de phase 2, D15, D18)
 - Date : 2026-10-18
 - Phase : 2
 

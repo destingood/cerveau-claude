@@ -236,8 +236,8 @@ def test_every_pack_has_its_autonomy_threshold_role_and_plugins() -> None:
             assert manifest.domain == pack.id
 
 
-def test_every_pack_stays_experimental_until_lucas_writes_actif() -> None:
-    """Only Lucas writes « actif » in a manifest, after a measured campaign (D2, ADR-043).
+def test_every_pack_stays_experimental_until_owner_writes_actif() -> None:
+    """Only the user writes « actif » in a manifest, after a measured campaign (D2, ADR-043).
 
     His commit changes this test too; Claude Code edits neither.
     """
@@ -691,7 +691,7 @@ def _engage(root: Path) -> Callable[[], None]:
 def test_a_kill_switch_engaged_mid_request_stops_before_the_next_model_call(
     rig: FinanceRig, tmp_path: Path
 ) -> None:
-    rig.desk.on_call = _engage(tmp_path)  # Lucas engages it while the tool runs
+    rig.desk.on_call = _engage(tmp_path)  # the user engages it while the tool runs
     rig.brain.planner = [tool_call("risk_report"), answer_json("Jamais produite.")]
     result = rig.ask("Quelle est la volatilité de mon portefeuille ?")
     assert result.answer.statut == "refus"

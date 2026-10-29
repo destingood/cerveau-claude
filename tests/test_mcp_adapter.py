@@ -984,7 +984,7 @@ DIGEST = "0123456789abcdef" * 4
 def test_an_isolated_call_journals_the_digest_of_its_patch(
     tmp_path: Path, patch: Any, digest: str | None
 ) -> None:
-    """The patch Lucas applies is traced to its request (R11); a malformed digest is not kept."""
+    """The patch the user applies is traced to its request (R11); a malformed digest is not kept."""
     scope = code_scope(tmp_path)
     isolated_session(
         scope,

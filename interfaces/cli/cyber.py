@@ -1,4 +1,4 @@
-"""`cerveau cyber` : what Lucas runs himself for the defensive Cyber pack (phase 6, P4).
+"""`cerveau cyber` : what the user runs himself for the defensive Cyber pack (phase 6, P4).
 
 `attack-fetch` is the only download of the ATT&CK bundle (G5): never automatic, never called by
 a plugin or by the orchestrator. Every run is journaled (R11), refusals and unexpected failures
@@ -107,7 +107,7 @@ def attack_fetch(
 
     def refuse(reason: str, code: int, prefix: str = "Refus") -> NoReturn:
         audit.append(
-            actor="lucas",
+            actor="owner",
             event="ERROR",
             request_id=request_id,
             versions={"config": config.digest},
@@ -170,7 +170,7 @@ def attack_fetch(
     except (Exception, KeyboardInterrupt) as exc:  # memory, interruption: journaled too (R11)
         refuse(f"échec inattendu ({type(exc).__name__})", EXIT_ERROR)
     audit.append(
-        actor="lucas",
+        actor="owner",
         event="TOOL_CALL",
         request_id=request_id,
         versions={"config": config.digest},

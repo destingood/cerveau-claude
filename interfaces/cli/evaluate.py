@@ -2,7 +2,7 @@
 
 An offline run inherits no API key, so nothing in it can reach a paid service. A live run goes
 one request at a time, each checked against the € budgets by the orchestrator, and journals the
-campaign it belongs to; Lucas agrees to each campaign beforehand (D8).
+campaign it belongs to; the user agrees to each campaign beforehand (D8).
 """
 
 from __future__ import annotations
@@ -49,7 +49,7 @@ def check_campaign(campaign: str | None, names: Sequence[str]) -> str:
     if campaign is None or not CAMPAIGN.fullmatch(campaign):
         raise EvalUsageError(
             "--live exige --campaign <nom> (a-z, 0-9, tirets, 3 à 64 caractères), "
-            "le nom de la campagne acceptée par Lucas (D8)"
+            "le nom de la campagne acceptée par l'utilisateur (D8)"
         )
     if not names:
         raise EvalUsageError("--live exige la liste des suites de la campagne")

@@ -1,6 +1,6 @@
 # ADR-024 — Moteur de backtest : stratégie pure, moteur maison et adaptateur NautilusTrader 1.231
 
-- Statut : accepté (D1, D6 et D12 du plan de phase 3, validées par Lucas le 19/10/2026 ; la
+- Statut : accepté (D1, D6 et D12 du plan de phase 3, validées par l'utilisateur le 19/10/2026 ; la
   sémantique détaillée ci-dessous est soumise à sa relecture au compte rendu de phase 3)
 - Date : 2026-10-19
 - Phase : 3
@@ -97,7 +97,7 @@ Option 3.
     l'épinglage exact de NautilusTrader. CERVEAU n'ouvre aucun système de fichiers fsspec. Un
     backtest de fumée est passé avec cette version le 20/10/2026, et le recoupement D12 la teste à
     chaque exécution de la CI. L'override est retiré dès qu'une version de NautilusTrader épingle
-    une version corrigée. C'est un écart à une contrainte amont, soumis à Lucas au compte rendu.
+    une version corrigée. C'est un écart à une contrainte amont, soumis à l'utilisateur au compte rendu.
 - **Recoupement (D12)** : sur la démonstration, les deux moteurs doivent produire les mêmes
   opérations (date, instrument, sens, quantité) et la même valeur finale, à 1e-6 près en relatif.
   Les frais sont comparés à part. Le recoupement porte sur l'exécution et la comptabilité : la

@@ -14,21 +14,21 @@ REPO_ROOT = Path(__file__).resolve().parents[1]
 
 @pytest.fixture(autouse=True)
 def _no_langfuse(monkeypatch: pytest.MonkeyPatch) -> None:
-    """Lucas's own LANGFUSE_* variables never reach a test: no trace leaves a test run."""
+    """The user's own LANGFUSE_* variables never reach a test: no trace leaves a test run."""
     for name in [name for name in os.environ if name.startswith("LANGFUSE_")]:
         monkeypatch.delenv(name)
 
 
 @pytest.fixture(autouse=True)
 def _no_ntfy(monkeypatch: pytest.MonkeyPatch) -> None:
-    """Lucas's NTFY_TOPIC and NTFY_TOKEN never reach a test: no alert leaves a test run."""
+    """The user's NTFY_TOPIC and NTFY_TOKEN never reach a test: no alert leaves a test run."""
     for name in ("NTFY_TOPIC", "NTFY_TOKEN"):
         monkeypatch.delenv(name, raising=False)
 
 
 @pytest.fixture(autouse=True)
 def _no_interface_secrets(monkeypatch: pytest.MonkeyPatch) -> None:
-    """Lucas's API token, TOTP secret and bot token never reach a test: tests set their own."""
+    """The user's API token, TOTP secret and bot token never reach a test: tests set their own."""
     for name in ("CERVEAU_API_TOKEN", "CERVEAU_TOTP_SECRET", "DISCORD_BOT_TOKEN"):
         monkeypatch.delenv(name, raising=False)
 

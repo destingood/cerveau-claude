@@ -293,7 +293,7 @@ def _written(tmp_path: Path, report: dict[str, Any]) -> Path:
     return path
 
 
-def test_the_command_says_the_signature_stays_lucas_s(
+def test_the_command_says_the_signature_stays_owners(
     tmp_path: Path, config_dir: Path, config: Config
 ) -> None:
     audit = AuditJournal(tmp_path / "audit" / "journal.jsonl")
@@ -303,7 +303,7 @@ def test_the_command_says_the_signature_stays_lucas_s(
     _seal(report, config, audit)
     result = _cli(path, audit, config_dir)
     assert result.exit_code == 0, result.output
-    assert "Règle prouvée" in result.output and "restent à Lucas" in result.output
+    assert "Règle prouvée" in result.output and "restent à l'utilisateur" in result.output
     assert "✗" not in result.output
 
     report["mode"] = "offline"

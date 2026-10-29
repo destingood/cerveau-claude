@@ -1,4 +1,4 @@
-// What the bot puts in front of Lucas: slash commands, the approval buttons and the code modal,
+// What the bot puts in front of the user: slash commands, the approval buttons and the code modal,
 // built with discord.js 14.27's builders, which check Discord's limits (ADR-037).
 
 import {
@@ -18,13 +18,13 @@ export const CODE_FIELD = 'code';
 const UUID = '[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}';
 const CUSTOM_ID = new RegExp(`^(approve|refuse|code):(${UUID})$`);
 
-// Lucas's private messages with the bot only: no server, no group, no user install.
+// the user's private messages with the bot only: no server, no group, no user install.
 const privateOnly = (command) =>
   command
     .setContexts(InteractionContextType.BotDM)
     .setIntegrationTypes(ApplicationIntegrationType.GuildInstall);
 
-// There is no rearm command: rearming stays at Lucas's interactive terminal (ADR-034).
+// There is no rearm command: rearming stays at the user's interactive terminal (ADR-034).
 export const COMMANDS = [
   new SlashCommandBuilder()
     .setName('status')

@@ -3,7 +3,7 @@
 21/10/2026).
 
 On ntfy.sh every topic is public and the topic acts as a password: it lives in ``NTFY_TOPIC``, set
-by Lucas, at least 32 random characters, never in the repository; so does the optional token in
+by the user, at least 32 random characters, never in the repository; so does the optional token in
 ``NTFY_TOKEN``. Neither is ever printed, journaled or kept in a ``repr``. The body is the alert's
 French text; the title, a header, is ASCII only.
 """

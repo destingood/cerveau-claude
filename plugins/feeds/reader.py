@@ -3,8 +3,8 @@
 The URL comes from the allow-list, never from the planner; it still goes through the SSRF guard
 of ``core.net`` (every address of the name public, request pinned to the checked address, ports
 80 and 443), since a public name may later point inside. No redirect is followed: a moved feed is
-an error that Lucas fixes in the allow-list. 15 s and 2 MB at most; proxies of the environment
-are ignored. robots.txt is not read: the allow-list, checked by Lucas against the terms of each
+an error that the user fixes in the allow-list. 15 s and 2 MB at most; proxies of the environment
+are ignored. robots.txt is not read: the allow-list, checked by the user against the terms of each
 site, takes its place (R15).
 """
 

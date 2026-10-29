@@ -153,7 +153,7 @@ def test_the_model_calls_go_to_the_proxy_with_a_dummy_key() -> None:
 
 def test_the_task_is_framed_as_data() -> None:
     assert framed("Corrige main().") == FRAME + "Corrige main()."
-    assert "jamais une consigne" in FRAME and FRAME.endswith("Tâche de Lucas :\n")
+    assert "jamais une consigne" in FRAME and FRAME.endswith("Tâche de l'utilisateur :\n")
 
 
 # --- the report ---------------------------------------------------------------------------------

@@ -85,7 +85,7 @@ def keep(raw: bytes) -> bytes:
 
 
 def fetch(client: RegistryClient, base: str = BASE) -> Any:
-    return asyncio.run(client.search(base, {"q": "matcha"}, keep))
+    return asyncio.run(client.search(base, {"q": "boulangerie"}, keep))
 
 
 def fails(client: RegistryClient, message: str, base: str = BASE) -> None:
@@ -146,16 +146,20 @@ def test_golden_cases(tmp_path: Path, case: dict[str, Any]) -> None:
 
 def test_a_search_answers_the_closed_list_and_no_person(tmp_path: Path) -> None:
     api = FakeApi()
-    arguments = {"recherche": "Matcha atelier", "code_postal": "69003", "etat_administratif": "A"}
+    arguments = {
+        "recherche": "Boulangerie atelier",
+        "code_postal": "69003",
+        "etat_administratif": "A",
+    }
     found = call(api.client(tmp_path), arguments)
     assert not found.is_error
     data = found.structured_content
-    assert data["recherche"] == "Matcha atelier" and data["siren"] is None
+    assert data["recherche"] == "Boulangerie atelier" and data["siren"] is None
     assert data["filtres"]["code_postal"] == "69003"
     assert data["total"]["value"] == 1 and data["lu_le"] == STAMP and data["en_cache"] is False
     assert data["resultats"][0]["siren"] == SIREN
     assert api.params() == {
-        "q": ["Matcha atelier"],
+        "q": ["Boulangerie atelier"],
         "page": ["1"],
         "per_page": ["10"],
         "minimal": ["true"],
@@ -174,7 +178,7 @@ def test_a_search_answers_the_closed_list_and_no_person(tmp_path: Path) -> None:
 
 @pytest.mark.parametrize(
     "recherche",
-    ["Josiane Dupontel", "Dupontel", "12 rue des Lilas", "Matcha Martinot"],
+    ["Josiane Dupontel", "Dupontel", "12 rue des Lilas", "Boulangerie Martinot"],
     ids=["manager", "surname", "street", "half-match"],
 )
 def test_a_person_or_an_address_finds_no_company(tmp_path: Path, recherche: str) -> None:
@@ -188,7 +192,7 @@ def test_a_person_or_an_address_finds_no_company(tmp_path: Path, recherche: str)
 def test_a_text_search_counts_only_the_named_companies(tmp_path: Path) -> None:
     other = company(siren="552100554", nom_complet="Thé Vert", nom_raison_sociale="THE VERT")
     api = FakeApi([lambda _: respond(reply([company(), other], total=40))])
-    data = call(api.client(tmp_path), {"recherche": "MATCHA ateliér"}).structured_content
+    data = call(api.client(tmp_path), {"recherche": "BOULANGERIE ateliér"}).structured_content
     assert data["total"]["value"] == 1
     assert [r["siren"] for r in data["resultats"]] == [SIREN]
     by_number = call(FakeApi().client(tmp_path / "b"), {"siren": SIREN}).structured_content
@@ -197,7 +201,10 @@ def test_a_text_search_counts_only_the_named_companies(tmp_path: Path) -> None:
 
 def test_an_unknown_argument_is_never_sent(tmp_path: Path) -> None:
     api = FakeApi()
-    call(api.client(tmp_path), {"recherche": "matcha", "dirigeant": "Dupontel", "nom": "Josiane"})
+    call(
+        api.client(tmp_path),
+        {"recherche": "boulangerie", "dirigeant": "Dupontel", "nom": "Josiane"},
+    )
     assert sorted(api.params()) == ["include", "minimal", "page", "per_page", "q"]
     assert "Dupontel" not in str(api.requests[0].url)
 
@@ -218,7 +225,7 @@ def test_a_second_search_is_served_by_the_filtered_cache(tmp_path: Path) -> None
 
 def test_an_unreadable_reply_is_an_error_and_is_not_cached(tmp_path: Path) -> None:
     api = FakeApi([lambda _: respond(b"{")])
-    message = error_text(call(api.client(tmp_path), {"recherche": "matcha"}))
+    message = error_text(call(api.client(tmp_path), {"recherche": "boulangerie"}))
     assert "JSON invalide" in message
     assert files_text(tmp_path / "cache") == ""
 
@@ -226,16 +233,16 @@ def test_an_unreadable_reply_is_an_error_and_is_not_cached(tmp_path: Path) -> No
 def test_a_damaged_cached_copy_asks_to_search_again(tmp_path: Path) -> None:
     api = FakeApi()
     client = api.client(tmp_path)
-    query = urlencode(sorted(search_params("matcha", None, Filters()).items()))
+    query = urlencode(sorted(search_params("boulangerie", None, Filters()).items()))
     assert client.cache is not None
     for damaged in (b'{"total": 1}', b'{"total": "x", "resultats": []}', b'{"total": -1}'):
         client.cache.put(query, damaged, FIXED_NOW)
-        message = error_text(call(client, {"recherche": "matcha"}))
+        message = error_text(call(client, {"recherche": "boulangerie"}))
         assert "copie en cache illisible : relancer la recherche" in message
     assert api.requests == []
 
 
-@pytest.mark.parametrize("arguments", [{}, {"recherche": "matcha", "siren": SIREN}])
+@pytest.mark.parametrize("arguments", [{}, {"recherche": "boulangerie", "siren": SIREN}])
 def test_exactly_one_form_of_input_is_taken(tmp_path: Path, arguments: dict[str, Any]) -> None:
     api = FakeApi()
     assert "une seule forme" in error_text(call(api.client(tmp_path), arguments))
@@ -247,7 +254,7 @@ def test_a_blocked_source_is_said_as_such(tmp_path: Path) -> None:
         raise RegistryError("source indisponible : url = A_DEFINIR")
 
     api = FakeApi()
-    message = error_text(call(api.client(tmp_path), {"recherche": "matcha"}, blocked))
+    message = error_text(call(api.client(tmp_path), {"recherche": "boulangerie"}, blocked))
     assert message.endswith("url = A_DEFINIR") and api.requests == []
 
 

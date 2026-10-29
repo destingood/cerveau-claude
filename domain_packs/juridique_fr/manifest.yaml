@@ -4,7 +4,7 @@
 id: juridique_fr
 version: 0.1.0
 # « expérimental » tant que le golden set n'a pas atteint son seuil en mesure réelle (section 9.3) ;
-# seul Lucas passe le pack en « actif », au vu du rapport d'évals (D2).
+# seul l'utilisateur passe le pack en « actif », au vu du rapport d'évals (D2).
 statut: experimental
 perimetre:
   - Article d'un code ou d'une loi lu sur Légifrance — identifiant LEGIARTI, état, dates de vigueur
@@ -17,14 +17,14 @@ perimetre:
     conseil-etat.fr), lues à la demande (web_research, ADR-058, H5, H6).
   - Délais et montants cités avec l'article ou la fiche et sa version, jamais calculés (R1, H8).
   - Renvoi vers le professionnel compétent (avocat, notaire, administration) pour une situation
-    précise ; Lucas agit lui-même (N0).
+    précise ; l'utilisateur agit lui-même (N0).
 hors_perimetre:
   - Conseil juridique personnalisé (« dois-je signer », « vais-je gagner »), stratégie
     contentieuse (R16).
   - Rédaction d'un acte, d'un contrat, d'une mise en demeure ou de conclusions.
   - Calcul d'un impôt, d'une indemnité ou d'un délai appliqué à un cas réel (R1, H8).
   - Contournement de la loi ou fraude (R15).
-  - Démarche effectuée à la place de Lucas ; aucun outil n'écrit, ne dépose ni n'envoie rien.
+  - Démarche effectuée à la place de l'utilisateur ; aucun outil n'écrit, ne dépose ni n'envoie rien.
   - Jurisprudence (Judilibre, H2), Journal officiel, BOFiP par API, corpus RAG (docs/backlog.md).
   - Conseil à des tiers (R16), CERVEAU restant un outil personnel d'aide à la décision.
 # Ordre des outils du planificateur, coupé à config/models.yaml#routing.max_tools_to_planner.
@@ -33,11 +33,11 @@ plugins:
   - web_research
 autonomie:
   # Niveau courant N0, niveau maximal N1 : config/autonomy.yaml, domains.juridique_fr (D3). Seul
-  # Lucas promeut le pack, à la main, au vu du rapport.
+  # l'utilisateur promeut le pack, à la main, au vu du rapport.
   source: config/autonomy.yaml#domains.juridique_fr
 sources_autorisees:
   # API Légifrance de la DILA par PISTE, en lecture seule (legifrance) ; environnement sandbox ou
-  # production : A_DEFINIR, choisi par Lucas ; identifiants PISTE_CLIENT_ID et PISTE_CLIENT_SECRET
+  # production : A_DEFINIR, choisi par l'utilisateur ; identifiants PISTE_CLIENT_ID et PISTE_CLIENT_SECRET
   # passés par runtime.env, jamais écrits (H4, R6).
   legifrance: config/data_sources.yaml#sources.legifrance
   # Pages des seuls sites de la liste fermée du domaine, recontrôlée à chaque redirection (H6).
