@@ -43,6 +43,7 @@ from core.notify.alerts import Alerts
 from core.observability.tracing import NoTracer, Tracer
 from core.orchestrator.answer import map_texts, output_node, render_json, render_markdown
 from core.orchestrator.intake import KILL_MESSAGE, context_node, guard_node, route_node
+from core.orchestrator.notices import NOTICES
 from core.orchestrator.packs import DEFAULT_DOMAIN, Pack, check_packs, load_packs
 from core.orchestrator.planner import plan_node
 from core.orchestrator.prompts import PromptSet
@@ -231,7 +232,11 @@ def audit_payload(run: Run, state: CerveauState, *, status: str | None = None) -
         }
     if answer is not None:
         digest = hashlib.sha256(answer.model_dump_json().encode()).hexdigest()
-        payload["answer"] = {"links_removed": answer.links_removed, "sha256": digest}
+        payload["answer"] = {
+            "links_removed": answer.links_removed,
+            "sha256": digest,
+            "draft": NOTICES["brouillon"] in answer.mentions,  # a draft was produced, not its text
+        }
     return payload
 
 

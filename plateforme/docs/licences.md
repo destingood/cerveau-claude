@@ -185,6 +185,15 @@ omettre.
 | `cnil.fr` | CC BY-ND 4.0 FR : source, lien et date, sans modification du contenu | pages citées, jamais adaptées ni stockées |
 | `conseil-etat.fr` | Réutilisation libre sans altération, avec la source et la date | pages citées, jamais adaptées ni stockées ; la jurisprudence (Judilibre, décisions administratives) reste au backlog (H2) |
 
+## Sources du pack `business` (phase 6, P6)
+Aucune nouvelle dépendance : `httpx` et Pydantic lisent les API. Conditions lues le 2026-10-29
+(`config/data_sources.yaml`).
+
+| Source | Licence ou conditions | Usage dans CERVEAU |
+|---|---|---|
+| API Recherche d'entreprises (DINUM, données INSEE et INPI) | Données des registres publics (SIRENE, RNE) ; aucune licence écrite sur la page de l'API, Licence Ouverte 2.0 attendue : `A_VERIFIER` ; spécification OpenAPI sous licence MIT ; API ouverte sans compte, 7 requêtes par seconde et par IP | `entreprises` (`company_search`, ADR-062) : lecture seule, 2 requêtes par seconde, cache 24 h de la seule sortie filtrée sous `var/business/` ; ni dirigeant, ni recherche par personne ou adresse, siège d'une personne physique omis (I4) |
+| API Melodi de l'Insee (`api.insee.fr/melodi`) | Licence Ouverte 2.0 (etalab-2.0) : citer « Source : Insee » et la date de mise à jour ; accès anonyme, 30 appels par minute (portail) ; les CGU indiquent 20 par seconde, écart noté au backlog | `insee_stats` (`stats_series`, plan P6 I3) : lecture seule de trois jeux en liste fermée (populations de référence, créations d'entreprises, Filosofi), 20 requêtes par minute, cache 7 jours de la seule sortie filtrée sous `var/business/` ; chaque valeur est une Figure, toute unité inconnue est omise |
+
 ## Licences restrictives ou à surveiller
 - **Redis 7.4 (RSALv2 / SSPLv1, depuis le 2024-03-20)** : interdit surtout de revendre Redis comme
   service. Usage interne non modifié : sans effet. Alternative libre à évaluer : Valkey (backlog).
@@ -207,14 +216,32 @@ omettre.
   module, pour pouvoir le retirer sans toucher au reste (ADR-025). Tout usage commercial de
   CERVEAU exigerait de le retirer ou d'obtenir une licence de l'auteur.
 - **NautilusTrader (LGPL-3.0-or-later)** : bibliothèque utilisée telle quelle, non modifiée, liée
-  dynamiquement (import Python) ; CERVEAU n'est pas redistribué. Une version modifiée de
-  NautilusTrader devrait être publiée sous LGPL.
-- **portion (LGPL-3.0-or-later)** : dépendance de NautilusTrader, même régime : non modifiée, non
-  redistribuée.
+  dynamiquement (import Python). Le code source de CERVEAU est publié (section suivante), mais
+  aucune copie de NautilusTrader n'y figure : `uv.lock` ne fait que la référencer. Une version
+  modifiée de NautilusTrader devrait être publiée sous LGPL.
+- **portion (LGPL-3.0-or-later)** : dépendance de NautilusTrader, même régime : non modifiée,
+  référencée par `uv.lock`, jamais copiée dans le dépôt.
 - **fr_core_news_md (LGPL-LR, licence LGPL pour ressources linguistiques)** : modèle de données
   chargé tel quel par spaCy, non modifié, non redistribué hors de `uv.lock` (téléchargé depuis
   les releases GitHub d'Explosion, empreinte figée). Une version modifiée du modèle devrait rester
   sous LGPL-LR.
+
+## Publication du code de CERVEAU
+- **Depuis le 2026-10-28**, le code source et son historique sont publiés dans le dépôt GitHub
+  **public** `destingood/cerveau-claude`, dossier `plateforme/` (PR 8, décision de Lucas). Le
+  dépôt local garde la référence ; chaque phase y est reportée par une PR que Lucas fusionne.
+- **Ce qui est publié** : le code, la configuration (valeurs sensibles en `A_DEFINIR`, R7), les
+  ADR, le modèle de menaces, les évals et des données de test fictives. Aucun secret (gitleaks
+  sur tout l'historique, R6), ni `var/`, ni image Docker, ni copie d'une dépendance : les
+  bibliothèques ne sont que référencées par `uv.lock` et `package-lock.json`.
+- **Licence de CERVEAU** : aucune n'est déclarée, donc tous droits réservés à Lucas par défaut ;
+  les conditions de GitHub permettent seulement de voir et de copier le dépôt sur GitHub
+  (`A_VERIFIER` : section D.5 des GitHub Terms of Service). Choisir une licence est une
+  décision de Lucas (`A_DEFINIR`, backlog).
+- **Conséquences** : ce qui précède reste valable tant que CERVEAU n'est ni vendu ni servi à des
+  tiers (R16, vectorbt) et que les images restent locales (CLI de Claude Code). Le modèle de
+  menaces public aide un attaquant à connaître les défenses ; elles ne reposent pas sur leur
+  secret (clés hors dépôt, contrôles déterministes).
 
 ## Points à trancher avant les phases suivantes (Annexe A)
 Licences annoncées par l'Annexe A, à revérifier au moment de l'intégration (vectorbt et

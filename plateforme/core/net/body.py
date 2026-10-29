@@ -29,7 +29,7 @@ async def read_body(
         raise FetchError(f"encodage « {shown(encoding)} » non pris en charge")
     too_big = FetchError(f"page trop volumineuse (plus de {limit / 1_000_000:g} Mo)")
     declared = response.headers.get("content-length", "")
-    if not cut and declared.isdigit() and int(declared) > limit:
+    if not cut and declared.isascii() and declared.isdigit() and int(declared) > limit:
         raise too_big
     inflater = zlib.decompressobj(16 + zlib.MAX_WBITS) if encoding == "gzip" else None
     body = bytearray()

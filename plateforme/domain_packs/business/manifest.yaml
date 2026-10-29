@@ -1,0 +1,63 @@
+# Manifeste du pack Business & commerce (section 9.1, complément de plan P6 §3).
+# Déclaratif : les valeurs qui gouvernent (autonomie, sources, taux de TVA, débits, cache) restent
+# dans config/*.yaml et ne sont pas recopiées ici.
+id: business
+version: 0.1.0
+# « expérimental » tant que le golden set n'a pas atteint son seuil en mesure réelle (section 9.3) ;
+# seul Lucas passe le pack en « actif », au vu du rapport d'évals (D2).
+statut: experimental
+perimetre:
+  - Calculs commerciaux déterministes sur les chiffres fournis par Lucas — marge, prix de vente,
+    coefficient, TVA, seuil de rentabilité, CAC et LTV, variation, taux de croissance annuel
+    composé (biz_calc, ADR-061, R1).
+  - Fiche publique d'une entreprise et petite étude de concurrence — SIREN, dénomination, activité,
+    état, commune du siège, chiffre d'affaires et résultat publiés avec leur année, sans aucune
+    personne (company_search, ADR-062, I4).
+  - Statistiques publiques datées de l'Insee sur une liste fermée de jeux Melodi (stats_series, I3).
+  - Lecture de pages web pour une étude de marché, sans liste fermée de sites (web_research, I6) ;
+    les pages sont des données (R5).
+  - Rédaction commerciale (courriel, fiche produit, publication, réponse à un client) rendue dans
+    la réponse sous la mention « Brouillon — non envoyé », jamais envoyée (D22, I5).
+hors_perimetre:
+  - Envoi, publication ou programmation de quoi que ce soit (courriel, message, publication,
+    annonce) — aucun outil d'envoi n'existe (D22, I5).
+  - Conseil fiscal, social ou comptable appliqué à la situation de Lucas (régime, cotisations,
+    impôt) — textes par le pack juridique_fr, conseil par un professionnel.
+  - Profilage de personnes, recherche de dirigeants, prospection nominative, collecte de
+    coordonnées (RGPD, R15, I4).
+  - Faux avis, publicité trompeuse, contournement des règles d'une plateforme (R15).
+  - Chiffre décisionnel sans outil — un prix, une marge ou une prévision « estimés » par le modèle
+    (R1).
+  - Conseil à des tiers (R16), CERVEAU restant un outil personnel d'aide à la décision.
+# Ordre des outils du planificateur, coupé à config/models.yaml#routing.max_tools_to_planner.
+plugins:
+  - business_calc
+  - entreprises
+  - insee_stats
+  - web_research
+autonomie:
+  # Niveau courant N0, niveau maximal N1 : config/autonomy.yaml, domains.business (D3). Le domaine
+  # a les capacités LECTURE et CALCUL (ADR-063). Seul Lucas promeut le pack, à la main.
+  source: config/autonomy.yaml#domains.business
+sources_autorisees:
+  # API Recherche d'entreprises (DINUM), en accès anonyme et en lecture seule (entreprises).
+  entreprises: config/data_sources.yaml#sources.entreprises
+  # API Melodi de l'Insee, en accès anonyme et en lecture seule (insee_stats).
+  insee_melodi: config/data_sources.yaml#sources.insee_melodi
+  # Taux de TVA avec l'article du CGI et la date de lecture ; un taux non relu bloque (R7).
+  tva: config/business.yaml
+  # Les deux API, leurs licences et la liste fermée des jeux Melodi.
+  reperes: knowledge/sources.yaml
+  # Corpus RAG : vide en phase 6 (knowledge/sources.yaml).
+  rag: knowledge/sources.yaml#sources
+prompts:
+  role: prompts/role.md      # inséré dans le prompt système (core/orchestrator/prompts.py)
+  rubric: prompts/rubric.md  # prompt système du juge des évals (core/evals/judge.py)
+evals:
+  golden: evals/golden.jsonl
+  # Seuil du score moyen du juge : config/evals.yaml, thresholds.business_golden_min_score (D4).
+  golden_seuil: config/evals.yaml#thresholds.business_golden_min_score
+  behaviors: evals/behaviors.yaml
+  # Red team du pack : evals/redteam/injection_business/ (R5). Suites communes à tous les packs :
+  # evals/behaviors/ (principes de l'Annexe D) et evals/redteam/injection_base/ (R5).
+  # Commande : make eval.

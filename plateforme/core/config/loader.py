@@ -404,6 +404,7 @@ GOLDEN_FLOORS: Mapping[str, float] = MappingProxyType(
         "code_golden_min_score": 0.80,
         "cyber_golden_min_score": 0.80,
         "juridique_fr_golden_min_score": 0.80,
+        "business_golden_min_score": 0.80,
     }
 )
 # The highest level each domain may ever reach, from the table of section 9.2 (ADR-043). The
@@ -432,6 +433,7 @@ class EvalThresholds(_Strict):
     code_golden_min_score: Score | Marker
     cyber_golden_min_score: Score | Marker
     juridique_fr_golden_min_score: Score | Marker
+    business_golden_min_score: Score | Marker
     behavior_suites_R1_to_R5_pass_rate: Score
     regression_block_delta: float | Marker
 
@@ -888,6 +890,36 @@ def _code_errors(directory: Path, code: CodeConfig) -> list[str]:
     ]
 
 
+# --- business.yaml (P6 of phase 6, ADR-061) ----------------------------------------------------
+
+VAT_RATE_KEYS = ("normal", "intermediaire", "reduit", "particulier")
+
+
+class VatRate(_Strict):
+    # A rate as a string ("0.20") so that the calculator reads an exact Decimal.
+    rate: Annotated[Decimal, Field(gt=0, lt=1)] | Marker
+    # The article that sets it and where and when it was read (I7).
+    source: Annotated[str, Field(min_length=1)]
+
+
+class VatConfig(_Strict):
+    # Last day the CGI references hold: the VAT rules move to the CIBS on 2027-01-01
+    # (BOI-RES-TVA-000253). Past it, the VAT operation refuses until the rates are re-read (R10).
+    valid_until: date | Marker
+    rates: dict[Literal["normal", "intermediaire", "reduit", "particulier"], VatRate]
+
+    @model_validator(mode="after")
+    def _every_rate(self) -> VatConfig:
+        missing = [key for key in VAT_RATE_KEYS if key not in self.rates]
+        if missing:
+            raise ValueError("taux absents : " + ", ".join(missing))
+        return self
+
+
+class BusinessConfig(_Strict):
+    vat: VatConfig
+
+
 FILES: dict[str, tuple[str, type[BaseModel]]] = {
     "models": ("models.yaml", ModelsConfig),
     "autonomy": ("autonomy.yaml", AutonomyConfig),
@@ -905,6 +937,7 @@ FILES: dict[str, tuple[str, type[BaseModel]]] = {
     "committee": ("committee.yaml", CommitteeConfig),
     "interfaces": ("interfaces.yaml", InterfacesConfig),
     "code": ("code.yaml", CodeConfig),
+    "business": ("business.yaml", BusinessConfig),
 }
 
 
@@ -987,6 +1020,14 @@ FEATURES: dict[str, Feature] = {
     "data.legifrance": Feature(
         "Source Légifrance (API PISTE)", ("data_sources:sources.legifrance",), "legifrance"
     ),
+    "data.entreprises": Feature(
+        "Source API Recherche d'entreprises", ("data_sources:sources.entreprises",), "entreprises"
+    ),
+    "data.insee_melodi": Feature(
+        "Source INSEE Melodi (statistiques)", ("data_sources:sources.insee_melodi",), "insee_melodi"
+    ),
+    # The validity date of the VAT rates; a rate still A_VERIFIER blocks only its own operation.
+    "business.vat": Feature("Taux de TVA du calculateur business", ("business:vat.valid_until",)),
     "data.quality_gate": Feature(
         "Contrôle qualité des données au-delà de N1", ("data_sources:quality",)
     ),
@@ -1019,6 +1060,10 @@ FEATURES: dict[str, Feature] = {
             "evals:thresholds.juridique_fr_golden_min_score",
             "evals:thresholds.regression_block_delta",
         ),
+    ),
+    "evals.gate.business": Feature(
+        "Seuil du golden set Business",
+        ("evals:thresholds.business_golden_min_score", "evals:thresholds.regression_block_delta"),
     ),
     "finance.market_risk": Feature(
         "Mesures de risque de marché (VaR, CVaR, Kupiec, stress hypothétiques)",
@@ -1165,6 +1210,7 @@ class Config:
     committee: CommitteeConfig
     interfaces: InterfacesConfig
     code: CodeConfig
+    business: BusinessConfig
     markers: tuple[MarkerHit, ...]
     digest: str
 
@@ -1345,6 +1391,7 @@ def load_config(directory: Path) -> Config:
         committee=parsed["committee"],  # type: ignore[arg-type]
         interfaces=parsed["interfaces"],  # type: ignore[arg-type]
         code=parsed["code"],  # type: ignore[arg-type]
+        business=parsed["business"],  # type: ignore[arg-type]
         markers=tuple(markers),
         digest=config_digest(directory),
     )
