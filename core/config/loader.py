@@ -463,7 +463,7 @@ class Learning(_Strict):
     """The champion / challenger gate of the learned layer (ADR-011, ADR-065)."""
 
     holdout_percent: Annotated[int, Field(ge=10, le=50)]
-    promotion_margin: Annotated[float, Field(ge=0, le=1, allow_inf_nan=False)] | Marker
+    promotion_margin: Annotated[float, Field(gt=0, le=1, allow_inf_nan=False)] | Marker
     min_held_out_cases: Annotated[int, Field(ge=1)] | Marker
     rollback_window_days: Annotated[int, Field(ge=1)] | Marker
     min_support: Annotated[int, Field(ge=2)] | Marker  # one feedback alone changes nothing

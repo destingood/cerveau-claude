@@ -12,6 +12,7 @@ from hypothesis import strategies as st
 from typer.testing import CliRunner
 
 from core.audit import verify
+from core.config import ConfigError, load_config
 from core.learning import layer
 from core.learning.gate import (
     GateError,
@@ -90,6 +91,26 @@ def test_a_link_in_the_path_is_refused(tmp_path: Path, monkeypatch: pytest.Monke
         write_section("finance", "lessons", LESSON, tmp_path)
     with pytest.raises(LockedCoreError, match="hors de la couche apprise"):
         remove_section("finance", "lessons", tmp_path)
+
+
+def test_a_linked_layer_root_is_refused(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    learned = tmp_path / "learned"
+    monkeypatch.setattr(Path, "is_symlink", lambda self: self.name == "learned")
+    assert not writable(section_path("finance", "lessons", learned), learned)
+
+
+def test_a_write_leaves_no_temporary_file(tmp_path: Path) -> None:
+    write_section("finance", "lessons", LESSON, tmp_path)
+    write_section("finance", "lessons", LESSON + "\n- Autre.", tmp_path)
+    assert [p.name for p in (tmp_path / "finance").iterdir()] == ["lessons.md"]
+
+
+def test_a_zero_promotion_margin_is_refused(config_dir: Path) -> None:
+    evals = config_dir / "evals.yaml"
+    text = evals.read_text(encoding="utf-8")
+    evals.write_text(text.replace("promotion_margin: A_DEFINIR", "promotion_margin: 0"), "utf-8")
+    with pytest.raises(ConfigError, match="promotion_margin"):
+        load_config(config_dir)
 
 
 def test_linked_outside_base_is_refused(tmp_path: Path) -> None:

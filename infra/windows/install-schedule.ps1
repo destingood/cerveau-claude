@@ -51,7 +51,8 @@ if (-not (Get-Command uv -ErrorAction SilentlyContinue)) {
 }
 
 function New-CerveauAction([string]$Script) {
-    $command = "Set-Location -LiteralPath '$Root'; $Script; exit `$LASTEXITCODE"
+    $quoted = $Root.Replace("'", "''")  # a quote in the path must not end the literal
+    $command = "Set-Location -LiteralPath '$quoted'; $Script; exit `$LASTEXITCODE"
     New-ScheduledTaskAction -Execute 'powershell.exe' -WorkingDirectory $Root `
         -Argument "-NoProfile -NonInteractive -ExecutionPolicy Bypass -Command `"$command`""
 }
@@ -62,10 +63,10 @@ $settings = New-ScheduledTaskSettingsSet -StartWhenAvailable -DontStopIfGoingOnB
 $principal = New-ScheduledTaskPrincipal -UserId "$env:USERDOMAIN\$env:USERNAME" `
     -LogonType Interactive -RunLevel Limited
 
-$weeklyAction = New-CerveauAction 'uv run cerveau eval; uv run cerveau report weekly'
+$weeklyAction = New-CerveauAction 'uv run --frozen cerveau eval; uv run --frozen cerveau report weekly'
 $securityAction = New-CerveauAction (
     "if (Test-Path ('docs\rapports\securite-' + (Get-Date -Format 'yyyy-MM') + '.md')) " +
-    "{ exit 0 }; uv run cerveau report security"
+    "{ exit 0 }; uv run --frozen cerveau report security"
 )
 
 Register-ScheduledTask -TaskName $Weekly -Force -Action $weeklyAction -Settings $settings `

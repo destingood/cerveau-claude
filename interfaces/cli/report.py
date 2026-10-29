@@ -119,6 +119,7 @@ def _demote(
             triggers=autonomy.demotion_triggers,
             reason=f"{ref} : {len(missed)} seuil(s) manqué(s)",
             now=now,
+            once=f"{ref} : ",
         )
     except (AuditError, DemotionError, OSError) as exc:
         fail(f"Rétrogradation impossible : {exc}", EXIT_ERROR)

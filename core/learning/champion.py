@@ -25,7 +25,14 @@ from typing import Any
 from core.audit.chain import AuditJournal
 from core.config import Config
 from core.learning.gate import LEARNING_EVENT, Verdict, compare
-from core.learning.layer import LEARNED_DIR, read_section, remove_section, write_section
+from core.learning.layer import (
+    LEARNED_DIR,
+    layer_digest,
+    read_section,
+    remove_section,
+    snapshot,
+    write_section,
+)
 
 
 class ChampionError(ValueError):
@@ -65,6 +72,17 @@ def verdict_for(
         margin=_set(learning.promotion_margin),
         min_cases=_set(learning.min_held_out_cases),
     )
+
+
+def _bound(
+    config: Config, report: Mapping[str, Any], sections: Mapping[str, str], name: str
+) -> None:
+    """A verdict holds only for the configuration and the layer its reports were measured on."""
+    if report.get("config") != config.digest or report.get("learned") != layer_digest(sections):
+        raise ChampionError(
+            f"rapport du {name} non lié à cette configuration et à cette couche apprise "
+            "(champs config et learned) : relancer ses évals"
+        )
 
 
 def standing(history: Path, pack: str, section: str) -> list[Promotion]:
@@ -126,7 +144,11 @@ def promote(
     current = read_section(pack, section, challenger_dir)
     if current is None:
         raise ChampionError(f"le challenger n'a pas de section {pack}/{section}")
+    served = snapshot(learned_dir)
+    _bound(config, champion, served, "champion")
+    _bound(config, challenger, {**served, f"{pack}/{section}": current}, "challenger")
     previous = read_section(pack, section, learned_dir)
+    write_section(pack, section, current, learned_dir)  # first: a failed write records nothing
     journal.append(
         actor="orchestrator",
         event=LEARNING_EVENT,
@@ -152,7 +174,6 @@ def promote(
             "report": dict(challenger),
         },
     )
-    write_section(pack, section, current, learned_dir)
     return verdict
 
 

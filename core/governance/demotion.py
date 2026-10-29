@@ -87,15 +87,21 @@ def demote(
     triggers: Iterable[str],
     reason: str,
     now: datetime,
+    once: str | None = None,
 ) -> list[Demotion]:
     """Lower each domain of ``levels`` (its effective level now) by one step; a domain at N0 stays
-    there. ``trigger`` must be one of ``demotion_triggers`` (autonomy.yaml)."""
+    there. ``trigger`` must be one of ``demotion_triggers`` (autonomy.yaml). With ``once`` (the
+    reference that ``reason`` starts with, ``hebdo-<week>``), a domain already demoted by that
+    trigger for that reference is not demoted again: a rerun of a report is not a new failure."""
     if trigger not in set(triggers):
         raise DemotionError(f"déclencheur inconnu : {trigger} (autonomy.yaml › demotion_triggers)")
+    seen: set[str] = set()
+    if once is not None and not isinstance(recorded := read_demotions(root), str):
+        seen = {d.domain for d in recorded if d.trigger == trigger and d.reason.startswith(once)}
     done: list[Demotion] = []
     for domain, level in sorted(levels.items()):
         lower = one_step_down(level)
-        if lower is None:
+        if lower is None or domain in seen:
             continue
         demotion = Demotion(now.isoformat(), domain, level, lower, trigger, reason)
         path = demotions_path(root)

@@ -14,7 +14,11 @@ no rule.
 
 from __future__ import annotations
 
+import hashlib
+import json
 import os
+import tempfile
+from collections.abc import Mapping
 from pathlib import Path
 
 from core.guardrails.injection import injection_signals
@@ -59,6 +63,9 @@ def _linked(path: Path, base: Path) -> bool:
 
 def writable(path: Path, learned_dir: Path = LEARNED_DIR) -> bool:
     """True only for a path of the closed list that no link redirects."""
+    root = Path(os.path.abspath(learned_dir))
+    if root.is_symlink() or root.is_junction():  # resolve() would follow it out of the layer
+        return False
     candidate = Path(os.path.abspath(path))
     if candidate not in allowed_paths(learned_dir):
         return False
@@ -94,9 +101,10 @@ def write_section(pack: str, section: str, text: str, learned_dir: Path = LEARNE
         raise LockedCoreError(f"écriture refusée hors de la couche apprise : {path.name}")
     body = check_section(text) + "\n"
     path.parent.mkdir(parents=True, exist_ok=True)
-    temporary = path.with_suffix(".md.tmp")
-    temporary.write_text(body, encoding="utf-8", newline="\n")
-    temporary.replace(path)
+    handle, temporary = tempfile.mkstemp(prefix=f".{path.name}.", suffix=".tmp", dir=path.parent)
+    with os.fdopen(handle, "w", encoding="utf-8", newline="\n") as f:  # a fresh file: no link
+        f.write(body)
+    os.replace(temporary, path)
     return path
 
 
@@ -120,3 +128,9 @@ def snapshot(learned_dir: Path = LEARNED_DIR) -> dict[str, str]:
             if text is not None:
                 found[f"{pack}/{section}"] = text
     return found
+
+
+def layer_digest(sections: Mapping[str, str]) -> str:
+    """What an eval report ran on: the hash of the layer's sections, never their text."""
+    data = json.dumps(dict(sections), ensure_ascii=False, sort_keys=True).encode()
+    return "sha256:" + hashlib.sha256(data).hexdigest()

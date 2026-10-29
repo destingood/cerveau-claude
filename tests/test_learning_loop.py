@@ -7,6 +7,7 @@ import shutil
 from datetime import datetime, timedelta
 from functools import partial
 from pathlib import Path
+from types import SimpleNamespace
 from typing import Any
 
 import pytest
@@ -15,6 +16,7 @@ from typer.testing import CliRunner
 from core.audit import AuditJournal, verify
 from core.config import BlockedFeatureError, Config
 from core.learning import champion as champion_mod
+from core.learning import patterns as patterns_mod
 from core.learning.champion import (
     ChampionError,
     default_history_path,
@@ -24,11 +26,19 @@ from core.learning.champion import (
     watch,
 )
 from core.learning.gate import held_out
-from core.learning.layer import LockedCoreError, read_section, write_section
+from core.learning.layer import (
+    LockedCoreError,
+    layer_digest,
+    read_section,
+    snapshot,
+    write_section,
+)
 from core.learning.patterns import (
     LESSONS,
     Pattern,
     PatternError,
+    _entries,
+    challenger_id,
     harvest,
     propose,
     scripted_drafter,
@@ -86,6 +96,20 @@ def report(score: float, mode: str = "live", behaviour: bool = True) -> dict[str
     ]
     results.append({"suite": "behaviors", "case": "b1", "passed": behaviour, "score": 1.0})
     return {"mode": mode, "results": results}
+
+
+LESSON = "- Nouvelle leçon."
+
+
+def bound(
+    rep: dict[str, Any],
+    config: Config,
+    served: dict[str, str] | None = None,
+    current: str | None = None,
+) -> dict[str, Any]:
+    """The report as `cerveau eval` writes it: tied to its configuration and its learned layer."""
+    sections = dict(served or {}) | ({} if current is None else {"finance/lessons": current})
+    return rep | {"config": config.digest, "learned": layer_digest(sections)}
 
 
 # --- journal -------------------------------------------------------------------------------
@@ -175,19 +199,43 @@ def test_unreadable_journal_or_payload_is_refused(tmp_path: Path) -> None:
     entry = json.loads(journal.path.read_text(encoding="utf-8"))
     entry["payload_ref"] = "sha256:" + "0" * 64
     journal.path.write_text(json.dumps(entry) + "\n", encoding="utf-8")
-    with pytest.raises(PatternError, match="payload illisible"):
+    with pytest.raises(PatternError, match="chaîne invalide"):
         _harvest(journal, tmp_path / "fb.jsonl")
+    # the chain is verified first; the reader still fails closed if the file changes in between
+    with pytest.raises(PatternError, match="payload illisible"):
+        list(_entries(journal))
     journal.path.write_text("{\n", encoding="utf-8")
     with pytest.raises(PatternError, match="journal illisible"):
-        _harvest(journal, tmp_path / "fb.jsonl")
+        list(_entries(journal))
 
 
-def test_non_mapping_payload_and_entries_are_skipped(tmp_path: Path) -> None:
+def test_unknown_error_kind_is_not_harvested(tmp_path: Path) -> None:
+    journal = AuditJournal(tmp_path / "audit.jsonl")
+    for request in ("r1", "r2", "r3"):
+        decision(journal, request)
+        journal.append(actor="orchestrator", event="ERROR", request_id=request,
+                       payload={"kind": "../../core"})  # fmt: skip
+    assert _harvest(journal, tmp_path / "fb.jsonl").patterns == ()
+
+
+@pytest.mark.parametrize(
+    "pattern", [Pattern("../core", "verification", 3, 1), Pattern("finance", "../x", 3, 1)]
+)
+def test_challenger_id_refuses_an_unknown_pack_or_kind(pattern: Pattern) -> None:
+    with pytest.raises(PatternError, match="motif inconnu"):
+        challenger_id(pattern, "leçon")
+
+
+def test_non_mapping_payload_and_entries_are_skipped(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
     journal = AuditJournal(tmp_path / "audit.jsonl")
     journal.append(actor="orchestrator", event="ERROR", request_id="r1", payload=["x"])
     with journal.path.open("a", encoding="utf-8") as f:
         f.write("[]\n")
         f.write('{"event": "ERROR"}\n')  # no request: skipped
+    # a chain forged with recomputed hashes passes verify: the reader still skips these lines
+    monkeypatch.setattr(patterns_mod, "verify", lambda _path: SimpleNamespace(ok=True))
     assert _harvest(journal, tmp_path / "fb.jsonl").patterns == ()
 
 
@@ -243,8 +291,11 @@ def _promote(config: Config, tmp_path: Path, **kw: Any):
         "now": NOW,
         "learned_dir": tmp_path / "learned",
     } | kw
+    served = snapshot(args["learned_dir"])
+    champion = bound(report(0.5), config, served)
+    challenger = bound(report(0.9), config, served, LESSON)
     return promote(
-        config, report(0.5), report(0.9), _challenger(tmp_path), "finance", "lessons", **args
+        config, champion, challenger, _challenger(tmp_path), "finance", "lessons", **args
     )
 
 
@@ -260,8 +311,11 @@ def test_promotion_then_rollbacks_one_at_a_time(config: Config, tmp_path: Path) 
     assert verdict.status == "promouvable"
     assert read_section("finance", "lessons", learned) == "- Nouvelle leçon."
     second = _challenger(tmp_path / "2", "- Nouvelle leçon.\n- Deuxième.")
-    promote(config, report(0.5), report(0.9), second, "finance", "lessons",
-            journal=journal, history=history, now=NOW, learned_dir=learned)  # fmt: skip
+    served = snapshot(learned)
+    promote(config, bound(report(0.5), config, served),
+            bound(report(0.9), config, served, "- Nouvelle leçon.\n- Deuxième."), second,
+            "finance", "lessons", journal=journal, history=history, now=NOW,
+            learned_dir=learned)  # fmt: skip
     assert len(standing(history, "finance", "lessons")) == 2
     rollback("finance", "lessons", journal=journal, history=history, now=NOW, reason="t",
              learned_dir=learned)  # fmt: skip
@@ -282,6 +336,24 @@ def test_promotion_refuses_a_non_promotable_verdict(config: Config, tmp_path: Pa
         promote(config, report(0.5, "offline"), report(0.9, "offline"), _challenger(tmp_path),
                 "finance", "lessons", journal=AuditJournal(tmp_path / "a.jsonl"),
                 history=tmp_path / "h.jsonl", now=NOW, learned_dir=tmp_path / "l")  # fmt: skip
+
+
+@pytest.mark.parametrize("who", ["champion", "challenger"])
+@pytest.mark.parametrize("field", ["config", "learned"])
+def test_promotion_refuses_reports_not_tied_to_the_layer(
+    config: Config, tmp_path: Path, who: str, field: str
+) -> None:
+    learned, history = tmp_path / "learned", tmp_path / "h.jsonl"
+    reports = {
+        "champion": bound(report(0.5), config),
+        "challenger": bound(report(0.9), config, current=LESSON),
+    }
+    reports[who][field] = "sha256:" + "0" * 64  # forged, or measured on another layer
+    with pytest.raises(ChampionError, match=f"rapport du {who} non lié"):
+        promote(config, reports["champion"], reports["challenger"], _challenger(tmp_path),
+                "finance", "lessons", journal=AuditJournal(tmp_path / "a.jsonl"),
+                history=history, now=NOW, learned_dir=learned)  # fmt: skip
+    assert read_section("finance", "lessons", learned) is None and not history.exists()
 
 
 def test_promotion_refuses_a_challenger_without_the_section(config: Config, tmp_path: Path) -> None:
@@ -394,13 +466,13 @@ def test_cli_patterns_refuses_a_broken_journal(cli: Path, config_dir: Path) -> N
     (cli / "audit.jsonl").write_text("{\n", encoding="utf-8")
     result = _invoke("patterns", "--journal", str(cli / "audit.jsonl"), "--hors-var",
                      "--config-dir", str(config_dir))  # fmt: skip
-    assert result.exit_code == 1 and "journal illisible" in result.output
+    assert result.exit_code == 1 and "chaîne invalide" in result.output
 
 
 def test_cli_promote_watch_and_rollback(cli: Path, config_dir: Path) -> None:
-    set_thresholds(config_dir)
-    champion = _json(cli / "champion.json", report(0.5))
-    challenger = _json(cli / "challenger.json", report(0.9))
+    conf_ = load(set_thresholds(config_dir))
+    champion = _json(cli / "champion.json", bound(report(0.5), conf_))
+    challenger = _json(cli / "challenger.json", bound(report(0.9), conf_, current=LESSON))
     drop = _json(cli / "drop.json", report(0.9, behaviour=False))
     root = _challenger(cli / "c")
     journal = ["--journal", str(cli / "audit.jsonl"), "--hors-var"]
@@ -434,10 +506,11 @@ def test_cli_promote_watch_and_rollback(cli: Path, config_dir: Path) -> None:
 
 
 def test_cli_rollback_restores_the_previous_section(cli: Path, config_dir: Path) -> None:
-    set_thresholds(config_dir)
+    conf = load(set_thresholds(config_dir))
     write_section("finance", "lessons", "- Avant.", cli / "learned")
-    champion = _json(cli / "champion.json", report(0.5))
-    challenger = _json(cli / "challenger.json", report(0.9))
+    served = snapshot(cli / "learned")
+    champion = _json(cli / "champion.json", bound(report(0.5), conf, served))
+    challenger = _json(cli / "challenger.json", bound(report(0.9), conf, served, LESSON))
     journal = ["--journal", str(cli / "audit.jsonl"), "--hors-var"]
     _invoke("promote", champion, challenger, "--challenger-dir", str(_challenger(cli / "c")),
             "--pack", "finance", *journal, "--config-dir", str(config_dir))  # fmt: skip

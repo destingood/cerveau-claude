@@ -61,6 +61,21 @@ def test_demote_lowers_each_domain_by_one_step_and_journals_it(tmp_path: Path) -
     assert [p["status"] for p in payloads] == [DEMOTION_STATUS] * 2
 
 
+def test_a_reference_demotes_a_domain_once(tmp_path: Path) -> None:
+    journal = AuditJournal(tmp_path / "audit.jsonl")
+    kw = {"trigger": "nightly_eval_failure", "triggers": TRIGGERS, "now": NOW}
+    once = "hebdo-2026-S44 : "
+    first = demote(tmp_path, journal, levels={"finance": "N3"}, reason=once + "1", once=once, **kw)
+    rerun = demote(tmp_path, journal, levels={"finance": "N2", "code": "N2"}, reason=once + "2",
+                   once=once, **kw)  # fmt: skip
+    assert [d.domain for d in first] == ["finance"] and [d.domain for d in rerun] == ["code"]
+    later = demote(tmp_path, journal, levels={"finance": "N2"}, reason="hebdo-2026-S45 : 1",
+                   once="hebdo-2026-S45 : ", **kw)  # fmt: skip
+    assert [d.to_level for d in later] == ["N1"]  # another week is another failure
+    demotions_path(tmp_path).write_text("{\n", encoding="utf-8")  # unreadable: holds N0 anyway
+    assert len(demote(tmp_path, journal, levels={"code": "N1"}, reason=once, once=once, **kw)) == 1
+
+
 def test_an_unknown_trigger_demotes_nothing(tmp_path: Path) -> None:
     with pytest.raises(DemotionError, match="déclencheur inconnu"):
         demote(

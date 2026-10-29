@@ -22,16 +22,19 @@ from collections import defaultdict
 from collections.abc import Iterator, Mapping
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Any, Protocol
+from typing import Any, Protocol, get_args
 
-from core.audit.chain import AuditError, AuditJournal
+from core.audit.chain import AuditError, AuditJournal, verify
 from core.guardrails.injection import injection_signals
-from core.learning.errors import ERROR_EVENT
+from core.learning.errors import ERROR_EVENT, ErrorKind
 from core.learning.feedback import FEEDBACK_EVENT
 from core.learning.layer import LEARNED_DIR, check_section, read_section, write_section
+from core.orchestrator.packs import DOMAINS
 
 MIN_SUPPORT_FLOOR = 2  # one feedback alone changes nothing, whatever the configuration
 BAD = "mauvais"
+BAD_FEEDBACK = "retour_mauvais"
+KINDS = frozenset((*get_args(ErrorKind), BAD_FEEDBACK))  # a kind names a folder: closed list
 
 
 class PatternError(ValueError):
@@ -126,6 +129,8 @@ def harvest(
     """The supported patterns of the journal, with what was dropped and why."""
     if min_support < 1 or max_feedback_per_user < 1:
         raise PatternError("min_support et max_feedback_per_user doivent valoir au moins 1")
+    if journal.path.exists() and not verify(journal.path).ok:
+        raise PatternError("journal à la chaîne invalide : aucun motif n'en est tiré (R11)")
     support = max(min_support, MIN_SUPPORT_FLOOR)
     packs: dict[str, str] = {}
     signals: list[tuple[str, str, str]] = []  # (request, kind, user)
@@ -140,14 +145,14 @@ def harvest(
             route = payload.get("route")
             if isinstance(route, Mapping) and isinstance(route.get("domain"), str):
                 packs.setdefault(request, route["domain"])
-        elif event == ERROR_EVENT and isinstance(payload.get("kind"), str):
+        elif event == ERROR_EVENT and payload.get("kind") in KINDS - {BAD_FEEDBACK}:
             signals.append((request, payload["kind"], user))
         elif event == FEEDBACK_EVENT and payload.get("verdict") == BAD:
             per_user[user] += 1
             if per_user[user] > max_feedback_per_user:
                 capped += 1
             else:
-                signals.append((request, "retour_mauvais", user))
+                signals.append((request, BAD_FEEDBACK, user))
     groups: dict[tuple[str, str], tuple[set[str], set[str]]] = {}
     for request, kind, user in signals:
         if (pack := packs.get(request)) is None:
@@ -164,6 +169,8 @@ def harvest(
 
 
 def challenger_id(pattern: Pattern, lesson: str) -> str:
+    if pattern.pack not in DOMAINS or pattern.kind not in KINDS:  # both name the folder
+        raise PatternError(f"motif inconnu : {pattern.pack!r}, {pattern.kind!r}")
     digest = hashlib.sha256(f"{pattern.pack}\0{pattern.kind}\0{lesson}".encode()).hexdigest()
     return f"{pattern.pack}-{pattern.kind}-{digest[:12]}"
 
