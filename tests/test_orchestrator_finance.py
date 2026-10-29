@@ -349,8 +349,8 @@ def test_a_golden_threshold_not_yet_decided_blocks_the_start(marker: str) -> Non
 
 def test_the_orchestrator_refuses_a_pack_without_a_domain(tmp_path: Path, config_dir: Path) -> None:
     config = _config(config_dir)
-    packs = {**load_packs(), "business": _pack("business")}
-    with pytest.raises(PackError, match="« business » : domaine absent"):
+    packs = {**load_packs(), "cuisine": _pack("cuisine")}
+    with pytest.raises(PackError, match="« cuisine » : domaine absent"):
         Orchestrator(
             config,
             project_root=tmp_path,
