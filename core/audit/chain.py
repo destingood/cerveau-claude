@@ -35,6 +35,7 @@ ACTORS = frozenset({"orchestrator", "risk_gate", "policy", "lucas", "scheduler",
 EVENTS = frozenset(
     {"TOOL_CALL", "DECISION", "POLICY", "ORDER_STATE", "APPROVAL", "KILL", "CONFIG_CHANGE"}
     | {"ERROR", "FEEDBACK", "FORECAST"}  # ADR-011, ADR-064: what CERVEAU learns from
+    | {"LEARNING"}  # ADR-065: the gate's verdicts, promotions and rollbacks
 )
 VERSION_KEYS = frozenset({"prompt", "model", "plugin", "config"})
 ENTRY_KEYS = frozenset(

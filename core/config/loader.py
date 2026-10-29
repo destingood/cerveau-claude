@@ -457,10 +457,22 @@ class Calibration(_Strict):
     brier_drift_max: Annotated[float, Field(ge=0, le=1, allow_inf_nan=False)] | Marker
 
 
+class Learning(_Strict):
+    """The champion / challenger gate of the learned layer (ADR-011, ADR-065)."""
+
+    holdout_percent: Annotated[int, Field(ge=10, le=50)]
+    promotion_margin: Annotated[float, Field(ge=0, le=1, allow_inf_nan=False)] | Marker
+    min_held_out_cases: Annotated[int, Field(ge=1)] | Marker
+    rollback_window_days: Annotated[int, Field(ge=1)] | Marker
+    min_support: Annotated[int, Field(ge=2)] | Marker  # one feedback alone changes nothing
+    max_feedback_per_user: Annotated[int, Field(ge=1)] | Marker
+
+
 class EvalsConfig(_Strict):
     thresholds: EvalThresholds
     judge_human_review_sample_weekly: int = Field(ge=0)
     calibration: Calibration
+    learning: Learning
 
 
 Seconds = Annotated[float, Field(gt=0, allow_inf_nan=False)]
@@ -1076,6 +1088,14 @@ FEATURES: dict[str, Feature] = {
     ),
     "learning.calibration_drift": Feature(
         "Dérive de calibration des prévisions (rétrogradation, ADR-064)", ("evals:calibration",)
+    ),
+    "learning.patterns": Feature(
+        "Motifs d'erreurs et de retours, challengers proposés (ADR-065, B78)",
+        ("evals:learning.min_support", "evals:learning.max_feedback_per_user"),
+    ),
+    "learning.promotion": Feature(
+        "Mise en ligne automatique d'un challenger de la couche apprise (ADR-065, D4)",
+        ("evals:learning", "evals:thresholds.regression_block_delta", "budgets:llm_budget_eur"),
     ),
     "finance.market_risk": Feature(
         "Mesures de risque de marché (VaR, CVaR, Kupiec, stress hypothétiques)",

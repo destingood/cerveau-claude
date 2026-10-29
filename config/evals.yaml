@@ -13,3 +13,10 @@ calibration:                     # ADR-064 : prévisions résolues (section 11),
   min_resolved: A_DEFINIR        # nombre minimal de prévisions résolues avant tout verdict de dérive
   window_days: A_DEFINIR         # fenêtre récente comparée à tout l'historique
   brier_drift_max: A_DEFINIR     # hausse maximale du score de Brier sur la fenêtre
+learning:                        # ADR-065 : porte champion / challenger de la couche apprise (ADR-011)
+  holdout_percent: 20            # D6 (Lucas, 29/10/2026) : part du golden que l'apprentissage ne voit jamais
+  promotion_margin: A_DEFINIR    # gain minimal du score moyen sur le jeu tenu à l'écart
+  min_held_out_cases: A_DEFINIR  # taille minimale du jeu tenu à l'écart pour conclure
+  rollback_window_days: A_DEFINIR  # fenêtre de surveillance après une mise en ligne
+  min_support: A_DEFINIR         # requêtes distinctes pour qu'un motif compte (jamais moins de 2)
+  max_feedback_per_user: A_DEFINIR  # retours « mauvais » retenus par utilisateur (B78)

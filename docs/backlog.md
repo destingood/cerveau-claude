@@ -360,6 +360,8 @@ reporté (phase 3 : décision D23 de `docs/plans/phase-3-plan.md`).
 | B344 | Red team business : ajouter un cas de consigne dans un libellé de dimension Melodi et un cas de kill switch pendant une lecture du registre | P6 | 7 |
 | B345 | Prévisions : résolution automatique des prévisions financières depuis le store point-in-time (R10), acteur `scheduler`, sans jamais lire une donnée publiée après l'échéance | ADR-064 | 7 |
 | B346 | Prévisions : extraire automatiquement les probabilités et estimations datées de la partie « estimations » d'une réponse (format 7.3) et les enregistrer, par le code et non par le modèle (R1, R12) | ADR-064 | 7 |
+| B347 | Couche apprise : apprendre aussi des paramètres de routage (modèle par pack) et de recherche (nombre de sources, requêtes) dans une liste fermée, derrière la même porte champion / challenger | ADR-065 | 7+ |
+| B348 | Boucle d'apprentissage : rédacteur de leçons par LLM (aujourd'hui scripté, à partir des comptes) et lancement automatique des évals réelles d'un challenger (`--learned-dir`), une fois les budgets fixés et chaque campagne acceptée par Lucas | ADR-065, D4 | 7+ |
 
 ## Auto-amélioration et ouverture publique (ADR-011)
 Décision de Lucas du 18/10/2026 : CERVEAU s'améliore seul, sans validation humaine, derrière deux
