@@ -59,8 +59,9 @@ DEFAULT_CONFIG = {
     # méthode ou un prompt collé → proposer (« propose ») ou faire tout de suite (« auto ») une skill ; « off » : rien.
     # `plugins` : lire aussi les skills des plugins actifs (True, liste de noms de plugins, ou False) ; `triggers` :
     # déclencheurs ajoutés, {« plugin:skill » ou nom : [phrases]} (`brain skill trig`) ; `exclude` : jamais soufflées.
+    # `auto` : skills chargées d'office (contenu injecté par le hook dès qu'un déclencheur est reconnu, sans outil Skill).
     "skills": {"enabled": True, "max_items": 1, "min_score": 4.0, "session_cap": 6, "exclude": ["brain"],
-               "paste": "propose", "paste_min_chars": 500, "plugins": True, "triggers": {}},
+               "paste": "propose", "paste_min_chars": 500, "plugins": True, "triggers": {}, "auto": []},
     # Rappel en fin de tâche : « mémorise ce qui est durable » (une fois, seulement si la session a travaillé).
     "stop_reminder": {"enabled": True, "min_tool_calls": 15, "min_edits": 3, "repeat_after": 150},
     # Mode éco (`brain eco`) : réglages officiels de Claude Code posés une fois dans ~/.claude/settings.json (sorties de

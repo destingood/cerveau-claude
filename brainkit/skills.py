@@ -412,6 +412,23 @@ def match(text, skills, exclude=(), min_score=4.0, long_chars=500) -> list:
     return out
 
 
+AUTO_MAX_CHARS = 7000  # le contexte ajouté par un hook est plafonné à 10 000 caractères, rappel compris
+
+
+def auto_block(r) -> str | None:
+    """Skill « chargée d'office » (config skills.auto) : son contenu injecté tel quel, sans attendre l'outil Skill (une
+    requête de moins, et rien ne dépend de Claude). None si le fichier est illisible ou trop long : simple rappel alors."""
+    path = Path(r["skill"]["path"])
+    try:
+        body = frontmatter(path.read_text(encoding="utf-8", errors="replace"))[1].strip()
+    except OSError:
+        return None
+    if not body or len(body) > AUTO_MAX_CHARS:
+        return None
+    return (f"🧩 Skill `{r['name']}` chargée d'office par le cerveau ({short(r['why'], 60)}) — inutile d'appeler "
+            f"l'outil Skill ; ses fichiers : {path.parent}\n{body}")
+
+
 def hint_line(r) -> str:
     s = r["skill"]
     what = short(re.sub(r"^À utiliser\s+", "", split_desc(s["description"])[0]).strip(" .—-"), 110)

@@ -3,7 +3,7 @@
 Une mémoire persistante pour Claude Code, faite par Lucas : Claude se souvient de toi, de tes projets, de tes
 décisions et de ce qu'il a appris, d'une session à l'autre. Tout reste chez toi, sur ton PC.
 
-![Version 8.15.12](https://img.shields.io/badge/version-8.15.12-2ea44f) ![Python 3.10 ou plus](https://img.shields.io/badge/python-3.10%2B-3776ab) ![Windows, macOS, Linux](https://img.shields.io/badge/Windows_%C2%B7_macOS_%C2%B7_Linux-555)
+![Version 8.15.13](https://img.shields.io/badge/version-8.15.13-2ea44f) ![Python 3.10 ou plus](https://img.shields.io/badge/python-3.10%2B-3776ab) ![Windows, macOS, Linux](https://img.shields.io/badge/Windows_%C2%B7_macOS_%C2%B7_Linux-555)
 
 **Sommaire** — [Installer](#installer-une-seule-fois) · [Au quotidien](#au-quotidien) · [Ce que fait le cerveau](#ce-que-fait-le-cerveau) ·
 [Moins de tokens](#moins-de-tokens) · [Wiki et veille](#le-cerveau-en-wiki-et-la-veille-automatique) · [E-commerce](#le-cerveau-e-commerce) ·
@@ -96,6 +96,9 @@ garde sa propre mémoire.
   `brain compact --apprendre <commande> --enregistrer` en fait un filtre appliqué tout seul. L'entretien du jour le
   fait aussi de lui-même, annoncé une fois ; `brain compact --oublier <commande>` pour retirer un filtre.
 - **Texte injecté plus court** au démarrage, à chaque message et dans la liste des outils.
+- **Skills chargées d'office** : `brain config skills.auto '["ma-skill"]'` et, dès qu'un message correspond à la skill,
+  le cerveau glisse lui-même son contenu dans la conversation, sans attendre que Claude l'ouvre ; il la ressert
+  après chaque résumé de la conversation.
 - **Le compteur** : `brain tokens` donne ta consommation et son coût au tarif de l'API, en dollars.
 
 ## Le cerveau en wiki et la veille automatique
@@ -204,4 +207,4 @@ invite tes amis (Settings → Collaborators → Add people), puis rejoins-le le 
 
 `/plugin uninstall cerveau@cerveau`. Tes souvenirs restent dans `~/.claude/brain` (supprime ce dossier pour tout effacer).
 
-Version 8.15.12.
+Version 8.15.13.

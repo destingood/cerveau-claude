@@ -357,6 +357,7 @@ def on_session_start(data, cfg):
         # L'injection précédente et les rappels ont quitté le contexte : on repart de ce qui est visible maintenant
         # (avant : « déjà injectés » gardés, donc plus jamais rappelés après une compaction).
         st["injected"], st["files"], st["recalled"] = sorted(ids), [], 0
+        st["skills_hinted"] = []  # skills soufflées ou chargées d'office : sorties du contexte, à resservir
         from . import compact
         compact.forget(sid)  # sorties déjà lues sorties du contexte : plus de renvoi « identique » vers elles
         if source == "compact":
@@ -934,7 +935,8 @@ def skill_reflex(raw, st, cfg, cwd=None) -> tuple:
             done = hinted | set((st.get("tx") or {}).get("skills", [])) | set(kc.get("exclude", ["brain"]))
             text = journal.clean_prompt(raw, 2000)
             for r in skills.match(text, catalog, exclude=done, min_score=kc.get("min_score", 4.0))[:kc.get("max_items", 1)]:
-                lines.append(skills.hint_line(r))
+                body = skills.auto_block(r) if r["strong"] and r["name"] in kc.get("auto", []) else None
+                lines.append(body or skills.hint_line(r))
                 names.append(r["name"])
         return lines, names
     except Exception as exc:
