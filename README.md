@@ -3,7 +3,7 @@
 Une mémoire persistante pour Claude Code, faite par destingood : Claude se souvient de toi, de tes projets, de tes
 décisions et de ce qu'il a appris, d'une session à l'autre. Tout reste chez toi, sur ton PC.
 
-![Version 8.16.0](https://img.shields.io/badge/version-8.16.0-2ea44f) ![Python 3.10 ou plus](https://img.shields.io/badge/python-3.10%2B-3776ab) ![Windows, macOS, Linux](https://img.shields.io/badge/Windows_%C2%B7_macOS_%C2%B7_Linux-555)
+![Version 8.17.0](https://img.shields.io/badge/version-8.17.0-2ea44f) ![Python 3.10 ou plus](https://img.shields.io/badge/python-3.10%2B-3776ab) ![Windows, macOS, Linux](https://img.shields.io/badge/Windows_%C2%B7_macOS_%C2%B7_Linux-555)
 
 **Sommaire** — [Installer](#installer-une-seule-fois) · [Au quotidien](#au-quotidien) · [Ce que fait le cerveau](#ce-que-fait-le-cerveau) ·
 [Moins de tokens](#moins-de-tokens) · [Wiki et veille](#le-cerveau-en-wiki-et-la-veille-automatique) · [E-commerce](#le-cerveau-e-commerce) ·
@@ -99,6 +99,11 @@ garde sa propre mémoire.
 - **Skills chargées d'office** : `brain config skills.auto '["ma-skill"]'` et, dès qu'un message correspond à la skill,
   le cerveau glisse lui-même son contenu dans la conversation, sans attendre que Claude l'ouvre ; il la ressert
   après chaque résumé de la conversation.
+- **Les bons outils, tout seuls** : quand un message parle de mails, d'agenda, d'un visuel Canva ou de la boutique, le
+  cerveau souffle à Claude le connecteur branché qui convient et la recherche exacte qui charge ses outils en un seul
+  appel, sans charger les autres. Les skills de tes plugins et de ton compte claude.ai se déclenchent sur des phrases
+  en français (65 en ont d'office) ; un connecteur ou une skill qui arrive sans phrase française est signalé au
+  démarrage, et `brain outils trig` ou `brain skill trig` lui en donne. `brain outils` montre ce qui est branché.
 - **Le compteur** : `brain tokens` donne ta consommation et son coût au tarif de l'API, en dollars.
 
 ## Le cerveau en wiki et la veille automatique
@@ -217,4 +222,4 @@ invite tes amis (Settings → Collaborators → Add people), puis rejoins-le le 
 
 `/plugin uninstall cerveau@cerveau`. Tes souvenirs restent dans `~/.claude/brain` (supprime ce dossier pour tout effacer).
 
-Version 8.16.0.
+Version 8.17.0.

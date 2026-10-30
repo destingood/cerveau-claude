@@ -21,8 +21,16 @@ Commande : `python "$HOME/.claude/brain/brain.py" <commande>` (fonctionne dans B
   compte comme *utilisé* (montré ≠ utilisé) ; le classement de l'index en tient compte.
 - **Réflexes de skills** : quand un message colle à une skill perso (`~/.claude/skills`, ou `.claude/skills` du
   projet) par un de ses déclencheurs « … », une ligne 🧩 dit de la charger d'abord (outil Skill) — une fois par session,
-  rétrogradée en « peut-être » si le message contient un mot de sa partie « Ne pas utiliser… ». Une méthode ou un
+  rétrogradée en « peut-être » si le message contient un mot de sa partie « Ne pas utiliser… ». Skills des plugins et
+  du compte claude.ai (`anthropic-skills:…`, plugins synchronisés, commandes comprises) : seulement sur un déclencheur
+  français (livré avec le cerveau, ou ajouté par `skill trig`) ou leur nom composé cité. Une méthode ou un
   prompt structuré collé → 🧩 en faire une skill (`skill new`), ou mettre à jour celle qui lui ressemble.
+- **Réflexes de connecteurs** : quand un message colle à un connecteur ou serveur MCP branché dans la session (Gmail,
+  Agenda, Canva, Shopify…) par une de ses phrases françaises, une ligne 🔌 donne la requête ToolSearch exacte qui charge
+  ses outils en un seul appel — une fois par session et par connecteur (2 par message, 6 par session). Le registre
+  (`state/outils.json` : branchés, à authentifier, retirés) se tient seul en fin de tour, d'après le transcript.
+- **Veille** : au démarrage, une ligne 🆕 signale un connecteur ou une skill arrivés sans phrase française (le réflexe
+  ne les proposerait pas) et donne la commande pour lui en ajouter 2 ou 3 (`outils trig`, `skill trig`).
 - **Fin de session** : journal, vue 3D, et une fois par jour consolidation prudente (doublons évidents, souvenirs
   remplacés via `supersedes`, secrets) puis **rêve** (dates relatives rendues absolues, observations de plus de 7 jours
   condensées en un résumé par semaine et par projet, dossier `REVE.md` des points à trancher ; s'il y en a assez, une
@@ -166,6 +174,7 @@ variables d'env, documents, cycles, TODO, fichiers sensibles jamais lus).
 `eco` mode éco, moins de tokens sans rien perdre : état + plugins jamais utilisés · `eco --appliquer` (sorties de commandes longues mises en fichier, résumé de la conversation plus tôt, liste des skills réduite, mémoire auto coupée ; posé tout seul au 1er démarrage) · `eco --annuler` · `eco --poser ID` / `eco --retirer ID` (réglages sur accord : outils, connecteurs, git, effort, lecture, sous-agents — seulement après accord explicite de l'utilisateur) · `eco --cache auto|5m|1h|off` (durée du cache de prompt ; auto = choisie chaque jour d'après les pauses réelles) · `eco --desactiver nom@marketplace` (demande d'abord à l'utilisateur) · `eco --plugins-auto [on|off]` (veille quotidienne : désactive tout seul plugins et skills claude.ai jamais utilisés en 30 j ; seulement si l'utilisateur le demande) ·
 `compact` sorties de commandes compactes (installations, tests, builds, `git log`, clone : Claude ne lit que l'essentiel, sortie brute dans le fichier indiqué en pied) : statistiques · `compact sortie.txt --cmd "npm install"` essai · `config compact.enabled false` coupe ·
 `pc` état du PC (RAM/CPU/GPU) et ce qu'on peut libérer (sessions inactives, serveurs MCP) · `pc --clean` ferme les serveurs MCP orphelins (parent mort) · `pc --history [h]` mesures de la veille ·
-`skill` skills perso et des plugins actifs (+ combien de fois soufflées et chargées) · `skill test "message"` laquelle se déclencherait · `skill check` contrôle (déclencheurs, liens, longueur) · `skill new <nom> -d "À utiliser quand… « … » Ne pas utiliser pour…" --body-file f` créer · `skill trig plugin:skill "déclencheur" …` déclencheurs en français pour une skill de plugin ·
+`skill` skills perso et des plugins actifs (+ combien de fois soufflées et chargées) · `skill test "message"` laquelle se déclencherait · `skill check` contrôle (déclencheurs, liens, longueur) · `skill new <nom> -d "À utiliser quand… « … » Ne pas utiliser pour…" --body-file f` créer · `skill trig plugin:skill "déclencheur" …` déclencheurs en français pour une skill de plugin ou du compte claude.ai ·
+`outils` connecteurs et serveurs MCP vus (état, outils, phrases) · `outils test "message"` lequel se déclencherait · `outils trig <connecteur> "phrase" …` phrases françaises pour un connecteur · `outils scan` relire tout de suite les derniers transcripts · `config outils.enabled false` coupe ·
 `viz --open` vue 3D (`~/.claude/brain/cerveau.html`, régénérée en fin de session) · `export` (MEMOIRES.md lisible) ·
 `config recall.enabled false` · `config skills.paste auto|propose|off` · `install` réparer.

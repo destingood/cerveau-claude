@@ -158,6 +158,11 @@ garde sa propre mémoire.
 - **Skills chargées d'office** : `brain config skills.auto '["ma-skill"]'` et, dès qu'un message correspond à la skill,
   le cerveau glisse lui-même son contenu dans la conversation, sans attendre que Claude l'ouvre ; il la ressert
   après chaque résumé de la conversation.
+- **Les bons outils, tout seuls** : quand un message parle de mails, d'agenda, d'un visuel Canva ou de la boutique, le
+  cerveau souffle à Claude le connecteur branché qui convient et la recherche exacte qui charge ses outils en un seul
+  appel, sans charger les autres. Les skills de tes plugins et de ton compte claude.ai se déclenchent sur des phrases
+  en français (65 en ont d'office) ; un connecteur ou une skill qui arrive sans phrase française est signalé au
+  démarrage, et `brain outils trig` ou `brain skill trig` lui en donne. `brain outils` montre ce qui est branché.
 - **Le compteur** : `brain tokens` donne ta consommation et son coût au tarif de l'API, en dollars.
 
 ## Le cerveau en wiki et la veille automatique

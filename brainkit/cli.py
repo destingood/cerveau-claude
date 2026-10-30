@@ -1312,13 +1312,24 @@ def cmd_skill(a):
         cat, stats = skills.index(cwd, kc), skills.load_stats()
         if not cat:
             print(f"Aucune skill perso dans {skills.SKILLS_DIR}.")
+        others = {}  # autres plugins et compte claude.ai : une ligne chacun, détail sur demande (`skill ls <plugin>`)
         for s in cat:
+            src = s.get("plugin") or ""
+            if src and src != skills.OWN_PLUGIN and src not in args and "tout" not in args:
+                others.setdefault(src, []).append(s)
+                continue
             n = stats.get(s["name"], {})
             src = (f" (plugin {s['plugin']}" + (", écartée du réflexe)" if s["name"] in exclude else ")")
                    if s.get("plugin") else "")
             print(f"- {s['name']}{src} — {len(s['triggers'])} déclencheur(s) · soufflée {n.get('hinted', 0)} fois · "
                   f"chargée {n.get('used', 0)} fois (dont {n.get('used_after_hint', 0)} juste après)")
             print(f"    {short(s['description'], 170)}")
+        for src, group in sorted(others.items()):
+            ncmd = sum(1 for s in group if s.get("kind") == "cmd")
+            names = ", ".join(s["name"].partition(":")[2] for s in group[:10]) + (" …" if len(group) > 10 else "")
+            print(f"- {src} : {len(group) - ncmd} skill(s)" + (f" + {ncmd} commande(s)" if ncmd else "") + f" — {names}")
+        if others:
+            print("Détail : `brain skill ls <plugin>` (ou `tout`).")
     elif act == "trig":
         if not args:
             die('usage : brain skill trig <nom> ["déclencheur" …] [--force : remplacer la liste ; seul, la vider]')
@@ -1340,9 +1351,8 @@ def cmd_skill(a):
             kc = load_config().get("skills", {})
         got = (kc.get("triggers") or {}).get(name, [])
         print(f"{name} : " + (" · ".join(f"« {p} »" for p in got) if got else "aucun déclencheur ajouté"))
-        for lvl, n, m in skills.check(skills.index(cwd, kc), exclude=exclude):
-            if n == name:
-                print(f"  {lvl} {m}")
+        for lvl, n, m in skills.check(skills.index(cwd, kc), exclude=exclude, only={name}):
+            print(f"  {lvl} {m}")
     elif act == "test":
         msg = " ".join(args) or die('usage : brain skill test "message tel que tu le taperais"')
         cat = skills.index(cwd, kc)
@@ -1371,9 +1381,8 @@ def cmd_skill(a):
             die(str(exc))
         name = path.parent.name
         print(f"✓ skill créée : {path}")
-        for lvl, n, m in skills.check(skills.index(cwd)):
-            if n == name:
-                print(f"  {lvl} {m}")
+        for lvl, n, m in skills.check(skills.index(cwd), only={name}):
+            print(f"  {lvl} {m}")
         if not a.no_memory:
             with Brain.edit() as b:
                 node = b.add("reference", f"Skill perso « {name} »",
@@ -1382,6 +1391,85 @@ def cmd_skill(a):
             print(f"✓ fiche dans le cerveau : `{node['id']}`")
     else:
         die("usage : brain skill [ls | test \"message\" | check | new <nom> -d \"…\" | trig <nom> \"déclencheur\" …]")
+
+
+def cmd_outils(a):
+    import time
+    from . import outils
+    from .skills import phrase_groups
+    oc = load_config().get("outils", {})
+    act, args = (a.action or "ls"), list(a.args)
+    reg, fresh = outils.load(), oc.get("fresh_days", outils.FRESH_DAYS)
+    servers = {k: s for k, s in reg["servers"].items() if not outils.SKIP_RE.match(k)}
+    if act in ("ls", "list"):
+        if not servers:
+            print("Aucun connecteur connu : la liste se remplit seule en fin de tour (tout de suite : `brain outils scan`).")
+            return
+        locked = []
+        for key, s in sorted(servers.items(), key=lambda kv: (not outils.alive(kv[1], None, fresh), -kv[1].get("seen", 0))):
+            state = outils.status(s, fresh_days=fresh)
+            if state.startswith("🔒"):
+                locked.append(outils.short_name(key, s))
+                continue
+            tools, n, ref = s.get("tools") or [], len(outils.phrases_of(key, s, oc)), outils.ref_of(key, s, servers)
+            if not state.startswith("✅"):
+                print(f"- {state} {outils.short_name(key, s)} · {len(tools)} outil(s)"
+                      + (f" · vu branché le {outils.date_of(s['seen'])}" if s.get("seen") else ""))
+                continue
+            print(f"- {state} {outils.short_name(key, s)} · `{ref}` · {len(tools)} outil(s) · "
+                  + (f"{n} phrase(s)" if n else f"aucune phrase ({outils.few(tools, 3)}) : `brain outils trig {ref} \"…\"`"))
+        if locked:
+            print(f"- 🔒 {len(locked)} à authentifier (/mcp, par l'utilisateur lui-même) : {outils.few(sorted(locked), 8)}")
+        print("Phrases d'un connecteur : `brain outils trig <nom>` · essai : `brain outils test \"message\"`.")
+    elif act == "trig":
+        if not args:
+            die('usage : brain outils trig <connecteur> ["phrase" …] [--force : remplacer la liste ; seul, la vider]')
+        try:
+            ck, s = outils.resolve(args[0], reg)
+        except ValueError as exc:
+            die(str(exc))
+        phrases = [p.strip() for p in args[1:] if p.strip()]
+        if phrases or a.force:
+            def change(cfg):
+                trig = cfg.setdefault("outils", {}).setdefault("triggers", {})
+                cur = [] if a.force else list(trig.get(ck, []))
+                cur += [p for p in phrases if p not in cur]
+                if cur:
+                    trig[ck] = cur
+                else:
+                    trig.pop(ck, None)
+            update_config(change)
+            oc = load_config().get("outils", {})
+        got = (oc.get("triggers") or {}).get(ck, [])
+        print(f"{ck} : " + (" · ".join(f"« {p} »" for p in got) if got else "aucune phrase ajoutée"))
+        e = outils.BY_ID.get(ck) or {}
+        base = outils.phrases_of(ck, s, {}) if s else list(e.get("trig", ())) + list(e.get("exact", ()))
+        if base:
+            print(f"  + {len(base)} par défaut : {outils.few(base, 6)}")
+        for p in got:
+            g = phrase_groups(p)
+            if not g:
+                print(f"  ⚠️ « {p} » : que des mots vides, ignorée (mets un nom ou un verbe distinctif)")
+            elif len(g) == 1 and all(len(k[0]) < 5 for k in g[0]):
+                print(f"  ℹ️ « {p} » : un seul mot court, se déclenchera souvent")
+        if not s:
+            print("  (pas encore vu branché : le réflexe le proposera dès qu'il le sera)")
+    elif act == "test":
+        msg = " ".join(args) or die('usage : brain outils test "message tel que tu le taperais"')
+        found = outils.match(journal.clean_prompt(msg, 2000), oc, reg=reg)
+        for r in found[:3]:
+            print(outils.hint_line(r))
+        if not found:
+            print("Aucun connecteur branché ne se déclencherait sur ce message.")
+    elif act == "scan":
+        n = int(args[0]) if args and args[0].isdigit() else 5
+        paths, t0 = outils.recent_transcripts(n), time.perf_counter()
+        reg = outils.bootstrap(paths)
+        live = [k for k, s in reg["servers"].items() if not outils.SKIP_RE.match(k) and outils.alive(s, None, fresh)]
+        print(f"✓ {len(paths)} transcript(s) relu(s) en {time.perf_counter() - t0:.1f} s : {len(live)} connecteur(s) "
+              "branché(s) — détail : `brain outils`")
+    else:
+        die('usage : brain outils [ls | test "message" | trig <connecteur> "phrase" … | scan [n]]')
 
 
 def cmd_pc(a):
@@ -2019,6 +2107,12 @@ def build_parser():
     s.add_argument("--body-file")
     s.add_argument("--force", action="store_true", help="remplacer une skill existante (trig : la liste)")
     s.add_argument("--no-memory", action="store_true", help="ne pas créer de fiche dans le cerveau")
+    s = cmd("outils", cmd_outils, "connecteurs et serveurs MCP branchés (Gmail, Agenda, Shopify…) : ls (état), test "
+            "\"message\" (lequel le réflexe proposerait), trig <connecteur> \"phrase\" … (en ajouter), scan [n] (relire "
+            "les n derniers transcripts)", ["outil", "connecteurs", "connecteur"])
+    s.add_argument("action", nargs="?", choices=["ls", "list", "test", "trig", "scan"])
+    s.add_argument("args", nargs="*")
+    s.add_argument("--force", action="store_true", help="trig : remplacer la liste (seul : la vider)")
     s = cmd("pc", cmd_pc, "RAM/CPU/GPU + ce qu'on peut libérer (sessions, serveurs MCP) — --clean, --history, --all", ["ram"])
     s.add_argument("--all", action="store_true", help="tout détailler, sans troncature")
     s.add_argument("--clean", action="store_true", help="fermer maintenant les serveurs MCP orphelins (parent mort)")

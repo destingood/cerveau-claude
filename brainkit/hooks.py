@@ -35,7 +35,7 @@ WIKI_REASON = (" 3) Wiki : une réponse qui vaut d'être gardée (synthèse, com
 OBS_REASON = ("🧠 Cerveau — le contexte vient d'être compacté : avant de conclure, note 3 à 5 observations datées de "
               "cette session (d'après le résumé et la suite) en UN SEUL appel Bash (commandes enchaînées avec &&), "
               f"{OBS_HOW}.")
-REMEMBER_RX = re.compile(r"\b(souviens[- ]toi|retiens|m[ée]moris|note (?:que|bien|[çc]a)|n'oublie pas|"
+REMEMBER_RX = re.compile(r"(?<!['‘’\"`])\b(souviens[- ]toi|retiens|m[ée]moris|note (?:que|bien|[çc]a)|n'oublie pas|"
                          r"garde (?:[çc]a |le |la |les )?en m[ée]moire|remember|ajoute (?:[çc]a |le |la )?(?:au|dans le) cerveau)",
                          re.I)
 NUM_NOISE = re.compile(r"(?<![\w-])(?:\d{1,2}|(?:19|20)\d{2})(?![\w-])")
@@ -358,6 +358,7 @@ def on_session_start(data, cfg):
         # (avant : « déjà injectés » gardés, donc plus jamais rappelés après une compaction).
         st["injected"], st["files"], st["recalled"] = sorted(ids), [], 0
         st["skills_hinted"] = []  # skills soufflées ou chargées d'office : sorties du contexte, à resservir
+        st["outils_hinted"] = []  # connecteurs soufflés : idem
         from . import compact
         compact.forget(sid)  # sorties déjà lues sorties du contexte : plus de renvoi « identique » vers elles
         if source == "compact":
@@ -389,6 +390,15 @@ def on_session_start(data, cfg):
                     text = f"{text}\n\n{warn}"
         except Exception as exc:
             log(f"skills (démarrage) : {exc!r}")
+        try:  # veille : nouveaux connecteurs et skills qu'aucune phrase française ne déclenche
+            oc, kc = cfg.get("outils") or {}, cfg.get("skills") or {}
+            if oc.get("enabled", True) and oc.get("veille", True):
+                from . import outils, skills
+                line = outils.veille(skills.index(cwd, kc) if kc.get("enabled", True) else None, oc)
+                if line:
+                    text = f"{text}\n\n{line}"
+        except Exception as exc:
+            log(f"outils (démarrage) : {exc!r}")
         try:
             from . import optimize
             tip = optimize.notice(cfg)
@@ -577,7 +587,7 @@ def context_alert(data, cfg) -> str:
 
 
 # Demande explicite (« retiens que… ») : le hook l'enregistre lui-même.
-REM_BLOCK_RX = re.compile(r"```.*?```|<pasted_content[^>]*>.*?</pasted_content>|<(system-reminder|ide_[a-z_]+)[^>]*>.*?</\1>",
+REM_BLOCK_RX = re.compile(r"```.*?```|<pasted_content[^>]*>.*?</pasted_content[^>]*>|<(system-reminder|ide_[a-z_]+)[^>]*>.*?</\1>",
                           re.S)
 REM_LEAD_RX = re.compile(r"(?:(?:ok|okay|bon|alors|donc|et|puis|aussi|dis|[ée]coute|stp|svp|please)\b[\s,;:!.\-–—]*)*", re.I)
 REM_LINK_RX = re.compile(r"[\s,;:!\-–—]*(?:(?:bien|[çc]a|cela|ceci)\b[\s,;:!\-–—]*)*(?:(?:que\b|qu['’]|that\b|to\b)\s*)?", re.I)
@@ -694,13 +704,14 @@ def on_prompt(data, cfg):
         except Exception as exc:
             log(f"alerte contexte : {exc!r}")
     saved = ""
-    if not raw.startswith("/") and REMEMBER_RX.search(raw):
+    if not raw.startswith("/") and not journal.is_auto(raw) and REMEMBER_RX.search(raw):
         try:  # « retiens que… » : enregistré ici même, indépendamment du rappel automatique
             saved = remember_now(data, raw)
         except Exception as exc:
             log(f"mémorisation automatique : {exc!r}")
-    ctx = recall_context(data, cfg, raw, saved) if cfg["recall"]["enabled"] and len(raw) >= 6 and not raw.startswith("/") \
-        else saved
+    # Fin d'une tâche de fond : rien à rappeler (les souvenirs gardent leur place pour un vrai message)
+    ctx = recall_context(data, cfg, raw, saved) if cfg["recall"]["enabled"] and len(raw) >= 6 \
+        and not raw.startswith(("/", "<task-notification>", "[SYSTEM NOTIFICATION")) else saved
     if (cfg.get("eco") or {}).get("annonce"):
         try:  # annonce d'une tâche de fond (filtre appris, plugins…) : dite dans la session ouverte, sans attendre un démarrage
             from . import eco
@@ -820,12 +831,14 @@ def recall_context(data, cfg, raw, saved="") -> str:
     proj = brain.project_for_path(cwd) if cwd else None
     injected = set(st.get("injected", []))
     lines = []
+    # ses mots à lui : pas ceux d'un texte collé, d'un bloc de code ou d'un message de l'appli
+    own = "" if journal.is_auto(raw) else REM_BLOCK_RX.sub(" ", raw)
     if saved:
         lines.append(saved)
-    elif REMEMBER_RX.search(raw):
+    elif REMEMBER_RX.search(own):
         lines.append(f"🧠 L'utilisateur demande de mémoriser : enregistre-le avec `{CMD} add -t <type> -T … -b …` "
                      "(vérifie d'abord les doublons avec `q`).")
-    elif RECALL_RX.search(raw):
+    elif RECALL_RX.search(own):
         lines.append(f"🧠 L'utilisateur fait appel à un souvenir : cherche avec `{CMD} q \"…\"` et `{CMD} journal`.")
     picks, logged, learn = [], [], False
     recalled = st.get("recalled", 0)
@@ -837,7 +850,7 @@ def recall_context(data, cfg, raw, saved="") -> str:
             if recalled >= rc["session_cap_items"]:
                 picks = []  # plafond de la session atteint : rien de plus à l'écran, mais l'apprentissage continue
         # Messages tapés seulement (pas les avis automatiques) : contexte de la session et exemples pour le neurone
-        if not journal.AUTO_RE.match(journal.clean_prompt(raw)):
+        if not journal.is_auto(raw):
             if rc.get("neurone", "auto") != "off":
                 st["prev_q"] = (prev + [context_query(raw, query)])[-2:]
             if logged:
@@ -888,6 +901,7 @@ def recall_context(data, cfg, raw, saved="") -> str:
     # Réflexes de skills : la skill perso qui colle au message (une fois par session), et une méthode collée à
     # transformer en skill. Passent avant les souvenirs : charger la bonne méthode d'abord.
     sk_lines, sk_names = skill_reflex(raw, st, cfg, cwd)
+    sk_lines += outil_reflex(raw, st, cfg)  # le connecteur branché qui sert (Gmail, Agenda…) : ToolSearch exact
     if sk_lines:
         out = sk_lines + out
     if pcline:  # la veille PC passe toujours, avant les souvenirs
@@ -915,9 +929,10 @@ def recall_context(data, cfg, raw, saved="") -> str:
 
 
 def skill_reflex(raw, st, cfg, cwd=None) -> tuple:
-    """→ (lignes, skills soufflées). Rien sur un brief de sous-agent ni sur une skill déjà soufflée ou chargée."""
+    """→ (lignes, skills soufflées). Rien sur un brief de sous-agent, un message de l'appli (fin de tâche de fond…) ni
+    sur une skill déjà soufflée ou chargée."""
     kc = cfg.get("skills") or {}
-    if not kc.get("enabled", True) or raw.startswith("Background (from"):
+    if not kc.get("enabled", True) or raw.startswith("Background (from") or journal.is_auto(raw):
         return [], []
     try:
         from . import skills
@@ -933,7 +948,7 @@ def skill_reflex(raw, st, cfg, cwd=None) -> tuple:
         hinted = set(st.get("skills_hinted", []))
         if len(hinted) < kc.get("session_cap", 6):
             done = hinted | set((st.get("tx") or {}).get("skills", [])) | set(kc.get("exclude", ["brain"]))
-            text = journal.clean_prompt(raw, 2000)
+            text = journal.clean_prompt(raw, 2000, pasted=False)
             for r in skills.match(text, catalog, exclude=done, min_score=kc.get("min_score", 4.0))[:kc.get("max_items", 1)]:
                 body = skills.auto_block(r) if r["strong"] and r["name"] in kc.get("auto", []) else None
                 lines.append(body or skills.hint_line(r))
@@ -942,6 +957,35 @@ def skill_reflex(raw, st, cfg, cwd=None) -> tuple:
     except Exception as exc:
         log(f"skills : {exc!r}")
         return [], []
+
+
+def outil_reflex(raw, st, cfg) -> list:
+    """→ lignes 🔌 : connecteurs branchés que le message demande (une fois par session), rien sur un brief de sous-agent
+    ni sur un message de l'appli."""
+    oc = cfg.get("outils") or {}
+    if not oc.get("enabled", True) or raw.startswith("Background (from") or journal.is_auto(raw):
+        return []
+    try:
+        from . import outils
+        return outils.reflex(journal.clean_prompt(raw, 2000, pasted=False), st, oc)
+    except Exception as exc:
+        log(f"outils : {exc!r}")
+        return []
+
+
+def _merge_outils(st, tx, tp=None) -> None:
+    """Fin de tour : connecteurs vus dans le transcript → outils.json et st["outils_on"] ; registre absent (cerveau
+    installé en cours de session) → relu dans les derniers transcripts."""
+    o = tx.pop("_outils", None)
+    try:
+        from . import outils
+        if o:
+            outils.merge(o)
+            st["outils_on"] = outils.session_on(st.get("outils_on"), o)
+        elif tp and not outils.FILE.exists():
+            outils.bootstrap(outils.recent_transcripts(5))
+    except Exception as exc:
+        log(f"outils : {exc!r}")
 
 
 # ------------------------------------------------------------------------------------------ Rappel raté : pourquoi
@@ -1096,6 +1140,7 @@ def on_stop(data, cfg):
     tx = journal.parse_transcript(tp, st.get("tx"))
     scan = tx.pop("_scan", None)
     st["tx"] = tx
+    _merge_outils(st, tx, tp)
     after_turn(st, scan, sid)
     if tx.get("skills"):
         try:
@@ -1150,6 +1195,7 @@ def on_session_end(data, cfg, event="session-end"):
     tx = journal.parse_transcript(tp, st.get("tx")) if tp else (st.get("tx") or {})
     scan = tx.pop("_scan", None)
     st["tx"] = tx
+    _merge_outils(st, tx, tp)
     after_turn(st, scan, sid)
     if tx.get("skills"):
         try:

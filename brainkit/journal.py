@@ -9,12 +9,15 @@ import time
 
 from .common import CLAUDE_HOME, JOURNAL_FILE, FileLock, fmt_date, fold, is_scratch, read_json, short, write_json
 
-PASTE_RE = re.compile(r"<pasted_content[^>]*>(.*?)</pasted_content>", re.S)
+PASTE_RE = re.compile(r"<pasted_content[^>]*>(.*?)</pasted_content[^>]*>", re.S)  # fermeture avec id (appli)
 BLOCK_RE = re.compile(r"<(system-reminder|local-command-stdout|local-command-stderr|ide_[a-z_]+)[^>]*>.*?</\1>", re.S)
 CMD_RE = re.compile(r"<command-(?:name|message|args)>(.*?)</command-(?:name|message|args)>", re.S)
 TAG_RE = re.compile(r"</?[a-zA-Z][\w\-]*(?:\s[^<>]*)?>")
+# Invite du terminal en tête de ligne (PowerShell « PS C:\…> », bash « moi@pc:~/x$ », Git Bash « moi@pc MINGW64 ~/x »)
+SHELL_RE = re.compile(r"^[ \t]*(?:PS [A-Za-z]:[^\n>]*>|[\w.-]+@[\w.-]+(?::[^\n$#]*[$#]| MINGW\w*[^\n]*))", re.M)
 AUTO_RE = re.compile(r"^(None of the sessions you started|Background \(from the session|<side-sessions|"
-                     r"The user hasn't heard|\[Request interrupted|This session is being continued from)", re.I)
+                     r"The user hasn't heard|\[Request interrupted|This session is being continued from|"
+                     r"<task-notification>|\[SYSTEM NOTIFICATION)", re.I)
 # Sections du résumé de compaction de Claude Code (« 8. Current Work », « 9. Optional Next Step »…)
 SUMMARY_HEAD_RE = re.compile(r"^\s*(?:#+\s*)?(?:\d+\.\s*)?(?:\*\*)?\s*(Primary Request|Pending Tasks|Current Work|"
                              r"Optional Next Step)\b", re.I | re.M)
@@ -25,12 +28,23 @@ OBS_RE = re.compile(r"brain\.py[\"']?\s+(?:obs|observe)\b[^|;&\n]*?[\"']")  # ob
 LOCK = JOURNAL_FILE.with_name("journal.lock")
 
 
-def clean_prompt(text, n=200) -> str:
+def clean_prompt(text, n=200, pasted=True) -> str:
+    """pasted=False : texte collé et invite du terminal retirés (réflexes : seuls les mots de l'utilisateur comptent, pas
+    le dossier de « PS C:\\…\\cerveau-dev> »), sinon collage résumé en 80 car."""
     text = BLOCK_RE.sub(" ", str(text))
-    text = PASTE_RE.sub(lambda m: " [collé] " + short(m.group(1).strip("`\n "), 80) + " ", text)
+    text = PASTE_RE.sub(lambda m: " [collé] " + short(m.group(1).strip("`\n "), 80) + " " if pasted else " ", text)
+    if not pasted:
+        text = SHELL_RE.sub(" ", text)
     text = CMD_RE.sub(lambda m: m.group(1) + " ", text)
     text = TAG_RE.sub(" ", text)
     return short(re.sub(r"^[\s`\"'#]+", "", text), n)
+
+
+def is_auto(raw) -> bool:
+    """Message de l'appli (fin d'une tâche de fond, avis, rapport d'une autre session, reprise), pas tapé par
+    l'utilisateur : testé brut (balise d'ouverture) puis nettoyé."""
+    s = str(raw or "").lstrip()
+    return bool(AUTO_RE.match(s) or AUTO_RE.match(clean_prompt(s)))
 
 
 def new_state() -> dict:
@@ -81,6 +95,12 @@ def _consume(st, o):
         st["title"] = o["customTitle"]
         return
     if o.get("isSidechain"):
+        return
+    if typ == "attachment":  # outils et serveurs MCP annoncés (réflexe des connecteurs : brainkit/outils.py)
+        a = o.get("attachment")
+        if isinstance(a, dict) and a.get("type") in ("deferred_tools_delta", "mcp_instructions_delta"):
+            from . import outils
+            outils.collect(st, a)
         return
     if typ == "user" and not o.get("isMeta"):
         content = (o.get("message") or {}).get("content")
