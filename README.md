@@ -3,7 +3,7 @@
 Une mémoire persistante pour Claude Code, faite par Lucas : Claude se souvient de toi, de tes projets, de tes
 décisions et de ce qu'il a appris, d'une session à l'autre. Tout reste chez toi, sur ton PC.
 
-![Version 8.15.13](https://img.shields.io/badge/version-8.15.13-2ea44f) ![Python 3.10 ou plus](https://img.shields.io/badge/python-3.10%2B-3776ab) ![Windows, macOS, Linux](https://img.shields.io/badge/Windows_%C2%B7_macOS_%C2%B7_Linux-555)
+![Version 8.15.14](https://img.shields.io/badge/version-8.15.14-2ea44f) ![Python 3.10 ou plus](https://img.shields.io/badge/python-3.10%2B-3776ab) ![Windows, macOS, Linux](https://img.shields.io/badge/Windows_%C2%B7_macOS_%C2%B7_Linux-555)
 
 **Sommaire** — [Installer](#installer-une-seule-fois) · [Au quotidien](#au-quotidien) · [Ce que fait le cerveau](#ce-que-fait-le-cerveau) ·
 [Moins de tokens](#moins-de-tokens) · [Wiki et veille](#le-cerveau-en-wiki-et-la-veille-automatique) · [E-commerce](#le-cerveau-e-commerce) ·
@@ -154,6 +154,7 @@ et ne copie jamais une clé ou un jeton dans la conversation.
 | « installe rea », puis « analyse ce binaire », « décompile cette fonction », « comment marche la recherche dans cette appli » | `/cerveau:rea` | lit en local un exécutable, une appli Electron, un APK, un firmware, une base SQLite ou une capture réseau, et explique avec preuves comment ça marche, pour t'aider à en refaire ta version | REA, Reverse Engineer Anything (morluto, MIT) |
 | « humanise ce texte », « sonne trop IA », « on dirait de l'IA » | `/cerveau:humanizer` | réécrit ton post, ta bio, ta lettre ou ta fiche produit pour qu'il sonne comme toi, sans rien ajouter ni changer à ce qu'il dit | Humanizer (blader, MIT) |
 | « ajoute une animation », « anime ce bouton », « transition de page », « rends le site plus vivant » | `/cerveau:motion-design` | anime ton site comme un motion designer : style, durées, courbes et ordre d'apparition, avec une version calme pour qui demande moins de mouvement | Motion Design Skill (LottieFiles, MIT) |
+| « installe scrapegraph », puis « scrape ce site », « récupère tous les produits et les prix de… », « liste les prix des concurrents » | `/cerveau:scrapegraph` | extrait en JSON ce que tu demandes d'une ou plusieurs pages, ou d'une recherche web, avec un modèle local gratuit | ScrapeGraphAI (MIT) |
 
 <details>
 <summary>Le détail de chaque outil</summary>
@@ -171,6 +172,7 @@ et ne copie jamais une clé ou un jeton dans la conversation.
 - **REA** (skill `/cerveau:rea`, d'après REA de morluto, MIT) : dis « installe rea » et Claude installe sur ton PC REA (Reverse Engineer Anything, avec ton accord) et le branche à Claude Code. Ensuite, « analyse ce binaire », « décompile cette fonction », « comment marche la recherche dans cette appli » : Claude lit en local un exécutable, une appli Electron, un APK, un firmware, une base SQLite ou une capture réseau, explique avec preuves comment ça marche et t'aide à en refaire ta version. Seulement pour un logiciel à toi ou que tu as le droit d'examiner ; jamais pour contourner une licence ou une protection. Les moteurs natifs (Ghidra, Hopper, IDA) restent facultatifs et à ta charge.
 - **Humanizer** (skill `/cerveau:humanizer`, d'après Humanizer de blader, MIT) : « humanise ce texte », « sonne trop IA », « on dirait de l'IA » et Claude réécrit ton post, ta bio, ta lettre de motivation ou ta fiche produit pour qu'il sonne comme toi, sans changer ce qu'il dit : il retire les tics d'écriture d'IA repérés par Wikipédia. Il n'ajoute aucun fait, chiffre ni compétence que tu n'as pas donnés. Il l'installe sur ton PC avec ton accord, ou le suit une fois sans rien installer.
 - **Motion design** (skill `/cerveau:motion-design`, d'après Motion Design Skill de LottieFiles, MIT) : « ajoute une animation », « anime ce bouton », « transition de page », « rends le site plus vivant » et Claude anime ton site comme un motion designer : il choisit d'abord le style (ludique, haut de gamme, sobre ou dynamique), puis la durée, la courbe et l'ordre d'apparition de chaque élément, en CSS, Framer Motion, GSAP ou Lottie. Toujours une version calme pour ceux qui demandent moins de mouvement, et rien qui distrait sur un formulaire ou une page de paiement. Il l'installe sur ton PC avec ton accord, ou la suit une fois sans rien installer.
+- **ScrapeGraphAI** (skill `/cerveau:scrapegraph`, d'après Scrapegraph-ai de ScrapeGraphAI, MIT) : dis « installe scrapegraph » et Claude installe sur ton PC la bibliothèque libre et un modèle local Ollama (≈ 7 Go, gratuit, sans compte). Ensuite, « scrape ce site », « récupère tous les produits et les prix de… », « liste les prix des concurrents » : les pages sont lues par le modèle de ton PC et seul le tableau JSON revient à Claude, ce qui économise des tokens sur plusieurs pages. La télémétrie de l'éditeur, qui enverrait le contenu des pages, est coupée. Un petit modèle peut se tromper sur un chiffre : Claude revérifie ceux qui comptent, et ne contourne ni connexion ni protection anti-robot.
 
 </details>
 
@@ -207,4 +209,4 @@ invite tes amis (Settings → Collaborators → Add people), puis rejoins-le le 
 
 `/plugin uninstall cerveau@cerveau`. Tes souvenirs restent dans `~/.claude/brain` (supprime ce dossier pour tout effacer).
 
-Version 8.15.13.
+Version 8.15.14.
