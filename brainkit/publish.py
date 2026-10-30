@@ -166,7 +166,15 @@ garde sa propre mémoire.
 Markdown d'un dossier que tu ouvres dans Obsidian (idéalement un dépôt GitHub privé). Tu y déposes des sources
 (articles, PDF, transcriptions, notes) ; Claude les lit tout seul et tient à jour des pages de synthèse (sources
 résumées, entités, concepts, sujets, analyses), liées entre elles. Le schéma que suit Claude est dans le `CLAUDE.md` du
-wiki : fais-le évoluer avec lui. Rien ne change tant que tu ne le lances pas.
+wiki : fais-le évoluer avec lui. Rien ne change tant que tu ne le lances pas. Une page que tu modifies dans Obsidian
+pendant que Claude travaille garde ta version (celle du cerveau est mise de côté dans `~/.claude/brain/conflits`), et
+`brain wiki lint` signale aussi les sections vides et les propriétés invalides.
+
+**La recherche sourcée** (skill `/cerveau:recherche`, d'après autoresearch de claude-obsidian, MIT) : « fais un dossier
+sur… », « recherche à fond… » et Claude mène 3 tours de 5 sources au plus, sources officielles d'abord et position
+contraire cherchée, classe chaque affirmation (établie, provisoire, contestée, non étayée) et range le dossier dans le
+wiki ; la mise à jour des autres pages t'est proposée à part. **La syntaxe Obsidian** (skill `/cerveau:obsidian`,
+d'après claude-obsidian, MIT) : propriétés, liens, encadrés, vues Bases et Canvas écrits juste du premier coup.
 
 **La veille automatique** : `brain auto --installer` pose une tâche planifiée (Windows ; ailleurs, une ligne cron à
 ajouter) qui tient le cerveau à jour toutes les 30 min sans ouvrir Claude, et sans fenêtre : notes du jour d'Obsidian

@@ -213,6 +213,19 @@ mv.rename(WIKI / "wiki/Concepts/Sous-dossier/Dropshipping.md")
 code, out = brain("edit", "dropshipping", "-i", "4")
 check((WIKI / "wiki/Concepts/Sous-dossier/Dropshipping.md").is_file() and not mv.exists(),
       "rangement fait dans Obsidian respecté", out)
+# Obsidian enregistre la page PENDANT une opération du cerveau (entre sa lecture et son écriture)
+b = Brain.load()
+p = WIKI / "wiki/Concepts/Sous-dossier/Dropshipping.md"
+b.nodes["dropshipping"]["body"] += "\n\nAjout du cerveau pendant la course."
+b.dirty = True
+p.write_text(p.read_text(encoding="utf-8") + "\nNote tapée dans Obsidian au même moment.\n", encoding="utf-8")
+b.save()
+txt = page("wiki/Concepts/Sous-dossier/Dropshipping.md")
+kept = list(ws.CONFLICTS.glob("*Dropshipping.md"))
+check("au même moment" in txt and "pendant la course" not in txt, "modif Obsidian pendant une opération : pas écrasée", txt)
+check(kept and "pendant la course" in kept[0].read_text(encoding="utf-8"), "… version du cerveau gardée dans conflits/",
+      str(kept))
+check("au même moment" in Brain.load().nodes["dropshipping"]["body"], "… et la version d'Obsidian relue ensuite")
 
 # ------------------------------------------------------------------ 5 bis. coffre Obsidian réglé par le cerveau
 from brainkit import obsidian  # noqa: E402
@@ -460,6 +473,13 @@ code, out = brain("add", "-t", "topic", "-T", "Thé japonais", "-b", "Synthèse.
 code, out = brain("wiki", "lint")
 check("[[Uji]]" in out and "Pages à créer" in out, "lint : liens vers rien = pages à créer", out)
 check("Sources à ingérer" in out and "sans `resume:`" in out, "lint : sources en attente, pages sans résumé", out)
+hand = WIKI / "wiki/Concepts/Espresso.md"
+hand.write_text("---\ntype: concept\nimportance: 9\necheance: demain\n---\n# Espresso\n\n## Origine\n\n## Usages\nCafé serré.\n",
+                encoding="utf-8")
+code, out = brain("wiki", "lint")
+check("[[Espresso]] — « Origine »" in out and "« Usages »" not in out, "lint : sections vides", out)
+check("importance « 9 »" in out and "echeance « demain »" in out, "lint : propriétés invalides", out)
+hand.unlink()
 code, out = brain("wiki", "log", "ingest", "Le gyokuro de cérémonie", "pages touchées : [[Thé japonais]]")
 check(code == 0 and "## [" in page("log.md").split("migration")[1] and "- pages touchées : [[Thé japonais]]" in page("log.md"),
       "log : entrée ajoutée en bas", out)

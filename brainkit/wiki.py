@@ -124,13 +124,20 @@ Texte en Markdown. Lien vers une autre page : [[Titre de la page]] (= nom du fic
 3. Une bonne réponse (comparaison, analyse, lien découvert) ne doit pas se perdre dans la conversation : la ranger dans
    Analyses (`{cmd} add -t analyse -T "…" -b -` ou écrire la page), puis `{cmd} wiki log query "La question"`.
 
+### Rechercher un sujet sur le web
+Skill `/cerveau:recherche` (« fais un dossier sur… », « recherche à fond… ») : 3 tours de 5 sources au plus, sources
+primaires d'abord, position contraire cherchée ; chaque affirmation est **établie** (deux sources indépendantes si
+santé, droit, argent), **provisoire**, **contestée** ou **non étayée**. Le dossier va dans Analyses avec ses sources ;
+la mise à jour des autres pages est proposée à part, après accord.
+
 ### Mémoriser en travaillant
 `{cmd} add -t <type> -T "titre" -b "fait + pourquoi + comment l'appliquer"` crée une page (anti-doublon,
 remplacements, secrets masqués) ; `{cmd} edit <id|titre>` la corrige, `{cmd} rm` l'archive. Écrire une page à la main
 en suivant le format marche aussi : le cerveau la lit au passage suivant.
 
 ### Entretenir
-`{cmd} wiki lint` : pages à créer (liens vers rien), pages orphelines, pages sans `resume`, sources pas encore
+`{cmd} wiki lint` : pages à créer (liens vers rien), pages orphelines, pages sans `resume`, sections vides,
+propriétés invalides (type, importance, dates), sources pas encore
 ingérées ou modifiées depuis, pages peut-être dépassées par une source plus récente, doublons, contradictions
 signalées, souvenirs à verser dans une page de savoir. Corriger, compléter, proposer des questions à creuser et des
 sources à chercher, puis `{cmd} wiki log lint "…"`. Le rêve quotidien du cerveau en reprend l'essentiel.
@@ -1090,6 +1097,15 @@ def lint(brain, root=None, limit=12) -> dict:
              for n in active if find_secrets(n.get("body") or "")]
     if leaks:
         out["Secrets à retirer"] = leaks[:limit]
+    hollow = [f"[[{names.get(n['id'], n['title'])}]] — " + ", ".join(f"« {h} »" for h in heads[:3])
+              for n in active if TODO_MARK not in (n.get("body") or "") for heads in [empty_sections(n.get("body") or "")]
+              if heads]
+    if hollow:
+        out["Sections vides (titre sans texte : remplir ou retirer)"] = hollow[:limit]
+    bad = [f"[[{ws.stem(rel)}]] — {why}" for rel, p in sorted(ws._parse_cache(root).items()) if str(root)
+           for why in bad_properties(p.get("fm") or {})]
+    if bad:
+        out["Propriétés invalides (le cerveau les remplace par une valeur par défaut)"] = bad[:limit]
     big = [f"[[{names.get(n['id'], n['title'])}]] ({len(n.get('body') or '') // 1000} k car.) → découper"
            for n in active if len(n.get("body") or "") > 15000]
     if big:
@@ -1105,6 +1121,52 @@ def lint(brain, root=None, limit=12) -> dict:
     if loose and know:
         out["Souvenirs à verser dans une page de savoir (concept, sujet, entité)"] = [
             f"[[{names.get(n['id'], n['title'])}]] ({type_label(n['type'])})" for n in loose[:min(limit, 8)]]
+    return out
+
+
+HEAD_RX = re.compile(r"^(#{1,6})[ \t]+(.+?)[ \t#]*$", re.M)
+DATE_FM = ("echeance", "fait_le", "fin", "cree", "maj")
+
+
+def empty_sections(body) -> list:
+    """Titres de section sans aucun texte jusqu'au titre suivant de même niveau ou plus haut (code ignoré)."""
+    body = ws.CODE_RX.sub("·", body)
+    heads = [(m.start(), m.end(), len(m.group(1)), m.group(2)) for m in HEAD_RX.finditer(body)]
+    out = []
+    for i, (_, end, level, title) in enumerate(heads):
+        stop = next((h[0] for h in heads[i + 1:] if h[2] <= level), len(body))
+        if not body[end:stop].strip():
+            out.append(title)
+    return out
+
+
+def bad_properties(fm) -> list:
+    """Propriétés qu'Obsidian accepte mais que le cerveau ne sait pas lire : type inconnu, importance hors 1 à 5,
+    date qui n'en est pas une."""
+    import datetime as _dt
+
+    from .store import normalize_type
+    out = []
+    t = fm.get("type")
+    if t not in (None, "", []):
+        try:
+            normalize_type(str(t))
+        except ValueError:
+            out.append(f"type « {t} » inconnu")
+    imp = fm.get("importance")
+    if imp not in (None, "", []) and (isinstance(imp, bool) or str(imp).strip() not in ("1", "2", "3", "4", "5")):
+        out.append(f"importance « {imp} » (1 à 5)")
+    for k in DATE_FM:
+        v = fm.get(k)
+        if v in (None, "", []):
+            continue
+        try:
+            _dt.date.fromisoformat(str(v)[:10])
+            ok = bool(ws.DATE_RX.match(str(v)))
+        except ValueError:
+            ok = False
+        if not ok:
+            out.append(f"{k} « {v} » (date AAAA-MM-JJ)")
     return out
 
 

@@ -3,7 +3,7 @@
 Une mémoire persistante pour Claude Code, faite par destingood : Claude se souvient de toi, de tes projets, de tes
 décisions et de ce qu'il a appris, d'une session à l'autre. Tout reste chez toi, sur ton PC.
 
-![Version 8.15.15](https://img.shields.io/badge/version-8.15.15-2ea44f) ![Python 3.10 ou plus](https://img.shields.io/badge/python-3.10%2B-3776ab) ![Windows, macOS, Linux](https://img.shields.io/badge/Windows_%C2%B7_macOS_%C2%B7_Linux-555)
+![Version 8.16.0](https://img.shields.io/badge/version-8.16.0-2ea44f) ![Python 3.10 ou plus](https://img.shields.io/badge/python-3.10%2B-3776ab) ![Windows, macOS, Linux](https://img.shields.io/badge/Windows_%C2%B7_macOS_%C2%B7_Linux-555)
 
 **Sommaire** — [Installer](#installer-une-seule-fois) · [Au quotidien](#au-quotidien) · [Ce que fait le cerveau](#ce-que-fait-le-cerveau) ·
 [Moins de tokens](#moins-de-tokens) · [Wiki et veille](#le-cerveau-en-wiki-et-la-veille-automatique) · [E-commerce](#le-cerveau-e-commerce) ·
@@ -107,7 +107,15 @@ garde sa propre mémoire.
 Markdown d'un dossier que tu ouvres dans Obsidian (idéalement un dépôt GitHub privé). Tu y déposes des sources
 (articles, PDF, transcriptions, notes) ; Claude les lit tout seul et tient à jour des pages de synthèse (sources
 résumées, entités, concepts, sujets, analyses), liées entre elles. Le schéma que suit Claude est dans le `CLAUDE.md` du
-wiki : fais-le évoluer avec lui. Rien ne change tant que tu ne le lances pas.
+wiki : fais-le évoluer avec lui. Rien ne change tant que tu ne le lances pas. Une page que tu modifies dans Obsidian
+pendant que Claude travaille garde ta version (celle du cerveau est mise de côté dans `~/.claude/brain/conflits`), et
+`brain wiki lint` signale aussi les sections vides et les propriétés invalides.
+
+**La recherche sourcée** (skill `/cerveau:recherche`, d'après autoresearch de claude-obsidian, MIT) : « fais un dossier
+sur… », « recherche à fond… » et Claude mène 3 tours de 5 sources au plus, sources officielles d'abord et position
+contraire cherchée, classe chaque affirmation (établie, provisoire, contestée, non étayée) et range le dossier dans le
+wiki ; la mise à jour des autres pages t'est proposée à part. **La syntaxe Obsidian** (skill `/cerveau:obsidian`,
+d'après claude-obsidian, MIT) : propriétés, liens, encadrés, vues Bases et Canvas écrits juste du premier coup.
 
 **La veille automatique** : `brain auto --installer` pose une tâche planifiée (Windows ; ailleurs, une ligne cron à
 ajouter) qui tient le cerveau à jour toutes les 30 min sans ouvrir Claude, et sans fenêtre : notes du jour d'Obsidian
@@ -209,4 +217,4 @@ invite tes amis (Settings → Collaborators → Add people), puis rejoins-le le 
 
 `/plugin uninstall cerveau@cerveau`. Tes souvenirs restent dans `~/.claude/brain` (supprime ce dossier pour tout effacer).
 
-Version 8.15.15.
+Version 8.16.0.

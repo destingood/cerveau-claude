@@ -18,10 +18,11 @@ import hashlib
 import json
 import os
 import re
+import sys
 from pathlib import Path
 
-from .common import (GRAPH_FILE, STATE_DIR, clean_label, fold, load_config, log, now_iso, read_json, slugify,
-                     write_json, write_text)
+from .common import (BRAIN_DIR, GRAPH_FILE, STATE_DIR, clean_label, fold, load_config, log, now_iso, read_json,
+                     slugify, write_json, write_text)
 
 MARKER = ".cerveau-wiki"
 PAGES, ARCHIVE, RAW = "wiki", "archive", "raw"
@@ -56,6 +57,7 @@ YAML_WORDS = {"true", "false", "yes", "no", "on", "off", "null", "y", "n"}
 BAD = re.compile(r'[<>:"/\\|?*#^\[\]\x00-\x1f]+')
 RESERVED = {"CON", "PRN", "AUX", "NUL"} | {f"{p}{i}" for p in ("COM", "LPT") for i in range(1, 10)}
 MASS_DELETE = 0.3  # une écriture ordinaire qui effacerait plus de 30 % des pages est refusée (bogue, pas intention)
+CONFLICTS = BRAIN_DIR / "conflits"  # version du cerveau d'une page modifiée dans Obsidian pendant l'opération
 
 
 class WikiMissing(RuntimeError):
@@ -665,7 +667,15 @@ def save(data, root=None, full=False, cache_file=None, parse_file=None, guard=Tr
     pfiles = _parse_cache(root, parse_file)
     known = {r: (v.get("m"), v.get("s")) for r, v in pfiles.items()}
     keep = {p.lower() for p in paths.values()}
+    clash = []
     for rel, text, _ in writes:
+        if not full and _touched(root / rel, known.get(rel)):  # modifiée dans Obsidian depuis la lecture : elle gagne
+            clash.append(rel)
+            try:
+                write_text(CONFLICTS / f"{now_iso()[:19].replace(':', '')} {Path(rel).name}", text)
+            except OSError as exc:
+                log(f"wiki : copie de conflit de {rel} : {exc!r}")
+            continue
         write_text(root / rel, text)
         report["written"] += 1
         try:
@@ -680,6 +690,9 @@ def save(data, root=None, full=False, cache_file=None, parse_file=None, guard=Tr
     emptied = set()
     for old, what in olds:
         if not old or old.lower() in keep:
+            continue
+        if not full and _touched(root / old, known.get(old)):  # modifiée entre-temps : jamais effacée
+            clash.append(old)
             continue
         try:
             (root / old).unlink()
@@ -706,7 +719,27 @@ def save(data, root=None, full=False, cache_file=None, parse_file=None, guard=Tr
             log(f"wiki : cache des pages : {exc!r}")
     data["wiki"] = {"root": str(root), "files": new_files, "sig": signature(known)}
     write_json(cache_file, data)
+    if clash:  # leur signature reste l'ancienne : la prochaine lecture reprend la version d'Obsidian
+        report["conflicts"] = clash
+        msg = (f"wiki : {len(clash)} page(s) modifiée(s) dans Obsidian pendant l'opération, gardée(s) telle(s) quelle(s) : "
+               + ", ".join(clash[:5]) + f" — version du cerveau dans {CONFLICTS}")
+        log(msg)
+        print(f"⚠ {msg}", file=sys.stderr)
     return report
+
+
+def _touched(path, seen) -> bool:
+    """La page a-t-elle changé sur le disque depuis la dernière lecture du cerveau (seen = (mtime_ns, taille)) ?
+    Page jamais lue : non. Page effacée entre-temps : oui (l'effacement fait dans Obsidian l'emporte)."""
+    if not seen or seen[0] is None:
+        return False
+    try:
+        st = os.stat(path)
+    except FileNotFoundError:
+        return True
+    except OSError:
+        return False
+    return (st.st_mtime_ns, st.st_size) != tuple(seen)
 
 
 def replace_all(data) -> dict:
