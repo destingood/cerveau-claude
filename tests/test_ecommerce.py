@@ -672,7 +672,7 @@ os.environ.pop("META_TOKEN", None)
 
 # ------------------------------------------------------------------ 4. livraison : plugin (brain publish)
 dest = TMP / "plugin"
-files = publish.build(dest, "Lucas", "proprietaire/depot")
+files = publish.build(dest, "Auteur", "proprietaire/depot")
 check("skills/ecommerce/SKILL.md" in files and "skills/ecommerce/scripts/audit_site.py" in files,
       "brain publish : le cerveau e-commerce part dans le plugin")
 check((dest / "skills" / "ecommerce" / "SKILL.md").read_bytes() == (SKILL_DIR / "SKILL.md").read_bytes(),
@@ -705,7 +705,7 @@ depot = TMP / "plugin-depot"  # un dépôt qui a déjà ses tests publics, et un
 for name, text in (("test_eco.py", "# ancienne version\n"), ("test_all.py", "# test privé\n"),
                    ("test_cloud.py", "# ajouté par une session cloud\n"), ("donnees/exemple.json", "{}\n")):
     (depot / "tests" / name).write_text(text, encoding="utf-8")
-kept = publish.build(depot, "Lucas", "proprietaire/depot")
+kept = publish.build(depot, "Auteur", "proprietaire/depot")
 check((depot / "tests" / "test_eco.py").read_bytes() == (CODE / "tests" / "test_eco.py").read_bytes()
       and (depot / "tests" / "test_cloud.py").read_text(encoding="utf-8") == "# ajouté par une session cloud\n"
       and "tests/donnees/exemple.json" in kept and not (depot / "tests" / "test_all.py").exists(),

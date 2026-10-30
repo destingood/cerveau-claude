@@ -5,7 +5,7 @@ version publiée ; ses souvenirs restent chez lui, dans ~/.claude/brain, et ne p
 
 Ne part dans le dépôt que le code (brain.py, brainkit/) et les skills (/brain, et les skills métier de skills/<nom>/,
 comme le cerveau e-commerce) et les styles de réponse (output-styles/) : jamais les souvenirs ni la configuration. Les tests publics que le dépôt a déjà
-(tests/) restent, mis à jour depuis le code ; les tests privés (PRIVATE_TESTS : ils lisent la mémoire de Lucas), jamais.
+(tests/) restent, mis à jour depuis le code ; les tests privés (PRIVATE_TESTS : ils lisent la vraie mémoire), jamais.
 L'envoi sur GitHub est une publication : il n'a lieu qu'avec `--push`."""
 from __future__ import annotations
 
@@ -59,7 +59,7 @@ def _hook(arg: str, timeout: int, status=None) -> dict:
 
 def readme(owner: str, repo: str) -> str:
     """Le README du dépôt publié (la page GitHub) : installation d'abord, puis ce que fait le cerveau, par thème ;
-    README.md de ce dépôt = readme("Lucas", "destingood/cerveau-claude"), régénéré par `brain publish`."""
+    README.md de ce dépôt = readme("destingood", "destingood/cerveau-claude"), régénéré par `brain publish`."""
     repo = repo or "PROPRIETAIRE/DEPOT"
     commun = (read_json(CODE_DIR / "brainkit" / "commun.json", {}) or {}).get("repo") or "PROPRIETAIRE/cerveau-commun"
     return f"""# 🧠 Cerveau pour Claude Code
@@ -272,7 +272,7 @@ Version {__version__}.
 """
 
 
-PRIVATE_TESTS = {"run_all.py", "test_all.py", "test_mcp.py", "test_units.py", "test_vault.py"}  # mémoire de Lucas
+PRIVATE_TESTS = {"run_all.py", "test_all.py", "test_mcp.py", "test_units.py", "test_vault.py"}  # ils lisent la vraie mémoire
 
 
 def public_tests(dest: Path) -> dict:
@@ -288,10 +288,12 @@ def public_tests(dest: Path) -> dict:
     return found
 
 
-def build(dest: Path, owner: str = "Lucas", repo: str = "") -> list:
+def build(dest: Path, owner: str = "", repo: str = "") -> list:
     """Écrit le plugin complet dans dest (le clone du dépôt) : l'ancien contenu est remplacé, .git et les tests publics
-    sont gardés. → liste des fichiers écrits (chemins relatifs)."""
+    sont gardés. owner : nom public de l'auteur, par défaut le compte GitHub de repo (jamais le prénom du réglage local).
+    → liste des fichiers écrits (chemins relatifs)."""
     dest = Path(dest)
+    owner = owner or repo.partition("/")[0] or NAME
     dest.mkdir(parents=True, exist_ok=True)
     if (dest / "brainkit").exists() and (dest / "graph.json").exists():
         raise RuntimeError(f"{dest} contient des souvenirs (graph.json) : ce n'est pas un dépôt de plugin")
@@ -396,7 +398,7 @@ def smoke(dest: Path) -> list:
         # ce qui ne reflète pas l'usage réel. On sème donc quelques souvenirs sur d'autres sujets avant de vérifier que
         # « Pixel » remonte bien : c'est tout le trajet du hook de rappel qui est éprouvé, dans des conditions réalistes.
         graine = [
-            ("fact", "Boutique Shopify de thé", "Vente de matcha en ligne, coffrets et mousseurs."),
+            ("fact", "Boutique Shopify de thé", "Vente de thé vert en ligne, coffrets et mousseurs."),
             ("fact", "Voiture grise", "Une citadine de 2018, entretien chez le garage du coin."),
             ("learning", "Sauvegarde hebdomadaire", "Exporter la base avant chaque grosse mise à jour."),
             ("reference", "Doc de l'API du site", "Les webhooks produits arrivent en JSON sur l'endpoint configuré."),
@@ -433,11 +435,10 @@ def run(dest=None, owner=None, repo=None, push=False, check=True) -> int:
     if not str(dest) or str(dest) == ".":
         print("✗ dossier du dépôt manquant : brain publish <dossier du clone GitHub> [--repo proprietaire/depot]")
         return 1
-    owner = owner or cfg.get("owner") or "Lucas"
     repo = repo or cfg.get("repo") or ""
-    files = build(dest, owner, repo)
+    files = build(dest, owner or "", repo)  # auteur : --owner, sinon le compte GitHub (publish.owner reste local)
     print(f"✓ plugin « cerveau » {__version__} construit dans {dest} ({len(files)} fichiers)")
-    for key, val in (("publish.dir", str(dest)), ("publish.owner", owner), ("publish.repo", repo)):
+    for key, val in (("publish.dir", str(dest)), ("publish.repo", repo)):
         if val and cfg.get(key.split(".")[1]) != val:
             set_config(key, val)
     bad = secrets_in(dest)

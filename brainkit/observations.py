@@ -43,7 +43,7 @@ def _day(o) -> _dt.date:
 
 
 def parse_item(raw):
-    """« 🔴 14:20 Lucas choisit Mondial Relay » → (3, (14, 20), « Lucas choisit Mondial Relay »)."""
+    """« 🔴 14:20 L'utilisateur choisit Mondial Relay » → (3, (14, 20), « L'utilisateur choisit Mondial Relay »)."""
     text = " ".join(str(raw).split())
     prio, hm = 2, None
     for _ in range(2):  # priorité et heure, dans n'importe quel ordre

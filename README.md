@@ -1,9 +1,9 @@
 # 🧠 Cerveau pour Claude Code
 
-Une mémoire persistante pour Claude Code, faite par Lucas : Claude se souvient de toi, de tes projets, de tes
+Une mémoire persistante pour Claude Code, faite par destingood : Claude se souvient de toi, de tes projets, de tes
 décisions et de ce qu'il a appris, d'une session à l'autre. Tout reste chez toi, sur ton PC.
 
-![Version 8.15.14](https://img.shields.io/badge/version-8.15.14-2ea44f) ![Python 3.10 ou plus](https://img.shields.io/badge/python-3.10%2B-3776ab) ![Windows, macOS, Linux](https://img.shields.io/badge/Windows_%C2%B7_macOS_%C2%B7_Linux-555)
+![Version 8.15.15](https://img.shields.io/badge/version-8.15.15-2ea44f) ![Python 3.10 ou plus](https://img.shields.io/badge/python-3.10%2B-3776ab) ![Windows, macOS, Linux](https://img.shields.io/badge/Windows_%C2%B7_macOS_%C2%B7_Linux-555)
 
 **Sommaire** — [Installer](#installer-une-seule-fois) · [Au quotidien](#au-quotidien) · [Ce que fait le cerveau](#ce-que-fait-le-cerveau) ·
 [Moins de tokens](#moins-de-tokens) · [Wiki et veille](#le-cerveau-en-wiki-et-la-veille-automatique) · [E-commerce](#le-cerveau-e-commerce) ·
@@ -182,7 +182,7 @@ Si tu le veux, ce que tu apprends (recherches, savoir, projets que tu déclares 
 tes amis, et le leur nourrit le tien, presque en temps réel. Claude te le propose ; rien ne part avant ton oui, et
 jamais ton profil, tes préférences ni rien de personnel ou de sensible.
 
-1. Lucas t'invite sur le dépôt GitHub privé du cerveau commun : accepte l'invitation (e-mail, ou
+1. destingood t'invite sur le dépôt GitHub privé du cerveau commun : accepte l'invitation (e-mail, ou
    https://github.com/notifications). Dépôt : `destingood/cerveau-commun`.
 2. Au démarrage suivant, Claude te le propose et te montre ce qui partirait. Rien ne part avant ton oui ; la première
    fois, une fenêtre de connexion à GitHub peut s'ouvrir.
@@ -196,7 +196,7 @@ projet X avec les amis »), le texte de tes sessions. Coordonnées, secrets, che
 (documents partagés, invitations, réunions) sont retirés du reste. « Garde ça pour moi » : la page reste privée.
 `brain commun` montre l'état ; `brain commun quitter` pour en sortir (tes pages sont retirées).
 
-Pour le lancer (Lucas) : crée sur GitHub le dépôt **privé et vide** `destingood/cerveau-commun`,
+Pour le lancer (destingood) : crée sur GitHub le dépôt **privé et vide** `destingood/cerveau-commun`,
 invite tes amis (Settings → Collaborators → Add people), puis rejoins-le le premier (dis oui quand Claude le propose).
 
 ## Prérequis
@@ -209,4 +209,4 @@ invite tes amis (Settings → Collaborators → Add people), puis rejoins-le le 
 
 `/plugin uninstall cerveau@cerveau`. Tes souvenirs restent dans `~/.claude/brain` (supprime ce dossier pour tout effacer).
 
-Version 8.15.14.
+Version 8.15.15.

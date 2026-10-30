@@ -59,34 +59,34 @@ def node(nid, t, title, body="", **kw):
     classic["nodes"][nid] = n
 
 
-node("lucas", "user", "Lucas, e-commerçant", "Vend du thé matcha en ligne.", source="utilisateur", importance=5, hits=7, used=3)
-node("tutoiement", "feedback", "Toujours tutoyer", "Pourquoi : préférence de Lucas.", importance=4)
+node("alex", "user", "Alex, e-commerçant", "Vend du thé vert en ligne.", source="utilisateur", importance=5, hits=7, used=3)
+node("tutoiement", "feedback", "Toujours tutoyer", "Pourquoi : préférence d'Alex.", importance=4)
 node("boutique", "project", "Boutique", "Shopify de thé.", meta={"path": str(PROJ), "stack": "Shopify"})
 node("choix-hebergeur", "decision", "Choix de l'hébergeur: OVH", "On reste chez OVH. Pourquoi : prix.", project="boutique",
      tags=["hebergement"], meta={"keys": "serveur, hosting"})
 node("stats-robots", "learning", "Stats Shopify polluées par robots",
      "92 % de bots : filtrer. Voir [[choix-hebergeur]] et [[boutique|la boutique]].", project="boutique", tags=["shopify", "stats"])
 node("relancer-fournisseur", "todo", "Relancer le fournisseur", "Atelier Sato.", project="boutique", meta={"due": "2026-11-10"})
-node("prix-matcha-v1", "fact", "Prix du matcha", "12 € les 30 g.", project="boutique", status="archived",
-     meta={"valid_to": "2026-09-20", "superseded_by": "prix-matcha"})
-node("prix-matcha", "fact", "Prix du matcha", "14 € les 30 g.", project="boutique", importance=4)
+node("prix-gyokuro-v1", "fact", "Prix du gyokuro", "12 € les 30 g.", project="boutique", status="archived",
+     meta={"valid_to": "2026-09-20", "superseded_by": "prix-gyokuro"})
+node("prix-gyokuro", "fact", "Prix du gyokuro", "14 € les 30 g.", project="boutique", importance=4)
 classic["edges"] = [
     {"from": "stats-robots", "to": "choix-hebergeur", "rel": "relates", "created": "2026-09-03"},
     {"from": "stats-robots", "to": "boutique", "rel": "relates", "created": "2026-09-03"},
-    {"from": "prix-matcha", "to": "prix-matcha-v1", "rel": "supersedes", "created": "2026-09-20"},
+    {"from": "prix-gyokuro", "to": "prix-gyokuro-v1", "rel": "supersedes", "created": "2026-09-20"},
     {"from": "choix-hebergeur", "to": "tutoiement", "rel": "depends_on", "created": "2026-09-04"},
-    {"from": "relancer-fournisseur", "to": "lucas", "rel": "relates", "created": "2026-09-05"},
+    {"from": "relancer-fournisseur", "to": "alex", "rel": "relates", "created": "2026-09-05"},
 ]
 GRAPH_FILE.parent.mkdir(parents=True, exist_ok=True)
 write_json(GRAPH_FILE, classic)
 # historique : sessions passées et observations datées (dont une condensée par le rêve, dans l'archive)
 write_json(TMP / "brain" / "journal" / "sessions.json", {"sessions": {
-    "s-a": {"id": "s-a", "project": "boutique", "title": "Refaire la fiche produit matcha", "first": "refais la fiche",
+    "s-a": {"id": "s-a", "project": "boutique", "title": "Refaire la fiche produit gyokuro", "first": "refais la fiche",
             "last": "publie-la", "edits": ["fiche.liquid"], "start": "2026-09-03T10:00:00", "end": "2026-09-03T11:30:00"},
     "s-b": {"id": "s-b", "project": None, "title": "Jeton ghp_" + "a1B2c3D4e5F6g7H8i9J0k1L2m3N4o5P6q7R8 collé par erreur",
             "first": "x", "start": "2026-09-04T09:00:00", "end": "2026-09-04T09:10:00"}}})
 write_json(TMP / "brain" / "journal" / "observations.json", {"version": 1, "digests": [], "obs": [
-    {"id": "o1", "at": "2026-09-03T11:00:00", "p": 3, "t": "Lucas choisit Mondial Relay pour les colis", "proj": "boutique"}]})
+    {"id": "o1", "at": "2026-09-03T11:00:00", "p": 3, "t": "Alex choisit Mondial Relay pour les colis", "proj": "boutique"}]})
 (TMP / "brain" / "journal" / "observations-archive.jsonl").write_text(json.dumps(
     {"id": "o0", "at": "2026-08-20T15:00:00", "p": 2, "t": "Première version du site en ligne", "proj": "boutique"},
     ensure_ascii=False) + "\n", encoding="utf-8")
@@ -106,31 +106,31 @@ check(n["title"] == "Choix de l'hébergeur: OVH" and n["project"] == "boutique" 
       "titre, projet, étiquettes", json.dumps(n, ensure_ascii=False))
 check((n.get("meta") or {}).get("keys") == "serveur, hosting", "mots-clés gardés")
 check(b.nodes["relancer-fournisseur"]["meta"].get("due") == "2026-11-10", "échéance gardée")
-check(b.nodes["lucas"].get("hits") == 7 and b.nodes["lucas"].get("used") == 3, "compteurs repris du cache")
-check(b.nodes["prix-matcha-v1"]["status"] == "archived" and b.nodes["prix-matcha-v1"]["meta"].get("superseded_by") == "prix-matcha",
-      "archivé + remplacé par", json.dumps(b.nodes["prix-matcha-v1"], ensure_ascii=False))
+check(b.nodes["alex"].get("hits") == 7 and b.nodes["alex"].get("used") == 3, "compteurs repris du cache")
+check(b.nodes["prix-gyokuro-v1"]["status"] == "archived" and b.nodes["prix-gyokuro-v1"]["meta"].get("superseded_by") == "prix-gyokuro",
+      "archivé + remplacé par", json.dumps(b.nodes["prix-gyokuro-v1"], ensure_ascii=False))
 rels = {(e["from"], e["to"], e["rel"]) for e in b.edges}
 for e in classic["edges"]:
     check((e["from"], e["to"], e["rel"]) in rels, f"lien {e['from']} -{e['rel']}-> {e['to']}")
 files = b.data["wiki"]["files"]
 check(files["choix-hebergeur"]["path"] == "wiki/Décisions/Choix de l'hébergeur OVH.md", "nom de fichier sûr",
       files["choix-hebergeur"]["path"])
-check(files["prix-matcha"]["path"] == "wiki/Faits/Prix du matcha.md", "page active : nom propre", files["prix-matcha"]["path"])
-check(files["prix-matcha-v1"]["path"].startswith("archive/Faits/Prix du matcha ("), "archivée : rangée dans archive/ avec sa date",
-      files["prix-matcha-v1"]["path"])
+check(files["prix-gyokuro"]["path"] == "wiki/Faits/Prix du gyokuro.md", "page active : nom propre", files["prix-gyokuro"]["path"])
+check(files["prix-gyokuro-v1"]["path"].startswith("archive/Faits/Prix du gyokuro ("), "archivée : rangée dans archive/ avec sa date",
+      files["prix-gyokuro-v1"]["path"])
 txt = page(files["stats-robots"]["path"])
 check("[[Choix de l'hébergeur OVH]]" in txt and "[[Boutique|la boutique]]" in txt, "liens [[id]] → [[Nom de page]]", txt)
 check('projet: "[[Boutique]]"' in txt, "propriété projet en lien")
 txt = page(files["choix-hebergeur"]["path"])
 check('depend_de: ["[[Toujours tutoyer]]"]' in txt, "relation typée en propriété", txt)
 check('aliases: ["Choix de l\'hébergeur: OVH"]' in txt, "alias = vrai titre quand le nom de fichier diffère", txt)
-check("[[Choix de l" not in page(files["relancer-fournisseur"]["path"]) and 'lie_a: ["[[Lucas, e-commerçant]]"]'
+check("[[Choix de l" not in page(files["relancer-fournisseur"]["path"]) and 'lie_a: ["[[Alex, e-commerçant]]"]'
       in page(files["relancer-fournisseur"]["path"]), "lien sans [[ ]] dans le texte → lie_a")
 idx = page("index.md")
-check("[[Prix du matcha]]" in idx and "Prix du matcha (" not in idx, "index : pages actives seulement")
+check("[[Prix du gyokuro]]" in idx and "Prix du gyokuro (" not in idx, "index : pages actives seulement")
 check("migration" in page("log.md"), "journal : entrée de migration")
 j9 = page("journal/2026-09.md") if (WIKI / "journal/2026-09.md").is_file() else ""
-check("💬 11:30 « Refaire la fiche produit matcha »" in j9 and "🔴 11:00 Lucas choisit Mondial Relay" in j9
+check("💬 11:30 « Refaire la fiche produit gyokuro »" in j9 and "🔴 11:00 Alex choisit Mondial Relay" in j9
       and "jeudi 3 septembre" in j9, "historique : sessions et observations dans journal/2026-09.md", j9[:600])
 check("Première version du site en ligne" in page("journal/2026-08.md"), "historique : observations archivées par le rêve aussi")
 check("ghp_a1B2" not in j9, "historique : secrets masqués", j9)
@@ -143,10 +143,10 @@ check(set(cs.get("hooks", {})) == {"SessionStart", "UserPromptSubmit", "Stop", "
 before = {p: p.stat().st_mtime_ns for p in WIKI.rglob("*.md")}
 time.sleep(0.05)
 with Brain.edit() as b2:
-    b2.touch(["lucas"])  # compteur seulement
+    b2.touch(["alex"])  # compteur seulement
 after = {p: p.stat().st_mtime_ns for p in WIKI.rglob("*.md")}
 check(before == after, "un compteur ne réécrit aucune page")
-check(Brain.load().nodes["lucas"]["hits"] == 8, "compteur gardé dans le cache")
+check(Brain.load().nodes["alex"]["hits"] == 8, "compteur gardé dans le cache")
 
 
 # ------------------------------------------------------------------ 4. commandes du cerveau en mode wiki
@@ -168,21 +168,21 @@ check(f.startswith("archive/Apprentissages/") and (WIKI / f).is_file(), "rm → 
 code, out = brain("edit", "marges-du-dropshipping", "--unarchive")
 f = Brain.load().data["wiki"]["files"]["marges-du-dropshipping"]["path"]
 check(f == "wiki/Apprentissages/Marges du dropshipping.md", "désarchiver → retour dans wiki/", f)
-code, out = brain("add", "-t", "fact", "-T", "Prix du matcha", "-b", "15 € les 30 g désormais.", "-p", "boutique",
-                  "--replaces", "prix-matcha")
+code, out = brain("add", "-t", "fact", "-T", "Prix du gyokuro", "-b", "15 € les 30 g désormais.", "-p", "boutique",
+                  "--replaces", "prix-gyokuro")
 b = Brain.load()
-new = [n for n in b.nodes.values() if n["title"] == "Prix du matcha" and n["status"] == "active"]
-old = b.nodes["prix-matcha"]
+new = [n for n in b.nodes.values() if n["title"] == "Prix du gyokuro" and n["status"] == "active"]
+old = b.nodes["prix-gyokuro"]
 check(len(new) == 1 and old["status"] == "archived", "remplacement : l'ancien archivé, le nouveau actif", out)
 fp = b.data["wiki"]["files"]
-check(fp[new[0]["id"]]["path"] == "wiki/Faits/Prix du matcha.md" and fp["prix-matcha"]["path"].startswith("archive/"),
+check(fp[new[0]["id"]]["path"] == "wiki/Faits/Prix du gyokuro.md" and fp["prix-gyokuro"]["path"].startswith("archive/"),
       "le nouveau prend le nom propre", json.dumps({k: fp[k]["path"] for k in fp if "prix" in k}, ensure_ascii=False))
-check("15 €" in page("wiki/Faits/Prix du matcha.md"), "contenu du nouveau dans la page")
+check("15 €" in page("wiki/Faits/Prix du gyokuro.md"), "contenu du nouveau dans la page")
 code, out = brain("rm", "marges-du-dropshipping", "--purge")
 check("marges-du-dropshipping" not in Brain.load().nodes and not (WIKI / "wiki/Apprentissages/Marges du dropshipping.md").exists(),
       "purge → page supprimée", out)
-code, out = brain("link", "dropshipping", "lucas", "-r", "about")
-check('a_propos_de: ["[[Lucas, e-commerçant]]"]' in page("wiki/Concepts/Dropshipping.md"), "link -r about → propriété", out)
+code, out = brain("link", "dropshipping", "alex", "-r", "about")
+check('a_propos_de: ["[[Alex, e-commerçant]]"]' in page("wiki/Concepts/Dropshipping.md"), "link -r about → propriété", out)
 code, out = brain("q", "dropshipping")
 check("Dropshipping" in out, "q trouve la page", out)
 code, out = brain("show", "Dropshipping")
@@ -194,7 +194,7 @@ p.write_text(p.read_text(encoding="utf-8").replace("Vendre sans stock.", "Vendre
              encoding="utf-8")
 check("modifié dans Obsidian" in Brain.load().nodes["dropshipping"]["body"], "modification à la main relue")
 (WIKI / "wiki/Entités").mkdir(exist_ok=True)
-(WIKI / "wiki/Entités/Atelier Sato.md").write_text("# Atelier Sato\n\nFournisseur de matcha à Uji. Voir [[Boutique]].\n",
+(WIKI / "wiki/Entités/Atelier Sato.md").write_text("# Atelier Sato\n\nFournisseur de gyokuro à Uji. Voir [[Boutique]].\n",
                                                    encoding="utf-8")
 b = Brain.load()
 sato = b.nodes.get("atelier-sato")
@@ -360,13 +360,13 @@ cfg["wiki"]["path"] = real
 
 
 # ------------------------------------------------------------------ 7. sources : texte, fichier, page web, déjà dans raw/
-article = ("# Le matcha de cérémonie\n\nLe matcha de cérémonie vient d'Uji, près de Kyoto. L'Atelier Sato le cultive à "
-           "l'ombre trois semaines. L'Atelier Sato vend aussi du hojicha. Le dropshipping de matcha marche mal : "
+article = ("# Le gyokuro de cérémonie\n\nLe gyokuro de cérémonie vient d'Uji, près de Kyoto. L'Atelier Sato le cultive à "
+           "l'ombre trois semaines. L'Atelier Sato vend aussi du hojicha. Le dropshipping de gyokuro marche mal : "
            "la fraîcheur compte. Voir aussi Shopify.\n")
-code, out = brain("wiki", "add", "-", "-T", "Le matcha de cérémonie", "--url", "https://exemple.fr/matcha", inp=article)
+code, out = brain("wiki", "add", "-", "-T", "Le gyokuro de cérémonie", "--url", "https://exemple.fr/gyokuro", inp=article)
 check(code == 0 and "page à remplir" in out, "wiki add - : source rangée + plan", out)
 raws = sorted((WIKI / "raw").glob("*.md"))
-check(len(raws) == 1 and "source: \"https://exemple.fr/matcha\"" in raws[0].read_text(encoding="utf-8"),
+check(len(raws) == 1 and "source: \"https://exemple.fr/gyokuro\"" in raws[0].read_text(encoding="utf-8"),
       "raw/ : fichier daté avec son adresse", str(raws))
 check("Dropshipping" in out and "atelier sato" in out.lower(), "plan : pages concernées et noms repérés", out)
 b = Brain.load()
@@ -460,11 +460,11 @@ code, out = brain("add", "-t", "topic", "-T", "Thé japonais", "-b", "Synthèse.
 code, out = brain("wiki", "lint")
 check("[[Uji]]" in out and "Pages à créer" in out, "lint : liens vers rien = pages à créer", out)
 check("Sources à ingérer" in out and "sans `resume:`" in out, "lint : sources en attente, pages sans résumé", out)
-code, out = brain("wiki", "log", "ingest", "Le matcha de cérémonie", "pages touchées : [[Thé japonais]]")
+code, out = brain("wiki", "log", "ingest", "Le gyokuro de cérémonie", "pages touchées : [[Thé japonais]]")
 check(code == 0 and "## [" in page("log.md").split("migration")[1] and "- pages touchées : [[Thé japonais]]" in page("log.md"),
       "log : entrée ajoutée en bas", out)
 code, out = brain("wiki", "log")
-check("ingest | Le matcha de cérémonie" in out, "log : dernières entrées", out)
+check("ingest | Le gyokuro de cérémonie" in out, "log : dernières entrées", out)
 idx = page("index.md")
 check("## Sujets (1)" in idx and "[[Thé japonais]]" in idx and "## Sources" in idx, "index.md régénéré avec les nouveaux types", idx)
 code, out = brain("wiki")
@@ -707,14 +707,14 @@ check(code == 0 and (WIKI / "wiki/Faits/Fait à annuler.md").is_file() and "fait
 
 # ------------------------------------------------------------------ 14. propriétés du wiki depuis la ligne de commande
 code, out = brain("add", "-t", "concept", "-T", "Ombrage du thé", "-b", "Trois semaines à l'ombre.", "-p", "none",
-                  "--resume", "Cultiver à l'ombre augmente la L-théanine.", "--sources", "Le matcha de cérémonie",
+                  "--resume", "Cultiver à l'ombre augmente la L-théanine.", "--sources", "Le gyokuro de cérémonie",
                   "--domaine", "recherche, business")
 txt = page("wiki/Concepts/Ombrage du thé.md")
-check('resume: "Cultiver à l\'ombre augmente la L-théanine."' in txt and 'sources: ["[[Le matcha de cérémonie]]"]' in txt
+check('resume: "Cultiver à l\'ombre augmente la L-théanine."' in txt and 'sources: ["[[Le gyokuro de cérémonie]]"]' in txt
       and 'domaine: ["recherche", "business"]' in txt, "add --resume --sources --domaine", txt)
 code, out = brain("edit", "ombrage-du-the", "--sources", "[[Guide Shopify]]", "--resume", "none")
 txt = page("wiki/Concepts/Ombrage du thé.md")
-check('sources: ["[[Le matcha de cérémonie]]", "[[Guide Shopify]]"]' in txt and "resume:" not in txt,
+check('sources: ["[[Le gyokuro de cérémonie]]", "[[Guide Shopify]]"]' in txt and "resume:" not in txt,
       "edit --sources ajoute, --resume none retire", txt)
 code, out = brain("q", "ombrage")
 check("Ombrage du thé" in out, "q : page créée avec ses propriétés", out)

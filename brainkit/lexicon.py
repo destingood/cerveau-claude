@@ -1,6 +1,6 @@
 """Tolérance de la recherche : synonymes métier FR/EN, clé phonétique française et fautes de frappe.
 
-Lucas écrit vite, souvent en phonétique (« elle les atin pas », « boutik », « shopfy ») : un mot inconnu de l'index est
+On écrit vite, souvent en phonétique (« elle les atin pas », « boutik », « shopfy ») : un mot inconnu de l'index est
 rapproché des mots connus qui se prononcent pareil ou qui n'en diffèrent que d'une lettre. Les synonymes, eux,
 élargissent toujours la requête (« commande » trouve aussi « order », « rdv » trouve « agenda »)."""
 from __future__ import annotations

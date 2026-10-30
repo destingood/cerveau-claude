@@ -21,8 +21,8 @@ import time
 from pathlib import Path
 
 from . import obsidian, wikistore as ws
-from .common import (BRAIN_DIR, STATE_DIR, FileLock, fmt_date, fold, load_config, log, now_iso, read_json, set_config,
-                     short, tokenize, write_json, write_text)
+from .common import (BRAIN_DIR, STATE_DIR, FileLock, fmt_date, fold, load_config, log, now_iso, owner_name, read_json,
+                     set_config, short, tokenize, write_json, write_text)
 
 INDEX, LOG, SCHEMA_FILE, README_FILE = "index.md", "log.md", "CLAUDE.md", "README.md"
 JOURNAL_DIR = "journal"  # historique des sessions et des observations, mois par mois (généré)
@@ -47,7 +47,7 @@ SCHEMA = """# 🧠 Wiki — schéma
 
 Ce dépôt **est** la mémoire de Claude : un wiki Markdown que Claude écrit et tient à jour, et que {owner} lit dans
 Obsidian (le « LLM Wiki » d'Andrej Karpathy). Claude ne repart jamais de zéro : chaque source, chaque question,
-chaque session enrichit des pages qui restent. {owner} choisit les sources, oriente, pose les questions ; Claude fait
+chaque session enrichit des pages qui restent. {Owner} choisit les sources, oriente, pose les questions ; Claude fait
 tout le reste (résumés, liens, classement, mises à jour, cohérence).
 
 Le cerveau (plugin « cerveau ») lit ces pages : il en injecte l'essentiel au démarrage de chaque session, rappelle à
@@ -251,7 +251,7 @@ def cloud_settings() -> dict:
 
 # ------------------------------------------------------------------------------------------ squelette
 def _owner() -> str:
-    return (load_config().get("publish") or {}).get("owner") or "Lucas"
+    return owner_name() or "l'utilisateur"
 
 
 def _plugin_repo() -> str:
@@ -265,7 +265,9 @@ def _plugin_repo() -> str:
 
 
 def schema_text() -> str:
-    return SCHEMA.format(owner=_owner(), cmd="brain", full='python "$HOME/.claude/brain/brain.py"', todo=TODO_MARK)
+    owner = _owner()
+    return SCHEMA.format(owner=owner, Owner=owner[:1].upper() + owner[1:], cmd="brain",
+                         full='python "$HOME/.claude/brain/brain.py"', todo=TODO_MARK)
 
 
 def scaffold(root) -> list:

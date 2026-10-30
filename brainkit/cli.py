@@ -1803,7 +1803,7 @@ def build_parser():
     s.add_argument("--link", action="append", help="id[:relation] (répétable)")
     s.add_argument("--id")
     s.add_argument("--source", "--src", dest="source", default="claude",
-                   help="provenance : utilisateur (dit par l'utilisateur ; « lucas » accepté), verifie, claude (défaut), deduit")
+                   help="provenance : utilisateur (dit par l'utilisateur), verifie, claude (défaut), deduit")
     s.add_argument("--keys", help="mots-clés, synonymes, questions types (indexés, pour retrouver le souvenir autrement)")
     s.add_argument("--force", action="store_true", help="créer même si un souvenir quasi identique existe")
     s.add_argument("--due", help="échéance (10/11, 10/11/2026, 3 novembre, demain, dans 2 semaines)")
@@ -2111,7 +2111,7 @@ def build_parser():
                                     "souvenirs) dans le clone du dépôt GitHub", ["publier"])
     s.add_argument("dir", nargs="?", help="clone local du dépôt (retenu ensuite)")
     s.add_argument("--repo", help="dépôt GitHub « proprietaire/depot » (retenu ensuite)")
-    s.add_argument("--owner", help="nom affiché de l'auteur (défaut : Lucas)")
+    s.add_argument("--owner", help="nom public de l'auteur (défaut : le compte GitHub de --repo)")
     s.add_argument("--push", action="store_true", help="envoyer sur GitHub après le commit (publication)")
     s.add_argument("--no-check", action="store_true", help="sans validation ni essai chez un ami fictif")
     s = cmd("self-update", cmd_selfupdate, "déployer le code (brain.py, brainkit/, tests/, skills métier) de l'arbre "

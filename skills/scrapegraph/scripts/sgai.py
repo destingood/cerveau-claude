@@ -3,7 +3,7 @@
 Usage (avec le Python de l'environnement ~/.scrapegraphai/venv) :
   python sgai.py "liste les produits avec nom et prix" https://exemple.fr/boutique
   python sgai.py "compare les tarifs" https://a.fr https://b.fr          (plusieurs pages, appels en parallèle)
-  python sgai.py "meilleurs fouets à matcha en bambou" --search 5         (recherche DuckDuckGo puis extraction)
+  python sgai.py "meilleures gourdes isothermes" --search 5              (recherche DuckDuckGo puis extraction)
   python sgai.py "résume ce document" page.html                          (fichier local : HTML, texte, Markdown)
 
 LLM local par défaut (Ollama, gratuit) : --model qwen3.5:9b, ou la variable SGAI_MODEL.

@@ -212,7 +212,7 @@ SCN_KEEP = [  # (type, titre avant, avant, titre après, après) : le second ne 
      "Seuil de livraison gratuite en Belgique", "Livraison offerte dès 59 € en Belgique."),
 ]
 SCN_TEMPORAL = [  # (type, titre, contenu, question) — le souvenir est daté au milieu de la plage visée
-    ("fact", "Appel avec le fournisseur de matcha", "Hausse de 8 % annoncée au 1er janvier.",
+    ("fact", "Appel avec le fournisseur de thé", "Hausse de 8 % annoncée au 1er janvier.",
      "qu'est-ce que le fournisseur a dit hier ?"),
     ("fact", "Shooting des coffrets", "Photos des coffrets refaites sur fond blanc pour les fiches produit.",
      "on a fait quoi la semaine dernière pour les photos ?"),
@@ -225,7 +225,7 @@ SCN_TEMPORAL = [  # (type, titre, contenu, question) — le souvenir est daté a
     ("fact", "Bilan des ventes", "Ventes du mois : 12 commandes, panier moyen 41 €.", "le bilan du mois dernier ?"),
 ]
 TEMPORAL_DECOYS = [  # même sujet, autre époque (150 jours plus tôt) : seul le canal des dates départage
-    ("fact", "Appel avec le fournisseur de matcha", "Le fournisseur confirme les délais habituels, prix inchangés."),
+    ("fact", "Appel avec le fournisseur de thé", "Le fournisseur confirme les délais habituels, prix inchangés."),
     ("fact", "Shooting des coffrets", "Premières photos des coffrets prises au smartphone, à refaire."),
     ("decision", "Campagne Meta Ads lancée", "Campagne test lancée sur le mousseur, budget 5 € par jour."),
     ("todo", "Salon du thé à Paris", "Se renseigner sur les salons du thé en région parisienne."),

@@ -18,7 +18,8 @@ import math
 import re
 from collections import Counter, defaultdict
 
-from .common import _CAMEL, STATE_DIR, STOPWORDS, days_since, fold, now_iso, read_json, short, slugify, stem, write_json
+from .common import (_CAMEL, STATE_DIR, STOPWORDS, days_since, fold, now_iso, owner_name, read_json, short, slugify,
+                     stem, sujets, write_json)
 from .store import TYPES, Brain
 
 ANALYSIS_FILE = STATE_DIR / "analysis.json"
@@ -103,7 +104,7 @@ KNOWN = """Shopify|AutoDS|Leboncoin|Gmail|Google Calendar|Google Agenda|Google A
 Lighthouse|Python|PowerShell|Git Bash|Node.js|Windows|BIOS|UEFI|Claude Code|claude.ai|Claude|MCP|Discord|iPhone|iVCam|
 WO Mic|Canva|Ahrefs|AliExpress|Stripe|PayPal|Facebook|Instagram|TikTok|Pinterest|YouTube|Notion|Excel|Google Sheets|n8n|
 Zapier|ChatGPT|Anthropic|Légifrance|EUR-Lex|GPSR|DEEE|CGV|CGU|RGPD|SEO|CRO|AMD|Ryzen|Gigabyte|NVIDIA|G-Assist|DDR5|
-EXPO|MSIX|Microsoft Store|matcha|mousseur|coffret|kit|thème|hooks|skills|plugins|connecteur|tokens|
+EXPO|MSIX|Microsoft Store|mousseur|coffret|kit|thème|hooks|skills|plugins|connecteur|tokens|
 graphify|planificateur de tâches|tâche planifiée|copie de thème|bandeau|FAQ|redirection|301"""
 KNOWN_TERMS = sorted({t.strip() for t in KNOWN.replace("\n", "").split("|") if t.strip()}, key=len, reverse=True)
 KNOWN_DISPLAY = {fold(t): t for t in KNOWN_TERMS}
@@ -115,17 +116,29 @@ ACR_STOP = {"OK", "TTC", "HT", "NB", "PS", "TODO", "III", "VII", "VIII", "XII", 
 DOM_RX = re.compile(r"(?<![\w.@-])([a-z0-9][a-z0-9-]{1,40}(?:\.[a-z0-9-]{2,40})*\.(?:fr|com|ai|io|net|org|dev|app|co|eu|shop|store))(?![\w-])")
 FILE_RX = re.compile(r"`([\w./\\-]+\.(?:py|md|json|html|js|ts|liquid|csv|xlsx|docx|pdf|ps1|bat|txt|ya?ml|toml))`")
 CAP_RX = re.compile(r"(?<=[a-zà-ÿ0-9,;:)»] )([A-ZÀ-Ý][a-zà-ÿ]{2,}(?:[ -][A-ZÀ-Ý][a-zà-ÿ]{2,}){0,2})")
-CAP_STOP = {fold(w) for w in """Lucas Le La Les Un Une Des Pour Par Avec Sans Dans Sur Mais Donc Puis Ensuite Comment Pourquoi
+CAP_STOP = {fold(w) for w in """Le La Les Un Une Des Pour Par Avec Sans Dans Sur Mais Donc Puis Ensuite Comment Pourquoi
 Quand Janvier Février Mars Avril Mai Juin Juillet Août Septembre Octobre Novembre Décembre Lundi Mardi Mercredi Jeudi
 Vendredi Samedi Dimanche Fait Faits Constat Règle Cause Why How Pourquoi Comment Voir Note Étape Point Points Files
 Program Store Devices Device Mobile Service Services Edition Home Data App Apps Code Pro Settings Paramètres""".split()}
+
+
+def _known():
+    """Sujets reconnus : ceux du code (KNOWN) et ceux de l'utilisateur (réglage local « sujets »). → (regex, affichage)"""
+    mine = {fold(w): w for w in sujets()}
+    mine = {k: w for k, w in mine.items() if k.strip() and k not in KNOWN_DISPLAY}
+    if not mine:
+        return KNOWN_RX, KNOWN_DISPLAY
+    display = {**KNOWN_DISPLAY, **mine}
+    return re.compile(r"(?<![a-z0-9])(" + "|".join(re.escape(t) for t in sorted(display, key=len, reverse=True))
+                      + r")(?:s|es)?(?![a-z0-9])"), display
 
 
 def concept_tags(text, limit=4):
     """Étiquettes proposées pour un nouveau souvenir : outils, sujets, sigles et domaines qu'il mentionne."""
     out, seen = [], set()
     ftext = fold(text)
-    found = [(m.start(), KNOWN_DISPLAY.get(m.group(1), m.group(1))) for m in KNOWN_RX.finditer(ftext)]
+    known_rx, known_display = _known()
+    found = [(m.start(), known_display.get(m.group(1), m.group(1))) for m in known_rx.finditer(ftext)]
     found += [(m.start(), m.group(0)) for m in ACR_RX.finditer(text)
               if len(m.group(0)) <= 5 and m.group(0) not in ACR_STOP and sum(c.isalpha() for c in m.group(0)) >= 2]
     found += [(m.start(), m.group(1)) for m in DOM_RX.finditer(ftext)]
@@ -148,11 +161,13 @@ def _concepts(nodes):
         disp[key][label] += 1
         kind.setdefault(key, k)
 
+    known_rx, known_display = _known()
+    stop = CAP_STOP | {fold(w) for w in owner_name().split()}  # le prénom de l'utilisateur revient partout : pas un nom
     for n in nodes:
         nid, text = n["id"], f"{n['title']}\n{n.get('body', '')}"
         ftext = fold(text)
-        for m in KNOWN_RX.finditer(ftext):
-            hit(m.group(1), nid, KNOWN_DISPLAY.get(m.group(1), m.group(1)), "sujet")
+        for m in known_rx.finditer(ftext):
+            hit(m.group(1), nid, known_display.get(m.group(1), m.group(1)), "sujet")
         runs, cur_run, last_end = [], [], -2
         for m in UPPER_TOKEN.finditer(text):  # « B850 AORUS ELITE ICE » = un nom de produit, pas quatre sigles
             if cur_run and text[last_end:m.start()] == " ":
@@ -182,7 +197,7 @@ def _concepts(nodes):
         for m in CAP_RX.finditer(text):
             phrase = m.group(1)
             words = [fold(w) for w in re.split(r"[ -]", phrase)]
-            if all(w in CAP_STOP or w in STOPWORDS for w in words) or words[0] in CAP_STOP:
+            if all(w in stop or w in STOPWORDS for w in words) or words[0] in stop:
                 continue
             if len(words) == 1 and phrase.lower() in lower:  # un seul mot qui existe aussi en minuscules : pas un nom
                 continue

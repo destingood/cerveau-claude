@@ -16,8 +16,8 @@ import re
 from collections import Counter
 from pathlib import Path
 
-from .common import (CLAUDE_HOME, STATE_DIR, FileLock, fold, load_config, now_iso, read_json, short, tokenize,
-                     write_json)
+from .common import (CLAUDE_HOME, STATE_DIR, FileLock, fold, load_config, now_iso, owner_name, read_json, short,
+                     tokenize, write_json)
 from .lexicon import phon, root, within_one
 
 SKILLS_DIR = CLAUDE_HOME / "skills"
@@ -37,10 +37,11 @@ FILE_RE = re.compile(r"\b([A-Za-z][\w-]*)\.(md|txt|json|toml|ya?ml|py|js|ts|html
 NAME_RE = re.compile(r"^[a-z0-9]+(?:-[a-z0-9]+)*$")
 LINK_RE = re.compile(r"\]\(([^)\s#]+)\)")
 CAP_RE = re.compile(r"(?<![.!?:]\s)(?<!^)\b([A-Z][A-Za-z0-9]+(?:[.-][A-Za-z0-9]+)*|[A-Z]{3,})\b")
-# Mots de description qui ne disent rien du sujet (« À utiliser quand Lucas demande… »).
+# Mots de description qui ne disent rien du sujet (« À utiliser quand l'utilisateur demande… ») ; son prénom
+# (owner_name, réglage local) s'y ajoute, relu une fois par analyse des skills (index).
 DESC_STOP = {fold(w) for w in """utiliser utilise utilisez utilisation quand lorsque demande demandes demander veut veulent
-lucas personne skill skills tape tapes taper toute toutes question questions chaque partir pour ici exemple etc
-use used when user asks want wants any every""".split()} | {"luca"}
+personne skill skills tape tapes taper toute toutes question questions chaque partir pour ici exemple etc
+use used when user asks want wants any every""".split()}
 GENERIC_NAME = {"projet", "project", "expert", "contexte", "context", "agent", "assistant", "helper", "outil", "tool",
                 "general", "generateur", "generator", "manager", "gestion", "creer", "create", "faire"}
 
@@ -133,9 +134,14 @@ def _entities(text) -> set:
     return out
 
 
-def parse(path, plugin="") -> dict | None:
+def desc_stop() -> set:
+    """Mots vides de description, prénom de l'utilisateur compris (réglage local publish.owner)."""
+    return DESC_STOP | set(tokenize(owner_name()))
+
+
+def parse(path, plugin="", stop=None) -> dict | None:
     """SKILL.md → fiche de la skill ; `plugin` : nom du plugin qui la fournit (la skill s'appelle alors « plugin:nom »,
-    comme dans l'outil Skill)."""
+    comme dans l'outil Skill) ; `stop` : mots vides de description (desc_stop(), relu de la config si absent)."""
     path = Path(path)
     try:
         text = path.read_text(encoding="utf-8", errors="replace")
@@ -159,10 +165,11 @@ def parse(path, plugin="") -> dict | None:
         kw[t] = max(kw.get(t, 0), 2)
     for t in name_toks:
         kw[t] = 3
-    kw = {t: w for t, w in kw.items() if t not in DESC_STOP and not t.isdigit()
+    stop = desc_stop() if stop is None else stop
+    kw = {t: w for t, w in kw.items() if t not in stop and not t.isdigit()
           and (len(t) >= 3 or t in name_toks or t in trig_toks)}
     pos_set = set(kw) | set(tokenize(_norm(pos)))
-    neg_only = sorted({t for t in tokenize(_norm(neg)) if len(t) >= 4 and t not in pos_set and t not in DESC_STOP})
+    neg_only = sorted({t for t in tokenize(_norm(neg)) if len(t) >= 4 and t not in pos_set and t not in stop})
     return {"name": name, "plugin": plugin, "path": str(path), "description": desc,
             "meta": {k: v for k, v in meta.items() if k not in ("name", "description")},
             "triggers": [{"text": p, "groups": g} for p in triggers for g in [phrase_groups(p)] if usable(g)],
@@ -283,7 +290,8 @@ def index(cwd=None, kc=None) -> list:
     cache = read_json(CACHE_FILE, {}) or {}
     if cache.get("v") == CACHE_V and cache.get("sig") == sig:
         return with_triggers(cache.get("skills", []), kc.get("triggers"))
-    skills = [s for s in (parse(f, plugin) for f, _, _, plugin in sig) if s]
+    stop = desc_stop()  # la config une fois pour toutes les skills, pas à chacune
+    skills = [s for s in (parse(f, plugin, stop) for f, _, _, plugin in sig) if s]
     sources = {}
     for s in skills:
         sources.setdefault(s["plugin"], []).append(s)

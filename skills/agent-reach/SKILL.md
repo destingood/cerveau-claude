@@ -31,7 +31,7 @@ d'erreur, connexions, navigateur dédié) : la suivre.
 |---|---|
 | `agent-reach channels` | plateformes, actions et paramètres disponibles |
 | `agent-reach read <url>` | lire un lien (la plateforme est déduite de l'URL) |
-| `agent-reach <plateforme> <action> [args]` | ex. `agent-reach reddit search "matcha" --limit 5` |
+| `agent-reach <plateforme> <action> [args]` | ex. `agent-reach reddit search "vélo électrique" --limit 5` |
 | `agent-reach add <plateforme>` / `remove <plateforme>` | ajouter ou retirer une plateforme |
 | `agent-reach login <plateforme>` / `logout <plateforme>` | l'utilisateur se connecte lui-même dans la fenêtre ouverte |
 | `agent-reach check <plateforme> --text` | test réel d'une plateforme |

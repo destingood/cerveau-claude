@@ -225,8 +225,9 @@ def prepare(apply_safe=True):
         lines.append("Rien à trancher : la mémoire est propre.")
     text = "\n".join(lines).rstrip() + "\n"
     write_text(DREAM_FILE, text)
-    st.update({"prepared": now_iso(), "pending": items, "sources": sources})
-    _save(st)
+    # relu juste avant d'écrire : pendant la préparation (parfois longue, en tâche de fond), un démarrage a pu noter
+    # `notified` ou `dream --done` remettre à zéro ; seuls les champs de la préparation changent
+    _save({**_state(), "prepared": now_iso(), "pending": items, "sources": sources})
     return text, items
 
 

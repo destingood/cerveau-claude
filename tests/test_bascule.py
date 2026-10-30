@@ -67,7 +67,7 @@ def plugin_in_cache(home, version_dir="8.4.0"):
     """Le plugin tel que Claude Code l'installe : cache/<marketplace>/<plugin>/<version>/ + registre des marketplaces."""
     from brainkit import publish
     dest = home / "plugins" / "cache" / "cerveau" / "cerveau" / version_dir
-    publish.build(dest, "Lucas", "destingood/cerveau-claude")
+    publish.build(dest, repo="destingood/cerveau-claude")
     (dest / ".git").exists() and shutil.rmtree(dest / ".git")
     write = {"cerveau": {"source": {"source": "git", "url": "https://github.com/destingood/cerveau-claude.git"},
                          "installLocation": str(home / "plugins" / "marketplaces" / "cerveau")}}
@@ -95,7 +95,7 @@ def graph_titles(brain):
 
 
 # ------------------------------------------------------------------ 1. le PC avant : cerveau classique en place
-HOME = TMP / "lucas" / ".claude"
+HOME = TMP / "avant" / ".claude"
 BRAIN = classic_brain(HOME)
 before = settings(HOME)
 user_hook = {"hooks": [{"type": "command", "command": "echo hook-a-moi"}]}

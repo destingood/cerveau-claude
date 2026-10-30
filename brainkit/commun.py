@@ -330,7 +330,7 @@ def public(node, brain, eligible, me, ids=None) -> dict:
             continue  # l'étiquette nomme une page privée (projet, personne…) ou contient une coordonnée
         tags.append(x)
     src = fold(str(node.get("source") or "claude")).strip()
-    src = {"lucas": "utilisateur", "user": "utilisateur", "verified": "verifie"}.get(src, src)
+    src = {"user": "utilisateur", "verified": "verifie"}.get(src, src)
     project = node.get("project")
     return {"id": ids.get(node["id"], node["id"]), "type": node["type"], "title": clean(node["title"]),
             "body": WIKI_LINK.sub(link, clean(node.get("body") or "")), "tags": tags,

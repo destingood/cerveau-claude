@@ -293,6 +293,19 @@ def set_config(dotted: str, value) -> dict:
         cur[keys[-1]] = value
     return update_config(change)
 
+def owner_name() -> str:
+    """Prénom de l'utilisateur, réglage local (publish.owner) jamais publié : le wiki s'adresse à lui ; le graphe et
+    l'index des skills ne le prennent pas pour un sujet. Vide s'il n'est pas réglé."""
+    return str((load_config().get("publish") or {}).get("owner") or "").strip()
+
+
+def sujets() -> list:
+    """Mots du domaine de l'utilisateur, réglage local (« sujets ») jamais publié : ils s'ajoutent aux sujets connus du
+    graphe et aux termes de la bibliothèque de prompts. Le code publié n'en contient aucun."""
+    vals = load_config().get("sujets") or []
+    vals = vals if isinstance(vals, (list, tuple)) else [vals]
+    return [str(w).strip() for w in vals if str(w).strip()]
+
 
 # ------------------------------------------------------------------------------------------ dates
 def now_iso() -> str:

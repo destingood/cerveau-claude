@@ -80,7 +80,7 @@ def clamp_importance(value) -> int:
         return 3
 
 
-SOURCES = {"lucas": 0.9, "user": 0.9, "utilisateur": 0.9, "verifie": 0.95, "verified": 0.95, "obsidian": 0.9,
+SOURCES = {"user": 0.9, "utilisateur": 0.9, "verifie": 0.95, "verified": 0.95, "obsidian": 0.9,
            "wiki": 0.8, "claude": 0.7, "mcp": 0.7, "import": 0.7, "auto": 0.6, "deduit": 0.5, "inference": 0.5}
 
 

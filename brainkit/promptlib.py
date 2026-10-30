@@ -13,7 +13,7 @@ import os
 import re
 import time
 
-from .common import STATE_DIR, fold, log, read_json, short, tokenize, write_json
+from .common import STATE_DIR, fold, log, read_json, short, sujets, tokenize, write_json
 
 ENDPOINT = "https://prompts.chat/api/mcp"
 CACHE_FILE = STATE_DIR / "promptlib.json"
@@ -58,7 +58,7 @@ LEX = {
     "expert": "expert", "coach": "coach", "professeur": "teacher", "prof": "teacher", "developpeur": "developer",
     "juridique": "legal", "avocat": "lawyer", "contrat": "contract", "comptable": "accountant",
     "comptabilite": "accounting", "finance": "finance", "trading": "trading", "investissement": "investment",
-    "cv": "resume", "entretien": "interview", "recette": "recipe", "recettes": "recipe", "matcha": "matcha",
+    "cv": "resume", "entretien": "interview", "recette": "recipe", "recettes": "recipe",
     "cuisine": "cooking", "voyage": "travel", "sante": "health", "sport": "fitness",
     "cours": "course", "formation": "course", "livre": "book", "livres": "book", "histoire": "story",
     "roman": "novel", "poeme": "poem", "chanson": "song", "musique": "music", "jeu": "game", "dessin": "drawing",
@@ -101,10 +101,14 @@ def detect(raw) -> tuple:
         if ph in text:
             add(LEX[ph])
             text = text.replace(ph, " ")
+    mine = {fold(x) for x in sujets()}  # mots du domaine de l'utilisateur (réglage local) : cherchés tels quels
     for w in re.findall(r"[a-z0-9]+", text):
-        w = w if w in LEX or not w.endswith(("s", "x")) else w[:-1]  # « newsletters », « réseaux » → singulier
+        if w not in LEX and w not in mine and w.endswith(("s", "x")):  # « newsletters », « réseaux » → singulier
+            w = w[:-1]
         if w in LEX:
             add(LEX[w])
+        elif w in mine:
+            add(w)
     hint = next((t for t, rx in TYPE_HINT if rx.search(fold(raw))), None)
     return kind, terms, hint
 
