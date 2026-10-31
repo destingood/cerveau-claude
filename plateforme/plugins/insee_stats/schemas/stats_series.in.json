@@ -1,0 +1,60 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "type": "object",
+  "properties": {
+    "jeu": {
+      "description": "Identifiant du jeu (liste fermée)",
+      "enum": [
+        "DS_POPULATIONS_REFERENCE",
+        "DS_SIDE_CREA_DEP_REG_NAT",
+        "DS_FILOSOFI_CC"
+      ],
+      "title": "Jeu",
+      "type": "string"
+    },
+    "geo": {
+      "description": "COM-<code commune>, DEP-<département>, REG-<région> ou FRANCE",
+      "maxLength": 12,
+      "minLength": 3,
+      "title": "Geo",
+      "type": "string"
+    },
+    "periode": {
+      "anyOf": [
+        {
+          "maxLength": 4,
+          "minLength": 4,
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "description": "Année AAAA",
+      "title": "Periode"
+    },
+    "filtres": {
+      "anyOf": [
+        {
+          "additionalProperties": {
+            "type": "string"
+          },
+          "maxProperties": 3,
+          "type": "object"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "description": "Dimension du jeu → code Insee, ex. {\"SIDE_MEASURE\": \"BURE\"}",
+      "title": "Filtres"
+    }
+  },
+  "required": [
+    "jeu",
+    "geo"
+  ],
+  "title": "stats_seriesArguments"
+}

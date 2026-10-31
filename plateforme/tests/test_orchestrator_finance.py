@@ -236,8 +236,8 @@ def test_every_pack_has_its_autonomy_threshold_role_and_plugins() -> None:
             assert manifest.domain == pack.id
 
 
-def test_every_pack_stays_experimental_until_lucas_writes_actif() -> None:
-    """Only Lucas writes « actif » in a manifest, after a measured campaign (D2, ADR-043).
+def test_every_pack_stays_experimental_until_owner_writes_actif() -> None:
+    """Only the user writes « actif » in a manifest, after a measured campaign (D2, ADR-043).
 
     His commit changes this test too; Claude Code edits neither.
     """
@@ -349,8 +349,8 @@ def test_a_golden_threshold_not_yet_decided_blocks_the_start(marker: str) -> Non
 
 def test_the_orchestrator_refuses_a_pack_without_a_domain(tmp_path: Path, config_dir: Path) -> None:
     config = _config(config_dir)
-    packs = {**load_packs(), "business": _pack("business")}
-    with pytest.raises(PackError, match="« business » : domaine absent"):
+    packs = {**load_packs(), "cuisine": _pack("cuisine")}
+    with pytest.raises(PackError, match="« cuisine » : domaine absent"):
         Orchestrator(
             config,
             project_root=tmp_path,
@@ -666,11 +666,11 @@ def test_a_plugin_that_fails_to_open_is_skipped(rig: FinanceRig) -> None:
 
 
 def test_a_domain_without_a_pack_falls_back_to_generaliste(rig: FinanceRig) -> None:
-    rig.brain.route = {**FINANCE_ROUTE, "domaine": "business"}
+    rig.brain.route = {**FINANCE_ROUTE, "domaine": "photographie"}
     rig.brain.planner = [answer_json("Réponse générale.")]
-    result = rig.ask("Quel est le point mort de ma boutique ?")
+    result = rig.ask("Quel objectif choisir pour des portraits ?")
     route = rig.payload()["route"]
-    assert (route["domain"], route["requested_domain"]) == ("generaliste", "business")
+    assert (route["domain"], route["requested_domain"]) == ("generaliste", "photographie")
     assert rig.desk.opened == []
     assert any("n'existe pas encore" in note for note in result.answer.signalements)
     assert PROMPTS.roles["generaliste"] in planner_system(rig)
@@ -691,7 +691,7 @@ def _engage(root: Path) -> Callable[[], None]:
 def test_a_kill_switch_engaged_mid_request_stops_before_the_next_model_call(
     rig: FinanceRig, tmp_path: Path
 ) -> None:
-    rig.desk.on_call = _engage(tmp_path)  # Lucas engages it while the tool runs
+    rig.desk.on_call = _engage(tmp_path)  # the user engages it while the tool runs
     rig.brain.planner = [tool_call("risk_report"), answer_json("Jamais produite.")]
     result = rig.ask("Quelle est la volatilité de mon portefeuille ?")
     assert result.answer.statut == "refus"

@@ -1,6 +1,6 @@
 # Plan — Phase 6 : packs P2 à P6, un par un (recherche, code, cyber, juridique, business)
 
-Date : 21/10/2026 · Statut : **validé par Lucas le 21/10/2026**, avec les recommandations D1 à D24
+Date : 21/10/2026 · Statut : **validé par l'utilisateur le 21/10/2026**, avec les recommandations D1 à D24
 du §14 (D8 compris : durcissement des hooks B226 et B229).
 
 ## 0. En une phrase
@@ -178,7 +178,7 @@ Aucune autre pour P2 : arXiv et Crossref passent par `httpx`, déjà présent.
 - **arXiv, Crossref, flux** : 0 €.
 - **Campagne réelle P2** : environ 30 cas du golden, une dizaine de cas de red team et les suites relancées, soit **5 à 15 $** (estimation). Une recherche approfondie réelle coûterait entre quelques dizaines de centimes et 2 $ (estimation). Les deux n'ont lieu qu'avec ton accord et les budgets fixés.
 
-## 14. Décisions demandées à Lucas
+## 14. Décisions demandées à l'utilisateur
 
 | # | Décision | Options | Ma recommandation |
 |---|---|---|---|

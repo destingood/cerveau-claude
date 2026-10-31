@@ -1,5 +1,5 @@
-"""The N2 → N3 promotion report (ADR-040, B181): each criterion of §8.3 with its value, its
-threshold, its status and the tool it comes from (R1).
+"""The N2 → N3 and N3 → N4 promotion reports (ADR-040, B181, ADR-067): each criterion of §8.3
+with its value, its threshold, its status and the tool it comes from (R1).
 
 No model writes a figure here: each one is counted or computed from what the paper loop, the
 order book, the audit journal, the backtest engine and a sealed eval campaign recorded. A
@@ -8,7 +8,7 @@ threshold still ``A_DEFINIR`` or a measure that cannot be made leaves its criter
 
 The report signs nothing. It opens with a YAML header that ``signatures.py`` reads: a signature
 from N3 on counts only when the report it cites is about the same domain and level and concludes
-``promotion_possible``. Lucas copies the proposed signature text into ``governance/approvals/``
+``promotion_possible``. The user copies the proposed signature text into ``governance/approvals/``
 himself (ADR-036); no code writes there.
 """
 
@@ -45,6 +45,7 @@ from core.finance.research.execution import Costs, CostsError
 from core.finance.research.view import LookAheadError, MarketHistory
 from core.finance.schema import SchemaError
 from core.finance.store import FinanceStore, FinanceStoreError, default_store_path
+from core.governance.demotion import DEMOTIONS, read_demotions
 from core.governance.signatures import (
     PROMOTION_DIR,
     REPORT_KIND,
@@ -54,7 +55,7 @@ from core.governance.signatures import (
 
 Status = Literal["atteint", "non_atteint", "non_evaluable", "sans_objet"]
 Verdict = Literal["promotion_possible", "promotion_impossible", "non_evaluable"]
-REPORTED = {("finance", "N3"): "N2_to_N3"}  # N3 → N4: phase 7 (ADR-040)
+REPORTED = {("finance", "N3"): "N2_to_N3", ("finance", "N4"): "N3_to_N4"}  # ADR-040, ADR-067
 EVALS_RULE = "N1_to_N2"  # golden, R1 to R5 and red team, measured live: the previous conditions
 STATUS_TEXT: Mapping[Status, str] = {
     "atteint": "atteint",
@@ -365,7 +366,7 @@ def paper_backtest_gap(
 
 def gap_criterion(gap: Gap | Unavailable) -> Criterion:
     """§8.3 asks the gap measured and explained, without a threshold: the criterion is reached
-    once it is measured, and its detail is the explanation Lucas reads before signing."""
+    once it is measured, and its detail is the explanation the user reads before signing."""
     name = "Écart paper/backtest"
     source = "`engine.run` (moteur maison, ADR-024) contre `LoopLog.valuations` et le carnet"
     shown = "mesuré et expliqué (§8.3) ; aucun seuil d'écart dans autonomy.yaml"
@@ -418,6 +419,121 @@ def nightly_criterion() -> Criterion:
         "sans_objet",
         "evals/ : aucune suite nocturne",
     )
+
+
+@dataclass(frozen=True)
+class Decisions:
+    """The user's answers to N3 approval requests, in live: granted with his code, or refused."""
+
+    granted: int
+    refused: int
+
+    @property
+    def total(self) -> int:
+        return self.granted + self.refused
+
+
+def owner_decisions(journal: AuditJournal) -> Decisions | Unavailable:
+    """Every live approval the user decided, from the verified journal: ``ACCORDEE`` by ``owner``
+    (his code), ``REFUSEE`` from an interface or by ``owner``. A refusal by the policy (wrong
+    codes, a Risk Gate that no longer agrees) and an expiry are not his answer and do not count."""
+    if not journal.path.exists():
+        return Decisions(0, 0)
+    chain = verify(journal.path)
+    if not chain.ok:
+        return Unavailable(
+            f"journal d'audit invalide ({len(chain.errors)} erreur(s)) : `cerveau audit verify`"
+        )
+    granted = refused = 0
+    try:
+        for line in journal.path.read_text(encoding="utf-8").splitlines():
+            entry = json.loads(line)
+            if entry.get("event") != "APPROVAL" or not entry.get("payload_ref"):
+                continue
+            payload = journal.read_payload(entry["payload_ref"])
+            if not isinstance(payload, Mapping) or payload.get("environment") != "live":
+                continue
+            actor, state = entry.get("actor"), payload.get("state")
+            if state == "ACCORDEE" and actor == "owner":
+                granted += 1
+            elif state == "REFUSEE" and actor in ("owner", "interface"):
+                refused += 1
+    except (AuditError, OSError, ValueError) as exc:
+        return Unavailable(f"journal d'audit illisible ({type(exc).__name__})")
+    return Decisions(granted, refused)
+
+
+_DECISIONS_SOURCE = (
+    "journal d'audit vérifié : entrées APPROVAL en live, ACCORDEE par owner ou REFUSEE depuis "
+    "une interface (ADR-035)"
+)
+
+
+def approvals_count(found: Decisions | Unavailable, minimum: int | str) -> Criterion:
+    name = "Approbations N3 décidées par l'utilisateur"
+    threshold = _threshold(minimum)
+    shown = f"≥ {minimum}"
+    if isinstance(found, Unavailable):
+        return Criterion(name, found.reason, shown, "non_evaluable", _DECISIONS_SOURCE)
+    details = () if threshold is not None else (_unknown("approvals_min", str(minimum)),)
+    reached = threshold is not None and found.total >= threshold
+    return Criterion(
+        name, str(found.total), shown, _status(reached, threshold), _DECISIONS_SOURCE, details
+    )
+
+
+def agreement_rate(found: Decisions | Unavailable, minimum: float | str) -> Criterion:
+    """The share of CERVEAU's N3 proposals the user granted: his agreement with CERVEAU."""
+    name = "Taux d'accord l'utilisateur / CERVEAU"
+    threshold = _threshold(minimum)
+    shown = f"≥ {minimum}"
+    if isinstance(found, Unavailable):
+        return Criterion(name, found.reason, shown, "non_evaluable", _DECISIONS_SOURCE)
+    if found.total == 0:
+        return Criterion(
+            name,
+            "aucune décision",
+            shown,
+            "non_evaluable",
+            _DECISIONS_SOURCE,
+            ("Taux non calculable sans approbation décidée.",),
+        )
+    rate = found.granted / found.total
+    details = (f"{found.granted} accordée(s), {found.refused} refusée(s).",)
+    if threshold is None:
+        details += (_unknown("agreement_rate_min", str(minimum)),)
+    reached = threshold is not None and rate >= threshold
+    return Criterion(
+        name, f"{rate:.4f}", shown, _status(reached, threshold), _DECISIONS_SOURCE, details
+    )
+
+
+def live_drawdown_criterion() -> Criterion:
+    """Same risk conditions as N2 → N3 (§8.3): the live drawdown is not measured yet (B350), so
+    the promotion stays impossible (R7)."""
+    return Criterion(
+        "Drawdown live",
+        "non mesuré : aucune valorisation du compte live n'est enregistrée",
+        "≤ max_paper_drawdown_pct (règle N2_to_N3), sur le compte live",
+        "non_evaluable",
+        "aucun outil : B350",
+    )
+
+
+def demotions_criterion(root: Path, domain: str) -> Criterion:
+    """No demotion of the domain may stand: a demotion trigger fired against N4 (ADR-067)."""
+    name = "Rétrogradations en vigueur"
+    source = f"{DEMOTIONS.as_posix()} (ADR-067)"
+    found = read_demotions(root)
+    if isinstance(found, str):
+        return Criterion(name, found, "aucune", "non_evaluable", source)
+    mine = [d for d in found if d.domain == domain]
+    details = tuple(
+        f"{d.at} : {d.from_level} → {d.to_level} ({d.trigger}) : {d.reason}"
+        for d in mine[:MAX_LISTED]
+    )
+    status: Status = "non_atteint" if mine else "atteint"
+    return Criterion(name, str(len(mine)), "aucune", status, source, details)
 
 
 # Gathering, read only --------------------------------------------------------------------------
@@ -556,11 +672,24 @@ def build_report(
     key = REPORTED.get((domain, level))
     if key is None:
         raise PromotionReportError(
-            f"aucun rapport de promotion pour {domain} {level} : finance N3 seulement "
-            "(N3 → N4 en phase 7, ADR-040)"
+            f"aucun rapport de promotion pour {domain} {level} : finance N3 ou N4 seulement "
+            "(ADR-040, ADR-067)"
         )
     rule = getattr(config.autonomy.promotion.finance, key)
     journal = AuditJournal(default_journal_path(root))
+    if key == "N3_to_N4":
+        decisions = owner_decisions(journal)
+        n2_n3 = config.autonomy.promotion.finance.N2_to_N3
+        criteria: tuple[Criterion, ...] = (
+            current_level(effective_level(config.autonomy, root, domain), required="N3"),
+            approvals_count(decisions, rule.approvals_min),
+            agreement_rate(decisions, rule.agreement_rate_min),
+            incidents(execution_incidents(journal), n2_n3.execution_incidents_max),
+            live_drawdown_criterion(),
+            demotions_criterion(root, domain),
+            evals_criterion(_evals(root, config, evals, journal, at), evals),
+        )
+        return PromotionReport(domain, "N4", at, config.digest, criteria)
     loop = _loop(root)
     orders = _orders(root)
     criteria = (
@@ -581,6 +710,10 @@ def build_report(
 # Rendering and writing ---------------------------------------------------------------------------
 
 
+def previous_level(level: Level) -> Level:
+    return LEVELS[max(LEVELS.index(level) - 1, 0)]
+
+
 def _cell(text: str) -> str:
     return " ".join(text.split()).replace("|", "\\|")
 
@@ -598,7 +731,7 @@ def render(report: PromotionReport) -> str:
         f'genere_le: "{at.isoformat(timespec="seconds")}"',
         f'config: "{report.config_digest}"',
         "---",
-        f"# Rapport de promotion {report.domain} N2 → {report.level}",
+        f"# Rapport de promotion {report.domain} {previous_level(report.level)} → {report.level}",
         "",
         f"Généré le {at:%d/%m/%Y à %H:%M} ({at:%z}) par "
         f"`cerveau promotion report {report.domain} --to {report.level}` (ADR-040), sous la "

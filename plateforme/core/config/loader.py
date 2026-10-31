@@ -1,6 +1,6 @@
 """Configuration loader (annex B) with blocking markers (R7).
 
-A value ``A_DEFINIR`` (Lucas must decide) or ``A_VERIFIER`` (must be checked
+A value ``A_DEFINIR`` (the user must decide) or ``A_VERIFIER`` (must be checked
 against an official source) is never guessed: every feature that depends on it
 is blocked. ``Config.require(feature)`` raises ``BlockedFeatureError`` and
 ``cerveau config check`` lists what is blocked and why.
@@ -37,7 +37,7 @@ Level = Literal["N0", "N1", "N2", "N3", "N4"]
 Score = Annotated[float, Field(ge=0, le=1, strict=True, allow_inf_nan=False)]
 LEVELS: tuple[str, ...] = ("N0", "N1", "N2", "N3", "N4")
 # Annex C.4, plus EXECUTION_ISOLEE (ADR-051): a task carried out in an isolated container,
-# whose only output is a proposal (a patch) that Lucas applies himself.
+# whose only output is a proposal (a patch) that the user applies himself.
 ActionClass = Literal[
     "LECTURE",
     "CALCUL",
@@ -149,8 +149,10 @@ class PromotionN2N3(_Strict):
 
 
 class PromotionN3N4(_Strict):
-    approvals_min: int | Marker
-    agreement_rate_min: float | Marker
+    """B248: bounded like N2 → N3; a rate is a share of the N3 approvals the user accepted."""
+
+    approvals_min: Annotated[int, Field(strict=True, ge=1)] | Marker
+    agreement_rate_min: Annotated[float, Field(gt=0, le=1, allow_inf_nan=False)] | Marker
     manual_signature: Literal["required"]
 
 
@@ -295,14 +297,14 @@ class PerRequest(_Strict):
 
 
 class PerCommittee(_Strict):
-    # ADR-028, D18: one committee session exceeds a request; no real session until Lucas decides.
+    # ADR-028, D18: one committee session exceeds a request; no real session until the user decides.
     max_tokens: Annotated[int, Field(gt=0)] | Marker
     max_seconds: Annotated[int, Field(gt=0)] | Marker
     max_tool_calls: Annotated[int, Field(gt=0)] | Marker
 
 
 class PerDeepResearch(PerCommittee):
-    # ADR-045, D13: one deep research exceeds a request; no real run until Lucas decides. The
+    # ADR-045, D13: one deep research exceeds a request; no real run until the user decides. The
     # caps of the plan are its upper bounds: a value may only be lowered here.
     max_sub_questions: int = Field(gt=0, le=5)
     max_reads: int = Field(gt=0, le=12)
@@ -315,7 +317,7 @@ class BudgetsConfig(_Strict):
     per_committee: PerCommittee
     per_deep_research: PerDeepResearch
     # ADR-054, F5: one code agent task, its counted tokens included (a ceiling charged counts none);
-    # no real task until Lucas decides.
+    # no real task until the user decides.
     per_code_agent: PerCommittee
     on_exceeded: list[
         Literal["refuse_new_requests", "downgrade_to_fast_or_local", "stop_non_critical_tasks"]
@@ -393,7 +395,7 @@ class DataSourcesConfig(_Strict):
         return None if hosts is None else normalise_list(hosts)
 
 
-# The golden thresholds Lucas set (D6, D17; D4 of phase 6 for each new pack). The configuration
+# The golden thresholds the user set (D6, D17; D4 of phase 6 for each new pack). The configuration
 # may raise them, never lower them (R9): only an ADR moves these floors. A pack whose threshold
 # is missing here does not start (ADR-043).
 GOLDEN_FLOORS: Mapping[str, float] = MappingProxyType(
@@ -404,6 +406,7 @@ GOLDEN_FLOORS: Mapping[str, float] = MappingProxyType(
         "code_golden_min_score": 0.80,
         "cyber_golden_min_score": 0.80,
         "juridique_fr_golden_min_score": 0.80,
+        "business_golden_min_score": 0.80,
     }
 )
 # The highest level each domain may ever reach, from the table of section 9.2 (ADR-043). The
@@ -421,7 +424,7 @@ DOMAIN_MAX_LEVELS: Mapping[str, str] = MappingProxyType(
 )
 # The level a domain without a signed promotion rule may hold: generaliste keeps the N1 of phase
 # 1, every other domain enters and stays at N0 (D3, ADR-043). Only an ADR raises it here; a
-# domain under ``promotion`` is capped by Lucas's signatures instead.
+# domain under ``promotion`` is capped by the user's signatures instead.
 UNSIGNED_LEVELS: Mapping[str, str] = MappingProxyType({"generaliste": "N1"})
 
 
@@ -432,6 +435,7 @@ class EvalThresholds(_Strict):
     code_golden_min_score: Score | Marker
     cyber_golden_min_score: Score | Marker
     juridique_fr_golden_min_score: Score | Marker
+    business_golden_min_score: Score | Marker
     behavior_suites_R1_to_R5_pass_rate: Score
     regression_block_delta: float | Marker
 
@@ -447,9 +451,30 @@ class EvalThresholds(_Strict):
         return self
 
 
+class Calibration(_Strict):
+    """When a calibration drift demotes (section 8.3, ADR-064)."""
+
+    min_resolved: Annotated[int, Field(ge=1)] | Marker
+    window_days: Annotated[int, Field(ge=7)] | Marker
+    brier_drift_max: Annotated[float, Field(ge=0, le=1, allow_inf_nan=False)] | Marker
+
+
+class Learning(_Strict):
+    """The champion / challenger gate of the learned layer (ADR-011, ADR-065)."""
+
+    holdout_percent: Annotated[int, Field(ge=10, le=50)]
+    promotion_margin: Annotated[float, Field(gt=0, le=1, allow_inf_nan=False)] | Marker
+    min_held_out_cases: Annotated[int, Field(ge=1)] | Marker
+    rollback_window_days: Annotated[int, Field(ge=1)] | Marker
+    min_support: Annotated[int, Field(ge=2)] | Marker  # one feedback alone changes nothing
+    max_feedback_per_user: Annotated[int, Field(ge=1)] | Marker
+
+
 class EvalsConfig(_Strict):
     thresholds: EvalThresholds
     judge_human_review_sample_weekly: int = Field(ge=0)
+    calibration: Calibration
+    learning: Learning
 
 
 Seconds = Annotated[float, Field(gt=0, allow_inf_nan=False)]
@@ -530,7 +555,7 @@ Money = Annotated[Decimal, Field(ge=0)] | Marker
 
 
 class TradingCosts(_Strict):
-    # R10: fees and slippage are always included; unknown until Lucas gives his broker's (D13).
+    # R10: fees and slippage are always included; unknown until the user gives his broker's (D13).
     commission_pct: Money  # percent of the amount traded: 0.1 for 0.1 %
     min_commission_eur: Money  # per order
     slippage_bps: Money
@@ -538,7 +563,7 @@ class TradingCosts(_Strict):
 
 
 class Optimization(_Strict):
-    # ADR-019: the covariance of every optimizer; mean-variance waits for Lucas's risk aversion.
+    # ADR-019: the covariance of every optimizer; mean-variance waits for the user's risk aversion.
     covariance: Literal["ledoit_wolf"]
     risk_aversion: Annotated[float, Field(gt=0)] | Marker
 
@@ -683,7 +708,7 @@ class Copilot(_Strict):
     max_window_sessions: Sessions
 
 
-# The D9 gates, the D7 embargo and the D12 tolerances Lucas validated for phase 3, fixed before
+# The D9 gates, the D7 embargo and the D12 tolerances the user validated for phase 3, fixed before
 # the first measure. The configuration may make them stricter, never looser (R9): only an ADR
 # moves these bounds.
 RESEARCH_BOUNDS: dict[str, tuple[Literal["min", "max"], float]] = {
@@ -751,7 +776,7 @@ class NtfySettings(_Strict):
 
 
 class InterfacesConfig(_Strict):
-    """ADR-037 and ADR-038. Tokens, the TOTP secret and the ntfy topic live in Lucas's
+    """ADR-037 and ADR-038. Tokens, the TOTP secret and the ntfy topic live in the user's
     environment variables, never in this file (R6)."""
 
     discord: DiscordSettings
@@ -767,7 +792,7 @@ CERVEAU_ROOT = Path(__file__).resolve().parents[2]
 IMAGE_REF = r"^(?:[a-z0-9][a-z0-9._/:-]*@)?sha256:[0-9a-f]{64}$"
 # owner/name of a GitHub repository.
 GITHUB_REPO = r"^[A-Za-z0-9-]{1,39}/[A-Za-z0-9._-]{1,100}$"
-# Bounds of one check container that Lucas set (E5). The configuration may lower them, never
+# Bounds of one check container that the user set (E5). The configuration may lower them, never
 # raise them (R9): only an ADR moves them.
 CHECKS_CEILINGS: Mapping[str, float] = MappingProxyType(
     {"cpus": 2, "memory_mb": 2048, "pids": 256, "timeout_seconds": 300}
@@ -779,7 +804,7 @@ class CodeRepository(_Strict):
     path: Path
     # owner/name of its GitHub mirror, read by code_ci without a token (E6).
     github: Annotated[str, Field(pattern=GITHUB_REPO)] | None = None
-    # pytest runs only in an environment Lucas prepared for this repository (E3), never after an
+    # pytest runs only in an environment the user prepared for this repository (E3), never after an
     # install inside the check container.
     pytest: Annotated[bool, Field(strict=True)] = False
     image: Annotated[str, Field(pattern=IMAGE_REF)] | None = None
@@ -819,7 +844,7 @@ class CodeChecks(_Strict):
         return self
 
 
-# Bounds of one code agent task that Lucas set (F5, ADR-054): turns, dollars held by the API
+# Bounds of one code agent task that the user set (F5, ADR-054): turns, dollars held by the API
 # proxy (ADR-053), seconds and container. The configuration may lower them, never raise them (R9).
 AGENT_CEILINGS: Mapping[str, int | float | Decimal] = MappingProxyType(
     {
@@ -888,6 +913,36 @@ def _code_errors(directory: Path, code: CodeConfig) -> list[str]:
     ]
 
 
+# --- business.yaml (P6 of phase 6, ADR-061) ----------------------------------------------------
+
+VAT_RATE_KEYS = ("normal", "intermediaire", "reduit", "particulier")
+
+
+class VatRate(_Strict):
+    # A rate as a string ("0.20") so that the calculator reads an exact Decimal.
+    rate: Annotated[Decimal, Field(gt=0, lt=1)] | Marker
+    # The article that sets it and where and when it was read (I7).
+    source: Annotated[str, Field(min_length=1)]
+
+
+class VatConfig(_Strict):
+    # Last day the CGI references hold: the VAT rules move to the CIBS on 2027-01-01
+    # (BOI-RES-TVA-000253). Past it, the VAT operation refuses until the rates are re-read (R10).
+    valid_until: date | Marker
+    rates: dict[Literal["normal", "intermediaire", "reduit", "particulier"], VatRate]
+
+    @model_validator(mode="after")
+    def _every_rate(self) -> VatConfig:
+        missing = [key for key in VAT_RATE_KEYS if key not in self.rates]
+        if missing:
+            raise ValueError("taux absents : " + ", ".join(missing))
+        return self
+
+
+class BusinessConfig(_Strict):
+    vat: VatConfig
+
+
 FILES: dict[str, tuple[str, type[BaseModel]]] = {
     "models": ("models.yaml", ModelsConfig),
     "autonomy": ("autonomy.yaml", AutonomyConfig),
@@ -905,6 +960,7 @@ FILES: dict[str, tuple[str, type[BaseModel]]] = {
     "committee": ("committee.yaml", CommitteeConfig),
     "interfaces": ("interfaces.yaml", InterfacesConfig),
     "code": ("code.yaml", CodeConfig),
+    "business": ("business.yaml", BusinessConfig),
 }
 
 
@@ -961,7 +1017,9 @@ FEATURES: dict[str, Feature] = {
             "compliance:exclusions_personnelles",
         ),
     ),
-    "live_trading": Feature("Exécution live (R3 : activée à la main par Lucas)", ("live:",)),
+    "live_trading": Feature(
+        "Exécution live (R3 : activée à la main par l'utilisateur)", ("live:",)
+    ),
     "kill_switch": Feature("Kill switch (cible de temps)", ("risk:kill_switch.target_seconds",)),
     "kill_switch.data_loss": Feature(
         "Kill switch sur perte d'une connexion continue aux données",
@@ -987,6 +1045,14 @@ FEATURES: dict[str, Feature] = {
     "data.legifrance": Feature(
         "Source Légifrance (API PISTE)", ("data_sources:sources.legifrance",), "legifrance"
     ),
+    "data.entreprises": Feature(
+        "Source API Recherche d'entreprises", ("data_sources:sources.entreprises",), "entreprises"
+    ),
+    "data.insee_melodi": Feature(
+        "Source INSEE Melodi (statistiques)", ("data_sources:sources.insee_melodi",), "insee_melodi"
+    ),
+    # The validity date of the VAT rates; a rate still A_VERIFIER blocks only its own operation.
+    "business.vat": Feature("Taux de TVA du calculateur business", ("business:vat.valid_until",)),
     "data.quality_gate": Feature(
         "Contrôle qualité des données au-delà de N1", ("data_sources:quality",)
     ),
@@ -1019,6 +1085,21 @@ FEATURES: dict[str, Feature] = {
             "evals:thresholds.juridique_fr_golden_min_score",
             "evals:thresholds.regression_block_delta",
         ),
+    ),
+    "evals.gate.business": Feature(
+        "Seuil du golden set Business",
+        ("evals:thresholds.business_golden_min_score", "evals:thresholds.regression_block_delta"),
+    ),
+    "learning.calibration_drift": Feature(
+        "Dérive de calibration des prévisions (rétrogradation, ADR-064)", ("evals:calibration",)
+    ),
+    "learning.patterns": Feature(
+        "Motifs d'erreurs et de retours, challengers proposés (ADR-065, B78)",
+        ("evals:learning.min_support", "evals:learning.max_feedback_per_user"),
+    ),
+    "learning.promotion": Feature(
+        "Mise en ligne automatique d'un challenger de la couche apprise (ADR-065, D4)",
+        ("evals:learning", "evals:thresholds.regression_block_delta", "budgets:llm_budget_eur"),
     ),
     "finance.market_risk": Feature(
         "Mesures de risque de marché (VaR, CVaR, Kupiec, stress hypothétiques)",
@@ -1165,6 +1246,7 @@ class Config:
     committee: CommitteeConfig
     interfaces: InterfacesConfig
     code: CodeConfig
+    business: BusinessConfig
     markers: tuple[MarkerHit, ...]
     digest: str
 
@@ -1345,6 +1427,7 @@ def load_config(directory: Path) -> Config:
         committee=parsed["committee"],  # type: ignore[arg-type]
         interfaces=parsed["interfaces"],  # type: ignore[arg-type]
         code=parsed["code"],  # type: ignore[arg-type]
+        business=parsed["business"],  # type: ignore[arg-type]
         markers=tuple(markers),
         digest=config_digest(directory),
     )

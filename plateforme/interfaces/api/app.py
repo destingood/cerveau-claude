@@ -1,10 +1,10 @@
 """The local internal API (ADR-037, D1): the only door of the Discord bot and the dashboard.
 
-`cerveau api serve` binds it to 127.0.0.1 (D16), and only Lucas starts it (D22). Every route
+`cerveau api serve` binds it to 127.0.0.1 (D16), and only the user starts it (D22). Every route
 needs the bearer token of ``CERVEAU_API_TOKEN``, compared in constant time; the dashboard's
 read-only pages take the same token as an HTTP Basic password instead (ADR-041). A Host other
 than the loopback is refused, and there is neither documentation route nor OpenAPI schema. No
-route rearms the kill switch: rearming stays at Lucas's interactive terminal (ADR-034).
+route rearms the kill switch: rearming stays at the user's interactive terminal (ADR-034).
 
 Answers carry states, counts and percentages, never an amount or a position, except the
 summary of an approval request (D12). The configuration is read again at each request, so an
@@ -229,7 +229,7 @@ def create_app(
 
     @api.get("/approvals/pending")
     def pending() -> dict[str, Any]:
-        """The requests waiting for Lucas, oldest first, with what each one asks (D12)."""
+        """The requests waiting for the user, oldest first, with what each one asks (D12)."""
         now, request_id, audit, loaded = clock(), _request_id(), journal(), config()
         with ExitStack() as stack:
             opened, closed = views.approval_store(stack, root, loaded, audit, request_id)
@@ -247,7 +247,7 @@ def create_app(
 
     @api.post("/approvals/{approval_id}/approve")
     def approve(approval_id: UUID, body: CodeBody) -> dict[str, Any]:
-        """Check Lucas's one-time code; a granted intent is sent at once, to paper while the live
+        """Check the user's one-time code; a granted intent is sent at once, to paper while the live
         is disabled (D10), exactly as ``cerveau paper envoyer`` would send it."""
         now, request_id, audit, loaded = clock(), _request_id(), journal(), config()
         with ExitStack() as stack:
@@ -321,7 +321,7 @@ def create_app(
     def refuse(
         approval_id: UUID, body: Annotated[RefusalBody | None, Body()] = None
     ) -> dict[str, Any]:
-        """Refuse a request on Lucas's behalf, from an interface (ADR-035)."""
+        """Refuse a request on the user's behalf, from an interface (ADR-035)."""
         now, request_id, audit, loaded = clock(), _request_id(), journal(), config()
         with ExitStack() as stack:
             opened = store(stack, loaded, audit, request_id, approval_id, now)
@@ -375,7 +375,7 @@ def create_app(
 
     @api.post("/events/ignored")
     def ignored(body: IgnoredBody) -> dict[str, Any]:
-        """Journal that the bot ignored a user or a channel other than Lucas's private messages;
+        """Journal that the bot ignored a user or a channel other than the user's private messages;
         neither an identifier nor a content is kept (R5)."""
         request_id = _request_id()
         journal().append(
@@ -389,7 +389,7 @@ def create_app(
 
     @api.get("/bot/settings")
     def bot_settings() -> dict[str, Any]:
-        """Whom the Discord bot answers; 503 while ``interfaces.yaml`` leaves it to Lucas, so the
+        """Whom the Discord bot answers; 503 while ``interfaces.yaml`` leaves it to the user, so the
         bot refuses to start rather than answer anyone (R7, ADR-037)."""
         loaded = config()
         blockers = loaded.blockers("interfaces.discord")

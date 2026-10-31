@@ -3,7 +3,7 @@
 
 Identifiers, names and links imitate the shape of ATT&CK; descriptions are made up for the
 tests. Nothing here is a fact about ATT&CK: the real bundle is only read by
-`cerveau cyber attack-fetch`, which Lucas runs. The evals build their index from it in the run's
+`cerveau cyber attack-fetch`, which the user runs. The evals build their index from it in the run's
 temporary home, never in ``var/``.
 """
 

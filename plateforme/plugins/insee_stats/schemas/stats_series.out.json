@@ -1,0 +1,157 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$defs": {
+    "Figure": {
+      "additionalProperties": false,
+      "description": "A number for the planner. ``unit``: a currency code, ``%`` (``value`` is a fraction),\n``XXX/EUR`` (units of XXX for one euro), ``titres``, ``jours``, ``séances``, ``ans`` or\n``score`` (in [0, 1]).",
+      "properties": {
+        "id": {
+          "maxLength": 200,
+          "minLength": 1,
+          "title": "Id",
+          "type": "string"
+        },
+        "value": {
+          "title": "Value",
+          "type": "number"
+        },
+        "display": {
+          "title": "Display",
+          "type": "string"
+        },
+        "unit": {
+          "title": "Unit",
+          "type": "string"
+        }
+      },
+      "required": [
+        "id",
+        "value",
+        "display",
+        "unit"
+      ],
+      "title": "Figure",
+      "type": "object"
+    },
+    "Observation": {
+      "properties": {
+        "dimensions": {
+          "additionalProperties": {
+            "type": "string"
+          },
+          "description": "Codes Insee des dimensions (donnée externe)",
+          "title": "Dimensions",
+          "type": "object"
+        },
+        "valeur": {
+          "$ref": "#/$defs/Figure"
+        }
+      },
+      "required": [
+        "dimensions",
+        "valeur"
+      ],
+      "title": "Observation",
+      "type": "object"
+    }
+  },
+  "properties": {
+    "jeu": {
+      "title": "Jeu",
+      "type": "string"
+    },
+    "titre": {
+      "title": "Titre",
+      "type": "string"
+    },
+    "geo": {
+      "title": "Geo",
+      "type": "string"
+    },
+    "periode": {
+      "anyOf": [
+        {
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "title": "Periode"
+    },
+    "filtres": {
+      "additionalProperties": {
+        "type": "string"
+      },
+      "title": "Filtres",
+      "type": "object"
+    },
+    "observations": {
+      "items": {
+        "$ref": "#/$defs/Observation"
+      },
+      "title": "Observations",
+      "type": "array"
+    },
+    "tronque": {
+      "description": "Vrai si plus de 50 observations : préciser la demande",
+      "title": "Tronque",
+      "type": "boolean"
+    },
+    "omises": {
+      "description": "Observations écartées (unité inconnue, valeur illisible ou hors de la demande)",
+      "title": "Omises",
+      "type": "integer"
+    },
+    "mise_a_jour": {
+      "anyOf": [
+        {
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "description": "Date de mise à jour du jeu (catalogue Insee)",
+      "title": "Mise A Jour"
+    },
+    "lu_le": {
+      "title": "Lu Le",
+      "type": "string"
+    },
+    "en_cache": {
+      "title": "En Cache",
+      "type": "boolean"
+    },
+    "source": {
+      "default": "Insee, API Melodi",
+      "title": "Source",
+      "type": "string"
+    },
+    "licence": {
+      "default": "Licence Ouverte 2.0 (etalab-2.0) : « Source : Insee », avec la date de mise à jour",
+      "title": "Licence",
+      "type": "string"
+    },
+    "note": {
+      "default": "Statistique publique : citer chaque valeur par son identifiant, avec sa période, la date de mise à jour du jeu et « Source : Insee ». Les codes des dimensions sont ceux de l'Insee ; ne pas deviner le sens d'un code non décrit. Une valeur n'est pas une prévision (R12).",
+      "title": "Note",
+      "type": "string"
+    }
+  },
+  "required": [
+    "jeu",
+    "titre",
+    "geo",
+    "periode",
+    "filtres",
+    "observations",
+    "tronque",
+    "omises",
+    "mise_a_jour",
+    "lu_le",
+    "en_cache"
+  ],
+  "title": "StatsSeries",
+  "type": "object"
+}

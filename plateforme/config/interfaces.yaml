@@ -1,10 +1,10 @@
-# Interfaces de supervision (phase 5 : ADR-037, ADR-038, ADR-041). Seul Lucas lance l'API et le
+# Interfaces de supervision (phase 5 : ADR-037, ADR-038, ADR-041). Seul l'utilisateur lance l'API et le
 # bot (D22) ; Claude Code ne se connecte ni à Discord ni à ntfy.
 # Les secrets vivent dans des variables d'environnement de l'utilisateur, jamais ici (R6) :
 # DISCORD_BOT_TOKEN, CERVEAU_API_TOKEN, CERVEAU_TOTP_SECRET, NTFY_TOKEN et NTFY_TOPIC (au moins
 # 32 caractères aléatoires : sur ntfy.sh, le sujet vaut un mot de passe).
 discord:
-  owner_user_id: A_DEFINIR   # identifiant numérique du compte Discord de Lucas, entre guillemets
+  owner_user_id: A_DEFINIR   # identifiant numérique du compte Discord de l'utilisateur, entre guillemets
 api:
   host: 127.0.0.1            # boucle locale seule (D16)
   port: A_DEFINIR            # port local de l'API et du dashboard (1024 à 65535)

@@ -157,7 +157,7 @@ def candidate(**changes: Any) -> StrategySpec:
 
 
 def approve(directory: Path, spec: StrategySpec, report: str, **changes: str) -> None:
-    """What Lucas would copy by hand; tests write it in a temporary folder only."""
+    """What the user would copy by hand; tests write it in a temporary folder only."""
     text = approval_text(
         spec, report_sha256=report, code=code_sha256(spec, REPO), grid=grid_sha256(spec), day=DAY
     )
@@ -190,7 +190,7 @@ def report(directory: Path, body: dict[str, str], name: str = "croisement_mm-202
 def test_the_approval_text_is_a_valid_approval_to_copy_by_hand() -> None:
     spec = candidate()
     text = approval_text(spec, report_sha256="a" * 64, code="b" * 64, grid="c" * 64, day=DAY)
-    assert text.startswith("# À recopier à la main par Lucas seul")
+    assert text.startswith("# À recopier à la main par l'utilisateur seul")
     found = StrategyApproval.model_validate(yaml.safe_load(text))
     assert (found.strategie, found.rapport_sha256, found.date) == (spec.id, "a" * 64, DAY)
 
@@ -303,20 +303,20 @@ def test_a_report_must_exist_be_readable_and_be_audited(tmp_path: Path) -> None:
     assert "absente du journal d'audit" in unaudited
 
 
-def test_only_the_protocol_decisions_of_lucas_audit_a_report(tmp_path: Path) -> None:
+def test_only_the_protocol_decisions_of_owner_audit_a_report(tmp_path: Path) -> None:
     journal = tmp_path / "audit" / "journal.jsonl"
     assert audited_reports(journal) == frozenset()
     audit = AuditJournal(journal)
     cited = {"command": PROTOCOL_COMMAND, "rapport_sha256": "a" * 64}
-    audit.append(actor="lucas", event="DECISION", payload=cited)
-    audit.append(actor="lucas", event="TOOL_CALL", payload={**cited, "rapport_sha256": "b" * 64})
+    audit.append(actor="owner", event="DECISION", payload=cited)
+    audit.append(actor="owner", event="TOOL_CALL", payload={**cited, "rapport_sha256": "b" * 64})
     audit.append(
         actor="orchestrator", event="DECISION", payload={**cited, "rapport_sha256": "c" * 64}
     )
     audit.append(
-        actor="lucas", event="DECISION", payload={"command": "autre", "rapport_sha256": "d" * 64}
+        actor="owner", event="DECISION", payload={"command": "autre", "rapport_sha256": "d" * 64}
     )
-    audit.append(actor="lucas", event="DECISION", payload=None)
+    audit.append(actor="owner", event="DECISION", payload=None)
     assert audited_reports(journal) == frozenset({"a" * 64})
     with journal.open("a", encoding="utf-8") as handle:
         handle.write("{\n")

@@ -1,6 +1,6 @@
 # ADR-060 — Évals hors ligne du pack Juridique FR et remplacement du cas `pack-juridique-absent`
 
-- Statut : **proposé** (R9 : retrait d'un cas existant ; Lucas a choisi ce remplacement au plan de
+- Statut : **proposé** (R9 : retrait d'un cas existant ; l'utilisateur a choisi ce remplacement au plan de
   P5, H11 ; à valider au compte rendu de P5)
 - Date : 2026-10-27
 - Phase : 6 (P5)
@@ -22,7 +22,7 @@ pack généraliste avec la note « « juridique_fr » n'existe pas encore ». Le
 - Évals : fixtures servies au vrai serveur (retenu) ; serveur simulé (ne teste ni le jeton OAuth,
   ni les versions, ni les plafonds) ; mesure réelle seulement (réseau, identifiants, coût).
 - Cas : remplacer par un domaine sans pack prévu et reprendre la question dans le pack juridique
-  (retenu, H11) ; modifier l'attente du cas (R9 le réserve à Lucas) ; le retirer sans remplacement
+  (retenu, H11) ; modifier l'attente du cas (R9 le réserve à l'utilisateur) ; le retirer sans remplacement
   (le groupe tomberait sous les cinq cas exigés).
 
 ## Décision
@@ -54,7 +54,7 @@ pack généraliste avec la note « « juridique_fr » n'existe pas encore ». Le
   hors ligne.
 - Hors ligne, les refus R16 et H8 sont écrits par la route scriptée : qu'un modèle refuse un
   conseil personnalisé, un acte ou un calcul appliqué au cas réel ne se mesure qu'en réel. Le pack
-  ne passe `actif` qu'après cette mesure, sur accord de Lucas (H12 : aucune campagne en P5).
+  ne passe `actif` qu'après cette mesure, sur accord de l'utilisateur (H12 : aucune campagne en P5).
 - Une fixture reproduit la forme de l'API décrite par la documentation PISTE lue le 2026-10-27 ;
   un écart avec les réponses réelles ne se voit qu'au premier appel réel (A_VERIFIER, backlog).
 - Une page hors liste est écartée dès la recherche (`web_search` filtre ses résultats) : le cas du
@@ -62,4 +62,4 @@ pack généraliste avec la note « « juridique_fr » n'existe pas encore ». Le
   liste se mesure dans la red team.
 - Les rapports d'évals passés citent encore `pack-juridique-absent` : mesures passées, inchangées.
 - `pack-business-absent` tombera de la même façon à l'arrivée du pack business ; B263 reste ouvert.
-- Si Lucas refuse ce remplacement, il choisit l'attente du cas dans une modification dédiée.
+- Si l'utilisateur refuse ce remplacement, il choisit l'attente du cas dans une modification dédiée.

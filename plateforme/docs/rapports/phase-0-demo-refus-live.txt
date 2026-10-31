@@ -4,12 +4,12 @@ sha256 avant : bbefaba32b3a0b43e9925e7e357a3b5f6e06cfdeec09b02bf0fe40688a72ee19
 ## 1. Edit -> .claude/hooks/protect_paths.py
 entrée : {"file_path": "C:\\Users\\User\\Documents\\cerveau-plateforme\\config\\live.yaml", "old_string": "enabled: false", "new_string": "enabled: true"}
 code de sortie : 2
-BLOQUÉ par le hook CERVEAU : config/live.yaml est protégé (R3) : seul Lucas le modifie, à la main
+BLOQUÉ par le hook CERVEAU : config/live.yaml est protégé (R3) : seul l'utilisateur le modifie, à la main
 
 ## 2. Write -> .claude/hooks/protect_paths.py
 entrée : {"file_path": "C:\\Users\\User\\Documents\\cerveau-plateforme\\config\\live.yaml", "content": "enabled: true\n"}
 code de sortie : 2
-BLOQUÉ par le hook CERVEAU : config/live.yaml est protégé (R3) : seul Lucas le modifie, à la main
+BLOQUÉ par le hook CERVEAU : config/live.yaml est protégé (R3) : seul l'utilisateur le modifie, à la main
 
 ## 3. Bash -> .claude/hooks/guard_shell.py
 entrée : {"command": "sed -i 's/enabled: false/enabled: true/' config/live.yaml"}

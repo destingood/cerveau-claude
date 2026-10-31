@@ -1,7 +1,7 @@
 """What one request carries through the graph besides its state.
 
 The graph state may be traced (commit 13); the ``Run`` is not. It holds the raw question, the
-pseudonym table and the raw URLs Lucas gave, and it hands out the metered models (each call
+pseudonym table and the raw URLs the user gave, and it hands out the metered models (each call
 checked against the request's budget and the kill switch) and the tools of the routed pack's
 plugins. A plugin's server starts at the call of its first tool (B98): a request that calls two
 of the finance pack's seven plugins starts two processes, not seven.
@@ -269,7 +269,7 @@ class Run:
 
     def __post_init__(self) -> None:
         # ADR-036: every node, the intake and the plugins' scope see the effective level, never
-        # a written level above what Lucas signed.
+        # a written level above what the user signed.
         capped = effective_autonomy(self.config.autonomy, self.project_root).autonomy
         self.config = dataclasses.replace(self.config, autonomy=capped)
 

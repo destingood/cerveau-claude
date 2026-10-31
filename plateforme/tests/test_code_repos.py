@@ -184,7 +184,7 @@ def test_a_range_an_option_or_a_path_is_not_a_revision(rev: str) -> None:
 # --- the allow list ---------------------------------------------------------------------------
 
 
-def test_the_allow_list_is_blocked_while_lucas_has_not_filled_it() -> None:
+def test_the_allow_list_is_blocked_while_owner_has_not_filled_it() -> None:
     with pytest.raises(RepoError, match=re.escape("fonction bloquée « code.repositories »")):
         load_repositories(REPO_ROOT / "config")
 
@@ -212,11 +212,11 @@ def test_the_allow_list_is_read_from_the_configuration(
 
 
 def test_a_listed_repository_opens(reader: RepoReader, repo: Path) -> None:
-    opened = reader.open([listed("projet", repo, github="lucas/projet")], "projet")
+    opened = reader.open([listed("projet", repo, github="owner/projet")], "projet")
     assert (opened.id, opened.root, opened.github, opened.pytest) == (
         "projet",
         repo.resolve(),
-        "lucas/projet",
+        "owner/projet",
         False,
     )
 

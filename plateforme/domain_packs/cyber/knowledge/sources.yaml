@@ -32,7 +32,7 @@ guides:
     licence: CC BY-SA 4.0
     verifie_le: "2026-10-27"
   # Adresse écartée des résultats de recherche par le filtre R5 des adresses (signal fuite_prompt,
-  # core/guardrails/injection.py) : la page n'est pas lue tant que Lucas n'a pas tranché
+  # core/guardrails/injection.py) : la page n'est pas lue tant que l'utilisateur n'a pas tranché
   # (docs/backlog.md).
   - titre: "OWASP Top 10 LLM 2025 — LLM07 System Prompt Leakage"
     url: https://genai.owasp.org/llmrisk/llm072025-system-prompt-leakage/
@@ -53,7 +53,7 @@ guides:
 #
 # produits_suivis : noms de logiciels que cve_watch envoie au NVD comme mots-clés quand la
 # question n'en donne pas (G10) ; rien d'autre ne part. 5 noms au plus, de 1 à 100 caractères,
-# sans caractère de contrôle. Vide : seul Lucas la remplit.
+# sans caractère de contrôle. Vide : seul l'utilisateur la remplit.
 produits_suivis: []
 #
 # sources : corpus RAG autorisé du pack. Vide : pas de RAG en phase 6 (docs/backlog.md, B57).

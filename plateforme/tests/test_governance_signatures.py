@@ -180,7 +180,7 @@ def _header(**fields: str) -> str:
         "level": "N2",
         "date": "2026-10-21",
         "promotion_report_sha256": f'"{"a" * 64}"',
-        "signed_by": "lucas",
+        "signed_by": "owner",
     } | fields
     body = "\n".join(f"{k}: {v}" for k, v in base.items() if v != "-")
     return f"---\n{body}\n---\nSigné à la main.\n"

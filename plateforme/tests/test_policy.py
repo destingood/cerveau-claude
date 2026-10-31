@@ -312,11 +312,13 @@ def test_phase_2_classes() -> None:
     assert dict(PHASE_DOMAIN_ACTION_CLASSES) == {
         "finance": frozenset({"LECTURE", "CALCUL"}),
         "code": frozenset({"LECTURE", "CALCUL", "EXECUTION_ISOLEE"}),  # ADR-049, ADR-051
+        "business": frozenset({"LECTURE", "CALCUL"}),  # ADR-063
     }
     assert frozenset({"CALCUL", "EXECUTION_ISOLEE"}) == ROUTED_ACTION_CLASSES
     assert phase_action_classes("finance") == frozenset({"LECTURE", "CALCUL"})
     assert phase_action_classes("code") == frozenset({"LECTURE", "CALCUL", "EXECUTION_ISOLEE"})
-    for domain in ("generaliste", "recherche", "cyber", "test", "inconnu", ""):
+    assert phase_action_classes("business") == frozenset({"LECTURE", "CALCUL"})
+    for domain in ("generaliste", "recherche", "cyber", "juridique_fr", "test", "inconnu", ""):
         assert phase_action_classes(domain) == PHASE_ACTION_CLASSES
 
 
@@ -329,11 +331,12 @@ GRANTED_BEYOND_READING = {
     ("CALCUL", "finance"),  # ADR-022
     ("CALCUL", "code"),  # ADR-049
     ("EXECUTION_ISOLEE", "code"),  # ADR-051
+    ("CALCUL", "business"),  # ADR-063
 }
 
 
 @given(
-    domain=st.sampled_from(["generaliste", "finance", "recherche", "code", "test"]),
+    domain=st.sampled_from(["generaliste", "finance", "recherche", "code", "business", "test"]),
     known=st.booleans(),
     action_class=st.sampled_from(ACTION_CLASSES),
     level=st.sampled_from(LEVELS),
@@ -348,6 +351,54 @@ def test_the_phase_grants_nothing_beyond_reading_and_the_pack_capabilities(
         assert result.effect == "executer"
         assert not kill
         assert action_class == "LECTURE" or (action_class, domain) in GRANTED_BEYOND_READING
+
+
+@pytest.mark.parametrize("level", LEVELS)
+def test_the_business_pack_computes_but_never_sends_nor_writes(level: str) -> None:
+    """ADR-063: biz_calc is granted; a draft is never sent and nothing is written (I5)."""
+    business = _at(level, domain="business")
+    assert _decide(business, "business", "CALCUL").effect == "executer"
+    for action_class in (
+        "COMMUNICATION_EXTERNE",
+        "ECRITURE_INTERNE",
+        "IRREVERSIBLE",
+        "FINANCIERE",
+        "EXECUTION_ISOLEE",
+    ):
+        refused = _decide(business, "business", action_class)
+        assert refused.effect == "refuser"
+    isolated = _decide(business, "business", "EXECUTION_ISOLEE")
+    assert any("aucune capacité EXECUTION_ISOLEE" in r for r in isolated.reasons)
+
+
+def test_every_path_of_the_business_domain() -> None:
+    """ADR-063: every level, class, kill switch, live state and gate answer. The business domain
+    executes reading and computing where the matrix says ``auto``, without the kill switch, live
+    or a gate answer, and nothing else."""
+    autonomies = {level: _at(level, domain="business") for level in LEVELS}
+    for level, action_class, kill, live, gate in product(
+        LEVELS, ACTION_CLASSES, (False, True), (False, True), GATES
+    ):
+        result = _decide(
+            autonomies[level],
+            "business",
+            action_class,
+            kill_switch=kill,
+            live_enabled=live,
+            risk_gate=gate,
+        )
+        cell = SPEC_MATRIX[action_class][LEVELS.index(level)]
+        granted = action_class in ("LECTURE", "CALCUL") and cell == "auto"
+        expected = granted and not kill and not live and gate is None
+        assert result.effect == ("executer" if expected else "refuser")
+
+
+def test_the_real_business_domain_computes_at_its_level() -> None:
+    level = AUTONOMY.domains["business"].level
+    result = _decide(AUTONOMY, "business", "CALCUL")
+    assert (result.autonomy_level, result.decision, result.effect) == (level, "auto", "executer")
+    assert _decide(AUTONOMY, "business", "COMMUNICATION_EXTERNE").effect == "refuser"
+    assert _decide(AUTONOMY, "generaliste", "CALCUL").effect == "refuser"
 
 
 @pytest.mark.parametrize("level", LEVELS)
@@ -372,7 +423,7 @@ ALERT = (
     "ALERTE : la configuration live est activée alors qu'aucun adaptateur live n'existe (R3) : "
     "toute action est refusée"
 )
-DOMAINS = ("generaliste", "finance", "recherche", "test", "inconnu")
+DOMAINS = ("generaliste", "finance", "recherche", "code", "business", "test", "inconnu")
 
 
 def test_order_constants() -> None:
@@ -493,20 +544,28 @@ def test_a_risk_gate_answer_for_a_non_financial_action_is_refused(action_class: 
 
 
 def _phase_3_executes(domain: str, action_class: str, level: str, kill: bool) -> bool:
-    """Phase 3's rule, written apart: ``auto`` for reading everywhere and computing in finance."""
+    """The rule, written apart: ``auto`` for reading everywhere, computing in finance, code and
+    business (ADR-022, ADR-048, ADR-063), isolated execution in code alone (ADR-051)."""
     cell = SPEC_MATRIX[action_class][LEVELS.index(level)]
+    granted = {
+        ("CALCUL", "finance"),
+        ("CALCUL", "code"),
+        ("CALCUL", "business"),
+        ("EXECUTION_ISOLEE", "code"),
+    }
     return (
         domain != "inconnu"
         and not kill
         and cell == "auto"
-        and (action_class == "LECTURE" or (action_class, domain) == ("CALCUL", "finance"))
+        and (action_class == "LECTURE" or (action_class, domain) in granted)
     )
 
 
 def test_no_path_is_more_permissive_than_phase_3() -> None:
     """Every domain, level, class, kill switch, live state and gate answer, for both entry points.
 
-    ``decide`` still executes exactly what phase 3 executed, without live and without a gate
+    ``decide`` executes exactly what phases 3 to 6 granted (reading, computing in finance, code and
+    business, isolated execution in code), without live and without a gate
     answer, and nothing else; ``decide_order`` never executes: it drafts at N1, sends to paper
     at N2 and files for approval at N3 an order the gate accepted or reduced, without the kill
     switch and without live.
@@ -591,3 +650,39 @@ def test_kill_switch_unknown_state_counts(tmp_path: Path, monkeypatch: pytest.Mo
 
 def test_repository_kill_switch_is_not_engaged() -> None:
     assert kill_switch_engaged(REPO_ROOT) is False
+
+
+# The plugin's max_autonomy_level caps the domain's level, never raises it (B292) ----------------
+
+
+def test_the_plugin_ceiling_caps_the_domain_level() -> None:
+    """generaliste at N1, a plugin capped at N0: the matrix is read at N0."""
+    capped = _decide(
+        _at("N1", domain="generaliste"), "generaliste", "ECRITURE_INTERNE", max_level="N0"
+    )
+    assert (capped.autonomy_level, capped.decision) == ("N0", "refus")
+    assert "plafonné à N0 par le manifeste du plugin" in capped.reasons[0]
+
+
+def test_a_higher_ceiling_changes_nothing() -> None:
+    autonomy = _at("N1", domain="generaliste")
+    for ceiling in ("N1", "N4"):
+        decision = _decide(autonomy, "generaliste", "LECTURE", max_level=ceiling)
+        assert decision == _decide(autonomy, "generaliste", "LECTURE")
+
+
+@given(
+    level=st.sampled_from(LEVELS),
+    ceiling=st.sampled_from(LEVELS),
+    action_class=st.sampled_from(ACTION_CLASSES),
+    domain=st.sampled_from(("generaliste", "finance", "code", "business")),
+)
+def test_the_ceiling_never_raises_a_level_nor_grants_more(
+    level: str, ceiling: str, action_class: str, domain: str
+) -> None:
+    autonomy = _at(level, domain=domain)
+    plain = _decide(autonomy, domain, action_class)
+    capped = _decide(autonomy, domain, action_class, max_level=ceiling)
+    assert LEVELS.index(capped.autonomy_level) == min(LEVELS.index(level), LEVELS.index(ceiling))
+    # Whatever the capped decision grants, the uncapped one grants too.
+    assert capped.effect == "refuser" or capped.effect == plain.effect

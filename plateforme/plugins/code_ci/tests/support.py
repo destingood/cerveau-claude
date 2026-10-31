@@ -24,7 +24,7 @@ from tests.net_doubles import chunks
 
 FIXED_NOW = datetime(2026, 10, 22, 9, 30, tzinfo=UTC)
 NOW_S = FIXED_NOW.timestamp()
-GITHUB = "lucas-exemple/projet"
+GITHUB = "utilisateur-exemple/projet"
 SHA = "4f2c" + "a" * 36
 OTHER_SHA = "9b1e" + "c" * 36
 # Built from parts: no token-looking text sits in the repository.
@@ -76,7 +76,7 @@ def a_run(run_id: int = 101, **fields: Any) -> dict[str, Any]:
         "pull_requests": [],
         "created_at": "2026-10-21T18:02:11Z",
         "updated_at": "2026-10-21T18:05:40Z",
-        "actor": {"login": "lucas-exemple", "id": 1},
+        "actor": {"login": "owner-exemple", "id": 1},
         "run_attempt": 1,
         "run_started_at": "2026-10-21T18:02:11Z",
         "head_commit": {"id": SHA, "message": "Ajoute la lecture des runs"},
@@ -165,5 +165,5 @@ def allow_lists(example: Path) -> dict[str, list[CodeRepository]]:
         "exemple": [listed("exemple", example, github=GITHUB)],
         "sans_github": [listed("exemple", example)],
         "vide": [],
-        "cerveau": [listed("cerveau", REPO_ROOT, github="lucas-exemple/cerveau")],
+        "cerveau": [listed("cerveau", REPO_ROOT, github="owner-exemple/cerveau")],
     }

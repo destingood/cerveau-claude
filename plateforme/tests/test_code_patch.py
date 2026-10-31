@@ -150,7 +150,7 @@ def special(monkeypatch: pytest.MonkeyPatch, root: Path, **kinds: str) -> Iterat
         ("docs/requirements", False),
     ],
 )
-def test_paths_that_run_code_on_lucass_machine_are_flagged(path: str, risky: bool) -> None:
+def test_paths_that_run_code_on_owners_machine_are_flagged(path: str, risky: bool) -> None:
     assert is_risky(path) is risky
 
 

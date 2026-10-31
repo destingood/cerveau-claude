@@ -41,13 +41,13 @@ class Cycle:
     world: World
     journal: AuditJournal
     sent: UUID  # Monday's intent: approved, sent, filled on Tuesday
-    waiting: UUID  # Tuesday's intent: still waiting for Lucas's answer
+    waiting: UUID  # Tuesday's intent: still waiting for the user's answer
 
 
 @pytest.fixture(scope="module")
 def cycle(tmp_path_factory: pytest.TempPathFactory) -> Iterator[Cycle]:
-    """Monday at N3: an intent gated and asked to Lucas, granted, gated again and sent. Tuesday:
-    its fill, the reconciliation, and a second intent that waits for Lucas."""
+    """Monday at N3: an intent gated and asked to the user, granted, gated again and sent. Tuesday:
+    its fill, the reconciliation, and a second intent that waits for the user."""
     root: Path = tmp_path_factory.mktemp("cycle")
     journal = AuditJournal(root / "audit" / "journal.jsonl")
     built = World(root, config("N3"), Fixed(days=(MONDAY, TUESDAY)), journal=journal)
@@ -102,7 +102,7 @@ def test_each_intent_s_cycle_reads_from_the_journal_without_a_gap(cycle: Cycle) 
     assert [step(e) for e in of_intent(cycle.journal, cycle.sent)] == [
         *GATED,
         *ASKED,
-        ("lucas", "APPROVAL", "ACCORDEE"),
+        ("owner", "APPROVAL", "ACCORDEE"),
         *GATED,  # replayed on the approved intent, just before sending
         ("policy", "APPROVAL", "CONSOMMEE"),
         ("policy", "ORDER_STATE", "VALIDEE"),

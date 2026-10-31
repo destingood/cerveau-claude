@@ -1,6 +1,6 @@
 # ADR-002 — Orchestration : LangGraph plutôt que le Claude Agent SDK
 
-- Statut : accepté (Lucas, 2026-10-18, décision D13 du plan de phase 1)
+- Statut : accepté (l'utilisateur, 2026-10-18, décision D13 du plan de phase 1)
 - Date : 2026-10-17
 - Phase : 0 (mise en œuvre en phase 1)
 
@@ -9,7 +9,7 @@ L'orchestrateur exécute les 8 nœuds de la section 7.1. Il doit :
 - intercaler des nœuds déterministes (moteur de politique, Porte de risque) entre la décision d'un
   modèle et toute action (R1, R2) ;
 - appeler plusieurs fournisseurs, dont des modèles locaux (niveau `local` de `config/models.yaml`) ;
-- suspendre une exécution en attente d'une approbation de Lucas (niveaux N1 et N2) ;
+- suspendre une exécution en attente d'une approbation de l'utilisateur (niveaux N1 et N2) ;
 - être testable nœud par nœud et tracé dans Langfuse (ADR-004).
 
 Faits vérifiés le 2026-10-17 (PyPI) : `langgraph` 1.2.16 (MIT, publié le 2026-10-16) ;

@@ -6,6 +6,10 @@ placeholders of the template, and a value is never substituted again (a page tha
 ``{{now}}`` stays as it is). The version written to the audit journal (R11) names the annex D
 version and hashes every template and the role of every domain pack, so that any change is
 visible; the system prompt carries the role of the pack the request was routed to.
+
+The learned sections of a pack (``learned/<pack>/``, ADR-065) follow its role under a title that
+says they are unverified lessons; they are hashed into the version too, so a promotion or a
+rollback shows in the journal. A pack without learned sections keeps the version it had.
 """
 
 from __future__ import annotations
@@ -17,6 +21,7 @@ from dataclasses import dataclass
 from pathlib import Path
 from types import MappingProxyType
 
+from core.learning.layer import LEARNED_DIR, SECTION_TITLES, SECTIONS, LockedCoreError, read_section
 from core.orchestrator.packs import PACKS_DIR, pack_ids
 from core.orchestrator.state import RequestContext
 
@@ -84,6 +89,7 @@ class PromptSet:
         *,
         prompts_dir: Path = PROMPTS_DIR,
         packs_dir: Path = PACKS_DIR,
+        learned_dir: Path = LEARNED_DIR,
     ) -> PromptSet:
         digest = hashlib.sha256()
         templates: dict[str, Template] = {}
@@ -101,6 +107,14 @@ class PromptSet:
             role = strip_header(raw_role).strip()
             if not role or _PLACEHOLDER.search(role):
                 raise PromptError(f"rôle du pack « {pack} » vide ou contenant une variable")
+            for section in SECTIONS:
+                try:
+                    learned = read_section(pack, section, learned_dir)
+                except LockedCoreError as exc:  # fail closed: no prompt from a refused section
+                    raise PromptError(f"couche apprise du pack « {pack} » : {exc}") from None
+                if learned is not None:
+                    digest.update(f"learned:{pack}:{section}\0{learned}\0".encode())
+                    role += f"\n\n{SECTION_TITLES[section]} :\n{learned}"
             roles[pack] = role
         header = _HEADER.match(raw_system)
         version = _SYSTEM_VERSION.search(header.group(0)) if header else None

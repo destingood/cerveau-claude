@@ -24,6 +24,7 @@ from mcp.server import MCPServer
 from mcp.types import ToolAnnotations
 from pydantic import BaseModel
 
+import core.mcp.adapter as adapter_module
 from core.audit.chain import AuditJournal, verify
 from core.budget.gate import RequestBudget, RequestBudgetExceeded
 from core.config import load_config
@@ -47,7 +48,7 @@ from core.models.meter import CEILING_TIER
 from core.net.allowlist import ALLOWLIST_ENV, OFF_LIST_REFUSAL
 from core.net.guard import FetchError
 from core.orchestrator.runtime import LazyPlugin, _Holder
-from core.policy.engine import KILL_SWITCH_FILE
+from core.policy.engine import KILL_SWITCH_FILE, decide
 from plugins.finance_risk.server import build_server as build_risk_server
 from plugins.web_research.models import PageText, SearchResults
 from plugins.web_research.search import Hit
@@ -983,7 +984,7 @@ DIGEST = "0123456789abcdef" * 4
 def test_an_isolated_call_journals_the_digest_of_its_patch(
     tmp_path: Path, patch: Any, digest: str | None
 ) -> None:
-    """The patch Lucas applies is traced to its request (R11); a malformed digest is not kept."""
+    """The patch the user applies is traced to its request (R11); a malformed digest is not kept."""
     scope = code_scope(tmp_path)
     isolated_session(
         scope,
@@ -1094,3 +1095,22 @@ def test_a_task_cut_at_its_timeout_costs_its_ceiling(tmp_path: Path) -> None:
     [entry] = entries(scope)
     assert entry["payload"]["status"] == "delai"
     assert entry["payload"]["spend"] == [call.to_payload()]
+
+
+def test_the_policy_reads_the_manifest_ceiling(
+    scope: RequestScope, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """The plugin's max_autonomy_level reaches the policy for every tool (B292)."""
+    seen: list[object] = []
+
+    def recording(*args: Any, **kwargs: Any) -> Any:
+        seen.append(kwargs.get("max_level"))
+        return decide(*args, **kwargs)
+
+    monkeypatch.setattr(adapter_module, "decide", recording)
+    plugin = session(scope, lambda p: asyncio.sleep(0, p))
+    ceiling = yaml.safe_load((PLUGIN / "plugin.yaml").read_text(encoding="utf-8"))[
+        "max_autonomy_level"
+    ]
+    assert plugin.tools
+    assert seen and set(seen) == {ceiling}

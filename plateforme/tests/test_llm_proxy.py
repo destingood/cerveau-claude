@@ -149,7 +149,7 @@ def test_the_image_holds_the_proxy_alone_and_runs_it_isolated_without_root() -> 
     ]
     instructions = [line.split()[0] for line in lines]
     assert instructions == ["FROM", "COPY", "USER", "EXPOSE", "ENTRYPOINT"]
-    assert lines[0] == "FROM python:3.12-slim@sha256:A_DEFINIR"  # pinned by Lucas, R7
+    assert lines[0] == "FROM python:3.12-slim@sha256:A_DEFINIR"  # pinned by the user, R7
     assert lines[1].endswith(" llm_proxy.py /app/llm_proxy.py")
     assert lines[2] == "USER 65534:65534"
     assert lines[3] == f"EXPOSE {LISTEN_PORT}"

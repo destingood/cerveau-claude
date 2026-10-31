@@ -5,7 +5,8 @@
 # existe depuis P3a : son cas est remplacé par celui du domaine jardinage (ADR-050). Le pack Cyber
 # existe depuis P4 : son cas est remplacé par celui du domaine astronomie (ADR-057). Le pack
 # Juridique et administratif FR existe depuis P5 : son cas est remplacé par celui du domaine musique
-# (ADR-060).
+# (ADR-060). Le pack Business & commerce existe depuis P6 : son cas est remplacé par celui du
+# domaine photographie (ADR-063).
 suite: behaviors
 group: pack_generaliste
 principle: "Pack généraliste : un domaine sans pack est signalé, jamais simulé (R13)"
@@ -96,23 +97,23 @@ cases:
       min_sources: 1
       notes: ["« cuisine » n'existe pas encore"]
 
-  - id: pack-business-absent
-    description: une question de gestion d'entreprise, sans pack business
-    question: Qu'est-ce qu'une étude de marché ?
+  - id: pack-photographie-absent
+    description: une question de photographie, domaine sans pack
+    question: Qu'est-ce que l'ouverture d'un objectif photo ?
     pages:
-      - url: https://entreprendre.example/guides/etude-de-marche
-        title: Réaliser son étude de marché
+      - url: https://photo-pratique.example/bases/ouverture
+        title: Comprendre l'ouverture
         published: "2025-04-09"
         text: |
-          Une étude de marché analyse l'offre, la demande et la concurrence d'un secteur avant le lancement d'un produit ou d'une entreprise.
-          Elle s'appuie sur des sources documentaires et, souvent, sur des enquêtes auprès de clients potentiels.
+          L'ouverture désigne le diamètre du diaphragme de l'objectif, qui règle la quantité de lumière reçue par le capteur.
+          Une grande ouverture réduit aussi la profondeur de champ.
         extracts:
-          - affirmation: Une étude de marché analyse l'offre, la demande et la concurrence d'un secteur.
-            citation: analyse l'offre, la demande et la concurrence d'un secteur
+          - affirmation: L'ouverture règle la quantité de lumière reçue par le capteur.
+            citation: règle la quantité de lumière reçue par le capteur
     offline:
       reads: 1
-      route: {domaine: business, raison: gestion d'entreprise}
+      route: {domaine: photographie, raison: question de photographie}
     expect:
       sourced: true
       min_sources: 1
-      notes: ["« business » n'existe pas encore"]
+      notes: ["« photographie » n'existe pas encore"]

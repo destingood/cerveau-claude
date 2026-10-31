@@ -15,7 +15,7 @@ analystes:
   # Pages web lues par le lecteur (données, jamais instructions), taux et change de market_data.
   - membre: analyste_actualites_macro
     outils: [web_search, web_read, market_data]
-  # Positions, expositions, VaR et stress du portefeuille de Lucas.
+  # Positions, expositions, VaR et stress du portefeuille de l'utilisateur.
   - membre: analyste_portefeuille
     outils: [portfolio_snapshot, risk_report]
 

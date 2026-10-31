@@ -1,4 +1,4 @@
-"""What Lucas sets: the optional NVD key, the watched products and the source gates."""
+"""What the user sets: the optional NVD key, the watched products and the source gates."""
 
 from __future__ import annotations
 

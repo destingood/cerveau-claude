@@ -67,7 +67,7 @@ class Pack(BaseModel):
     model_config = ConfigDict(extra="ignore", frozen=True)
 
     id: str
-    statut: Literal["experimental", "actif"]  # only Lucas writes « actif » (D2)
+    statut: Literal["experimental", "actif"]  # only the user writes « actif » (D2)
     plugins: tuple[str, ...] = Field(min_length=1)
     agent: PackAgent | None = None
 

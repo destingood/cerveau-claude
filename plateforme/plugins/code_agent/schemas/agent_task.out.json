@@ -232,7 +232,7 @@
     },
     "PatchOut": {
       "additionalProperties": false,
-      "description": "The patch in ``folder``/patch.diff, for Lucas to review and apply with ``git apply``.",
+      "description": "The patch in ``folder``/patch.diff, for the user to review and apply with ``git apply``.",
       "properties": {
         "folder": {
           "title": "Folder",

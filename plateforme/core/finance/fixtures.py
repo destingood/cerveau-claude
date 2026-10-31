@@ -1,4 +1,4 @@
-"""The fictitious datasets of tests and evals, loaded the way Lucas's data is.
+"""The fictitious datasets of tests and evals, loaded the way the user's data is.
 
 ``tests/fixtures/finance/reference/`` holds invented instruments and synthetic market data
 (phase 2 plan, §4; its README lists the anomalies placed in them). They go through the real
@@ -51,7 +51,7 @@ FIXTURES_SOURCE = "fixtures"
 FIXTURE_ECB_URL = "https://ecb.fixtures.invalid/service/"  # .invalid never resolves (RFC 6761)
 ECB_FILES = {"EXR": "bce_change.csv", "EST": "bce_estr.csv"}
 # The settings the anomalies of the reference are tested with. They are test values, not the
-# cut-offs of config/data_sources.yaml, which stay A_DEFINIR until Lucas sets them (ADR-016).
+# cut-offs of config/data_sources.yaml, which stay A_DEFINIR until the user sets them (ADR-016).
 REFERENCE_QUALITY = DataQuality(
     max_staleness_sessions=1,
     min_quality_score_above_N1=0.9,

@@ -1,4 +1,4 @@
-// The texts Lucas reads, in French. States, counts and percentages only (D12): the one message
+// The texts the user reads, in French. States, counts and percentages only (D12): the one message
 // that names an amount is the approval request, whose summary comes from CERVEAU itself.
 // Dates are Discord timestamps, which each client shows in its own time zone.
 

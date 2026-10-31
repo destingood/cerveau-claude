@@ -25,7 +25,7 @@ def _edit(config: Path, old: str, new: str) -> None:
     sources.write_text(text.replace(old, new, 1), encoding="utf-8")
 
 
-def test_the_reader_waits_for_lucas_to_choose_the_environment(tmp_path: Path) -> None:
+def test_the_reader_waits_for_owner_to_choose_the_environment(tmp_path: Path) -> None:
     target = config_target(_config(tmp_path))
     with pytest.raises(LegiError) as raised:
         target()

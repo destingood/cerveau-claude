@@ -1,13 +1,13 @@
 # ADR-011 — Auto-amélioration automatique sous porte d'évals et noyau verrouillé
 
-- Statut : **accepté par Lucas le 18/10/2026**
+- Statut : **accepté par l'utilisateur le 18/10/2026**
 - Date : 2026-10-18
 - Phase : 1 (premières briques) ; boucle complète en phase 7 ; ouverture publique en phase 8
 
 ## Contexte
 La section 11 de la spécification dit : « Pas d'auto-modification en production : une amélioration
 de prompt ou de paramètre proposée par CERVEAU passe par une PR, les évals et une comparaison
-champion / challenger. » Lucas a décidé autrement le 18/10/2026. Ses mots :
+champion / challenger. » l'utilisateur a décidé autrement le 18/10/2026. Ses mots :
 
 1. « le cerveau doit être capable d'évoluer et d'apprendre de ses erreurs, et toute personne qui
    l'utilise doit aussi améliorer le cerveau en automatique, même quand le cerveau est public »
@@ -15,10 +15,10 @@ champion / challenger. » Lucas a décidé autrement le 18/10/2026. Ses mots :
 3. « Oui : tout automatique, avec le test avant chaque mise en ligne et le noyau verrouillé. »
 
 ## Options
-1. **Statu quo de la section 11** : chaque amélioration passe par une PR que Lucas relit. Sûr,
+1. **Statu quo de la section 11** : chaque amélioration passe par une PR que l'utilisateur relit. Sûr,
    mais lent, et contraire à la décision.
-2. **Proposition automatique, validation humaine** : CERVEAU prépare le challenger, Lucas
-   promeut. Écartée par Lucas (« sans validation »).
+2. **Proposition automatique, validation humaine** : CERVEAU prépare le challenger, l'utilisateur
+   promeut. Écartée par l'utilisateur (« sans validation »).
 3. **Tout automatique derrière deux verrous automatiques** : une porte d'évals avant chaque mise
    en ligne et un noyau que l'apprentissage ne peut pas toucher.
 
@@ -28,7 +28,7 @@ Option 3.
 **Amendement de la section 11.** Pour les seuls éléments apprenables listés ci-dessous, la phrase
 de la section 11 est remplacée par la porte automatique décrite ici : pas de PR, pas de validation
 humaine. Le noyau verrouillé garde la règle d'origine, en plus strict : il ne change qu'à la main,
-par Lucas (R3). `docs/MEGA-PROMPT-CERVEAU.md` n'est pas modifié ; cet ADR fait foi.
+par l'utilisateur (R3). `docs/MEGA-PROMPT-CERVEAU.md` n'est pas modifié ; cet ADR fait foi.
 
 **Sources d'apprentissage**
 - Ses propres erreurs : citations rejetées, chiffres non vérifiés, liens retirés, faibles scores
@@ -54,7 +54,7 @@ par Lucas (R3). `docs/MEGA-PROMPT-CERVEAU.md` n'est pas modifié ; cet ADR fait 
 - les principes de sécurité de l'Annexe D dans le prompt système ;
 - le code du moteur d'apprentissage et de la porte eux-mêmes.
 
-Raison : R3. Ces réglages n'appartiennent qu'à Lucas, qui les change à la main.
+Raison : R3. Ces réglages n'appartiennent qu'à l'utilisateur, qui les change à la main.
 
 **Porte de mise en ligne**
 - Un challenger est comparé au champion sur les évals et le red teaming.
@@ -69,15 +69,15 @@ Raison : R3. Ces réglages n'appartiennent qu'à Lucas, qui les change à la mai
 - Contributions anonymisées par Presidio.
 - Utilisateurs isolés : aucune donnée d'un utilisateur n'atteint un autre.
 - Information des utilisateurs : leurs échanges améliorent le service (RGPD).
-- Quotas par utilisateur, qui protègent le budget LLM de Lucas.
+- Quotas par utilisateur, qui protègent le budget LLM de l'utilisateur.
 
-**Premières briques en phase 1** (ajout de périmètre approuvé par Lucas)
+**Premières briques en phase 1** (ajout de périmètre approuvé par l'utilisateur)
 - Deux événements s'ajoutent à l'Annexe C.3 : `ERROR` et `FEEDBACK`. Les entrées existantes
   restent valides ; la chaîne n'est pas modifiée.
 - `ERROR` (acteur `orchestrator` ou `policy`) : un enregistrement structuré par type d'erreur,
   avec des compteurs et des codes, jamais de texte (R6). Types : `verification`,
   `partial_answer` (limite par requête atteinte), `task_failed`, `budget_exceeded`, `judge_score`.
-- `cerveau feedback <request_id> {bon|mauvais} [note]` : l'entrée `FEEDBACK` (acteur `lucas`) ne
+- `cerveau feedback <request_id> {bon|mauvais} [note]` : l'entrée `FEEDBACK` (acteur `owner`) ne
   garde que le verdict et des compteurs. La note, pseudonymisée sans table de retour, va dans
   `var/feedback/feedback.jsonl`, marquée non fiable. Elle reste hors du journal pour qu'un oubli
   par utilisateur (phase 8) n'oblige pas à casser la chaîne, dont `verify` contrôle chaque payload.
@@ -94,7 +94,7 @@ Raison : R3. Ces réglages n'appartiennent qu'à Lucas, qui les change à la mai
 - (−) Le noyau verrouillé doit l'être techniquement, pas seulement par convention : ACL Windows ou
   droits Unix (comme `config/live.yaml`, ADR-003) et refus dans le moteur d'apprentissage
   lui-même (phase 7).
-- À confirmer par Lucas : la section 11 réserve aussi la mémoire long terme aux faits validés par
-  Lucas ou produits par un outil déterministe. Des leçons apprises automatiquement y dérogent ;
+- À confirmer par l'utilisateur : la section 11 réserve aussi la mémoire long terme aux faits validés par
+  l'utilisateur ou produits par un outil déterministe. Des leçons apprises automatiquement y dérogent ;
   je propose de les garder à part des faits validés, avec source, confiance et date d'expiration,
   et lues comme des données.

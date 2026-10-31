@@ -7,7 +7,7 @@
 
 ## Contexte
 Le pack Code (P3a) lit l'historique, les différences et les fichiers d'un ou deux dépôts
-personnels de Lucas (E2), au niveau N0. Un dépôt est du contenu externe (R5) : son
+personnels de l'utilisateur (E2), au niveau N0. Un dépôt est du contenu externe (R5) : son
 `.git/config` et ses attributs peuvent nommer des programmes que git lance seul (diff externe,
 pilote de diff, textconv, filtres smudge et clean, fsmonitor, pager, vérificateur de signature,
 récupération paresseuse depuis un remote « promisor »). Ses fichiers peuvent contenir des secrets
@@ -19,7 +19,7 @@ Faits vérifiés le 2026-10-22 :
   (notes de version 2.45.0 ; absentes de `Documentation/git.txt` au tag v2.44.0, présentes au tag
   v2.45.0) ;
 - l'image GitHub Actions `ubuntu-24.04` (version 20261012.334.1) fournit git 2.55.0
-  (`actions/runner-images`, `Ubuntu2404-Readme.md`) ; le poste de Lucas a git 2.56.0.windows.2 ;
+  (`actions/runner-images`, `Ubuntu2404-Readme.md`) ; le poste de l'utilisateur a git 2.56.0.windows.2 ;
 - avec git seul et le même environnement réduit, le dépôt hostile des tests déclenche le diff
   externe ou le pilote de diff, textconv, le vérificateur de signature (`log.showSignature`),
   fsmonitor (`git status`) et le filtre smudge (`checkout`).
@@ -69,7 +69,7 @@ Option 1, avec ces règles, toutes testées (`tests/test_code_*.py`, `plugins/co
 - **Autonomie** : trois outils en lecture (`readOnly`, `openWorld: false`), plafond N1, pack à N0.
 
 ## Conséquences
-- Les outils restent bloqués tant que Lucas n'a pas rempli `repositories`.
+- Les outils restent bloqués tant que l'utilisateur n'a pas rempli `repositories`.
 - Le pager n'est pas testable sans terminal : git ne le lance que si sa sortie est un terminal, et
   ici elle est toujours un tube ; `--no-pager` reste passé.
 - Les commandes de lecture ne déclenchent ni hook git, ni ramasse-miettes, ni accès réseau ; une

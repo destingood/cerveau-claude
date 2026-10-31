@@ -139,17 +139,17 @@ def test_the_fake_github_lists_the_runs_newest_first_and_filters_a_branch() -> N
         total_runs=40,
     )
     github = FixtureGitHub(fixture)
-    body, rate = asyncio.run(github.runs("lucas-exemple/projet", None, 2))
+    body, rate = asyncio.run(github.runs("utilisateur-exemple/projet", None, 2))
     data = json.loads(body)
     assert rate is None
     assert data["total_count"] == 40
     assert [run["display_title"] for run in data["workflow_runs"]] == ["Fix", "Feature"]
     assert [run["run_number"] for run in data["workflow_runs"]] == [3, 2]
-    body, _ = asyncio.run(github.runs("lucas-exemple/projet", "feature", 5))
+    body, _ = asyncio.run(github.runs("utilisateur-exemple/projet", "feature", 5))
     assert [run["head_branch"] for run in json.loads(body)["workflow_runs"]] == ["feature"]
     assert github.asked == [
-        ("lucas-exemple/projet", None, 2),
-        ("lucas-exemple/projet", "feature", 5),
+        ("utilisateur-exemple/projet", None, 2),
+        ("utilisateur-exemple/projet", "feature", 5),
     ]
 
 
@@ -159,7 +159,7 @@ def test_the_fake_github_lists_the_runs_newest_first_and_filters_a_branch() -> N
 )
 def test_the_fake_github_refuses_as_the_api_would(fixture: CodeFixture | None, reason: str) -> None:
     with pytest.raises(CiError, match=reason):
-        asyncio.run(FixtureGitHub(fixture).runs("lucas-exemple/projet", None, 5))
+        asyncio.run(FixtureGitHub(fixture).runs("utilisateur-exemple/projet", None, 5))
 
 
 def _view(data: dict[str, Any], tool: str = "run_checks") -> str:
@@ -219,7 +219,7 @@ def _agent(
     return {**data, **extra}
 
 
-def test_a_clean_agent_patch_is_cited_and_left_for_lucas_to_apply() -> None:
+def test_a_clean_agent_patch_is_cited_and_left_for_owner_to_apply() -> None:
     answer = _from_code([_view(_agent(), "agent_task")], complex_=True)
     assert answer["synthese"].startswith(
         "L'agent de code a terminé sur une copie de projet et rend un patch : premier fichier "

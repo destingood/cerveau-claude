@@ -1,4 +1,4 @@
-"""Market data providers (ADR-017): offline fixtures, Lucas's CSV exports, the ECB."""
+"""Market data providers (ADR-017): offline fixtures, the user's CSV exports, the ECB."""
 
 from core.finance.providers.base import (
     PUBLICATION_MARGIN,

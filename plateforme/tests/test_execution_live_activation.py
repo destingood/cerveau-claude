@@ -1,7 +1,7 @@
 """Live activation needs every manual step (plan of phase 5, §7 and §17).
 
-Two proofs. The 2⁶ combinations of the six conditions, each set up for real under ``tmp_path``:
-one, all true, reaches the broker once; in the 63 others the broker is never called and the
+Two proofs. The 2⁷ combinations of the seven conditions, each set up for real under ``tmp_path``:
+one, all true, reaches the broker once; in the 127 others the broker is never called and the
 refusal names exactly the conditions that fail. Then a static scan: no module of ``core/`` or
 ``interfaces/`` writes to ``config/live.yaml`` or to ``governance/approvals/``.
 """
@@ -20,7 +20,16 @@ from core.execution.live import ActivationCheck, Condition, LiveAdapter, LiveDis
 from core.governance.signatures import EffectiveAutonomy
 from core.policy.engine import KILL_SWITCH_FILE
 from tests.execution_cases import MemoryJournal, make_intent
-from tests.test_execution_live import COMPLETE, NOW, REPO, RULES, Client, granted, project
+from tests.test_execution_live import (
+    COMPLETE,
+    NOW,
+    REPO,
+    RULES,
+    Client,
+    gate_passes,
+    granted,
+    project,
+)
 
 COMBINATIONS = list(itertools.product((True, False), repeat=len(Condition)))
 
@@ -36,7 +45,7 @@ def _uncapped(autonomy: Any, root: Path, *, signed: Any = None) -> EffectiveAuto
     COMBINATIONS,
     ids=["".join("1" if held else "0" for held in holds) for holds in COMBINATIONS],
 )
-def test_only_the_six_conditions_together_reach_the_broker(
+def test_only_the_seven_conditions_together_reach_the_broker(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch, holds: tuple[bool, ...]
 ) -> None:
     want = dict(zip(Condition, holds, strict=True))
@@ -45,7 +54,10 @@ def test_only_the_six_conditions_together_reach_the_broker(
         monkeypatch.setattr("core.execution.live.effective_autonomy", _uncapped)
     root = project(
         tmp_path,
-        live=COMPLETE if want[Condition.CONFIGURATION] else {**COMPLETE, "enabled": False},
+        live={
+            **(COMPLETE if want[Condition.CONFIGURATION] else {**COMPLETE, "enabled": False}),
+            **({} if want[Condition.LIMITES] else {"instruments_whitelist": ["FR0010315770"]}),
+        },
         written="N3" if want[Condition.NIVEAU] else "N2",
         signed="N3" if want[Condition.SIGNATURE] else None,
     )
@@ -58,8 +70,10 @@ def test_only_the_six_conditions_together_reach_the_broker(
         if want[Condition.APPROBATION]:
             granted(store, intent)
         owned = want[Condition.ACL]
-        check = ActivationCheck(root, store, owner=lambda _path: owned)
-        live = LiveAdapter(client, store, check, call_timeout_s=5, kill_target_s=10)
+        check = ActivationCheck(root, store, owner=lambda _path: owned, limits=gate_passes)
+        live = LiveAdapter(
+            client, store, check, call_timeout_s=5, kill_target_s=10, clock=lambda: NOW
+        )
         failing = {condition for condition, held in want.items() if not held}
         if failing:
             with pytest.raises(LiveDisabled, match="aucun appel au courtier") as caught:
@@ -72,7 +86,7 @@ def test_only_the_six_conditions_together_reach_the_broker(
 
 
 def test_the_combinations_are_all_there() -> None:
-    assert len(set(COMBINATIONS)) == 2 ** len(Condition) == 64
+    assert len(set(COMBINATIONS)) == 2 ** len(Condition) == 128
 
 
 # Static scan ----------------------------------------------------------------------------------

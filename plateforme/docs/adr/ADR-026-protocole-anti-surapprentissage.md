@@ -1,6 +1,6 @@
 # ADR-026 — Protocole anti-surapprentissage : point-in-time, journal des essais, DSR, PBO et portes
 
-- Statut : accepté (D7 à D11 du plan de phase 3, validées par Lucas le 19/10/2026 ; les précisions
+- Statut : accepté (D7 à D11 du plan de phase 3, validées par l'utilisateur le 19/10/2026 ; les précisions
   ci-dessous sont soumises à sa relecture au compte rendu de phase 3)
 - Date : 2026-10-19
 - Phase : 3
@@ -24,7 +24,7 @@ Sources lues le 19/10/2026 (articles téléchargés, texte relu) :
   version révisée de février 2015 (revue de publication `A_VERIFIER`), algorithme CSCV du §2.2.
   - L'article écrit 12 780 combinaisons pour S = 16 ; C(16, 8) vaut 12 870.
   - Il cite 0,05 comme seuil de rejet « habituel », bien plus strict que la porte D9 (< 0,5).
-    Lucas décide s'il veut la durcir. R9 interdit seulement de la baisser.
+    L'utilisateur décide s'il veut la durcir. R9 interdit seulement de la baisser.
 
 ## Options
 1. Walk-forward et échantillon final seulement : pas de correction du nombre d'essais.

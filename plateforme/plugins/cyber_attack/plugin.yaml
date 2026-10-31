@@ -1,6 +1,6 @@
 # Manifeste du plugin cyber_attack (Annexe C.1, ADR-056). Un outil de LECTURE sur l'index local
 # d'une copie figée d'ATT&CK Enterprise ; aucun accès réseau, aucun outil d'action. Le
-# téléchargement est la commande `cerveau cyber attack-fetch` que Lucas lance (G5). Tout texte
+# téléchargement est la commande `cerveau cyber attack-fetch` que l'utilisateur lance (G5). Tout texte
 # renvoyé est une donnée externe non fiable (R5).
 id: cyber_attack
 version: 0.1.0
@@ -32,7 +32,7 @@ evals:
   questions: evals/questions.xml
   golden: evals/golden.jsonl
 slo:
-  # Provisoire, à confirmer par Lucas après les premières mesures.
+  # Provisoire, à confirmer par l'utilisateur après les premières mesures.
   success_rate_min: 0.9
   p95_latency_ms: A_DEFINIR
 # mcp (MIT), Pydantic (MIT) : docs/licences.md. Les données ATT&CK relèvent de la licence de

@@ -1,0 +1,22 @@
+# Pack Business & commerce (phase 6, P6 ; ADR-061). Lu par core/config/loader.py et par le plugin
+# business_calc. Chaque taux porte l'article qui le fixe et la date de sa lecture (I7) ; un taux
+# non relu dans Légifrance garde le marqueur « à vérifier » et bloque la seule opération TVA à
+# ce taux (R7).
+vat:
+  # Les règles de TVA passent du CGI au CIBS le 1er janvier 2027 (BOI-RES-TVA-000253 du
+  # 07/10/2026). Après cette date, l'opération TVA refuse jusqu'à la relecture des articles du
+  # CIBS par l'utilisateur (R7, R10).
+  valid_until: 2026-12-31
+  rates:
+    normal:
+      rate: "0.20"
+      source: CGI, article 278 (Légifrance, version en vigueur depuis le 01/01/2014, lu le 2026-10-29)
+    intermediaire:
+      rate: A_VERIFIER   # 10 % selon service-public.gouv.fr (F23567) ; CGI art. 279 à relire
+      source: CGI, article 279 (non relu)
+    reduit:
+      rate: A_VERIFIER   # 5,5 % selon service-public.gouv.fr (F23567) ; CGI art. 278-0 bis à relire
+      source: CGI, article 278-0 bis (non relu)
+    particulier:
+      rate: A_VERIFIER   # 2,1 % selon service-public.gouv.fr (F23567) ; CGI art. 281 quater s.
+      source: CGI, articles 281 quater et suivants (non relus)

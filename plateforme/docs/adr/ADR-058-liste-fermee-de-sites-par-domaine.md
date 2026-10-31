@@ -1,6 +1,6 @@
 # ADR-058 — Liste fermée de sites pour la lecture web d'un domaine
 
-- Statut : **proposé** (à valider par Lucas au compte rendu de P5)
+- Statut : **proposé** (à valider par l'utilisateur au compte rendu de P5)
 - Date : 2026-10-27
 - Phase : 6 (P5, décision H6)
 
@@ -55,7 +55,7 @@ Option 3, avec ces règles :
   restent bornés par leur propre code ; un pack restreint ne doit pas en recevoir un qui lit une
   URL libre.
 - Une entrée trop large (`co.uk`, `local`, `internal`, `arpa`) n'est pas refusée par le code :
-  la liste est tenue par Lucas, relue à chaque modification (backlog B318).
+  la liste est tenue par l'utilisateur, relue à chaque modification (backlog B318).
 - Réversible : retirer la liste d'un domaine rend le comportement antérieur.
 - Revues demandées : `risk-gate-auditor` (refus en amont) et `security-reviewer` (fetcher,
   redirections, normalisation des hôtes).

@@ -1,0 +1,51 @@
+# Manifeste du plugin entreprises (Annexe C.1, ADR-062). Un outil de LECTURE sur l'API Recherche
+# d'entreprises (DINUM) : recherche par nom, sigle ou SIREN. Aucun outil d'action, aucune entrée
+# d'hôte ou d'URL ; aucune personne rendue (dirigeants jamais demandés, liste fermée de champs,
+# I4) ; tout libellé renvoyé est une donnée externe non fiable (R5).
+id: entreprises
+version: 0.1.0
+domain: business
+kind: tool
+transport: mcp-stdio
+# Champs de l'API recopiés tels quels, mais sélection, filtrage et chiffres en Figure propres au
+# plugin.
+parity_label: "[Approximation]"
+environments: [dev]
+max_autonomy_level: N1
+tools:
+  - name: company_search
+    description: >-
+      Recherche une entreprise française dans l'API Recherche d'entreprises (DINUM, données INSEE
+      et INPI), par texte (nom, sigle) ou par SIREN, avec filtres facultatifs (code postal,
+      département, code NAF, état administratif). 10 résultats au plus : SIREN, dénomination,
+      activité, catégorie, état, dates, commune du siège, tranche d'effectif, chiffre d'affaires
+      et résultat net publiés avec leur année. Aucune personne : ni dirigeant, ni recherche par
+      personne ou par adresse (seuls les résultats dont le nom contient tous les mots de la
+      recherche sont rendus).
+    action_class: LECTURE
+    annotations:
+      readOnlyHint: true
+      idempotentHint: true
+      destructiveHint: false
+      openWorldHint: true
+    input_schema: schemas/company_search.in.json
+    output_schema: schemas/company_search.out.json
+tests: tests/
+evals:
+  questions: evals/questions.xml
+  golden: evals/golden.jsonl
+slo:
+  # Provisoire, à confirmer par l'utilisateur après les premières mesures.
+  success_rate_min: 0.9
+  p95_latency_ms: A_DEFINIR
+# mcp (MIT), Pydantic (MIT), httpx (BSD-3-Clause) : docs/licences.md.
+dependencies_licences: [MIT, BSD-3-Clause]
+# Démarrage (ADR-015). Aucune clé : l'API est ouverte. CERVEAU_HOME désigne le projet servi
+# (configuration, kill switch). Deux requêtes par seconde partagées dans var/net/ (I9), cache 24 h
+# de la seule sortie filtrée sous var/business/. Délai : deux essais de 15 s et une attente de 5 s
+# au plus tiennent dans 60 s.
+runtime:
+  module: plugins.entreprises
+  env: [CERVEAU_HOME]
+  priced_tools: {}
+  tool_timeout_s: 60

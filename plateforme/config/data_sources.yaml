@@ -8,7 +8,7 @@ sources:
   ecb:
     enabled: true                     # D2
     url: https://data-api.ecb.europa.eu/service/
-    # ADR-017 : la courbe des taux (yield_curve) est retirée tant que Lucas n'a pas lu ses
+    # ADR-017 : la courbe des taux (yield_curve) est retirée tant que l'utilisateur n'a pas lu ses
     # conditions propres, plus restrictives (D22).
     categories: [fx_reference_rates, estr]
     usage: personnel
@@ -62,7 +62,7 @@ sources:
     categories: [enterprise]
     usage: personnel
     version: "20.0"
-    # Empreinte du bundle Enterprise, inscrite par `cerveau cyber attack-fetch` que Lucas lance
+    # Empreinte du bundle Enterprise, inscrite par `cerveau cyber attack-fetch` que l'utilisateur lance
     # (G5) ; tant qu'elle manque, cyber_attack ne répond pas.
     sha256: A_VERIFIER
     licence: >-
@@ -72,10 +72,10 @@ sources:
       (attack.mitre.org/resources/legal-and-branding/terms-of-use/, lue le 2026-10-22)
     rate: une lecture par commande attack-fetch, jamais automatique (G5)
   # Pack Juridique FR (phase 6, P5). Lu par le plugin legifrance (ADR-059) ; identifiants PISTE en
-  # variables d'environnement de Lucas (PISTE_CLIENT_ID, PISTE_CLIENT_SECRET), jamais ici (R6).
+  # variables d'environnement de l'utilisateur (PISTE_CLIENT_ID, PISTE_CLIENT_SECRET), jamais ici (R6).
   legifrance:
     enabled: true                     # H1
-    # Environnement à choisir par Lucas (H4) : bac à sable https://sandbox-api.piste.gouv.fr ou
+    # Environnement à choisir par l'utilisateur (H4) : bac à sable https://sandbox-api.piste.gouv.fr ou
     # production https://api.piste.gouv.fr, chemin /dila/legifrance/lf-engine-app. Tant qu'il
     # manque, le plugin répond « source officielle indisponible » (R7).
     url: A_DEFINIR
@@ -90,6 +90,33 @@ sources:
       compromission. A_VERIFIER : version des CGU en vigueur sur PISTE, durée de vie du jeton,
       quotas (consultables seulement dans PISTE)
     rate: 1 requête par seconde (H10, hypothèse) ; cache sous var/juridique/ (H9)
+  # Pack Business & commerce (phase 6, P6). Sources ouvertes, sans clé (I3, I8).
+  entreprises:
+    enabled: true
+    url: https://recherche-entreprises.api.gouv.fr   # lu par le plugin entreprises (ADR-062)
+    categories: [registre_entreprises]
+    usage: personnel
+    licence: >-
+      Données des registres publics (SIRENE, RNE) ; mention du site « Licence Ouverte 2.0 » sans
+      licence propre à l'API : à confirmer (A_VERIFIER, docs/licences.md) ; spécification OpenAPI
+      sous licence MIT (lue le 2026-10-29)
+    terms: >-
+      API ouverte sans compte ; entreprises non diffusibles exclues par l'API ; les dirigeants ne
+      sont ni demandés ni rendus, une recherche textuelle ne garde que les entreprises nommées
+      d'après le texte, le siège d'une personne physique est omis (I4, RGPD)
+    rate: 2 requêtes par seconde (I9 ; plafond de l'API 7/s par IP) ; cache 24 h sous var/business/
+  insee_melodi:
+    enabled: true
+    url: https://api.insee.fr/melodi   # lu par le plugin insee_stats, en accès anonyme
+    categories: [statistiques_publiques]
+    usage: personnel
+    licence: >-
+      Licence Ouverte 2.0 (etalab-2.0) : citer « Source : Insee » et la date de mise à jour
+      (portail des API de l'Insee, lu le 2026-10-29)
+    terms: >-
+      Accès anonyme limité à 30 appels par minute ; trois jeux lus dans une liste fermée
+      (plugins/insee_stats/catalog.py) ; schéma de /data et /catalog vérifié le 2026-10-29
+    rate: 20 requêtes par minute (I9) ; cache 7 jours sous var/business/
 # ADR-058 : un domaine listé ne lit le web que sur ces hôtes et leurs sous-domaines ; chaque
 # entrée a sa licence vérifiée (H5, lue le 2026-10-27, détail dans docs/licences.md).
 web_allowlists:

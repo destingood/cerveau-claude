@@ -21,7 +21,7 @@ from pydantic import AwareDatetime, BaseModel, ConfigDict, Field, field_validato
 from core.config.loader import Marker
 from core.guardrails.injection import injection_signals
 
-# CERVEAU's reference time zone: a date given by Lucas (« au 16 octobre ») is a Paris date.
+# CERVEAU's reference time zone: a date given by the user (« au 16 octobre ») is a Paris date.
 PARIS = ZoneInfo("Europe/Paris")
 _TS_FORMAT = "%Y-%m-%dT%H:%M:%S.%fZ"
 MAX_NAME_CHARS = 120
@@ -272,7 +272,7 @@ _COLUMNS = {"asset": "identifiant", "price": "prix", "amount": "montant"}  # the
 
 
 class Transaction(_Record):
-    """One line of Lucas's ledger in the CERVEAU format; amounts are in ``currency``."""
+    """One line of the user's ledger in the CERVEAU format; amounts are in ``currency``."""
 
     trade_date: date
     account: AccountId

@@ -1,6 +1,6 @@
 """MCP stdio server of the ``finance_optimize`` plugin: ``rebalance_proposal`` (CALCUL).
 
-The server reads the finance store read only and ``config/`` at each call, so a value Lucas
+The server reads the finance store read only and ``config/`` at each call, so a value the user
 changes applies at the next call and a marker blocks it (R7). It returns target weights of the
 securities known at ``as_of`` under one optimizer, with the risk before and after and, once the
 broker's costs are known (D13), the operations in whole units (ADR-019). Nothing is executed: at
@@ -49,7 +49,7 @@ ANNOTATIONS = ToolAnnotations(
     read_only_hint=True, idempotent_hint=True, destructive_hint=False, open_world_hint=False
 )
 INSTRUCTIONS = (
-    "Propositions de rééquilibrage du portefeuille de Lucas, calculées sur la base finance "
+    "Propositions de rééquilibrage du portefeuille de l'utilisateur, calculées sur la base finance "
     "locale ; rien n'est exécuté. Les chiffres viennent de l'outil : les citer avec leur "
     "affichage, leur statut et leurs hypothèses, ne jamais les recalculer (R1). Aide à la "
     "décision personnelle, pas un conseil en investissement (R16)."

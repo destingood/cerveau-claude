@@ -28,7 +28,7 @@ class FeedEntry(_Out):
 
 class FeedResult(_Out):
     feed: str
-    # From the allow-list (written by Lucas), not from the feed itself.
+    # From the allow-list (written by the user), not from the feed itself.
     name: str
     url: str
     licence: str

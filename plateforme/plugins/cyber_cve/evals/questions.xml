@@ -1,7 +1,7 @@
 <?xml version="1.0" encoding="utf-8"?>
 <!--
   Questions d'évaluation du plugin cyber_cve (R8). Elles servent aux évals live, avec le
-  consentement de Lucas pour chaque campagne ; aucun résultat n'est stocké ici.
+  consentement de l'utilisateur pour chaque campagne ; aucun résultat n'est stocké ici.
   Les faits sur des CVE ont été relevés le 27/10/2026 dans les réponses réelles du NVD (fiche
   CVE-2021-44228) et du catalogue KEV de la CISA (version 2026.10.26) : ce sont des champs
   historiques (dates d'ajout, échéances, éditeurs, score de base du NVD) qui ne changent plus en

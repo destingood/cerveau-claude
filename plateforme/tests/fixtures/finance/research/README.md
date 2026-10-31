@@ -77,7 +77,7 @@ Commission de 0,10 % (minimum 2 € par ordre), glissement de 5 points de base, 
 points de base. Ils portent le nom « frais fictifs de démonstration », que toute sortie qui les
 utilise doit afficher. Aucun courtier ne les pratique, et ils ne remplacent pas
 `config/risk.yaml` › `trading_costs`, qui reste `A_DEFINIR` (D13 de la phase 2) : un backtest
-sur des données réelles reste refusé tant que Lucas n'a pas donné les frais de son courtier.
+sur des données réelles reste refusé tant que l'utilisateur n'a pas donné les frais de son courtier.
 
 ## Dates de connaissance
 

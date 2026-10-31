@@ -1,6 +1,6 @@
 # ADR-042 — Opérations sur titres dans le compte paper
 
-- Statut : accepté (B187, inclus dans la phase 5 par la décision D20 validée par Lucas le 21/10/2026)
+- Statut : accepté (B187, inclus dans la phase 5 par la décision D20 validée par l'utilisateur le 21/10/2026)
 - Date : 2026-10-21
 - Phase : 5
 
@@ -65,4 +65,4 @@ Option 3.
 - Un split ne déclenche plus le kill switch. La réconciliation reste propre après un split, un rompu
   ou un dividende (tests `tests/test_execution_actions.py` et `tests/test_execution_loop.py`).
 - Le rapport du jour reçoit une section « Opérations sur titres », qui cite sa source.
-- Le golden « split » reste dans B193 : les goldens d'exécution sont à valider par Lucas.
+- Le golden « split » reste dans B193 : les goldens d'exécution sont à valider par l'utilisateur.

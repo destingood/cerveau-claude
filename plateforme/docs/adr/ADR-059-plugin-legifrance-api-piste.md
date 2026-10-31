@@ -1,6 +1,6 @@
 # ADR-059 — Plugin `legifrance` : lecture du droit français par l'API officielle PISTE
 
-- Statut : **proposé** (à valider par Lucas au compte rendu de P5)
+- Statut : **proposé** (à valider par l'utilisateur au compte rendu de P5)
 - Date : 2026-10-27
 - Phase : 6 (P5, décisions H1, H3, H4, H9, H10)
 
@@ -51,7 +51,7 @@ Option 3 :
 
 ## Conséquences
 - Plus simple : une citation porte un identifiant de version, ses dates et la date de lecture.
-- Plus difficile : Lucas doit créer une application PISTE et choisir l'environnement ; tant que ce
+- Plus difficile : l'utilisateur doit créer une application PISTE et choisir l'environnement ; tant que ce
   n'est pas fait, le pack répond « source officielle indisponible » pour Légifrance.
 - Points `A_VERIFIER` au premier appel réel (backlog B319 à B323) : valeur `PERTINENCE` du tri,
   forme des URL `article_lc`, fuseau des dates en millisecondes, facette de date de la recherche.

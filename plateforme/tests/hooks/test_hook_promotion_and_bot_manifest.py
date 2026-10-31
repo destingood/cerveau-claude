@@ -1,5 +1,6 @@
 """Hardened in phase 6 (D8): the promotion reports a signature cites (B226) and the Discord bot's
-package.json, whose npm scripts `make bot-test` runs (B229), are written by CERVEAU or Lucas only.
+package.json, whose npm scripts `make bot-test` runs (B229), are written by CERVEAU or the user
+only.
 """
 
 from __future__ import annotations
@@ -91,7 +92,7 @@ def test_standing_in_the_bot_folder_counts() -> None:
 
 def test_refusals_name_their_rule() -> None:
     install = guard.analyse("npm --prefix interfaces/discord_bot install left-pad", False, CWD)
-    assert install and "B229" in install and "Lucas" in install
+    assert install and "B229" in install and "utilisateur" in install
     _, manifest = paths.decide({"file_path": MANIFEST}, CWD, "Edit")
     assert manifest and "B229" in manifest
     _, report = paths.decide({"file_path": REPORT}, CWD, "Write")

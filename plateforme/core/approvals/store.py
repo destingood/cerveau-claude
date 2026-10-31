@@ -1,6 +1,7 @@
 """Approval requests and their states, ``var/approvals/approvals.db`` (ADR-035).
 
-An N3 FINANCIERE intent waits for Lucas: the policy requests an approval, Lucas grants it with the
+An N3 FINANCIERE intent waits for the user: the policy requests an approval, the user grants it
+with the
 one-time code of his authenticator application, and the execution consumes it once, after the
 Risk Gate has been evaluated again on fresh data. Three tables, insertion only, as for the order
 book (ADR-032): the requests, their state transitions and every code attempt. Nothing is updated
@@ -41,7 +42,7 @@ from core.finance.schema import SchemaError, migrate, schema_version
 REASON_CHARS = 200
 SUMMARY_CHARS = 500
 Environment = Literal["paper", "live"]
-Actor = Literal["policy", "interface", "lucas"]
+Actor = Literal["policy", "interface", "owner"]
 _SHA256 = re.compile(r"^[0-9a-f]{64}$")
 
 
@@ -123,7 +124,7 @@ MIGRATIONS: tuple[tuple[int, tuple[str, ...]], ...] = (
                 seq INTEGER NOT NULL CHECK (seq >= 1),
                 state TEXT NOT NULL,
                 reason TEXT NOT NULL,
-                actor TEXT NOT NULL CHECK (actor IN ('policy', 'interface', 'lucas')),
+                actor TEXT NOT NULL CHECK (actor IN ('policy', 'interface', 'owner')),
                 recorded_at TEXT NOT NULL,
                 PRIMARY KEY (approval_id, seq)
             ) STRICT""",
@@ -136,7 +137,7 @@ MIGRATIONS: tuple[tuple[int, tuple[str, ...]], ...] = (
             OR NEW.seq != 1 + (
                 SELECT COUNT(*) FROM transitions WHERE approval_id = NEW.approval_id
             )
-            OR (NEW.state = 'ACCORDEE' AND NEW.actor != 'lucas')
+            OR (NEW.state = 'ACCORDEE' AND NEW.actor != 'owner')
             BEGIN
                 SELECT RAISE(ABORT, 'transitions : interdite par la machine à états (ADR-035)');
             END""",  # noqa: S608 - only this module's constants, never an input
@@ -171,7 +172,7 @@ class ApprovalError(Exception):
 
 @dataclass(frozen=True)
 class ApprovalRules:
-    """The parameters of ``autonomy.yaml: approval`` (D3), every one decided by Lucas."""
+    """The parameters of ``autonomy.yaml: approval`` (D3), every one decided by the user."""
 
     expiry: timedelta
     max_code_attempts: int
@@ -188,7 +189,7 @@ class ApprovalRules:
         )
         known = [value for value in values if isinstance(value, int)]
         if len(known) != len(values):
-            raise ApprovalError("paramètres d'approbation à définir par Lucas (R7)")
+            raise ApprovalError("paramètres d'approbation à définir par l'utilisateur (R7)")
         expiry, attempts, failures, window = known
         return cls(timedelta(minutes=expiry), attempts, failures, timedelta(minutes=window))
 
@@ -431,7 +432,7 @@ class ApprovalStore:
         summary: str,
         now: datetime,
     ) -> ApprovalRequest:
-        """Ask Lucas to approve one intent, on behalf of the policy (ADR-036). An intent is asked
+        """Ask the user to approve one intent, on behalf of the policy (ADR-036). An intent is asked
         about once: whatever became of its request, it never gets a second one."""
         if not _SHA256.match(intent_sha256):
             raise ApprovalError("empreinte de l'intention : SHA-256 hexadécimal attendu")
@@ -475,8 +476,8 @@ class ApprovalStore:
     def approve(
         self, approval_id: UUID, code: str, *, key: bytes | None, now: datetime
     ) -> CodeOutcome:
-        """Check Lucas's one-time code against a request. A right code grants it, on behalf of
-        ``lucas``; a wrong one counts, and the last allowed wrong code refuses it. While locked,
+        """Check the user's one-time code against a request. A right code grants it, on behalf of
+        ``owner``; a wrong one counts, and the last allowed wrong code refuses it. While locked,
         no code is even looked at. A missing secret refuses before anything is counted."""
         if key is None:
             raise ApprovalError("secret TOTP absent ou invalide : aucun code ne peut être vérifié")
@@ -511,7 +512,7 @@ class ApprovalStore:
                     row,
                     ApprovalState.ACCORDEE,
                     reason="code vérifié",
-                    actor="lucas",
+                    actor="owner",
                     when=now,
                 )
                 return CodeOutcome(ApprovalState.ACCORDEE, True, left, False)
@@ -543,7 +544,7 @@ class ApprovalStore:
     def refuse(
         self, approval_id: UUID, *, reason: str, actor: Actor, now: datetime
     ) -> ApprovalState:
-        """Refuse an open request: Lucas from an interface, or the policy when the Risk Gate,
+        """Refuse an open request: the user from an interface, or the policy when the Risk Gate,
         evaluated again, no longer agrees. An overdue request expires instead."""
         why = _text(reason, "raison", REASON_CHARS)
         with self._write() as trail:
@@ -696,7 +697,7 @@ class ApprovalStore:
         self, states: Collection[ApprovalState] | None = None, *, now: datetime
     ) -> list[ApprovalRequest]:
         """Every request, oldest first (a UUIDv7 sorts by time), or those in ``states`` at
-        ``now``: ``{DEMANDEE}`` is what waits for Lucas, ``{ACCORDEE}`` what waits to run."""
+        ``now``: ``{DEMANDEE}`` is what waits for the user, ``{ACCORDEE}`` what waits to run."""
         built = [
             self._build(row, now)
             for row in self._conn.execute("SELECT * FROM requests ORDER BY approval_id")

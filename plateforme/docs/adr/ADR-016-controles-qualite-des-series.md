@@ -1,6 +1,6 @@
 # ADR-016 — Contrôles de qualité des séries de cours
 
-- Statut : **proposé** (les deux seuils attendent la décision de Lucas)
+- Statut : **proposé** (les deux seuils attendent la décision de l'utilisateur)
 - Date : 2026-10-18
 - Phase : 2
 
@@ -37,7 +37,7 @@ un split déclaré que les cours ne montrent pas, ou un cours erroné faussent e
 rendements calculés avant ce point. Les deux seuils restent `A_DEFINIR` dans
 `config/data_sources.yaml`. Tant qu'ils ne sont pas fixés, les deux sous-scores qu'ils
 gouvernent, le score et la fonction `data.quality_gate` restent « non évaluables », donc
-bloquants au-delà de N1. Propositions soumises à Lucas :
+bloquants au-delà de N1. Propositions soumises à l'utilisateur :
 
 - `outlier_robust_z` = **3,5** : c'est le seuil recommandé par Iglewicz et Hoaglin (1993) pour le
   z modifié ;
@@ -50,7 +50,7 @@ enregistré dans `quality_scores`. Il ne peut donc plus changer : un second scor
 même série et la même date est refusé.
 
 ## Conséquences
-- Les décisions N0 et N1 ne sont pas touchées. Au-delà, rien ne passe tant que Lucas n'a pas fixé
+- Les décisions N0 et N1 ne sont pas touchées. Au-delà, rien ne passe tant que l'utilisateur n'a pas fixé
   les deux seuils.
 - Un grand mouvement réel (faillite, offre publique) laisse « opérations sur titres » à 0 sur
   toute la fenêtre, faute d'un moyen de le reconnaître comme vérifié (backlog B86).

@@ -1,6 +1,6 @@
 # ADR-001 — Stack technique du cœur
 
-- Statut : accepté (Lucas, 2026-10-18, décision D13 du plan de phase 1)
+- Statut : accepté (l'utilisateur, 2026-10-18, décision D13 du plan de phase 1)
 - Date : 2026-10-17
 - Phase : 0
 
@@ -25,7 +25,7 @@ déploiement). Faits vérifiés le 2026-10-17 :
 1. **Défauts de la section 5** : Python 3.12 + uv, Pydantic, Typer, PostgreSQL + pgvector,
    Node.js limité aux outils (promptfoo, puis le bot Discord). Toutes les bibliothèques finance de
    l'Annexe A sont en Python.
-2. **Cœur en Node.js / TypeScript** (langage que Lucas maîtrise) : écosystème finance quantitative
+2. **Cœur en Node.js / TypeScript** (langage que l'utilisateur maîtrise) : écosystème finance quantitative
    (NautilusTrader, Riskfolio-Lib, QuantLib, qlib) absent ou indirect ; ponts Python à maintenir.
 3. **Python avec pip + venv ou Poetry** : outillage plus lent ; pas de gestion intégrée de
    l'interpréteur ; verrouillage moins strict qu'`uv.lock`.

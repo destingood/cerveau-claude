@@ -7,7 +7,7 @@ The list keeps the desktop app working (task list, wrap-up, chapters, side sessi
 inline visuals) and lets Claude read web documentation in the app's own browser; web content
 stays data (R5). It refuses whatever runs commands, types, clicks, sends or changes settings
 outside the repository: the app terminal and the preview servers (they would bypass guard_shell),
-Lucas's Chrome, computer use, the connectors (mail, calendar, shop...), scheduled tasks, plugins,
+the user's Chrome, computer use, the connectors (mail, calendar, shop...), scheduled tasks, plugins,
 a merge into main. Tools of a server declared in the project's `.mcp.json` are refused unless
 PROJECT_TOOLS lists them, even under a listed name: a server may pick any name.
 

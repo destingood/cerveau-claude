@@ -5,8 +5,9 @@ descriptions and schemas, same policy check, budget charge and TOOL_CALL entry a
 Only the network is replaced: the search provider and the page reader answer from the case's
 pages and ``evals/fixtures/web.yaml``. The five finance servers run for real too, in memory, on
 a copy of the fictitious reference store read at ``REFERENCE_READ_AT`` (ADR-023): never on the
-store of Lucas. A case that adds files or quality scores to the store gets a copy of its own,
-built with the real import functions: a trapped file is refused as Lucas's import would refuse it.
+store of the user. A case that adds files or quality scores to the store gets a copy of its own,
+built with the real import functions: a trapped file is refused as the user's import would refuse
+it.
 
 Offline (CI), scripted models answer instead of Claude. They follow the case: the classifier and
 the router return its verdicts, the reader returns its honest extracts (or the trap of a page when
@@ -22,7 +23,7 @@ and cite the case's expected figures by the call that computed them; the news an
 reads and cites the checked extracts; the debaters cite the findings; the manager treats every
 argument and proposes to wait; the controller prices a stress scenario and blocks whenever a
 limit is unknown or exceeded. The research server reads a project root of its own: the
-repository's registry, and no trial nor report of Lucas.
+repository's registry, and no trial nor report of the user.
 
 The scholarly and feeds servers run for real too, on the case's records and on the feeds of its
 own allow-list. A deep research (``--approfondi``, ADR-045) runs the real engine: the scripted
@@ -64,8 +65,10 @@ from core.code.git import GitRunner
 from core.code.repos import RepoReader
 from core.config import load_config
 from core.config.loader import Config
+from core.evals.business_fixtures import business_clients
 from core.evals.cases import (
     REPO_ROOT,
+    BusinessFixture,
     Case,
     CodeAgentFixture,
     CommitteeTurn,
@@ -111,12 +114,15 @@ from core.orchestrator.structured import REPAIR
 from core.policy.engine import kill_switch_engaged
 from core.verification.figures import Figure
 from core.verification.trace import tool_output
+from plugins.business_calc.server import build_server as business_calc_server
 from plugins.code_agent.server import build_server as agent_server
 from plugins.code_checks.server import build_server as checks_server
 from plugins.code_ci.server import build_server as ci_server
 from plugins.code_repo.server import build_server as repo_server
 from plugins.cyber_attack.server import build_server as attack_server
 from plugins.cyber_cve.server import build_server as cve_server
+from plugins.entreprises.server import build_server as entreprises_server
+from plugins.entreprises.server import config_target as entreprises_target
 from plugins.feeds.allowlist import FeedSource
 from plugins.feeds.models import FeedError
 from plugins.feeds.server import build_server as feeds_server
@@ -126,6 +132,8 @@ from plugins.finance_portfolio.server import build_server as finance_portfolio_s
 from plugins.finance_report.server import build_server as finance_report_server
 from plugins.finance_research.server import build_server as finance_research_server
 from plugins.finance_risk.server import build_server as finance_risk_server
+from plugins.insee_stats.server import build_server as insee_server
+from plugins.insee_stats.server import config_target as insee_target
 from plugins.legifrance.server import build_server as legifrance_server
 from plugins.scholarly.common import ScholarError
 from plugins.scholarly.models import ScholarRecord, Update
@@ -144,7 +152,7 @@ FINANCE_NOW = REFERENCE_READ_AT
 IMPORTED_AT = REFERENCE_FETCHED_AT + timedelta(minutes=30)  # a case's files, before it is read
 FIXTURE_PROVIDER = "fixtures"
 CHARS_PER_TOKEN = 4  # offline cost estimate: no tokenizer, no cache (labelled « simulé »)
-# Values an offline run needs and the repository leaves to Lucas (R7): a temporary copy only.
+# Values an offline run needs and the repository leaves to the user (R7): a temporary copy only.
 OFFLINE_BUDGETS = {"daily": "100.00", "monthly": "1000.00"}
 OFFLINE_COMMITTEE = {"max_tokens": 400000, "max_seconds": 600, "max_tool_calls": 40}
 OFFLINE_RESEARCH = {"max_tokens": 400000, "max_seconds": 600, "max_tool_calls": 40}
@@ -157,12 +165,12 @@ _SOURCE = re.compile(r'<donnees_externes source="(https?://[^"]+)">')
 _HIT = re.compile(r"^\d+\. .* — (https?://\S+)$", re.MULTILINE)
 _SOURCE_NUMBER = re.compile(r"^Source \[(\d+)\] :", re.MULTILINE)
 _EXTRACT = re.compile(r"^- (.+)\n  Citation : « (.+) »$", re.MULTILINE)
-_QUESTION = re.compile(r"Question de Lucas :\n(.*?)\n\nAdresses web", re.DOTALL)
+_QUESTION = re.compile(r"Question de l'utilisateur :\n(.*?)\n\nAdresses web", re.DOTALL)
 _REPAIRS = (FORMAT_REPAIR.split("{", 1)[0], REPAIR.split("{", 1)[0])
 WEB_TOOLS = frozenset({"web_search", "web_read"})
 RESEARCH_TOOLS = frozenset({"feed_read", "scholar_search", "scholar_record"})  # read, never compute
 # What the deep research shows its planner and its writer (core/research/engine.py).
-_RESEARCH_HEAD = re.compile(r"Question de Lucas :\n(.*?)\n\nDate du jour", re.DOTALL)
+_RESEARCH_HEAD = re.compile(r"Question de l'utilisateur :\n(.*?)\n\nDate du jour", re.DOTALL)
 _PLAN_TASK = "\n\nPropose au plus "
 _WRITE_TASK = "\n\nSous-questions étudiées :\n"
 _RESEARCH_EXTRACT = re.compile(r"^- \[(\d+\.\d+)\] (.+)\n  Citation : « (.+) »$", re.MULTILINE)
@@ -172,7 +180,7 @@ MAX_SYNTHESIS_CLAIMS = 5  # the synthesis of a complex answer has 3 to 5 sentenc
 MAX_SECTION_CLAIMS = 12
 # What the committee engine shows a member (core/committee/engine.py).
 _CALL = re.compile(r'<donnees_externes source="([a-z_]+:([a-z_]+)#[0-9]+)">')
-_ASKED = re.compile(r"^Question de Lucas : (.*)$", re.MULTILINE)
+_ASKED = re.compile(r"^Question de l'utilisateur : (.*)$", re.MULTILINE)
 _OFFERED = re.compile(r"^Outils à ta disposition : (.*)\.$", re.MULTILINE)
 _CONSTAT = re.compile(r"^(C[0-9]+) \[([a-z_]+)\] (.*)$", re.MULTILINE)
 _ARGUMENT = re.compile(r"^([DX][0-9]+\.[0-9]+) \[", re.MULTILINE)
@@ -244,6 +252,15 @@ CYBER_STEPS = (
 CYBER_UNAVAILABLE = "L'outil « {tool} » n'est pas disponible : CERVEAU n'agit sur aucun système."
 CYBER_SOURCES = {"cisa_kev": "KEV de la CISA", "epss": "EPSS de FIRST"}
 LEGAL_TOOLS = frozenset({"legi_search", "legi_article"})  # read, never act
+BUSINESS_TOOLS = frozenset({"biz_calc", "company_search", "stats_series"})  # compute or read
+BUSINESS_COUNTER = (
+    "Ces chiffres reposent sur les montants donnés et sur des registres publics ; les comptes "
+    "publiés et les statistiques de l'INSEE peuvent être anciens, partiels ou révisés."
+)
+BUSINESS_STEPS = (
+    "Relire les hypothèses de calcul et la date de chaque source citée.",
+    "Décider soi-même de toute suite à donner : un brouillon n'est jamais envoyé.",
+)
 LEGAL_UNSURE = "Je ne sais pas : aucun outil juridique n'a rendu de résultat exploitable."
 LEGAL_PADDING = "Chaque identifiant, état et date de cette réponse vient de l'outil cité."
 LEGAL_COUNTER = (
@@ -458,7 +475,7 @@ class FixtureFeedReader:
 
 def fixture_feeds(case: Case, log: WebLog) -> ToolboxOpener:
     """The real feeds server and MCP adapter, in memory, on the case's own allow-list (the
-    repository's stays empty until Lucas fills it, D18)."""
+    repository's stays empty until the user fills it, D18)."""
     catalog = {
         feed.id: FeedSource(
             id=feed.id,
@@ -519,7 +536,7 @@ def case_store(case: Case, directory: Path) -> tuple[Path, tuple[str, ...]]:
     """The store the case's run reads, and the reasons of the imports refused (R5).
 
     Without ``case.store``, the shared reference store. Otherwise a copy of it in ``directory``,
-    to which the case's CSV files are imported as Lucas would import them (instruments first,
+    to which the case's CSV files are imported as the user would import them (instruments first,
     then transactions), then its quality scores recorded. A refused file changes nothing.
     """
     fixture = case.store
@@ -585,7 +602,7 @@ FINANCE_SERVERS: dict[str, ServerFactory] = {
 @cache
 def research_root() -> Path:
     """A project root for the research server: the repository's registry and no ``var/``, so
-    that a run never reads the trials nor the protocol reports of Lucas (N stays that of the
+    that a run never reads the trials nor the protocol reports of the user (N stays that of the
     fixture) and never writes next to them."""
     root = Path(tempfile.mkdtemp(prefix="cerveau-eval-research-"))
     shutil.copytree(REPO_ROOT / REGISTRY_DIR, root / REGISTRY_DIR)
@@ -668,7 +685,7 @@ def finance_toolboxes(
 
 def uses_finance(case: Case) -> bool:
     """A case whose run reads the reference store, so is dated when the store is read."""
-    if case.code is not None or uses_cyber(case) or uses_legal(case):  # never the store
+    if case.code is not None or uses_cyber(case) or uses_legal(case) or uses_business(case):
         return False
     computed = [call for call in case.offline.calls if call.tool not in RESEARCH_TOOLS]
     return case.group == "finance" or bool(computed or case.expect.tools or case.store is not None)
@@ -684,6 +701,12 @@ def uses_legal(case: Case) -> bool:
     """A case of the legal pack's Légifrance tools, answered from what they read."""
     tools = {call.tool for call in case.offline.calls} | set(case.expect.tools)
     return case.legal is not None or bool(tools & LEGAL_TOOLS)
+
+
+def uses_business(case: Case) -> bool:
+    """A case of the business pack's tools, answered from what they compute or read."""
+    tools = {call.tool for call in case.offline.calls} | set(case.expect.tools)
+    return case.business is not None or bool(tools & BUSINESS_TOOLS)
 
 
 def _opener(name: str, factory: Callable[[], MCPServer]) -> ToolboxOpener:
@@ -786,6 +809,38 @@ def legal_toolboxes(
         return legifrance_server(legal_sources(fixture, folder, config, now))
 
     return {"legifrance": _opener("legifrance", server)}
+
+
+def business_toolboxes(
+    case: Case,
+    home: Path,
+    config_dir: Path,
+    now: Callable[[], datetime],
+    log: FinanceLog,
+) -> dict[str, ToolboxOpener]:
+    """The business pack's real servers: business_calc on ``config_dir`` at the date of ``now``,
+    entreprises and insee_stats on the case's fake APIs (core/evals/business_fixtures.py), under
+    the kill switch of ``home`` and without a cache; their calls are logged in ``log`` so that an
+    honest planner cites their figures (R1). No request leaves the machine (ADR-063)."""
+    fixture = case.business or BusinessFixture()
+    folder = home / "business"
+    registry, stats = business_clients(fixture, folder, lambda: kill_switch_engaged(home), now)
+    factories: dict[str, Callable[[], MCPServer]] = {
+        "business_calc": lambda: business_calc_server(config_dir, lambda: now().date()),
+        "entreprises": lambda: entreprises_server(registry, entreprises_target(config_dir)),
+        "insee_stats": lambda: insee_server(stats, insee_target(config_dir)),
+    }
+
+    def opener(name: str, factory: Callable[[], MCPServer]) -> ToolboxOpener:
+        @asynccontextmanager
+        async def open_toolbox(scope: RequestScope) -> AsyncIterator[Toolbox]:
+            folder.mkdir(parents=True, exist_ok=True)
+            async with McpPlugin(REPO_ROOT / "plugins" / name, scope, target=factory()) as plugin:
+                yield LoggedToolbox(McpToolbox(plugin), log)
+
+        return open_toolbox
+
+    return {name: opener(name, factory) for name, factory in factories.items()}
 
 
 # --- scripted models ---------------------------------------------------------------------------
@@ -1205,6 +1260,10 @@ def _from_figures(
     case: Case, log: FinanceLog, views: Sequence[str], *, complex_: bool
 ) -> dict[str, Any]:
     """The answer of an honest planner on computed figures: each one cited with its tool (R1)."""
+    business = uses_business(case)
+    counter, steps = (
+        (BUSINESS_COUNTER, BUSINESS_STEPS) if business else (FINANCE_COUNTER, FINANCE_STEPS)
+    )
     facts = []
     for figure in case.expect.figures:
         display = log.display(figure.tool, figure.id)
@@ -1240,9 +1299,9 @@ def _from_figures(
     return {
         "synthese": " ".join(sentences),
         "developpement": "\n".join(body) or "Aucun chiffre n'a été calculé par un outil.",
-        "contre_arguments": FINANCE_COUNTER if complex_ else "",
+        "contre_arguments": counter if complex_ else "",
         "confiance": confidence,
-        "prochaines_etapes": list(FINANCE_STEPS) if complex_ else [],
+        "prochaines_etapes": list(steps) if complex_ else [],
     }
 
 
@@ -2061,7 +2120,7 @@ def offline_config(source: Path = REPO_ROOT / "config", *, agent_budget: bool = 
     The euro budgets, the committee's, the deep research's and the code agent's budgets, the PII
     threshold and the code pack's repositories, images and request cap stay ``A_DEFINIR`` in the
     repository (R7); the copy gives the scripted run room to work. Its costs are estimates and are
-    labelled as such. ``agent_budget=False`` leaves ``per_code_agent`` unset, as Lucas left it.
+    labelled as such. ``agent_budget=False`` leaves ``per_code_agent`` unset, as the user left it.
     """
     directory = Path(tempfile.mkdtemp(prefix="cerveau-eval-config-")) / "config"
     shutil.copytree(source, directory)

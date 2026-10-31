@@ -92,7 +92,7 @@ test('the stop reports its time against the target and never offers to rearm her
   assert.ok(unclean.includes('**Arrêt incomplet**'));
 });
 
-test('a stop the API did not confirm sends Lucas to his terminal', () => {
+test('a stop the API did not confirm sends the user to his terminal', () => {
   assert.equal(
     killFailure(new ApiFailure(null, null)),
     '**Arrêt NON confirmé** : API interne injoignable : est-elle lancée ?.\n' +
