@@ -58,7 +58,7 @@ DEFAUT: dict[str, list[str]] = {
     "marketing:campaign-plan": ["plan de campagne", "campagne marketing"],
     "marketing:competitive-brief": ["analyse des concurrents", "analyse concurrentielle", "étude de la concurrence"],
     "marketing:email-sequence": ["séquence d'e-mails", "séquence email", "série d'e-mails"],
-    "anthropic-skills:video": ["script vidéo / tiktok / youtube / reels", "idées de vidéos"],
+    "anthropic-skills:video": ["script tiktok / reels", "pub vidéo", "idées de vidéos"],  # YouTube : cerveau:youtube
     "anthropic-skills:video-frames": ["extrais les images de la vidéo", "découpe la vidéo en images"],
     "anthropic-skills:nano-banana-pro": ["nano banana"],
     "canva:edit-design": ["modifie sur canva", "modifie le design canva", "change le design canva", "visuel canva",

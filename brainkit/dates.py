@@ -42,7 +42,7 @@ def parse(text, today=None):
         return (today - _dt.timedelta(days=1)).isoformat()
     if t in ("avant-hier", "avant hier"):
         return (today - _dt.timedelta(days=2)).isoformat()
-    m = re.search(r"il y a\s+(\d{1,3})\s*(jours?|j|semaines?|sem|mois)", t)
+    m = re.search(r"\bil y a\s+(\d{1,3})\s*(jours?|j|semaines?|sem|mois)\b", t)
     if m:
         n, unit = int(m.group(1)), m.group(2)
         return (today - _dt.timedelta(days=n * (7 if unit.startswith("sem") else 30 if unit == "mois" else 1))).isoformat()
