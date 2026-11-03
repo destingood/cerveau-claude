@@ -22,13 +22,12 @@ la commande demandée. Sinon, installer (2).
    Résultat : `~/.claude/skills/impeccable` (commande `/impeccable`), 4 agents `~/.claude/agents/impeccable-*.md` et
    3 hooks dans `~/.claude/settings.json` (début de session, après chaque Edit/Write, fin de réponse). Sans hooks :
    ajouter `--no-hooks` ; pour un seul projet : `--scope=project` au lieu de `--global`.
-4. Déclencheurs en français : `brain skill trig impeccable "peaufine l'interface" "peaufiner le design"
-   "critique l'interface" "ça fait généré par ia" "interface trop chargée"`, puis nouvelle conversation.
+4. Nouvelle conversation. Pas de `brain skill trig impeccable` : les déclencheurs en français sont ceux de
+   `cerveau:impeccable`, les recopier ferait des doublons.
 
-Mise à jour : `npx -y impeccable update` (les déclencheurs ajoutés par `brain skill trig` restent). Retrait : supprimer
-`~/.claude/skills/impeccable`, `~/.claude/agents/impeccable-*.md` et `~/.impeccable`, retirer de
-`~/.claude/settings.json` les 3 hooks dont la commande contient `skills\impeccable` et la clé `description`
-d'Impeccable, puis `brain skill --force trig impeccable`.
+Mise à jour : `npx -y impeccable update`. Retrait : supprimer `~/.claude/skills/impeccable`,
+`~/.claude/agents/impeccable-*.md` et `~/.impeccable`, puis retirer de `~/.claude/settings.json` les 3 hooks dont la
+commande contient `skills\impeccable` et la clé `description` d'Impeccable.
 
 ## Règles
 - Une fois par projet : `/impeccable init` (questions sur le produit → PRODUCT.md) ; `/impeccable document` tire

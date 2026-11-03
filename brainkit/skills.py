@@ -42,6 +42,7 @@ SLASH_RE = re.compile(r"(?<![\w/.])/([a-z0-9][a-z0-9:_-]{1,40})")
 FILE_RE = re.compile(r"\b([A-Za-z][\w-]*)\.(md|txt|json|toml|ya?ml|py|js|ts|html|csv)\b")
 NAME_RE = re.compile(r"^[a-z0-9]+(?:-[a-z0-9]+)*$")
 LINK_RE = re.compile(r"\]\(([^)\s#]+)\)")
+CODE_SPAN_RE = re.compile(r"```.*?```|`[^`\n]*`", re.S)  # bloc ou bout de code : ses liens sont des exemples, pas des fichiers
 CAP_RE = re.compile(r"(?<![.!?:]\s)(?<!^)\b([A-Z][A-Za-z0-9]+(?:[.-][A-Za-z0-9]+)*|[A-Z]{3,})\b")
 # Mots de description qui ne disent rien du sujet (« À utiliser quand l'utilisateur demande… ») ; son prénom
 # (owner_name, réglage local) s'y ajoute, relu une fois par analyse des skills (index).
@@ -235,7 +236,7 @@ def parse(path, plugin="", ident="", kind="", stop=None) -> dict | None:
             "kw": [[*_tok3(t), w, "name" if t in name_toks else "trigger" if t in trig_toks else
                     "entity" if t in ents else "desc"] for t, w in sorted(kw.items())],
             "neg_kw": [_tok3(t) for t in neg_only], "lines": body.count("\n") + 1,
-            "links": sorted(set(LINK_RE.findall(body)))}
+            "links": sorted(set(LINK_RE.findall(CODE_SPAN_RE.sub("", body))))}
 
 
 def _enabled(cwd=None) -> dict:

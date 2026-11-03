@@ -17,7 +17,8 @@ TAG_RE = re.compile(r"</?[a-zA-Z][\w\-]*(?:\s[^<>]*)?>")
 SHELL_RE = re.compile(r"^[ \t]*(?:PS [A-Za-z]:[^\n>]*>|[\w.-]+@[\w.-]+(?::[^\n$#]*[$#]| MINGW\w*[^\n]*))", re.M)
 AUTO_RE = re.compile(r"^(None of the sessions you started|Background \(from the session|<side-sessions|"
                      r"The user hasn't heard|\[Request interrupted|This session is being continued from|"
-                     r"<task-notification>|\[SYSTEM NOTIFICATION)", re.I)
+                     r"<task-notification>|\[SYSTEM NOTIFICATION|"
+                     r"Another Claude session sent a message|<cross-session-message|\[Cross-session )", re.I)
 # Sections du résumé de compaction de Claude Code (« 8. Current Work », « 9. Optional Next Step »…)
 SUMMARY_HEAD_RE = re.compile(r"^\s*(?:#+\s*)?(?:\d+\.\s*)?(?:\*\*)?\s*(Primary Request|Pending Tasks|Current Work|"
                              r"Optional Next Step)\b", re.I | re.M)
