@@ -1,6 +1,6 @@
 ---
 name: recherche
-description: "Recherche approfondie et sourcée sur le web, rangée dans le wiki du cerveau : boucle bornée (3 tours, 5 sources lues par tour), sources primaires d'abord, position contraire cherchée, chaque affirmation classée établie, provisoire, contestée ou non étayée, puis dossier dans Analyses et mise à jour des pages proposée à part. À utiliser quand l'utilisateur demande « recherche à fond », « fais un dossier sur », « creuse le sujet », « enquête sur », « trouve tout sur », « recherche et range dans le wiki », « état des lieux de », « deep research », « autoresearch ». Pas pour une question simple (une recherche WebSearch suffit), ni pour Perplexity nommé (skill perplexity), ni pour le SEO."
+description: "Recherche approfondie et sourcée sur le web, rangée dans le wiki du cerveau : boucle bornée (3 tours, 5 sources lues par tour), sources primaires d'abord, position contraire cherchée, chaque affirmation classée établie, provisoire, contestée ou non étayée, puis dossier dans Analyses et mise à jour des pages proposée à part. À utiliser quand l'utilisateur demande « recherche à fond », « recherche approfondie », « fais un dossier sur », « creuse le sujet », « enquête sur », « trouve tout sur », « recherche et range dans le wiki », « état des lieux de », « deep research », « autoresearch ». Pas pour une question simple (une recherche WebSearch suffit), ni pour Perplexity nommé (skill perplexity), ni pour le SEO."
 ---
 
 # Recherche sourcée → dossier dans le wiki

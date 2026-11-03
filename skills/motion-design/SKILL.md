@@ -1,6 +1,6 @@
 ---
 name: motion-design
-description: "Concevoir ou corriger les animations d'un site ou d'une appli avec Motion Design Skill de LottieFiles (github.com/LottieFiles/motion-design-skill, licence MIT) : durées, courbes d'easing, chorégraphie, principes Disney adaptés à l'interface, états chargement, succès et erreur, mouvement réduit. Marche avec CSS, Framer Motion, GSAP, Lottie ou des ressorts. Vérifie qu'elle est là, sinon l'installe sur ce PC avec l'accord de l'utilisateur, ou la suit une fois sans rien installer. À utiliser quand l'utilisateur dit « règle la durée de cette animation », « affine la courbe d’easing », « ajuste cette animation Lottie », « micro-interaction », « animation de chargement ». Ne pas utiliser pour monter une vidéo, ni pour le design statique (couleurs, typographie, mise en page)."
+description: "Concevoir ou corriger les animations d'un site ou d'une appli avec Motion Design Skill de LottieFiles (github.com/LottieFiles/motion-design-skill, licence MIT) : durées, courbes d'easing, chorégraphie, principes Disney adaptés à l'interface, états chargement, succès et erreur, mouvement réduit. Marche avec CSS, Framer Motion, GSAP, Lottie ou des ressorts. Vérifie qu'elle est là, sinon l'installe sur ce PC avec l'accord de l'utilisateur, ou la suit une fois sans rien installer. À utiliser quand l'utilisateur dit « règle la durée de cette animation », « affine la courbe d’easing », « ajuste cette animation Lottie », « animation de chargement », « transition de page », « anime le logo ». Ne pas utiliser pour monter une vidéo, ni pour le design statique (couleurs, typographie, mise en page)."
 ---
 
 # Motion design — des animations d'interface qui ont une raison d'être
@@ -19,7 +19,7 @@ https://raw.githubusercontent.com/LottieFiles/motion-design-skill/main/skills/mo
    - Bash : `DO_NOT_TRACK=1 npx -y skills add LottieFiles/motion-design-skill -g -a claude-code -y --copy`
    Résultat : `~/.claude/skills/motion-design`, commande `/motion-design`.
 3. Déclencheurs en français : `brain skill trig motion-design "règle la durée de cette animation" "affine la courbe d’easing"
-   "ajuste cette animation Lottie" "micro-interaction" "animation de chargement"`, puis nouvelle conversation.
+   "ajuste cette animation Lottie" "animation de chargement" "transition de page" "anime le logo"`, puis nouvelle conversation.
 
 Mise à jour : `npx -y skills update -g` (réécrit le SKILL.md ; les déclencheurs ajoutés par `brain skill trig`
 restent). Retrait : `npx -y skills remove motion-design -g -a claude-code -y`, puis `brain skill --force trig motion-design`.

@@ -50,7 +50,10 @@ DESC_STOP = {fold(w) for w in """utiliser utilise utilisez utilisation quand lor
 personne skill skills tape tapes taper toute toutes question questions chaque partir pour ici exemple etc
 use used when user asks want wants any every""".split()}
 GENERIC_NAME = {"projet", "project", "expert", "contexte", "context", "agent", "assistant", "helper", "outil", "tool",
-                "general", "generateur", "generator", "manager", "gestion", "creer", "create", "faire"}
+                "general", "generateur", "generator", "manager", "gestion", "creer", "create", "faire", "recherche"}
+# skill nommée d'un de ces mots (« ma recherche d'emploi ») : nom cité seulement en /recherche, cerveau:recherche,
+# `recherche`, « skill recherche », « utilise recherche » ou « lance recherche »
+AS_REF = r"(?:[/:`]|(?<![\w-])(?:skills?|utilise|lance) )"
 
 PASTE_TAG = re.compile(r"<pasted_content[^>]*>(.*?)</pasted_content[^>]*>", re.S)  # l'appli ferme avec l'id
 MARKERS = re.compile(r"\b(you are|tu es (?:un|une|le|la)|act as|agis comme|roles?|tasks?|taches?|contexte?|objecti(?:ve|f)s?|"
@@ -577,8 +580,9 @@ def match(text, skills, exclude=(), min_score=4.0, long_chars=500) -> list:
         # nom composé cité ; jamais « peut-être » (mesuré : une suggestion fausse sur cinq messages sinon)
         foreign = bool(s.get("kind"))
         cited = s["name"].partition(":")[2] if s.get("plugin") else s["name"]  # « brainstorming » suffit pour plugin:…
+        pre = AS_REF if fold(cited) in GENERIC_NAME else r"(?<![\w-])"
         if (len(cited) >= 5 and (not foreign or "-" in cited)
-                and re.search(rf"(?<![\w-]){re.escape(fold(cited))}(?![\w-])", q.text)):
+                and re.search(rf"{pre}{re.escape(fold(cited))}(?![\w-])", q.text)):
             why = "nom cité"
         for p in s["triggers"]:
             if why:
