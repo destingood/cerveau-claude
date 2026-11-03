@@ -39,6 +39,6 @@ commande contient `skills\impeccable` et la clé `description` d'Impeccable.
   doute → une question d'une ligne. Ignorer une règle ou un fichier entier : seulement sur son « oui ».
 - Coût : les hooks ne disent rien hors fichiers d'interface ; une retouche d'interface avec un vrai défaut ajoute
   ≈ 1,6 Ko au contexte. Les couper dans un projet : `/impeccable hooks off`.
-- Animation seule → `cerveau:motion-design` ; style d'une marque connue → `cerveau:design-md` ; capture ou maquette à
-  coder → `cerveau:image-to-code`.
+- Animation seule : d'un composant → `cerveau:emil-kowalski`, réglage fin → `cerveau:motion-design` ; style d'une marque
+  connue → `cerveau:design-md` ; capture ou maquette à coder → `cerveau:image-to-code`.
 - Réponses dans la langue de l'utilisateur, même si la skill est en anglais.
