@@ -343,6 +343,13 @@ def build(dest: Path, owner: str = "", repo: str = "") -> list:
         if item.name not in KEEP:
             shutil.rmtree(item) if item.is_dir() else item.unlink()
     shutil.copy2(CODE_DIR / "brain.py", dest / "brain.py")
+    exe = CODE_DIR / "rust" / "target" / "release" / "brain.exe"
+    if exe.is_file():  # version Rust (Windows) : brain.py la lance, elle repasse à Python pour ce qui n'est pas porté
+        rust = CODE_DIR / "rust"
+        srcs = list((rust / "src").glob("*.rs")) + [rust / "Cargo.toml", rust / "Cargo.lock"]
+        if exe.stat().st_mtime < max(p.stat().st_mtime for p in srcs if p.exists()):
+            raise RuntimeError(f"{exe} est plus ancien que ses sources : relance cargo build --release dans rust/")
+        shutil.copy2(exe, dest / "brain.exe")
     shutil.copytree(CODE_DIR / "brainkit", dest / "brainkit", ignore=shutil.ignore_patterns("__pycache__", "*.pyc"))
     hooks = {event: [{**({"matcher": matcher} if matcher else {}), "hooks": [_hook(arg, timeout, status)]}]
              for event, arg, timeout, status, matcher in EVENTS}

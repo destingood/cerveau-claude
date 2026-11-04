@@ -35,6 +35,13 @@ def newer_install():
     return None
 
 
+def rust_exe():
+    """brain.exe livré à côté (Windows) : la version Rust, qui repasse elle-même à Python (BRAIN_IMPL=python) pour ce
+    qu'elle ne fait pas encore. Absent, ou BRAIN_IMPL=python : Python seul."""
+    exe = os.path.join(HERE, "brain.exe")
+    return exe if os.name == "nt" and os.environ.get("BRAIN_IMPL") != "python" and os.path.isfile(exe) else None
+
+
 if __name__ == "__main__":
     relay = newer_install()
     if relay:
@@ -42,6 +49,13 @@ if __name__ == "__main__":
         sys.argv[0] = os.path.join(relay, "brain.py")
         runpy.run_path(sys.argv[0], run_name="__main__")
         sys.exit(0)
+    exe = rust_exe() if sys.argv[1:2] != ["mcp"] else None  # serveur MCP : Python direct (rien de porté)
+    if exe:
+        import subprocess
+        try:
+            sys.exit(subprocess.run([exe] + sys.argv[1:], env=dict(os.environ, BRAIN_PYTHON=sys.executable)).returncode)
+        except OSError:
+            pass  # exe bloqué (antivirus…) : Python fait tout
     if len(sys.argv) >= 3 and sys.argv[1] == "hook":  # chemin rapide des hooks : ni argparse ni CLI à charger
         from brainkit.common import setup_io
         setup_io()
