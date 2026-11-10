@@ -621,21 +621,28 @@ def refuse(names) -> tuple:
     bad = [n for n in names if not _TOOL_NAME.fullmatch(n)]
     if bad:
         return 1, f"✗ nom d'outil invalide : {', '.join(bad)} (exemples : Artifact, PowerShell, mcp__serveur)"
-    kept = [n for n in names if n in KEEP_TOOLS or n.startswith(tuple(f"mcp__{s}" for s in KEEP_SERVERS))]
-    if kept:
-        return 1, f"✗ {', '.join(kept)} : outil indispensable au travail ou au cerveau, jamais refusé"
-    app = [n for n in names if _app_connector(n)]
-    if app:
-        return 1, (f"✗ {', '.join(_server(n[5:]) for n in app)} : connecteur claude.ai — une règle de refus bloque ses "
-                   "appels sans le retirer du contexte ; le couper dans l'app (bouton + → Connecteurs)")
-    ok, posees, lignes = commit([("refus", n, True) for n in names])
+    # Un nom protégé ou un connecteur claude.ai n'annule pas les autres : ils sont signalés, le reste est posé.
+    skipped = [f"✗ {n} : outil indispensable au travail ou au cerveau, jamais refusé"
+               for n in names if _protected(n)]
+    skipped += [f"✗ {_server(n[5:])} : connecteur claude.ai — une règle de refus bloque ses appels sans le retirer "
+                "du contexte ; le couper dans l'app (bouton + → Connecteurs)"
+                for n in names if not _protected(n) and _app_connector(n)]
+    todo = [n for n in names if not _protected(n) and not _app_connector(n)]
+    if not todo:
+        return 1, "\n".join(skipped)
+    ok, posees, lignes = commit([("refus", n, True) for n in todo])
     if posees:
         old = ((load_config().get("eco") or {}).get("propositions") or {}).get("outils")
         old = old if isinstance(old, list) else []
         set_config("eco.propositions.outils", sorted(set(old) | set(posees)))
         lignes.append(f"→ pris en compte au prochain démarrage de Claude Code · retour : "
                       f"`{CMD} eco --rendre {' '.join(sorted(posees))}`")
-    return (0 if ok else 1), "\n".join(lignes)
+    return (0 if ok else 1), "\n".join(lignes + skipped)
+
+
+def _protected(name) -> bool:
+    """Outil jamais refusable : outil de KEEP_TOOLS ou d'un serveur gardé (KEEP_SERVERS)."""
+    return name in KEEP_TOOLS or name.startswith(tuple(f"mcp__{s}" for s in KEEP_SERVERS))
 
 
 def give_back(names) -> tuple:
@@ -1026,7 +1033,8 @@ def proposals(settings=None, days=UNUSED_DAYS) -> list:
     deny = _get(settings, DENY)
     deny = deny if isinstance(deny, list) else []
     out = []
-    rules = [r for r in TOOL_WEIGHTS if r not in deny and not any(t == r or t.startswith(f"{r}__") for t in used)]
+    rules = [r for r in TOOL_WEIGHTS if r not in deny and not _protected(r)
+             and not any(t == r or t.startswith(f"{r}__") for t in used)]
     if rules:
         out.append(("outils", [("refus", r, True) for r in rules], sum(TOOL_WEIGHTS[r] for r in rules),
                     ", ".join(rules)))
