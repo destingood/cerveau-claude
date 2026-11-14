@@ -218,7 +218,8 @@ def page(ile: dict) -> str:
         corps.append(f"<h2>{e(t['nouveautes'])}</h2>\n<ul>" + "".join(
             f"<li><time datetime=\"{e(n['date'])}\">{e(n['date'])}</time> — {e(n['texte'])}</li>" for n in nouveautes)
             + "</ul>")
-    ld = json.dumps(donnees_structurees(ile), ensure_ascii=False, indent=1).replace("</", "<\\/")
+    ld = (json.dumps(donnees_structurees(ile), ensure_ascii=False, indent=1)  # rien qui ferme la balise <script>
+          .replace("<", "\\u003c").replace(">", "\\u003e").replace("&", "\\u0026"))
     tete = [
         "<meta charset=\"utf-8\">",
         "<meta name=\"viewport\" content=\"width=device-width, initial-scale=1\">",
