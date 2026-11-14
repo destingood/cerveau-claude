@@ -8,8 +8,9 @@ peuvent lire et citer (réponse directe en tête, code d'île en clair, faits da
     python page_ile.py --modele > ile.json         # un ile.json à remplir
 
 Bibliothèque standard uniquement, aucun accès réseau. La page n'a ni script de mesure, ni cookie, ni police distante.
-Elle porte la mention exigée par la politique « Fan Content » d'Epic Games (règle 1.10) et ne doit ressembler en rien
-à un site officiel (règle 1.8) : garde ton propre habillage."""
+Elle porte, bien visible, la mention que les règles des développeurs Fortnite exigent sur tout support de promotion
+d'une île (règle 3.1). Ce que le script ne voit pas et que ces règles demandent : aucun logo Fortnite ou Epic Games,
+et sur les images seulement des tenues qui appartiennent à Epic (pas de tenue sous licence d'une autre marque)."""
 from __future__ import annotations
 
 import argparse
@@ -20,9 +21,9 @@ from html import escape
 from pathlib import Path
 
 CODE = re.compile(r"^\d{4}-\d{4}-\d{4}$")
-# Politique « Fan Content » d'Epic Games, règle 1.10 (legal.epicgames.com/epicgames/fan-art-policy, lue le 14/11/2026)
-MENTION = ("Portions of the materials used are trademarks and/or copyrighted works of Epic Games, Inc. All rights "
-           "reserved by Epic. This material is not official and is not endorsed by Epic.")
+# Règles des développeurs Fortnite, 3.1 « Promoting Your Island » (legal.epicgames.com/fortnite/developer-rules, mise à
+# jour du 29/04/2026, lue le 14/11/2026) : mention à faire figurer de façon visible sur tout support de promotion.
+MENTION = "This is not sponsored, endorsed, or administered by Epic Games, Inc."
 TITRE_MAX, DESC_MAX = 60, 155  # au-delà, Google coupe le titre et l'extrait dans ses résultats (ordre de grandeur)
 
 MODELE = {
@@ -257,7 +258,7 @@ dl{{display:grid;grid-template-columns:max-content 1fr;gap:.3rem 1rem;margin:0}}
 dt{{color:var(--doux)}}dd{{margin:0}}
 img{{max-width:100%;height:auto;border-radius:.6rem;margin:1rem 0;display:block}}
 a{{color:var(--accent)}}
-footer{{max-width:44rem;margin:0 auto;padding:1rem;border-top:1px solid var(--trait);color:var(--doux);font-size:.85rem}}
+footer{{max-width:44rem;margin:0 auto;padding:1rem;border-top:1px solid var(--trait)}}
 </style>
 </head>
 <body>
