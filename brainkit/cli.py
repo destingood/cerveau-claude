@@ -1307,9 +1307,10 @@ def cmd_echange(a):
     elif act == "proposer":
         print(echange.propose(need("proposer <nom> [--non]"), on=not a.non))
     elif act == "adopter":
-        print("\n".join(echange.adopt(need("adopter <ami/nom> [--oui] [--scripts]"), oui=a.oui, scripts=a.scripts)))
+        print("\n".join(echange.adopt(need("adopter <ami/nom> [--oui] [--scripts]"), oui=a.oui, scripts=a.scripts,
+                                      sig=a.empreinte)))
     elif act == "approuver":
-        print("\n".join(echange.approve(need("approuver <ami/nom> [--oui]"), oui=a.oui)))
+        print("\n".join(echange.approve(need("approuver <ami/nom> [--oui]"), oui=a.oui, sig=a.empreinte)))
     elif act == "propositions":
         rows = echange.proposals()
         print(f"Skills du cerveau commun candidates au plugin ({len(rows)}) :" if rows else
@@ -1317,7 +1318,8 @@ def cmd_echange(a):
               "par 2 membres ou 3 fois).")
         for r in rows:
             why = "proposée par son auteur" if r["propose"] else f"suivie {r['suivies']} fois par {r['membres']} membre(s)"
-            print(f"- {r['ref']} — {why} · contrôle : {r['etat']}\n    {short(r['resume'], 160)}")
+            print(f"- {r['ref']} — {why} · contrôle : {r['etat']}"
+                  + (f"\n    son auteur la décrit ainsi : « {echange.quote(r['resume'], 160)} »" if r["resume"] else ""))
         if rows:
             print("→ `brain echange promouvoir <ami/nom> --vers <arbre de développement>` (après l'avoir relue)")
     elif act == "promouvoir":
@@ -1326,6 +1328,9 @@ def cmd_echange(a):
         print(echange.feedback_all())
     elif act in ("sync", "synchro"):
         print("\n".join(echange.sync(auto=a.auto)))
+    elif act == "index":  # tâche de fond lancée par les hooks quand l'index des skills reçues est périmé
+        idx = echange.index(build=True)
+        print(f"✓ index des skills reçues : {len(idx.get('skills') or [])} skill(s) contrôlée(s)")
     else:
         die("action inconnue : " + str(a.action) + " — etat, apercu, oui, non, recevoir, liste, voir, partager, garder, "
             "proposer, adopter, approuver, declencheurs, propositions, promouvoir, retours, sync")
@@ -2334,6 +2339,8 @@ def build_parser():
     s.add_argument("args", nargs="*")
     s.add_argument("--oui", action="store_true", help="adopter / approuver : accord de l'utilisateur donné")
     s.add_argument("--scripts", action="store_true", help="adopter : approuver aussi ses scripts (après les avoir montrés)")
+    s.add_argument("--empreinte", help="adopter / approuver : l'empreinte montrée par `voir` (l'accord ne vaut que pour "
+                                       "ce contenu-là)")
     s.add_argument("--non", action="store_true", help="partager / garder / proposer : revenir en arrière")
     s.add_argument("--vers", help="promouvoir : arbre de développement ou clone du dépôt du plugin")
     s.add_argument("--force", action="store_true", help="promouvoir : remplacer, ou passer outre le contrôle après relecture")

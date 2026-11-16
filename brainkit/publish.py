@@ -327,10 +327,13 @@ garde une pour toi. Ce que tes amis partagent arrive chez toi en deux temps :
 
 - **Le texte d'une skill s'active seul** : contrôlé à l'arrivée (consigne cachée, téléchargement exécuté, commande
   destructrice, accès à tes secrets ou aux réglages de Claude, envoi de données), puis proposé quand ton message s'y
-  prête, marqué 🤝 et présenté à Claude comme la méthode d'un ami, pas comme un ordre. Une skill qui échoue au contrôle
-  reste en quarantaine jusqu'à ce que tu l'adoptes (`brain echange adopter <ami/nom>`).
+  prête, marqué 🤝 et présenté à Claude comme la méthode d'un ami, pas comme un ordre. Une skill qui échoue au contrôle,
+  ou dont le dossier contient autre chose que du texte et des scripts au nom simple (fichier caché, lien, autre type),
+  reste en quarantaine jusqu'à ce que tu l'adoptes (`brain echange adopter <ami/nom>`). Ce contrôle se fait en tâche
+  de fond, jamais pendant que tu attends une réponse.
 - **Un script attend ton accord** : il tournerait sur ton PC, donc Claude te le montre d'abord
-  (`brain echange approuver <ami/nom>`). L'accord vaut pour ce script-là, à l'octet près : s'il change, il est redemandé.
+  (`brain echange approuver <ami/nom>`). L'accord vaut pour ce que tu as vu, à l'octet près : si le script change, même
+  entre le moment où tu le regardes et ton oui, il est redemandé.
 
 Une skill qui a fait ses preuves (suivie par plusieurs membres) est proposée pour le plugin ; une fois que {owner} l'a
 relue et publiée, tous ceux qui ont le plugin la reçoivent à la mise à jour. `brain echange` montre où tu en es,

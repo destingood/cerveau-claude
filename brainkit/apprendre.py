@@ -597,13 +597,15 @@ def learned_skill(name, description, body="", force=False, memory=True, scripts=
     import shutil
     from pathlib import Path
     from . import skills
-    from .echange import MAX_FILE, SCRIPT_EXT
+    from .echange import MAX_FILE, SAFE_REL, SCRIPT_EXT
     files = [Path(x) for x in scripts or ()]
     for f in files:  # tout est vérifié avant de créer quoi que ce soit
         if not f.is_file():
             raise ValueError(f"script introuvable : {f}")
         if f.suffix.lower() not in SCRIPT_EXT:
             raise ValueError(f"{f.name} : type de script non pris en charge ({', '.join(SCRIPT_EXT)})")
+        if not SAFE_REL.fullmatch(f.name):
+            raise ValueError(f"{f.name} : nom de fichier à simplifier (lettres sans accent, chiffres, tirets, points)")
         if f.stat().st_size > MAX_FILE:
             raise ValueError(f"{f.name} : script trop gros ({f.stat().st_size // 1000} k, {MAX_FILE // 1000} k au plus)")
     path = skills.scaffold(name, description, body, force=force)
@@ -695,6 +697,35 @@ def feedback(days=14) -> dict:
     return {"v": 1, "version": __version__, "systeme": system, "python": "%d.%d" % sys.version_info[:2], "moteur": engine,
             "jours": days, "le": now_iso()[:10], "pannes": dict(sorted(errors.items(), key=lambda x: -x[1])[:25]),
             "lents": slow, "reflexe": reflex, "delegation": deleg}
+
+
+def clean_feedback(data) -> dict:
+    """Retours techniques écrits par un autre cerveau, avant de les afficher : seulement des champs connus, des nombres
+    bornés et des libellés au format attendu (jamais de texte libre) ; {} si ce n'en est pas."""
+    if not isinstance(data, dict) or not data:
+        return {}
+
+    def num(v, top=1_000_000):
+        return max(0, min(v, top)) if isinstance(v, int) and not isinstance(v, bool) else 0
+
+    def text(v, rx, default="?"):
+        return v if isinstance(v, str) and re.fullmatch(rx, v) else default
+
+    def counts(v, rx, n):
+        return {k: num(x) for k, x in list(v.items())[:n] if isinstance(k, str) and re.fullmatch(rx, k)} \
+            if isinstance(v, dict) else {}
+
+    reflex = {}
+    for k, v in (list(data["reflexe"].items())[:60] if isinstance(data.get("reflexe"), dict) else ()):
+        if isinstance(k, str) and re.fullmatch(r"[a-z0-9-]{1,64}:[a-z0-9-]{1,64}", k) and isinstance(v, (list, tuple)) and len(v) == 2:
+            reflex[k] = [num(v[0]), num(v[1])]
+    return {"v": 1, "version": text(data.get("version"), r"\d{1,3}\.\d{1,3}\.\d{1,3}"),
+            "systeme": text(data.get("systeme"), r"windows|macos|linux"), "python": text(data.get("python"), r"\d\.\d{1,2}"),
+            "moteur": text(data.get("moteur"), r"rust|python"), "jours": num(data.get("jours"), 365),
+            "le": text(data.get("le"), r"\d{4}-\d{2}-\d{2}", None),
+            "pannes": counts(data.get("pannes"), r"[\w-]{1,30}(?::[\w-]{1,40}){0,2}(?: \([\w.]{1,40}:\d{1,6}:\w{1,60}\))?", 25),
+            "lents": counts(data.get("lents"), r"[\w-]{1,30}", 20), "reflexe": reflex,
+            "delegation": counts(data.get("delegation"), r"[a-z_]{1,20}", 12)}
 
 
 def feedback_text(days=14, data=None, who="") -> str:

@@ -17,7 +17,6 @@ peut-être au même moment)."""
 from __future__ import annotations
 
 import json
-import os
 import time
 
 from .common import PLUGIN, STATE_DIR, load_config, log, read_json, write_json
