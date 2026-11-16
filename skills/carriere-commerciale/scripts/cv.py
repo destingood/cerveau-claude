@@ -21,8 +21,8 @@ from pathlib import Path
 
 MODELE = {
     "nom": "Prénom Nom",
-    "titre": "Business Developer junior — vente B2B (logiciel)",
-    "contact": {"telephone": "06 00 00 00 00", "email": "prenom.nom@exemple.fr", "ville": "Ville (mobilité : …)",
+    "titre": "Vendeur conseil — informatique, téléphonie, multimédia",
+    "contact": {"telephone": "06 00 00 00 00", "email": "ton adresse e-mail", "ville": "Ville (mobilité : …)",
                 "linkedin": "linkedin.com/in/…"},
     "accroche": "Deux phrases : ce que tu vends ou veux vendre, la preuve la plus forte, le poste visé.",
     "experiences": [

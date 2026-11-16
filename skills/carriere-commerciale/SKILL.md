@@ -1,14 +1,15 @@
 ---
 name: carriere-commerciale
-description: "Carrière de commercial dans la tech (logiciel, SaaS, services informatiques) pour le cerveau : décrocher un premier poste sans diplôme ni expérience, puis monter les échelons un par un (Business Developer / SDR, Account Executive, grands comptes, manager) et gagner plus à chaque marche. Échelons et salaires sourcés, formations en alternance, dyslexie et orthographe au travail (outils, RQTH, aménagements), CV et LinkedIn, entretiens et jeux de rôle de vente, négociation du salaire et du variable, preuves chiffrées pour la promotion. À utiliser quand l'utilisateur dit « devenir commercial », « travailler dans la vente », « business developer », « SDR », « account executive », « monter les échelons », « gagner plus en vente », « mon CV de commercial », « préparer un entretien commercial », « négocier mon salaire », « mon variable », « je suis dyslexique ». Ne pas utiliser pour vendre un produit à un client précis (skills sales:*)."
+description: "Carrière de vendeur et de commercial dans la tech pour le cerveau : décrocher un premier poste sans diplôme ni expérience, d'abord en magasin (informatique, téléphonie, multimédia, boutiques d'opérateurs), puis monter les échelons un par un (vendeur expert, chef de rayon, directeur de magasin, directeur régional, ou vente aux entreprises) et gagner plus à chaque marche. Salaires sourcés, alternance et titres professionnels, aides de France Travail, dyslexie et orthographe au travail (outils, RQTH), CV et LinkedIn, entretiens et jeux de rôle de vente, négociation du salaire et du variable, preuves chiffrées pour la promotion. À utiliser quand l'utilisateur dit « devenir vendeur », « devenir commercial », « travailler dans la vente », « vendeur en magasin », « conseiller de vente », « monter les échelons », « mon CV de vendeur », « préparer un entretien », « négocier mon salaire », « je suis dyslexique ». Ne pas utiliser pour vendre un produit à un client précis (skills sales:*)."
 ---
 
 # Carrière commerciale — du premier poste aux gros salaires, un échelon à la fois
 
-Tu accompagnes quelqu'un qui veut faire carrière dans la vente B2B en tech et gagner plus à chaque échelon. Point de
-départ par défaut : **aucune expérience de vente, un parcours scolaire difficile, une dyslexie**. C'est un profil qui
-peut réussir dans ce métier, d'abord oral et payé aux résultats ; ne jamais le présenter autrement, ne jamais promettre
-de salaire.
+Tu accompagnes quelqu'un qui veut faire carrière dans la vente dans la tech et gagner plus à chaque échelon. Point de
+départ par défaut : **vente en magasin** (informatique, téléphonie, multimédia, boutiques d'opérateurs), **aucune
+expérience, un parcours scolaire difficile, une dyslexie, pas de permis**. C'est un profil qui peut réussir dans ce
+métier, d'abord oral et payé aux résultats ; ne jamais le présenter autrement, ne jamais promettre de salaire. La vente
+aux entreprises (B2B) est une marche possible plus tard (fiche 01, section 2).
 
 Les fiches de `references/` sont sourcées (liste et dates : `references/sources.md`). Lire **seulement** la fiche de la
 demande. Les marques [FAIT — source], [PRATIQUE COURANTE] (sources secondaires, à confirmer sur place), [CONSEIL]
@@ -35,8 +36,8 @@ demande. Les marques [FAIT — source], [PRATIQUE COURANTE] (sources secondaires
 
 | # | Demande | Fichier | Outils |
 |---|---|---|---|
-| 01 | Les échelons, les salaires de chaque marche, le temps pour monter | `references/01-echelons-salaires.md` | `remuneration.py` |
-| 02 | Décrocher le premier poste sans diplôme : alternance, titres professionnels, aides, où postuler | `references/02-premier-poste.md` | — |
+| 01 | Les échelons (magasin, puis B2B), les salaires de chaque marche, les minimums de convention, le temps pour monter | `references/01-echelons-salaires.md` | `remuneration.py` |
+| 02 | Décrocher le premier poste sans diplôme : candidature en magasin, alternance, TP Conseiller de vente, immersion, MRS, POEI | `references/02-premier-poste.md` | — |
 | 03 | Dyslexie au travail : écrire sans fautes, outils, RQTH, en parler ou non | `references/03-dyslexie-au-travail.md` | — |
 | 04 | CV et LinkedIn : trouver ses preuves, une page chiffrée | `references/04-cv-linkedin.md` | `cv.py` |
 | 05 | Entretiens et jeux de rôle (appel de prospection, « vendez-moi ce stylo ») | `references/05-entretiens.md` | — |
@@ -47,10 +48,10 @@ Démarrages express :
 
 | L'utilisateur dit… | Ordre de travail |
 |---|---|
-| « Je veux devenir commercial » | 01 (la carte des échelons) → 02 (la porte d'entrée qui lui va) → 03 (ses outils d'écriture) → 04 (CV) |
+| « Je veux devenir vendeur » | 01 (la carte des échelons) → 02 (la porte d'entrée qui lui va) → 03 (ses outils d'écriture) → 04 (CV) → liste des magasins proches |
 | « J'ai un entretien » | 05, puis jeu de rôle à voix haute avec Claude |
 | « On me propose un poste » | 06 → `remuneration.py comparer` → questions à poser avant de signer |
-| « Je veux une augmentation / passer AE » | 07 → `progression.py preuves` → 06 (la demande) |
+| « Je veux une augmentation / passer chef de rayon » | 07 → `progression.py preuves` → 06 (la demande) |
 
 ## Les outils
 

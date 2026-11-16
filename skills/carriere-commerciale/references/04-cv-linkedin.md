@@ -24,8 +24,8 @@ coûte le poste. `progression.py preuves` donne des phrases exactes dès qu'on a
 
 - Une page, une colonne, police simple, pas de tableau ni de graphique : beaucoup d'entreprises passent les CV dans un
   logiciel de tri qui lit mal les mises en page compliquées [PRATIQUE COURANTE].
-- En haut : nom, **titre du poste visé** (« Business Developer junior — vente B2B logiciel »), téléphone, e-mail, ville
-  et mobilité, lien LinkedIn. Photo et âge : facultatifs en France.
+- En haut : nom, **titre du poste visé** (« Vendeur conseil — informatique et téléphonie »), téléphone, e-mail, ville
+  et moyen de transport, lien LinkedIn s'il existe. Photo et âge : facultatifs en France.
 - Une accroche de deux phrases : le poste visé + la preuve la plus forte.
 - Expériences : 3 à 5 lignes de résultats chacune, un chiffre par ligne, verbe d'action en tête (« obtenu »,
   « conseillé », « signé », « relancé »).
@@ -41,20 +41,20 @@ aucune.
 
 ## 3. LinkedIn
 
-En vente B2B, LinkedIn sert à la fois de CV, d'outil de prospection et de vitrine : les recruteurs y cherchent les
-commerciaux [PRATIQUE COURANTE].
+Pour un poste en magasin, LinkedIn est un plus, pas une obligation. Il devient important pour monter (responsable,
+directeur) et pour passer à la vente aux entreprises, où les recruteurs y cherchent les commerciaux [PRATIQUE COURANTE].
 
 | Zone | Quoi mettre |
 |---|---|
 | Photo | Visage net, fond simple, souriant |
-| Titre (sous le nom) | Le poste visé et le secteur : « Business Developer junior | Vente B2B logiciel | Disponible en alternance » |
+| Titre (sous le nom) | Le poste visé et le secteur : « Vendeur conseil tech | Informatique et téléphonie | Disponible en alternance » |
 | Infos (« À propos ») | 4 à 6 phrases courtes : qui tu es, ce que tu veux vendre, tes preuves, ce que tu cherches |
 | Expérience | Les mêmes lignes chiffrées que le CV |
 | Préférences d'emploi | « Open to work » visible des recruteurs seulement (réglage du profil) |
 | Activité | Un commentaire utile par semaine sous les posts de commerciaux ou d'entreprises visées : ça se voit |
 
-Démarche : suivre 30 entreprises de logiciel visées ; envoyer à leurs commerciaux une demande de contact avec un
-message court (« Je veux devenir Business Developer, je vois que vous l'êtes chez X : est-ce que je peux vous poser deux
+Démarche : suivre les enseignes visées ; envoyer à des vendeurs ou responsables de magasin une demande de contact avec
+un message court (« Je veux devenir vendeur chez X, je vois que vous y travaillez : est-ce que je peux vous poser deux
 questions sur votre métier ? »). Un échange par semaine apprend plus qu'une formation, et ouvre des cooptations
 [CONSEIL]. Claude rédige et relit les messages ; c'est toi qui les envoies.
 

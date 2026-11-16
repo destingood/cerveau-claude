@@ -1,7 +1,18 @@
 # Fiche 05 — Entretiens et jeux de rôle de vente
 
-Objectif : réussir les entretiens d'un premier poste commercial, qui testent surtout la **façon de parler, d'écouter et
-de rebondir** — à l'oral, là où la dyslexie ne pèse pas.
+Objectif : réussir les entretiens d'un premier poste de vente, qui testent surtout la **façon de parler, d'écouter et
+de rebondir** — à l'oral, là où la dyslexie ne pèse pas. En magasin, le jeu de rôle le plus courant est l'accueil d'un
+client en rayon (section 3 bis) ; les appels de prospection concernent la vente aux entreprises.
+
+## 0. La vente en rayon, en cinq temps [CONSEIL]
+
+1. **Accueillir** : « Bonjour, je peux vous aider ? » — sourire, regarder la personne.
+2. **Découvrir** : trois questions avant de montrer un produit. « C'est pour quel usage ? Pour qui ? Vous avez un
+   budget en tête ? »
+3. **Reformuler** : « Si je comprends bien, il vous faut un ordinateur léger pour les cours, autour de 600 €. »
+4. **Proposer** deux produits, pas dix, en reliant chaque point à son besoin. Puis les services (garantie, installation,
+   accessoires) seulement s'ils lui servent.
+5. **Conclure** : « Lequel vous préférez ? Je vous le prépare ? »
 
 ## 1. Se préparer sur l'entreprise (une heure)
 
@@ -35,7 +46,8 @@ demander à utiliser un correcteur ; la façon d'en parler est dans la fiche 03.
 
 | Exercice | Ce qu'on attend |
 |---|---|
-| Appel de prospection simulé (« cold call ») | Se présenter en 10 secondes, donner une raison d'appeler, poser une question, obtenir un rendez-vous ; garder son calme sous l'objection |
+| Accueil d'un client en rayon (le plus courant en magasin) | Les cinq temps de la section 0, avec un client pressé, hésitant ou qui compare avec internet |
+| Appel de prospection simulé (« cold call »), surtout en vente aux entreprises | Se présenter en 10 secondes, donner une raison d'appeler, poser une question, obtenir un rendez-vous ; garder son calme sous l'objection |
 | Découverte du besoin | Poser des questions ouvertes avant de présenter le produit, reformuler |
 | « Vendez-moi ce stylo » | Ne pas réciter les qualités du stylo : demander d'abord ce que la personne en fait |
 | E-mail de prospection | Court, personnalisé, une seule demande (fiche 03 : relire avant d'envoyer) |
