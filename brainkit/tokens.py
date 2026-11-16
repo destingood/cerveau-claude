@@ -398,13 +398,15 @@ TTL_SIM = {"5m": (300, 1.25), "1h": (3600, 2.0)}  # cache de prompt : durée (s)
 BIG_WRITE = 20_000  # écriture de cache assez grosse pour en chercher la cause
 PAUSES = (("< 1 min", 60), ("1-5 min", 300), ("5-60 min", 3600), ("> 1 h", math.inf))
 CAUSES = ("début", "compaction", "pause > 1 h", "pause > 5 min", "invalidation")
-# Tarifs de l'API Anthropic au 06/10/2026 (docs, skill claude-api), $ par million de tokens : entrée, sortie, lecture du
+# Tarifs de l'API Anthropic au 03/11/2026 (docs, skill claude-api), $ par million de tokens : entrée, sortie, lecture du
 # cache ; écriture du cache 1,25 × l'entrée à 5 min, 2 × à 1 h. Haiku 5.5 au-delà de 100 k tokens de prompt : 0,50 / 2,50.
-# Mode rapide, autres fournisseurs, modèle inconnu : pas de prix.
-PRICES = {"claude-fable-5-1": (10, 50, 0.25), "claude-fable-5": (10, 50, 1.0), "claude-opus-5-5": (4, 20, 0.2),
-          "claude-opus-5": (5, 25, 0.5), "claude-opus-4-8": (5, 25, 0.5), "claude-opus-4-7": (5, 25, 0.5),
-          "claude-opus-4-6": (5, 25, 0.5), "claude-sonnet-5-5": (2, 10, 0.2), "claude-sonnet-5": (2, 10, 0.2),
-          "claude-sonnet-4-6": (3, 15, 0.3), "claude-haiku-5-5": (0.1, 0.5, 0.01), "claude-haiku-4-5": (1, 5, 0.1)}
+# Mode rapide, autres fournisseurs, modèle inconnu : pas de prix. v8.19 : Fable 5.2 (8 / 40, lecture 0,20) ajouté,
+# lecture du cache de Sonnet 5.5 corrigée (0,10).
+PRICES = {"claude-fable-5-2": (8, 40, 0.2), "claude-fable-5-1": (10, 50, 0.25), "claude-fable-5": (10, 50, 1.0),
+          "claude-opus-5-5": (4, 20, 0.2), "claude-opus-5": (5, 25, 0.5), "claude-opus-4-8": (5, 25, 0.5),
+          "claude-opus-4-7": (5, 25, 0.5), "claude-opus-4-6": (5, 25, 0.5), "claude-sonnet-5-5": (2, 10, 0.1),
+          "claude-sonnet-5": (2, 10, 0.2), "claude-sonnet-4-6": (3, 15, 0.3), "claude-haiku-5-5": (0.1, 0.5, 0.01),
+          "claude-haiku-4-5": (1, 5, 0.1)}
 HAIKU_LONG = (100_000, (0.5, 2.5, 0.05))
 
 
@@ -693,7 +695,7 @@ def _weigh_lines(b) -> list:
         n = sum(b["modeles"].values())
         mix = ", ".join(f"{k} {_pc(v, n)}" for k, v in sorted(b["modeles"].items(), key=lambda x: -x[1]))
         L.append(f"  - au tarif de l'API : ≈ {b['usd']:,.2f} $".replace(",", " ").replace(".", ",")
-                 + f" ({mix} des requêtes ; lecture du cache à 0,05 × l'entrée sur Opus 5.5, 0,025 × sur Fable 5.1) ; "
+                 + f" ({mix} des requêtes ; lecture du cache à 0,05 × l'entrée sur Opus 5.5, 0,025 × sur Fable 5.1 et 5.2) ; "
                  "abonnement : c'est le quota qui s'use, pas une facture"
                  + (f" ; {b['sans_prix']} requête(s) sans tarif (autre fournisseur, mode rapide)" if b["sans_prix"] else ""))
     big = [(c, n, w) for c, (n, w) in b["causes"].items() if n]

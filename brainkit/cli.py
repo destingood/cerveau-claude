@@ -1226,6 +1226,111 @@ def cmd_eco(a):
     return code
 
 
+def cmd_delegation(a):
+    """Délégation aux modèles moins chers : état, mode, modèle d'un agent."""
+    from . import delegation
+    lines = []
+    if a.mode:
+        lines.append(delegation.set_mode(a.mode))
+    for spec in a.modele or []:
+        lines.append(delegation.set_model(spec))
+    print("\n".join(lines) if lines else delegation.report(a.jours))
+    return 1 if any(x.startswith("✗") for x in lines) else 0
+
+
+def cmd_apprendre(a):
+    """Apprentissage : dossier à trancher, skill apprise, déclencheur à oublier, retours techniques."""
+    from . import apprendre
+    act, args = fold(a.action or ""), list(a.args)
+    if a.entretien:
+        print(apprendre.upkeep())
+    elif a.fait:
+        print(apprendre.done())
+    elif act in ("", "dossier"):
+        text, n = apprendre.dossier()
+        apprendre._edit(lambda d: d.update(attente=n))
+        print(text)
+    elif act in ("etat", "status"):
+        print(apprendre.status())
+    elif act == "skill":
+        if len(args) != 1:
+            die('usage : brain apprendre skill <nom> -d "À utiliser quand… « déclencheur »… Ne pas utiliser pour…" '
+                '[-b "corps" | --body-file fichier] [--script outil.py …] [--force]')
+        body = Path(a.body_file).read_text(encoding="utf-8") if a.body_file else (a.body or "")
+        try:
+            for line in apprendre.learned_skill(args[0], a.description, body, force=a.force, scripts=a.script or ()):
+                print(line)
+        except (ValueError, FileExistsError, OSError) as exc:
+            die(str(exc))
+    elif act == "oublier":
+        if len(args) != 2:
+            die('usage : brain apprendre oublier <skill> "déclencheur"')
+        print(apprendre.forget(args[0], args[1]))
+    elif act in ("retours", "feedback"):
+        print(apprendre.feedback_text(a.jours))
+    else:
+        die("action inconnue : " + str(a.action) + " — (rien : le dossier), etat, skill, oublier, retours ; --fait pour clore")
+
+
+def cmd_echange(a):
+    """Échange de skills et d'outils avec les amis (cerveau commun), et promotion vers le plugin."""
+    from . import echange
+    act, args = fold(a.action or "etat"), list(a.args)
+
+    def need(usage):
+        if not args:
+            die(f"usage : brain echange {usage}")
+        return args[0]
+
+    if act in ("etat", "status"):
+        print(echange.status())
+    elif act in ("apercu", "preview"):
+        print(echange.preview())
+    elif act in ("oui", "non"):
+        print("\n".join(echange.consent(act)))
+    elif act == "recevoir":
+        print(echange.set_receiving(fold(need("recevoir oui|non"))))
+    elif act == "declencheurs":
+        if fold(need("declencheurs oui|non")) == "non":
+            print(echange.drop_triggers())
+        else:
+            set_config("echange.declencheurs", "oui")
+            print("✓ les déclencheurs appris par tes amis sont de nouveau pris à chaque synchro")
+    elif act in ("liste", "list"):
+        print(echange.listing())
+    elif act == "voir":
+        print(echange.show(need("voir <ami/nom>")))
+    elif act == "partager":
+        print(echange.share(need("partager <nom> [--non]"), on=not a.non))
+    elif act == "garder":
+        print(echange.keep(need("garder <nom> [--non]"), on=not a.non))
+    elif act == "proposer":
+        print(echange.propose(need("proposer <nom> [--non]"), on=not a.non))
+    elif act == "adopter":
+        print("\n".join(echange.adopt(need("adopter <ami/nom> [--oui] [--scripts]"), oui=a.oui, scripts=a.scripts)))
+    elif act == "approuver":
+        print("\n".join(echange.approve(need("approuver <ami/nom> [--oui]"), oui=a.oui)))
+    elif act == "propositions":
+        rows = echange.proposals()
+        print(f"Skills du cerveau commun candidates au plugin ({len(rows)}) :" if rows else
+              "Aucune skill du cerveau commun n'est candidate au plugin pour l'instant (proposée par son auteur, ou suivie "
+              "par 2 membres ou 3 fois).")
+        for r in rows:
+            why = "proposée par son auteur" if r["propose"] else f"suivie {r['suivies']} fois par {r['membres']} membre(s)"
+            print(f"- {r['ref']} — {why} · contrôle : {r['etat']}\n    {short(r['resume'], 160)}")
+        if rows:
+            print("→ `brain echange promouvoir <ami/nom> --vers <arbre de développement>` (après l'avoir relue)")
+    elif act == "promouvoir":
+        print("\n".join(echange.promote(need("promouvoir <ami/nom> [--vers dossier] [--force]"), dest=a.vers, force=a.force)))
+    elif act in ("retours", "feedback"):
+        print(echange.feedback_all())
+    elif act in ("sync", "synchro"):
+        print("\n".join(echange.sync(auto=a.auto)))
+    else:
+        die("action inconnue : " + str(a.action) + " — etat, apercu, oui, non, recevoir, liste, voir, partager, garder, "
+            "proposer, adopter, approuver, declencheurs, propositions, promouvoir, retours, sync")
+
+
 def cmd_compact(a):
     from . import compact
     if a.decouvrir:
@@ -1510,6 +1615,11 @@ def _doctor_plugin(ok):
     need = [CODE_DIR / "hooks" / "hooks.json", CODE_DIR / ".mcp.json", CODE_DIR / "skills" / "brain" / "SKILL.md"]
     gone = [str(p.relative_to(CODE_DIR)) for p in need if not p.exists()]
     ok(not gone, "hooks, serveur MCP et skill du plugin" + (f" — manquants : {', '.join(gone)}" if gone else ""))
+    from . import delegation
+    agents = delegation.available()
+    missing = [n for n in delegation.AGENTS if n not in agents]
+    ok(not missing, f"agents de délégation ({', '.join(delegation.call_name(n) for n in agents) or 'aucun'}) · mode "
+                    f"{delegation.mode()}" + (f" — manquants : {', '.join(missing)}" if missing else ""))
     pcfg = load_config().get("plugin") or {}
     if plugin.classic_install():
         ok(True, "cerveau classique présent dans ~/.claude/brain : " + (
@@ -1816,6 +1926,9 @@ def cmd_hook(a):
     if a.event == "post-bash":
         from . import compact
         return compact.hook()
+    if a.event == "pre-agent":
+        from . import delegation
+        return delegation.hook()
     from . import hooks
     return hooks.run(a.event)
 
@@ -2187,6 +2300,44 @@ def build_parser():
     s.add_argument("--no-push", action="store_true", help="sync : récupérer seulement")
     s.add_argument("--auto", action="store_true", help=argparse.SUPPRESS)
     s.add_argument("--delai", type=float, help=argparse.SUPPRESS)
+    s = cmd("delegation", cmd_delegation, "délégation aux modèles moins chers (Haiku pour chercher et lire, Sonnet pour une "
+            "modification cadrée) : état et économies — --mode auto|max|conseil|off · --modele eclaireur=sonnet",
+            ["deleguer"])
+    s.add_argument("--mode", choices=["auto", "max", "conseil", "off"],
+                   help="auto : aiguillage prudent des sous-agents lancés sans modèle + conseils ; max : tout sous-agent "
+                        "générique au moins sur Sonnet ; conseil : conseils seulement ; off")
+    s.add_argument("--modele", action="append", metavar="NOM=MODELE",
+                   help="modèle d'un agent du cerveau (eclaireur=sonnet), ou d'un type intégré (Explore=off, "
+                        "general-purpose=haiku) ; NOM=defaut pour revenir")
+    s.add_argument("--jours", type=int, default=7, help="période mesurée (défaut 7 jours)")
+    s = cmd("apprendre", cmd_apprendre, "ce que le cerveau apprend des sessions (erreurs résolues, déclencheurs manqués, "
+            "méthodes répétées) : le dossier à trancher — --fait pour le clore · etat · skill <nom> -d \"…\" "
+            "--body-file f · oublier <skill> \"déclencheur\" · retours", ["apprentissage"])
+    s.add_argument("action", nargs="?", help="(rien : le dossier), etat, skill, oublier, retours")
+    s.add_argument("args", nargs="*")
+    s.add_argument("--fait", action="store_true", help="clore le dossier : les points montrés ne reviendront pas")
+    s.add_argument("-d", "--description", default="", help="skill : sa description (quand l'utiliser, « déclencheurs »)")
+    s.add_argument("-b", "--body", default="", help="skill : son corps")
+    s.add_argument("--body-file", help="skill : fichier qui contient son corps")
+    s.add_argument("--script", action="append", metavar="FICHIER",
+                   help="skill : outil à joindre (copié dans scripts/ ; répétable). Chez un ami, il attend son accord")
+    s.add_argument("--force", action="store_true", help="skill : remplacer une skill existante")
+    s.add_argument("--jours", type=int, default=14, help="retours : période (défaut 14 jours)")
+    s.add_argument("--entretien", action="store_true", help=argparse.SUPPRESS)
+    s = cmd("echange", cmd_echange, "échange de skills et d'outils avec les amis du cerveau commun (texte contrôlé, "
+            "scripts sur accord) : etat · apercu · oui|non · liste · voir|adopter|approuver <ami/nom> · "
+            "partager|garder|proposer <nom> · propositions · promouvoir <ami/nom> --vers <dossier> · retours · sync",
+            ["skills-communes"])
+    s.add_argument("action", nargs="?", help="etat (défaut), apercu, oui, non, recevoir, liste, voir, partager, garder, "
+                                                "proposer, adopter, approuver, declencheurs, propositions, promouvoir, "
+                                                "retours, sync")
+    s.add_argument("args", nargs="*")
+    s.add_argument("--oui", action="store_true", help="adopter / approuver : accord de l'utilisateur donné")
+    s.add_argument("--scripts", action="store_true", help="adopter : approuver aussi ses scripts (après les avoir montrés)")
+    s.add_argument("--non", action="store_true", help="partager / garder / proposer : revenir en arrière")
+    s.add_argument("--vers", help="promouvoir : arbre de développement ou clone du dépôt du plugin")
+    s.add_argument("--force", action="store_true", help="promouvoir : remplacer, ou passer outre le contrôle après relecture")
+    s.add_argument("--auto", action="store_true", help=argparse.SUPPRESS)
     s = cmd("import", cmd_import, "importer la mémoire native de Claude Code (~/.claude/projects/*/memory)")
     s.add_argument("--force", action="store_true")
     s.add_argument("--dry-run", action="store_true")
@@ -2195,7 +2346,7 @@ def build_parser():
     s.add_argument("value", nargs="?")
     s = cmd("hook", cmd_hook, "point d'entrée des hooks Claude Code (usage interne)")
     s.add_argument("event", choices=["session-start", "prompt", "stop", "pre-compact", "post-compact", "session-end",
-                                     "post-bash"])
+                                     "post-bash", "pre-agent"])
     s = cmd("install", cmd_install, "installer/réparer : CLAUDE.md, skill /brain, hooks (--mcp : serveur MCP de l'app)")
     s.add_argument("--dry-run", action="store_true")
     s.add_argument("--uninstall", action="store_true")

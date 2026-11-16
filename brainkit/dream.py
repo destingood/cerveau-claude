@@ -251,9 +251,22 @@ def notice() -> str:
     st["notified"] = now_iso()
     _save(st)
     src = f", dont {sources} source(s) du wiki à ingérer" if sources else ""
-    if cfg.get("auto", True):  # choix de l'utilisateur (v8.15) : traité sans lui demander, et sans sous-agent (tokens)
+    if cfg.get("auto", True):  # choix de l'utilisateur (v8.15) : traité sans lui demander
+        # v8.19 : confié à l'agent archiviste (modèle moins cher, contexte à part : ses appels d'outils ne restent pas
+        # dans la conversation). Sans cet agent, ou `delegation.reve` false : comme avant, sans sous-agent (un
+        # sous-agent sur le modèle principal coûterait plus qu'il n'épargne).
+        how = "le traiter toi-même, sans sous-agent"
+        try:
+            from . import delegation
+            whole = load_config()
+            if delegation.mode(whole) != "off" and delegation.settings(whole).get("reve", True) \
+                    and "archiviste" in delegation.available():
+                how = (f"le confier en arrière-plan à l'agent `{delegation.call_name('archiviste')}` (modèle moins cher, "
+                       "contexte à part)")
+        except Exception:
+            pass
         return (f"🌙 Entretien du cerveau : {pending} point(s) en attente{src}. Après la première demande de "
-                f"l'utilisateur, le traiter toi-même, sans sous-agent : `{CMD} dream` ; ingérer chaque source selon le "
+                f"l'utilisateur, {how} : `{CMD} dream` ; ingérer chaque source selon le "
                 f"schéma du wiki (CLAUDE.md) sans attendre de validation, appliquer ce qui est sûr, laisser un point "
                 f"douteux et le citer en une ligne, ne jamais inventer un fait ; terminer par `{CMD} dream --done` et "
                 f"dire en une ligne ce qui a été fait.")

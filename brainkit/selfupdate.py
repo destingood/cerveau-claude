@@ -19,13 +19,14 @@ from .common import CLAUDE_HOME, PLUGIN, load_config, read_json, write_json
 # CODE (remplacé par une mise à jour) vs DONNÉES (jamais touchées : graph.json, config.json, BRAIN.md, history/…).
 CODE_ROOT_FILES = ("brain.py",)
 CODE_DIRS = ("brainkit", "tests")
+AGENTS_DIR = "agents"  # agents de délégation livrés avec le code (agents/<nom>.md), posés dans ~/.claude/agents par `install`
 SKILLS_DIR = "skills"  # skills métier livrées avec le code (skills/<nom>/, tous leurs fichiers : Markdown, scripts) ;
 # skills/brain n'en fait pas partie (écrite par `brain install` depuis install.SKILL)
 
 
 def _code_files(root: Path) -> dict:
     """{chemin relatif POSIX -> Path absolu} de tout le CODE sous root : brain.py + brainkit/**.py + tests/**.py +
-    skills/<nom>/** (jamais __pycache__ ni aucun fichier de données)."""
+    agents/*.md + skills/<nom>/** (jamais __pycache__ ni aucun fichier de données)."""
     out = {}
     for name in CODE_ROOT_FILES:
         p = root / name
@@ -37,6 +38,10 @@ def _code_files(root: Path) -> dict:
             for p in base.rglob("*.py"):
                 if "__pycache__" not in p.parts:
                     out[p.relative_to(root).as_posix()] = p
+    agents = root / AGENTS_DIR
+    if agents.is_dir():
+        for p in agents.glob("*.md"):
+            out[p.relative_to(root).as_posix()] = p
     skills = root / SKILLS_DIR
     if skills.is_dir():
         for d in skills.iterdir():
