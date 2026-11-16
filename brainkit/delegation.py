@@ -465,7 +465,7 @@ def report(days=7, cfg=None) -> str:
         L.append(f"Sur {days} j — sous-agents lancés : {c['vus']} ({types}) · envoyés par le cerveau sur Haiku : {c['haiku']}"
                  f", sur Sonnet : {c['sonnet']}")
     else:
-        L.append(f"Sur {days} j — aucun lancement de sous-agent vu par le cerveau (le hook compte à partir de la version 8.19)")
+        L.append(f"Sur {days} j — aucun lancement de sous-agent vu par le cerveau (le hook compte à partir de la version 8.21)")
     try:
         m = measure(days)
         if m["main"] or m["sub"]:

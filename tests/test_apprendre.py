@@ -346,9 +346,9 @@ old = time.strftime("%Y-%m-%dT%H:%M:%S", time.localtime(time.time() - 40 * 86400
 (state_dir / "brain.log").write_text("\n".join([
     f"{now} hook prompt ERREUR ValueError('mot de passe de Jean: hunter2 dans C:/Users/jean/secret.txt')",
     "Traceback (most recent call last):",
-    '  File "C:/Users/jean/.claude/plugins/cache/cerveau/cerveau/8.19.0/brainkit/hooks.py", line 1320, in _run',
+    '  File "C:/Users/jean/.claude/plugins/cache/cerveau/cerveau/8.21.0/brainkit/hooks.py", line 1320, in _run',
     "    handler(data, load_config())",
-    '  File "C:/Users/jean/.claude/plugins/cache/cerveau/cerveau/8.19.0/brainkit/search.py", line 88, in search_memories',
+    '  File "C:/Users/jean/.claude/plugins/cache/cerveau/cerveau/8.21.0/brainkit/search.py", line 88, in search_memories',
     "ValueError: mot de passe de Jean: hunter2",
     f"{now} hook prompt ERREUR ValueError('autre chose')",
     "Traceback (most recent call last):",

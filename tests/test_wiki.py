@@ -549,7 +549,7 @@ check("🌙" in o and "source(s) du wiki à ingérer" in o and "cerveau:archivis
       and "dream --done" in o,
       "rêve : ligne au démarrage dès une source à ingérer, confiée à l'agent archiviste (modèle moins cher)", o[-800:])
 check("🌙" not in hook("session-start", {"session_id": "r2", "cwd": str(WORK)}), "rêve : une seule fois par jour")
-brain("config", "delegation.reve", "false")  # v8.19 : sans l'agent archiviste, Claude le traite lui-même, comme avant
+brain("config", "delegation.reve", "false")  # v8.21 : sans l'agent archiviste, Claude le traite lui-même, comme avant
 write_json(DREAM, {**json.loads(DREAM.read_text(encoding="utf-8")), "notified": None})
 o = hook("session-start", {"session_id": "r2b", "cwd": str(WORK)})
 check("🌙" in o and "sans sous-agent" in o and "en arrière-plan à l'agent" not in o,

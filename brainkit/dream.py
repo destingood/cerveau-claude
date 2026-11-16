@@ -252,7 +252,7 @@ def notice() -> str:
     _save(st)
     src = f", dont {sources} source(s) du wiki à ingérer" if sources else ""
     if cfg.get("auto", True):  # choix de l'utilisateur (v8.15) : traité sans lui demander
-        # v8.19 : confié à l'agent archiviste (modèle moins cher, contexte à part : ses appels d'outils ne restent pas
+        # v8.21 : confié à l'agent archiviste (modèle moins cher, contexte à part : ses appels d'outils ne restent pas
         # dans la conversation). Sans cet agent, ou `delegation.reve` false : comme avant, sans sous-agent (un
         # sous-agent sur le modèle principal coûterait plus qu'il n'épargne).
         how = "le traiter toi-même, sans sous-agent"

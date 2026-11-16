@@ -400,7 +400,7 @@ PAUSES = (("< 1 min", 60), ("1-5 min", 300), ("5-60 min", 3600), ("> 1 h", math.
 CAUSES = ("début", "compaction", "pause > 1 h", "pause > 5 min", "invalidation")
 # Tarifs de l'API Anthropic au 03/11/2026 (docs, skill claude-api), $ par million de tokens : entrée, sortie, lecture du
 # cache ; écriture du cache 1,25 × l'entrée à 5 min, 2 × à 1 h. Haiku 5.5 au-delà de 100 k tokens de prompt : 0,50 / 2,50.
-# Mode rapide, autres fournisseurs, modèle inconnu : pas de prix. v8.19 : Fable 5.2 (8 / 40, lecture 0,20) ajouté,
+# Mode rapide, autres fournisseurs, modèle inconnu : pas de prix. v8.21 : Fable 5.2 (8 / 40, lecture 0,20) ajouté,
 # lecture du cache de Sonnet 5.5 corrigée (0,10).
 PRICES = {"claude-fable-5-2": (8, 40, 0.2), "claude-fable-5-1": (10, 50, 0.25), "claude-fable-5": (10, 50, 1.0),
           "claude-opus-5-5": (4, 20, 0.2), "claude-opus-5": (5, 25, 0.5), "claude-opus-4-8": (5, 25, 0.5),
