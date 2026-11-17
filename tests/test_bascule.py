@@ -84,8 +84,10 @@ def hook(code_dir, event, home, sid="s1"):
 
 
 def vise(plugin):
-    """Le lanceur stable mène à ce dossier du plugin. Il l'écrit avec repr() : sous Windows, antislashs doublés."""
-    return repr(str(plugin))[1:-1] in (BRAIN / "brain.py").read_text(encoding="utf-8")
+    """Le lanceur stable mène à ce dossier du plugin. Il l'écrit avec repr() : sous Windows, antislashs doublés. Le
+    dossier temporaire peut porter un nom court Windows (RUNNER~1) et le lanceur son nom long résolu : les deux valent."""
+    text = (BRAIN / "brain.py").read_text(encoding="utf-8")
+    return any(repr(str(p))[1:-1] in text for p in (plugin, Path(os.path.realpath(plugin))))
 
 
 def settings(home):

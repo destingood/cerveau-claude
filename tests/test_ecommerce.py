@@ -786,7 +786,7 @@ check(r.returncode == 0 and posee.exists(), "cerveau classique : le démarrage d
 
 # session cloud ouverte sur le wiki : les consignes donnent le chemin du skill
 env = dict(os.environ, CERVEAU_CLOUD="1")
-c, out = run("-I", "-S", "-c", "import sys; sys.path.insert(0, sys.argv[1]); from brainkit import plugin; "
+c, out = run("-I", "-S", "-X", "utf8", "-c", "import sys; sys.path.insert(0, sys.argv[1]); from brainkit import plugin; "
              "print(plugin.instructions())", CODE, env=env)
 check(c == 0 and "skills/ecommerce/SKILL.md" in out.replace("\\", "/"), "session cloud : chemin du skill e-commerce "
       "dans les consignes", out[-400:])

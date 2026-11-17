@@ -368,7 +368,7 @@ os.environ["BRAIN_HOME"] = str(F.brain_dir)
 from brainkit import common  # noqa: E402
 
 fb = None
-r = subprocess.run([sys.executable, "-I", "-S", "-c",
+r = subprocess.run([sys.executable, "-I", "-S", "-X", "utf8", "-c",
                     "import sys, json; sys.path.insert(0, sys.argv[1]); from brainkit import apprendre; "
                     "print(json.dumps(apprendre.feedback()))", str(CODE)], capture_output=True, env=F.env, timeout=60)
 fb = json.loads(r.stdout.decode("utf-8"))
