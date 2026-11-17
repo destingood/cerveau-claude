@@ -7,7 +7,7 @@ import re
 
 from . import journal
 from .concis import concis, table
-from .common import (CMD, EXPORT_FILE, GRAPH_FILE, INDEX_FILE, JOURNAL_FILE, PROJECTS_DIR, budget_chars, fmt_date,
+from .common import (EXPORT_FILE, GRAPH_FILE, INDEX_FILE, JOURNAL_FILE, PROJECTS_DIR, budget_chars, fmt_date,
                      load_config, now_iso, short, write_text)
 from .store import TYPES, priority
 

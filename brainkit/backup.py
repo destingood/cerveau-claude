@@ -9,7 +9,6 @@ Réparation : si graph.json est illisible (corrompu), le cerveau repart automati
 puis de la dernière sauvegarde ; le fichier abîmé est gardé à côté (graph.corrupt-…json)."""
 from __future__ import annotations
 
-import io
 import json
 import os
 import shutil

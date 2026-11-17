@@ -20,7 +20,7 @@ from collections import Counter, defaultdict
 
 from .common import (_CAMEL, STATE_DIR, STOPWORDS, days_since, fold, now_iso, owner_name, read_json, short, slugify,
                      stem, sujets, write_json)
-from .store import TYPES, Brain
+from .store import Brain
 
 ANALYSIS_FILE = STATE_DIR / "analysis.json"
 VERSION = 9
@@ -652,9 +652,9 @@ def report(brain, an) -> str:
     if g["isolated"]:
         lines.append(f"- Isolés ({len(g['isolated'])}) : " + ", ".join(f"`{i}`" for i in g["isolated"][:8]))
     if g["old_todos"]:
-        lines.append(f"- À-faire de plus de 14 jours : " + ", ".join(f"`{i}`" for i in g["old_todos"][:8]))
+        lines.append("- À-faire de plus de 14 jours : " + ", ".join(f"`{i}`" for i in g["old_todos"][:8]))
     if g["stale"]:
-        lines.append(f"- Jamais rappelés depuis 60 jours ou plus : " + ", ".join(f"`{i}`" for i in g["stale"][:8]))
+        lines.append("- Jamais rappelés depuis 60 jours ou plus : " + ", ".join(f"`{i}`" for i in g["stale"][:8]))
     if g["contradictions"]:
         lines.append("- Contradictions : " + " · ".join(f"`{a}` ⟂ `{b}`" for a, b in g["contradictions"]))
     if lines[-1] == "":

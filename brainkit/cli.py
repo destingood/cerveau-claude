@@ -12,8 +12,7 @@ from pathlib import Path
 from . import __version__
 from . import index as idx
 from . import journal, search
-from .common import (BRAIN_DIR, CLAUDE_HOME, CMD, CONFIG_FILE, EXPORT_FILE, GRAPH_FILE, INDEX_FILE, JOURNAL_FILE,
-                     LOG_FILE, PROJECTS_DIR, REPORT_FILE, VIZ2D_FILE, VIZ_FILE, budget_chars, days_since, est_tokens, fmt_date,
+from .common import (BRAIN_DIR, CLAUDE_HOME, CMD, CONFIG_FILE, EXPORT_FILE, GRAPH_FILE, INDEX_FILE, LOG_FILE, PROJECTS_DIR, REPORT_FILE, VIZ2D_FILE, VIZ_FILE, budget_chars, days_since, est_tokens, fmt_date,
                      fold, load_config, log, now_iso, set_config, setup_io, short, slugify, update_config,
                      write_text)
 from .store import GLOBAL_REFS, TYPES, Brain, bump_hits, clean_tags, normalize_type, priority
@@ -227,7 +226,7 @@ def cmd_obs(a):
         return
     items = observations.recent(a.n, pid if explicit else None, a.days)
     if not items:
-        print(f"(aucune observation — en noter : `obs \"🔴 …\" \"🟡 …\"`)")
+        print("(aucune observation — en noter : `obs \"🔴 …\" \"🟡 …\"`)")
         return
     print(f"🗒️ Observations ({len(items)}, les plus récentes d'abord) :")
     for o in items:
@@ -1042,7 +1041,7 @@ def cmd_doctor(a):
     missing = [e for e in exes if not os.path.exists(e)]
     if not PLUGIN:
         ok(not missing, "interpréteur des hooks : " + (", ".join(sorted(exes)) or "py -3")
-           + (f" — INTROUVABLE (Python a changé de version ?) → brain install" if missing else ""))
+           + (" — INTROUVABLE (Python a changé de version ?) → brain install" if missing else ""))
         ok(len(present) == len(wanted), "hooks : " + (", ".join(present) or "aucun")
            + ("" if len(present) == len(wanted) else f" — manquants : {', '.join(e for e in wanted if e not in present)} (→ brain install)"))
         claude_md = CLAUDE_HOME / "CLAUDE.md"
@@ -1609,7 +1608,7 @@ def cmd_restore(a):
     refresh_views()
     d = history.describe(path)
     print(f"✓ cerveau restauré depuis {path.name} ({d['active']} souvenirs actifs, {d['edges']} liens)"
-          + (f" — l'état précédent est sauvegardé : `brain restore 1` pour annuler" if before else ""))
+          + (" — l'état précédent est sauvegardé : `brain restore 1` pour annuler" if before else ""))
 
 
 def _doctor_plugin(ok):

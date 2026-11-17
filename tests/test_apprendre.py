@@ -365,7 +365,6 @@ check(c == 0 and "prompt:ValueError (search.py:88:search_memories) ×2" in out a
 check(all(x not in out for x in ("hunter2", "jean", "Jean", "secret.txt", "C:/Users", "/home/", "ma-skill-perso", "vieux", "prive")),
       "retours : ni message d'erreur, ni chemin, ni nom, ni skill personnelle, ni panne trop ancienne", out)
 os.environ["BRAIN_HOME"] = str(F.brain_dir)
-import importlib  # noqa: E402
 from brainkit import common  # noqa: E402
 
 fb = None

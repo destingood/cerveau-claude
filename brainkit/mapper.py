@@ -33,7 +33,6 @@ from pathlib import Path
 
 from .common import (CLAUDE_HOME, PROJECTS_DIR, FileLock, first_line, fmt_date, is_scratch, load_config, log,
                      norm_path, now_iso, path_within, read_json, short, tokenize, write_json, write_text)
-from .search import Index
 from .store import Brain
 
 PARSER_VERSION = 4
