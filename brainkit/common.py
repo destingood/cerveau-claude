@@ -194,9 +194,19 @@ def remove_tree(path, wait=0.0) -> bool:
     import stat
 
     def force(func, p, _exc):
+        """Droits ajoutés, jamais retirés : chmod(S_IWRITE) seul rendait un dossier illisible hors Windows (0o200), et
+        Python 3.10 rappelait alors os.open sans ses arguments. Seule une suppression est refaite ici ; une lecture du
+        dossier (os.open, os.scandir, os.lstat) l'est au tour suivant."""
+        def allow(q):
+            mode = os.lstat(q).st_mode
+            extra = stat.S_IWRITE | (stat.S_IREAD | stat.S_IEXEC if stat.S_ISDIR(mode) else 0)
+            os.chmod(q, stat.S_IMODE(mode) | extra)
+
         try:
-            os.chmod(p, stat.S_IWRITE)
-            func(p)
+            allow(p)
+            if func in (os.unlink, os.remove, os.rmdir):
+                allow(os.path.dirname(p))  # hors Windows, effacer une entrée demande d'écrire dans son dossier
+                func(p)
         except OSError:
             pass  # encore ouvert ailleurs : repris au tour suivant
 

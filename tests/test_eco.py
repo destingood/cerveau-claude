@@ -1010,6 +1010,15 @@ check("Plugins du compte claude.ai jamais utilisés" in st and "- kindle ≈" in
 
 from brainkit.common import remove_tree  # noqa: E402
 
+# remove_tree : un dossier en lecture seule (objets git, sous-dossier 0o500) s'efface, et la reprise ne rend jamais un
+# dossier illisible (chmod 0o200 hors Windows, qui faisait planter Python 3.10 sur os.open).
+ro = TMP / "lecture-seule"
+(ro / "objets").mkdir(parents=True)
+(ro / "objets" / "pack").write_text("x", encoding="utf-8")
+os.chmod(ro / "objets" / "pack", 0o400)
+os.chmod(ro / "objets", 0o500)
+check(remove_tree(ro) and not ro.exists(), "remove_tree : dossier et fichier en lecture seule effacés")
+
 if not remove_tree(TMP, wait=60):  # tâches de fond du cerveau testé : on attend qu'elles aient fini d'y écrire
     print(f"(dossier pas effacé : {TMP})")
 print(f"\n{len(OK)} vérifications OK, {len(FAIL)} échec(s)")
