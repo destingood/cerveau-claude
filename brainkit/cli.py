@@ -1256,7 +1256,8 @@ def cmd_apprendre(a):
         if len(args) != 1:
             die('usage : brain apprendre skill <nom> -d "À utiliser quand… « déclencheur »… Ne pas utiliser pour…" '
                 '[-b "corps" | --body-file fichier] [--script outil.py …] [--force]')
-        body = Path(a.body_file).read_text(encoding="utf-8") if a.body_file else (a.body or "")
+        # utf-8-sig : un fichier écrit par le Bloc-notes ou PowerShell commence par une marque d'encodage, à ne pas garder
+        body = Path(a.body_file).read_text(encoding="utf-8-sig") if a.body_file else (a.body or "")
         try:
             for line in apprendre.learned_skill(args[0], a.description, body, force=a.force, scripts=a.script or ()):
                 print(line)
@@ -1294,8 +1295,7 @@ def cmd_echange(a):
         if fold(need("declencheurs oui|non")) == "non":
             print(echange.drop_triggers())
         else:
-            set_config("echange.declencheurs", "oui")
-            print("✓ les déclencheurs appris par tes amis sont de nouveau pris à chaque synchro")
+            print(echange.allow_triggers())
     elif act in ("liste", "list"):
         print(echange.listing())
     elif act == "voir":

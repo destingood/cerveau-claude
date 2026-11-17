@@ -61,6 +61,18 @@ def context(who, text, sid, fg=True):
     return (hook(who, "prompt", fg=fg, session_id=sid, prompt=text).get("hookSpecificOutput") or {}).get("additionalContext", "")
 
 
+def inproc(who, code):
+    """Un bout de Python lancé dans le cerveau de `who` (sans tâche de fond immédiate, comme un vrai hook) ; sa dernière
+    ligne de sortie, du JSON, est rendue."""
+    r = subprocess.run([sys.executable, "-I", "-S", "-c", f"import sys\nsys.path.insert(0, {str(CODE)!r})\n" + code],
+                       capture_output=True, cwd=str(TMP / who / "work"), env=env(who, fg=False), timeout=180)
+    out = r.stdout.decode("utf-8", "replace")
+    try:
+        return json.loads(out.strip().splitlines()[-1])
+    except (ValueError, IndexError):
+        return {"illisible": out + r.stderr.decode("utf-8", "replace")}
+
+
 def bare_files():
     r = subprocess.run(["git", "-C", str(BARE), "ls-tree", "-r", "-z", "--name-only", "HEAD"], capture_output=True)
     return [f for f in r.stdout.decode("utf-8", "replace").split("\0") if f]
@@ -511,6 +523,161 @@ check(c != 0 and "nom de fichier à simplifier" in out and not (skills_dir(A) / 
 shutil.rmtree(members_b / "dan")
 shutil.rmtree(members_b / "Eve Bad")
 shutil.rmtree(members_b / "frank", ignore_errors=True)
+
+# ------------------------------------------------------------------ 9 ter. défauts trouvés à la relecture, corrigés
+BOM = "\ufeff"
+check(echange.safe_rel("SKILL.md") and echange.safe_rel("scripts/auxiliaire.py") and not echange.safe_rel("scripts/aux.py")
+      and not echange.safe_rel("con.md") and not echange.safe_rel("NUL.txt") and not echange.safe_rel("notes./a.md")
+      and not echange.safe_rel("com1.json"),
+      "noms réservés par Windows (aux, con, nul, com1…) et point final refusés : la synchro de tes amis sous Windows ne casse pas")
+check(echange.lint_text(BOM + "Texte normal.") == [] and echange.lint_text("Texte" + BOM + " normal.") == ["caractères invisibles"],
+      "marque d'encodage en tête de fichier (Bloc-notes, PowerShell) : pas un caractère caché ; ailleurs, si")
+
+# côté Alice : BOM, noms, avis de quarantaine, usage de sa propre skill
+(TMP / A / "corps-bom.md").write_bytes((BOM + "# Rangement\n\n1. Trier.\n2. Étiqueter.\n").encode("utf-8"))
+c, out = learned(A, "avec-bom", "À utiliser pour ranger les archives : « range les archives ». Ne pas utiliser pour le courrier.", "x")
+c, out = brain(A, "apprendre", "skill", "avec-bom", "-d",
+               "À utiliser pour ranger les archives : « range les archives ». Ne pas utiliser pour le courrier.",
+               "--body-file", TMP / A / "corps-bom.md", "--force")
+check(c == 0 and BOM not in (skills_dir(A) / "avec-bom" / "SKILL.md").read_text(encoding="utf-8"),
+      "skill apprise depuis un fichier à marque d'encodage : la marque n'entre pas dans le SKILL.md", out)
+(TMP / A / "aux.py").write_text("print('bonjour')\n", encoding="utf-8")
+c, out = brain(A, "apprendre", "skill", "essai-reserve", "-d", "À utiliser pour un essai : « essai réservé ». Ne pas utiliser ailleurs.",
+               "--body-file", TMP / A / "essai.md", "--script", TMP / A / "aux.py")
+check(c != 0 and "réservé par Windows" in out and not (skills_dir(A) / "essai-reserve").exists(),
+      "skill apprise : un outil au nom réservé par Windows est refusé", out)
+(skills_dir(A) / "bloc-notes").mkdir()
+(skills_dir(A) / "bloc-notes" / "SKILL.md").write_bytes(
+    (BOM + '---\nname: bloc-notes\ndescription: "À utiliser pour classer les reçus : « classe les reçus ». Ne pas utiliser '
+           'pour les factures."\n---\n\n# Classement\n\n1. Scanner.\n2. Nommer.\n').encode("utf-8"))
+brain(A, "echange", "oui")
+c, out = brain(A, "echange", "partager", "bloc-notes")
+sent = bare_read("membres/alice/skills/bloc-notes/SKILL.md")
+check("partagée avec tes amis" in out and sent.startswith("---\nname: bloc-notes") and BOM not in sent
+      and BOM not in bare_read("membres/alice/skills/avec-bom/SKILL.md"),
+      "envoi : la marque d'encodage de Windows ne part pas dans le dépôt commun", (out, sent[:60]))
+c, out = brain(A, "echange", "apercu")
+check("⚠ installe-outil : chez tes amis, elle attendra en quarantaine (téléchargement exécuté directement" in out,
+      "l'auteur est prévenu qu'une de ses skills attendra en quarantaine chez ses amis", out)
+own_copy = (TMP / A / "brain" / "commun" / "membres" / "alice" / "skills" / "notes-perso" / "SKILL.md").as_posix()
+ta = TMP / A / "transcript.jsonl"
+ta.write_text("\n".join(json.dumps(x) for x in [
+    {"type": "user", "message": {"role": "user", "content": "montre-moi ma méthode"}},
+    {"type": "assistant", "message": {"id": "m1", "role": "assistant", "content": [
+        {"type": "tool_use", "id": "t1", "name": "Read", "input": {"file_path": own_copy}}]}},
+    {"type": "user", "message": {"role": "user", "content": [{"type": "tool_result", "tool_use_id": "t1", "content": "ok"}]}}]) + "\n",
+    encoding="utf-8")
+for i in range(3):
+    hook(A, "stop", session_id=f"a-relit{i}", transcript_path=str(ta))
+c, out = brain(A, "echange", "propositions")
+check("alice/notes-perso" not in out, "relire sa propre copie envoyée ne fait pas « faire ses preuves » à sa skill", out)
+
+# côté Bob : déclencheurs de l'auteur, noms de fichiers exotiques, membre prolifique
+brain(B, "echange", "sync")
+planted("emma", "arrosage", "À utiliser pour arroser le jardin : « arrose le potager ». Ne pas utiliser pour la pelouse.")
+(members_b / "emma" / "declencheurs.json").write_text(json.dumps({"v": 1, "skills": {
+    "commun:arrosage": ["plantes vraiment assoiffées", "lance `x` vite"], "commun:inconnue": ["rien du tout"]}}), encoding="utf-8")
+d = members_b / "emma" / "skills" / "bom-en-tete"
+d.mkdir(parents=True)
+(d / "SKILL.md").write_bytes((BOM + '---\nname: bom-en-tete\ndescription: "À utiliser pour cirer les chaussures : « cire les '
+                                    'chaussures ». Ne pas utiliser pour les bottes."\n---\n\n# Cirage\n').encode("utf-8"))
+planted("emma", "bom-milieu", "À utiliser pour laver les vitres : « lave les vitres ». Ne pas utiliser pour les miroirs.",
+        body="# Vitres\n\n1. Mouiller" + BOM + ".\n")
+for k in range(60):  # un membre prolifique : rien ne doit disparaître de la liste
+    planted("gros", f"methode-{k:02}", f"À utiliser pour la corvée numéro {k} : « corvée spéciale {k} ». Ne pas utiliser ailleurs.",
+            extra={f"references/note-{i:02}.md": "Une note.\n" for i in range(28)})
+weird = True
+try:  # noms qui ne sont pas de l'UTF-8 valide (possibles sous Linux) : chez un ami, et chez moi
+    d = planted("emma", "nom-latin", "À utiliser pour ranger la cave : « range la cave ». Ne pas utiliser pour le grenier.")
+    with open(os.fsencode(str(d)) + b"/caf\xe9.md", "wb") as fh:
+        fh.write(b"x")
+    own = os.fsencode(str(skills_dir(B))) + b"/sk\xe9"
+    os.makedirs(own, exist_ok=True)
+    with open(own + b"/SKILL.md", "wb") as fh:
+        fh.write('---\nname: ske\ndescription: "À utiliser pour un essai : « essai latin ». Ne pas utiliser ailleurs."\n---\n\n# Essai\n'.encode("utf-8"))
+except (OSError, UnicodeError, ValueError):
+    weird = False
+c, out = brain(B, "echange", "liste")
+check(c == 0 and "✅ emma/arrosage" in out and "✅ emma/bom-en-tete" in out and "⏸ emma/bom-milieu — caractères invisibles" in out,
+      "reçu : marque d'encodage en tête acceptée, caractère caché au milieu du texte refusé", out[:1500])
+check(out.count("✅ gros/") == 60, "membre prolifique (60 skills de 29 fichiers) : toutes sont indexées", out.count("✅ gros/"))
+if weird:
+    idx = TMP / B / "brain" / "state" / "echange_index.json"
+    check(c == 0 and "⏸ emma/nom-latin — nom de fichier à simplifier" in out and idx.is_file()
+          and not list(idx.parent.glob("echange_index.json.*")),
+          "nom de fichier qui n'est pas de l'UTF-8 valide : l'index s'écrit quand même, la skill fautive seule est écartée", out[:600])
+    ctx = context(B, "il faudra que tu arrose le potager demain", "c0", fg=False)
+    check("`arrosage`" in ctx, "… et les hooks trouvent l'index à jour (les skills des autres amis restent proposées)", ctx)
+    # (un dossier de skill personnel au nom non UTF-8 fait échouer l'index des skills du cœur du cerveau — défaut ancien,
+    # hors de l'échange : retiré ici pour ne pas le mêler à la suite)
+    shutil.rmtree(os.fsencode(str(skills_dir(B))) + b"/sk\xe9")
+check("🧩 Skill reçue" not in context(B, "mes plantes vraiment assoiffées attendent", "c1"),
+      "déclencheurs des amis refusés (`declencheurs non`) : ceux qu'un auteur a appris pour sa skill ne servent pas")
+c, out = brain(B, "echange", "declencheurs", "oui")
+check("de nouveau pris" in out and "declencheurs_refuses" not in config(B)["echange"] and config(B)["echange"]["declencheurs"] == "oui",
+      "declencheurs oui : ceux qui avaient été retirés d'un coup peuvent revenir (liste des refus vidée)", out)
+ctx = context(B, "mes plantes vraiment assoiffées attendent", "c1")
+check("`arrosage` (déclencheur « plantes vraiment assoiffées »)" in ctx and "commun:arrosage" not in (config(B)["skills"].get("triggers") or {}),
+      "déclencheur appris par l'auteur pour sa skill partagée : il la déclenche chez ses amis (rien n'est écrit dans mes réglages)", ctx)
+check("🧩 Skill reçue" not in context(B, "lance x vite s'il te plaît", "c2"), "… mais seulement des mots contrôlés")
+
+# plafond de contexte d'un hook : ce qui ne tient pas attend, rien n'est consommé puis perdu
+brain(B, "echange", "index")
+res = inproc(B, """
+import json
+from brainkit import plus, apprendre, echange
+sid = "c-plein"
+plus.save_state(sid, {"started": "2026-11-16T10:00:00"})
+def blown():
+    return ((echange.state().get("usage") or {}).get("emma/arrosage") or {}).get("soufflee", 0)
+base = blown()
+apprendre.announce("ANNONCE-COURTE")
+apprendre.announce("ANNONCE-LONGUE " + "x" * 1500)
+def run(room):
+    main = "m" * (plus.MAX_CONTEXT - room)
+    out = plus.apply("prompt", json.dumps({"hookSpecificOutput": {"hookEventName": "UserPromptSubmit", "additionalContext": main}}),
+                     {"session_id": sid, "prompt": "arrose le potager et cherche dans tous les fichiers du projet"})
+    ctx = json.loads(out)["hookSpecificOutput"]["additionalContext"]
+    st = plus.load_state(sid)
+    return {"len": len(ctx), "added": ctx[len(main):], "recues": st.get("recues") or [], "deleg": st.get("deleg") or [],
+            "annonces": apprendre.load().get("annonces") or [], "souffle": blown() - base}
+print(json.dumps([run(700), run(6000), plus.MAX_CONTEXT]))
+""")
+if isinstance(res, list):
+    r1, r2, cap = res
+    both = r1["added"] + r2["added"]
+    check(r1["len"] <= cap and r2["len"] <= cap and "ANNONCE-LONGUE" not in r1["added"]
+          and any(a.startswith("ANNONCE-LONGUE") for a in r1["annonces"]),
+          "message, contexte presque plein : l'annonce qui ne tient pas reste en attente", (r1["len"], r1["added"][:300]))
+    check(("Skill reçue" in r1["added"]) == ("commun:arrosage" in r1["recues"]) == (r1["souffle"] == 1)
+          and ("↪" in r1["added"]) == bool(r1["deleg"]),
+          "… et n'est notée comme soufflée ou donnée que ce qui a vraiment été ajouté", r1)
+    check(both.count("ANNONCE-COURTE") == 1 and both.count("ANNONCE-LONGUE") == 1 and both.count("Skill reçue") == 1
+          and r2["annonces"] == [] and r2["souffle"] == 1,
+          "… le reste passe au message suivant, une seule fois", (r1["added"][:200], r2["added"][:200]))
+else:
+    check(False, "message, contexte presque plein (essai illisible)", res)
+res = inproc(B, """
+import json
+from brainkit import plus, echange
+def run(sid, room):
+    main = "m" * (plus.MAX_CONTEXT - room)
+    out = plus.apply("session-start", json.dumps({"hookSpecificOutput": {"hookEventName": "SessionStart", "additionalContext": main}}),
+                     {"session_id": sid, "source": "startup"})
+    ctx = json.loads(out)["hookSpecificOutput"]["additionalContext"]
+    return {"len": len(ctx), "added": ctx[len(main):], "vues": "emma/arrosage" in (echange.state().get("vues") or [])}
+print(json.dumps([run("d1", 300), run("d2", 6000), plus.MAX_CONTEXT]))
+""")
+if isinstance(res, list):
+    r1, r2, cap = res
+    check(r1["len"] <= cap and "skill(s) reçue(s)" not in r1["added"] and not r1["vues"],
+          "démarrage, contexte presque plein : l'annonce des skills reçues n'est pas notée comme faite", r1)
+    check(r2["len"] <= cap and "skill(s) reçue(s)" in r2["added"] and r2["vues"] and "↪ Délégation" in r2["added"],
+          "… elle est faite au démarrage suivant, quand elle tient", r2["added"][:400])
+else:
+    check(False, "démarrage, contexte presque plein (essai illisible)", res)
+shutil.rmtree(members_b / "emma")
+shutil.rmtree(members_b / "gros")
 
 # ------------------------------------------------------------------ 10. bilan vie privée sur tout l'historique
 hist = bare_history()

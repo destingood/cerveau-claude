@@ -27,7 +27,7 @@ PLUS_DIR = STATE_DIR / "plus"
 MAX_CONTEXT = 9800  # le contexte ajouté par un hook est plafonné à 10 000 caractères : au-delà, Claude n'en voit qu'un aperçu
 AUTO_PREFIX = ("Background (from", "<task-notification>", "[SYSTEM NOTIFICATION")
 STOP_MARK = "🧠 Cerveau — avant de conclure"  # début du rappel de fin de tâche (hooks.STOP_REASON)
-ONCE_ROOM, PROMPT_ROOM = 1500, 900  # place minimale pour les annonces faites une seule fois / pour les lignes d'un message
+MIN_ROOM = 120  # sous cette place, rien ne tient : inutile de chercher
 
 
 # ------------------------------------------------------------------------------------------ état de session
@@ -61,6 +61,21 @@ def _member(cfg) -> bool:
     return isinstance(c, dict) and c.get("etat") == "membre" and bool(c.get("nom"))
 
 
+def _taker(room, sep=2):
+    """→ fonction `take(ligne)` : True si la ligne tient dans la place qui reste sous le plafond de contexte du hook, et
+    sa place est alors réservée. Chaque producteur ne note « montré » (annonce faite, conseil donné, skill soufflée)
+    que ce que `take` a accepté : rien n'est consommé puis perdu, ce qui ne tient pas attend la prochaine occasion."""
+    left = [room]
+
+    def take(line):
+        need = len(line or "") + sep
+        if not line or need > left[0]:
+            return False
+        left[0] -= need
+        return True
+    return take
+
+
 def _guard(label, fn, default):
     """Chaque ajout est indépendant : une erreur dans l'un ne prive pas des autres."""
     try:
@@ -71,10 +86,11 @@ def _guard(label, fn, default):
 
 
 # ------------------------------------------------------------------------------------------ par événement
-def session_start(data, cfg, room=MAX_CONTEXT) -> str:
+def session_start(data, cfg, take=None) -> str:
     """Lignes ajoutées à l'injection de démarrage. Reprise d'une session : l'injection de départ est encore dans
-    l'historique, seules les annonces nouvelles passent. `room` : place qui reste sous le plafond de contexte du hook —
-    trop juste, les annonces faites une seule fois attendent un prochain démarrage plutôt que d'être perdues."""
+    l'historique, seules les annonces nouvelles passent. `take` : voir _taker — la consigne de délégation d'abord,
+    puis les annonces faites une seule fois, chacune seulement si elle tient."""
+    take = take or (lambda line: True)
     sid, source = data.get("session_id"), data.get("source") or "startup"
     cleanup()
     st = load_state(sid)
@@ -85,34 +101,34 @@ def session_start(data, cfg, room=MAX_CONTEXT) -> str:
     if source != "resume" or not st.get("started"):
         from . import delegation
         line = _guard("délégation", lambda: delegation.instruction(cfg), "")
-        if line:
+        if line and take(line):
             lines.append(line)
     if source in ("compact", "clear"):  # les conseils déjà donnés ont quitté le contexte : à resservir
         st["deleg"], st["recues"] = [], []
-    if room - sum(len(x) + 2 for x in lines) >= ONCE_ROOM:
-        from . import apprendre
-        line = _guard("apprentissage", lambda: apprendre.notice(cfg), "")
+    from . import apprendre
+    line = _guard("apprentissage", lambda: apprendre.notice(cfg, take), "")
+    if line:
+        lines.append(line)
+    if _member(cfg):
+        from . import echange
+        line = _guard("échange", lambda: echange.notice(cfg, take), "")
         if line:
             lines.append(line)
-        if _member(cfg):
-            from . import echange
-            line = _guard("échange", lambda: echange.notice(cfg), "")
-            if line:
-                lines.append(line)
     st["started"] = st.get("started") or time.strftime("%Y-%m-%dT%H:%M:%S")
     save_state(sid, st)
     return "\n\n".join(lines)
 
 
-def prompt(data, cfg) -> str:
+def prompt(data, cfg, take=None) -> str:
     """Lignes ajoutées au rappel d'un message tapé par l'utilisateur (rien sur une commande « / », un brief de
-    sous-agent ou un message de l'appli)."""
+    sous-agent ou un message de l'appli). `take` : voir _taker."""
     raw = (data.get("prompt") or "").strip()
     if len(raw) < 6 or raw.startswith("/") or raw.startswith(AUTO_PREFIX) or data.get("agent_id"):
         return ""
     from . import journal
     if journal.is_auto(raw):
         return ""
+    take = take or (lambda line: True)
     sid = data.get("session_id")
     st = load_state(sid)
     before = json.dumps(st, sort_keys=True)
@@ -120,15 +136,13 @@ def prompt(data, cfg) -> str:
     lines = []
     if st.get("started"):  # session ouverte avant la mise à jour qui apporte les agents : elle ne les connaît pas encore
         from . import delegation
-        lines += _guard("délégation", lambda: delegation.reflex(text, st, cfg), [])
+        lines += _guard("délégation", lambda: delegation.reflex(text, st, cfg, take), [])
     if _member(cfg):  # l'échange (et git, hashlib…) n'est chargé que pour un membre du cerveau commun
         from . import echange
-        lines += _guard("échange", lambda: echange.reflex(text, st, cfg), [])
+        lines += _guard("échange", lambda: echange.reflex(text, st, cfg, take), [])
     if (read_json(STATE_DIR / "apprendre.json", {}) or {}).get("annonces"):  # rare : module chargé seulement alors
         from . import apprendre
-        note = _guard("apprentissage", lambda: apprendre.take_annonce(cfg), "")
-        if note:
-            lines.append(f"{note} (dis-le à l'utilisateur en une phrase au début de ta réponse)")
+        lines += _guard("apprentissage", lambda: apprendre.take_annonces(take), [])
     if json.dumps(st, sort_keys=True) != before:
         save_state(sid, st)
     return "\n".join(lines)
@@ -172,8 +186,8 @@ def _add_context(obj, event, extra) -> bool:
     if not isinstance(hso, dict) or hso.get("hookEventName", name) != name:
         return False
     cur = hso.get("additionalContext") or ""
-    if not isinstance(cur, str) or len(cur) + len(extra) + 2 > MAX_CONTEXT:
-        log(f"plus ({event}) : ajout laissé de côté ({len(extra)} car. : le contexte du hook atteindrait le plafond)")
+    if not isinstance(cur, str) or len(cur) + len(extra) + 2 > MAX_CONTEXT:  # (ne devrait plus arriver : voir _taker)
+        log(f"couche plus, {event} : ajout laissé de côté ({len(extra)} car. : le contexte du hook atteindrait le plafond)")
         return False
     hso.setdefault("hookEventName", name)
     hso["additionalContext"] = f"{cur}\n\n{extra}" if cur else extra
@@ -207,10 +221,11 @@ def apply(event, out_text, data, cfg=None) -> str:
             return out_text
         hso = obj.get("hookSpecificOutput")
         cur = hso.get("additionalContext") if isinstance(hso, dict) else ""
-        room = MAX_CONTEXT - len(cur if isinstance(cur, str) else "") - 2
-        if event == "prompt" and room < PROMPT_ROOM:
-            return out_text  # rappel déjà plein (skill chargée d'office…) : rien n'est soufflé puis perdu
-        extra = session_start(data, cfg, room) if event == "session-start" else prompt(data, cfg)
+        room = MAX_CONTEXT - len(cur) if isinstance(cur, str) else MAX_CONTEXT if cur is None else 0
+        if event == "prompt" and room < MIN_ROOM:
+            return out_text  # rappel déjà plein (skill chargée d'office…) : rien ne tiendrait
+        take = _taker(room)
+        extra = session_start(data, cfg, take) if event == "session-start" else prompt(data, cfg, take)
         if not extra:
             return out_text
         return json.dumps(obj, ensure_ascii=False) + rest if _add_context(obj, event, extra) else out_text

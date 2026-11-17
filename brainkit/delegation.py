@@ -333,8 +333,10 @@ _SRC["mech_msg"] = (
     r"(?:ecri\w*|ajoute\w*) (?:les |des )?tests? (?:pour|de|du|des)\b)")
 
 
-def reflex(text, st, cfg=None) -> list:
-    """→ lignes ↪ pour ce message (une fois par session et par genre) ; `st` : état « plus » de la session, modifié."""
+def reflex(text, st, cfg=None, take=None) -> list:
+    """→ lignes ↪ pour ce message (une fois par session et par genre) ; `st` : état « plus » de la session, modifié.
+    `take(ligne)` : la ligne tient-elle sous le plafond de contexte du hook ? Un conseil refusé n'est pas noté comme
+    donné : il le sera à un prochain message."""
     cfg = cfg or load_config()
     d = settings(cfg)
     if mode(cfg) == "off" or not d.get("reflexe", True):
@@ -342,16 +344,21 @@ def reflex(text, st, cfg=None) -> list:
     names, done = available(), list(st.get("deleg") or [])
     if not names or len(done) >= int(d.get("session_cap", 2)):
         return []
+    take = take or (lambda line: True)
     t, out = fold(text)[:3000], []
     urls = _rx("url").findall(text or "")
     if "eclaireur" in names and "lecture" not in done and (_rx("bulk").search(t) or (len(urls) >= 2 and _rx("web").search(t))):
-        done.append("lecture")
-        out.append(f"↪ Recherche ou lecture en masse : confie-la à l'agent `{call_name('eclaireur')}` "
-                   f"({model_of('eclaireur', cfg).capitalize()}, contexte à part : seul son rapport revient), puis décide toi-même.")
+        line = (f"↪ Recherche ou lecture en masse : confie-la à l'agent `{call_name('eclaireur')}` "
+                f"({model_of('eclaireur', cfg).capitalize()}, contexte à part : seul son rapport revient), puis décide toi-même.")
+        if take(line):
+            done.append("lecture")
+            out.append(line)
     if "ouvrier" in names and "mecanique" not in done and _rx("mech_msg").search(t):
-        done.append("mecanique")
-        out.append(f"↪ Modification mécanique : fixe d'abord la consigne et le critère de vérification, puis confie "
-                   f"l'exécution à l'agent `{call_name('ouvrier')}` ({model_of('ouvrier', cfg).capitalize()}).")
+        line = (f"↪ Modification mécanique : fixe d'abord la consigne et le critère de vérification, puis confie "
+                f"l'exécution à l'agent `{call_name('ouvrier')}` ({model_of('ouvrier', cfg).capitalize()}).")
+        if take(line):
+            done.append("mecanique")
+            out.append(line)
     if out:
         st["deleg"] = done
     return out

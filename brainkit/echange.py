@@ -19,7 +19,10 @@ Ce qui arrive (réglage `echange.reception`, actif par défaut pour un membre) :
   comme un ordre. Une skill qui échoue au contrôle reste en quarantaine jusqu'à ce que l'utilisateur l'adopte ;
 - un SCRIPT ne s'active jamais seul : il tournerait sur le PC de celui qui le reçoit. Il attend son oui
   (`approuver <ami/skill> --oui`), donné sur une empreinte : la copie approuvée est figée hors du dépôt commun, et un
-  script modifié par son auteur redemande l'accord.
+  script modifié par son auteur redemande l'accord ;
+- les DÉCLENCHEURS voyagent aussi : ceux qu'un ami a appris pour une skill de plugin que j'ai (ajoutés à mes réglages,
+  retirables d'un coup), et ceux qu'un auteur a appris pour sa propre skill partagée (ils la suivent dans l'index, sans
+  toucher à mes réglages). Des mots seulement, jamais une phrase qui désigne déjà une de mes skills.
 
 Le dossier d'un ami est une donnée, pas une source sûre — n'importe quel membre du dépôt peut y écrire n'importe quoi :
 - liste fermée : un dossier de skill reçu ne contient que du texte et des scripts au nom simple ; un lien, un fichier
@@ -39,6 +42,7 @@ commun reste un cercle de confiance, et ces contrôles en limitent les dégâts.
 Python seul, sur toutes les plateformes (voir plus.py)."""
 from __future__ import annotations
 
+import datetime as _dt
 import hashlib
 import json
 import os
@@ -47,7 +51,7 @@ import shutil
 from pathlib import Path
 
 from .common import (BRAIN_DIR, CMD, CODE_DIR, PLUGIN, STATE_DIR, FileLock, days_since, fmt_date, fold, load_config, log,
-                     now_iso, owner_name, read_json, set_config, short, slugify, update_config, write_json)
+                     now_iso, owner_name, parse_iso, read_json, set_config, short, slugify, update_config, write_json)
 
 SKILLS, MANIFEST = "skills", "skill.json"
 TRIGGERS, USAGE, FEEDBACK = "declencheurs.json", "usage.json", "retours.json"
@@ -62,18 +66,22 @@ MAX_FILES, MAX_FILE, MAX_TOTAL = 40, 200_000, 600_000
 WALK_MAX = 400  # entrées (fichiers et dossiers) parcourues dans un dossier de skill avant d'abandonner
 FRIENDS_MAX, SKILLS_MAX = 60, 80  # amis lus, skills lues par ami
 MEMBERS_SCAN, SKILLS_SCAN = 2000, 300  # entrées listées dans membres/ et dans skills/ d'un ami ; au-delà : ignoré
-SIG_BUDGET, FRIEND_BUDGET = 6000, 1500  # entrées regardées pour l'empreinte de l'index : au total, par ami
+# Entrées regardées pour l'empreinte de l'index : par membre (80 skills de 40 fichiers y tiennent), et pour tous les amis.
+FRIEND_BUDGET, SIG_BUDGET = 4000, 12000
 BUILD_SKILLS, BUILD_BYTES = 300, 20_000_000  # skills et octets contrôlés par reconstruction de l'index
 USAGE_MAX = 400  # skills reçues dont l'usage est compté
 # Chemin d'un fichier partagé : lettres sans accent, chiffres, tiret, point, souligné (5 niveaux au plus). Ce nom est
 # affiché à celui qui reçoit, dans des lignes que Claude lit : il ne doit rien pouvoir « dire ».
 SAFE_REL = re.compile(r"[A-Za-z0-9_][A-Za-z0-9_.-]{0,63}(?:/[A-Za-z0-9_][A-Za-z0-9_.-]{0,63}){0,4}")
 REF_RE = re.compile(r"[a-z0-9]+(?:-[a-z0-9]+)*/[a-z0-9]+(?:-[a-z0-9]+)*")  # « ami/skill »
+# Noms que Windows réserve (avec ou sans extension) : Git pour Windows refuse d'extraire un tel chemin, et la synchro du
+# dépôt commun échouerait chez chaque membre sous Windows.
+_WIN_RESERVED = re.compile(r"(?:con|prn|aux|nul|com[1-9]|lpt[1-9])(?:\..*)?", re.I)
 _STAMP = re.compile(r"\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}")
 _PHRASE = re.compile(r"[^\W\d_]+(?:[ '’-][^\W\d_]+)*")  # déclencheur reçu d'un ami : des mots, rien d'autre
 SESSION_CAP = 3  # skills reçues soufflées par session
 PROVEN_MEMBERS, PROVEN_USES = 2, 3  # « a fait ses preuves » : suivie par 2 membres, ou 3 fois
-INDEX_V = 1
+INDEX_V = 2
 
 
 # ------------------------------------------------------------------------------------------ réglages et état
@@ -122,6 +130,25 @@ def _edit(change) -> dict:
 
 def _sha(data) -> str:
     return hashlib.sha256(data).hexdigest()
+
+
+def _recent(stamp, seconds) -> bool:
+    """`stamp` date de moins de `seconds` secondes. Une date dans le futur (horloge reculée, changement d'heure) ne
+    compte pas : elle ne bloque rien."""
+    d = parse_iso(stamp)
+    return d is not None and 0 <= (_dt.datetime.now() - d).total_seconds() < seconds
+
+
+def safe_rel(rel) -> bool:
+    """Chemin relatif acceptable dans l'échange : forme simple (SAFE_REL), et utilisable sur toutes les plateformes
+    (ni nom réservé par Windows, ni point final)."""
+    return bool(SAFE_REL.fullmatch(rel)) and not any(part.endswith(".") or _WIN_RESERVED.fullmatch(part)
+                                                     for part in rel.split("/"))
+
+
+def _show(name) -> str:
+    """Un nom de fichier de chez moi, affichable même s'il n'est pas de l'UTF-8 valide."""
+    return str(name).encode("utf-8", "replace").decode("utf-8")
 
 
 # ------------------------------------------------------------------------------------------ contrôle d'un texte reçu
@@ -235,6 +262,8 @@ def lint_text(text, code=False) -> list:
     Temps borné : motifs sans retour arrière coûteux, et un texte plus long que LINT_MAX est refusé d'office."""
     out = []
     raw = str(text or "")
+    if raw[:1] == "\ufeff":  # marque d'encodage en tête de fichier (Bloc-notes, PowerShell) : pas un caractère caché
+        raw = raw[1:]
     if len(raw) > LINT_MAX:
         return ["texte trop long pour être contrôlé"]
     if _INVISIBLE.search(raw):
@@ -322,7 +351,7 @@ def collect(folder, foreign=False) -> tuple:
     files, scripts, problems, total, full = {}, [], [], 0, False
 
     def note(msg, rel):
-        problems.append(msg if foreign else f"{msg} : {rel}")
+        problems.append(msg if foreign else f"{msg} : {_show(rel)}")
 
     for rel, kind, _mtime, size in rows:
         if kind == "d":
@@ -333,8 +362,9 @@ def collect(folder, foreign=False) -> tuple:
             if foreign:
                 problems.append("fichier ou dossier non contrôlable (caché, lien ou autre type)")
             continue
-        if not SAFE_REL.fullmatch(rel):
-            note("nom de fichier à simplifier (lettres sans accent, chiffres, tirets, points)", rel)
+        if not safe_rel(rel):
+            note("nom de fichier à simplifier (lettres sans accent, chiffres, tirets, points ; pas un nom réservé par "
+                 "Windows)", rel)
             continue
         if size > MAX_FILE:
             note(f"fichier trop gros ({size // 1000} k, {MAX_FILE // 1000} k au plus)", rel)
@@ -391,7 +421,7 @@ def public_files(files, scripts, strict=True) -> tuple:
                 continue
             out[rel] = data.replace(b"\r\n", b"\n")  # fins de ligne du dépôt commun (LF), comme le texte
         else:
-            cleaned = commun.clean(text)
+            cleaned = commun.clean(text.replace("\ufeff", ""))  # (marque d'encodage de Windows : pas dans le dépôt)
             if name_rx:
                 cleaned = name_rx.sub("l'utilisateur", cleaned)
             out[rel] = cleaned.replace("\r\n", "\n").encode("utf-8")
@@ -426,10 +456,11 @@ def local_skills() -> list:
 
 
 def plan(cfg=None) -> dict:
-    """Ce qui partirait de mes skills → {"partent": {nom: (fichiers publics, scripts, appris)}, "privees": {nom: raison}}."""
+    """Ce qui partirait de mes skills → {"partent": {nom: (fichiers publics, scripts, appris)}, "privees": {nom: raison},
+    "avis": {nom: ce que le contrôle à l'arrivée lui reprochera chez mes amis}}."""
     e = settings(cfg)
     keep, share = set(e.get("garder") or []), set(e.get("partager") or [])
-    out = {"partent": {}, "privees": {}}
+    out = {"partent": {}, "privees": {}, "avis": {}}
     for s in local_skills():
         name = s["name"]
         if name in keep:
@@ -438,13 +469,24 @@ def plan(cfg=None) -> dict:
         if not s["appris"] and name not in share:
             out["privees"][name] = f"écrite à la main : la partager avec `{CMD} echange partager {name}`"
             continue
+        if _WIN_RESERVED.fullmatch(name):
+            out["privees"][name] = "son nom est réservé par Windows (tes amis sous Windows ne pourraient plus synchroniser)"
+            continue
         files, scripts, problems = collect(s["dir"])
         public, why = public_files(files, scripts, strict=name not in share) if not problems else ({}, [])
         if problems or why:
             out["privees"][name] = "; ".join(problems + why)
             continue
         out["partent"][name] = (public, [r for r in scripts if r in public], s["appris"])
+        held = _content_reasons(public, scripts)
+        if held:
+            out["avis"][name] = " ; ".join(held)[:300]
     return out
+
+
+def _held_line(name, why) -> str:
+    return (f"  ⚠ {name} : chez tes amis, elle attendra en quarantaine ({why}) — normal pour une skill qui installe, "
+            "supprime ou règle quelque chose : ils l'adoptent après l'avoir lue")
 
 
 def _description(data) -> str:
@@ -645,7 +687,8 @@ def _skill_dirs(folder) -> list:
             for n, e in enumerate(it):
                 if n >= SKILLS_SCAN:
                     return []
-                if len(e.name) <= 64 and NAME_RE.match(e.name) and e.is_dir(follow_symlinks=False):
+                if len(e.name) <= 64 and NAME_RE.match(e.name) and not _WIN_RESERVED.fullmatch(e.name) \
+                        and e.is_dir(follow_symlinks=False):
                     names.append(e.name)
     except OSError:
         return []
@@ -667,21 +710,35 @@ def _tree_sig(folder, limit=WALK_MAX) -> tuple:
 
 
 def _scan(friends, who) -> tuple:
-    """Dossiers de skills à indexer, avec leur empreinte → ([(pseudo, dossier, empreinte ou None)] des amis, idem pour
-    mes skills envoyées). Temps borné quel que soit le contenu du dépôt commun : SIG_BUDGET entrées regardées au total,
-    FRIEND_BUDGET par membre ; au-delà, les skills restantes sont ignorées (jamais proposées)."""
-    left = SIG_BUDGET
-    rows = []
-    for friend, d in friends + ([(who, _members_dir() / who)] if who else []):
-        mine = min(left, FRIEND_BUDGET)
-        for sk in _skill_dirs(d):
+    """Dossiers de skills à indexer, avec leur empreinte → ([(pseudo, dossier, empreinte)] des amis, idem pour mes
+    skills envoyées, [amis pas regardés]). Empreinte : la liste de _tree_sig ; None : dossier de plus de WALK_MAX
+    entrées ; False : pas parcouru, le budget est épuisé. Temps borné quel que soit le contenu du dépôt commun :
+    FRIEND_BUDGET entrées par membre, SIG_BUDGET pour tous les amis (mes skills à part, sur leur propre budget)."""
+    def member(name, folder, left):
+        rows, mine = [], min(left, FRIEND_BUDGET)
+        start = mine
+        for sk in _skill_dirs(folder):
             if mine <= 0:
-                break
-            tree, used = _tree_sig(sk, min(WALK_MAX, mine))
+                rows.append((name, sk, False))
+                continue
+            limit = min(WALK_MAX, mine)
+            tree, used = _tree_sig(sk, limit)
+            if tree is None and limit < WALK_MAX:
+                tree = False  # ce n'est pas elle qui est trop grosse : le budget s'arrête là
             mine -= used
-            left -= used
-            rows.append((friend, sk, tree))
-    return [r for r in rows if r[0] != who], [r for r in rows if r[0] == who]
+            rows.append((name, sk, tree))
+        return rows, start - mine
+
+    own = member(who, _members_dir() / who, FRIEND_BUDGET)[0] if who else []
+    theirs, skipped, left = [], [], SIG_BUDGET
+    for friend, d in friends:
+        if left <= 0:
+            skipped.append(friend)
+            continue
+        rows, used = member(friend, d, left)
+        theirs += rows
+        left -= used
+    return theirs, own, skipped
 
 
 def _own_names() -> set:
@@ -701,10 +758,32 @@ def _blank(friend, folder, reason) -> dict:
             "raison": reason, "scripts": [], "scripts_ok": False, "resume": "", "maj": "", "propose": False, "sig": ""}
 
 
+def _content_reasons(files, scripts) -> list:
+    """Ce que le contrôle reproche au contenu d'une skill ([] : rien). Les mêmes règles chez l'auteur avant l'envoi
+    (pour le prévenir) et chez l'ami à l'arrivée."""
+    from .privacy import find
+    reasons = []
+    desc = _description(files.get("SKILL.md", b""))
+    if not desc:
+        reasons.append("pas de description")
+    else:  # la description est citée dans la ligne soufflée à Claude : contrôlée comme du code, sans indulgence
+        reasons += [f"{r} (description)" for r in dict.fromkeys(lint_text(desc, code=True) + lint_text(desc))]
+    for rel, data in files.items():
+        text = data.decode("utf-8", "replace")
+        if find(text):
+            reasons.append(f"secret dans {rel}")
+        if rel == MANIFEST:  # pas faite pour être lue, mais elle est dans le dossier : telle quelle, puis décodée
+            decoded = "\n".join(_strings(_json_obj(data)))
+            bad = lint_text(text, code=True) + lint_text(decoded, code=True) + lint_text(decoded)
+            reasons += [f"{r} ({rel})" for r in dict.fromkeys(bad)]
+        elif rel not in scripts:
+            reasons += [f"{r} ({rel})" for r in lint_text(text)]
+    return list(dict.fromkeys(reasons))
+
+
 def _check(friend, folder, accepted, approved) -> dict:
     """Une skill reçue → sa fiche contrôlée (`etat` : « ok », « quarantaine » ou « masquee »). Tout ce qui vient du
     dossier d'un ami est une donnée à vérifier : emplacement, types, tailles, noms, contenu."""
-    from .privacy import find
     folder = Path(folder)
     if not _inside(folder, _members_dir()):
         return _blank(friend, folder, "dossier hors du cerveau commun")
@@ -717,21 +796,7 @@ def _check(friend, folder, accepted, approved) -> dict:
     desc = _description(files.get("SKILL.md", b""))
     entry.update(resume=short(desc, 300), maj=maj, propose=manifest.get("propose") is True, scripts=sorted(scripts),
                  sig=_signature({k: v for k, v in files.items() if k != MANIFEST}))
-    reasons = list(problems)
-    if not desc:
-        reasons.append("pas de description")
-    else:  # la description est citée dans la ligne soufflée à Claude : contrôlée comme du code, sans indulgence
-        reasons += [f"{r} (description)" for r in dict.fromkeys(lint_text(desc, code=True) + lint_text(desc))]
-    for rel, data in files.items():
-        text = data.decode("utf-8", "replace")
-        if find(text):
-            reasons.append(f"secret dans {rel}")
-        if rel == MANIFEST:  # pas faite pour être lue, mais elle est dans le dossier : telle quelle, puis décodée
-            decoded = "\n".join(_strings(manifest))
-            bad = lint_text(text, code=True) + lint_text(decoded, code=True) + lint_text(decoded)
-            reasons += [f"{r} ({rel})" for r in dict.fromkeys(bad)]
-        elif rel not in scripts:
-            reasons += [f"{r} ({rel})" for r in lint_text(text)]
+    reasons = list(problems) + _content_reasons(files, scripts)
     if reasons and accepted.get(ref) != entry["sig"]:
         # en quarantaine, sa description n'est affichée nulle part : c'est peut-être elle qui pose problème
         entry.update(etat="quarantaine", raison=" ; ".join(dict.fromkeys(reasons))[:400], resume="")
@@ -742,18 +807,67 @@ def _check(friend, folder, accepted, approved) -> dict:
     return entry
 
 
-def _index_sig(theirs, mine, e) -> dict:
+def _phrase_ok(p) -> bool:
+    """Déclencheur reçu d'un ami : court, des mots seulement, et rien que le contrôle refuse."""
+    return (isinstance(p, str) and 3 <= len(p) <= 60 and len(p.split()) <= 6 and bool(_PHRASE.fullmatch(p))
+            and not lint_text(p) and not lint_text(p, code=True))
+
+
+def _trigger_stats(friends, theirs) -> list:
+    """Date et taille du `declencheurs.json` de chaque ami qui a des skills indexées (il compte dans l'index)."""
+    have = {friend for friend, _, _ in theirs}
+    out = []
+    for friend, d in friends:
+        if friend in have:
+            try:
+                st = os.lstat(d / TRIGGERS)
+                out.append([friend, st.st_mtime_ns, st.st_size])
+            except OSError:
+                out.append([friend, 0, 0])
+    return out
+
+
+def _author_triggers(friends, refs, cfg) -> dict:
+    """Déclencheurs que l'auteur d'une skill reçue a ajoutés ou appris pour elle (son `declencheurs.json`, clés
+    « commun:<nom> ») → {« ami/nom » : [phrases]}. Seul l'auteur en donne à sa skill ; jamais une phrase qui désigne
+    déjà une de mes skills ; rien si l'utilisateur ne veut pas des déclencheurs de ses amis."""
+    if settings(cfg).get("declencheurs", "oui") == "non":
+        return {}
+    from . import skills
+    out, catalog, prefix = {}, None, f"{SOURCE}:"
+    for friend, d in friends:
+        rows = _friend_json(d / TRIGGERS).get("skills")
+        for key, phrases in (list(rows.items())[:200] if isinstance(rows, dict) else ()):
+            ref = f"{friend}/{key[len(prefix):]}" if isinstance(key, str) and key.startswith(prefix) else ""
+            if ref not in refs:
+                continue
+            ok = []
+            for p in phrases[:12] if isinstance(phrases, list) else ():
+                if not _phrase_ok(p):
+                    continue
+                if catalog is None:
+                    catalog = skills.index(None, cfg.get("skills") or {})
+                if not any(r["strong"] for r in skills.match(p, catalog)):
+                    ok.append(" ".join(p.split()))
+            if ok:
+                out[ref] = ok
+    return out
+
+
+def _index_sig(theirs, mine, e, trig, own) -> str:
+    """Empreinte de tout ce dont l'index dépend. Un condensé, pas la liste elle-même : un nom de fichier qui n'est pas
+    de l'UTF-8 valide (possible sous Linux) ne doit pas empêcher d'écrire l'index."""
     accepted, approved = e.get("acceptees"), e.get("scripts")
-    return {"f": [[f"{friend}/{sk.name}", tree] for friend, sk, tree in theirs],
-            "m": [[sk.name, tree] for _, sk, tree in mine],
+    data = {"f": [[f"{friend}/{sk.name}", tree] for friend, sk, tree in theirs], "m": [[sk.name, tree] for _, sk, tree in mine],
             "a": accepted if isinstance(accepted, dict) else {}, "s": approved if isinstance(approved, dict) else {},
-            "o": sorted(_own_names())}
+            "o": own, "t": trig, "d": e.get("declencheurs", "oui")}
+    return hashlib.sha256(json.dumps(data, sort_keys=True, default=str).encode("ascii", "replace")).hexdigest()
 
 
 def _request_index() -> None:
     """Index périmé vu depuis un hook : reconstruit en arrière-plan (au plus une fois par minute), jamais dans le délai
     du hook — contrôler des fichiers venus d'ailleurs peut prendre du temps."""
-    if days_since(state().get("index_demande")) * 86400 < 60:
+    if _recent(state().get("index_demande"), 60):
         return
     _edit(lambda d: d.update(index_demande=now_iso()))
     from .hooks import spawn_background
@@ -762,62 +876,76 @@ def _request_index() -> None:
 
 def index(cfg=None, build=True) -> dict:
     """Skills des amis, contrôlées et analysées pour le réflexe ; en cache tant qu'aucun fichier ni accord n'a bougé.
-    → {"skills": [fiches], "parsed": [fiches de skills.parse pour celles à l'état « ok »], "miennes": [fiches de mes
-    skills envoyées]}.
+    → {"skills": [fiches], "parsed": [fiches de skills.parse pour celles à l'état « ok », avec les déclencheurs que
+    leur auteur leur a appris], "miennes": [fiches de mes skills envoyées]}.
     `build` False (hooks) : un index périmé n'est PAS reconstruit sur place ni servi tel quel (son verdict porte sur
     un contenu qui a changé) — rien n'est proposé à ce message, et la reconstruction part en arrière-plan."""
     cfg = cfg or load_config()
     e = settings(cfg)
     who = me()
-    theirs, mine = _scan(_friends() if receiving(cfg) else [], who)
-    sig = _index_sig(theirs, mine, e)
+    friends = _friends() if receiving(cfg) else []
+    theirs, mine, skipped = _scan(friends, who)
+    own = sorted(_show(n) for n in _own_names())
+    sig = _index_sig(theirs, mine, e, _trigger_stats(friends, theirs), own)
     cache = read_json(INDEX, {}) or {}
     if isinstance(cache, dict) and cache.get("v") == INDEX_V and cache.get("sig") == sig:
         return cache
     if not build and os.environ.get("BRAIN_COMMUN_FG") != "1":  # (tests : reconstruit tout de suite)
         _request_index()
         return {"v": INDEX_V, "sig": None, "skills": [], "parsed": [], "miennes": [], "perime": True}
-    accepted, approved = sig["a"], sig["s"]
-    own = set(sig["o"])
+    accepted = e.get("acceptees") if isinstance(e.get("acceptees"), dict) else {}
+    approved = e.get("scripts") if isinstance(e.get("scripts"), dict) else {}
     budget = {"skills": BUILD_SKILLS, "bytes": BUILD_BYTES}
+    if skipped:
+        log(f"échange : trop de contenu dans le dépôt commun — skills de {', '.join(skipped[:8])} pas regardées")
 
     def checked(friend, sk, tree, acc, appr):
         """Fiche contrôlée, dans la limite de ce qu'une reconstruction peut lire (BUILD_SKILLS, BUILD_BYTES)."""
         if tree is None:
             return _blank(friend, sk, f"trop de fichiers (plus de {WALK_MAX})")
+        if tree is False:
+            return _blank(friend, sk, "pas contrôlée : trop de fichiers chez ce membre pour tout parcourir")
         size = sum(row[3] for row in tree)
         if budget["skills"] <= 0 or size > budget["bytes"]:
-            return _blank(friend, sk, "trop de skills à contrôler dans le cerveau commun")
+            return _blank(friend, sk, "pas contrôlée : trop de skills dans le cerveau commun")
         budget["skills"] -= 1
         budget["bytes"] -= size
         return _check(friend, sk, acc, appr)
 
     entries = [checked(friend, sk, tree, accepted, approved) for friend, sk, tree in theirs]
+    names = set(own)
     best = {}
     for en in sorted(entries, key=lambda x: (x["maj"], x["ref"]), reverse=True):  # même nom chez deux amis : la plus récente
         if en["etat"] != "ok":
             continue
-        if en["name"] in own:
+        if en["name"] in names:
             en.update(etat="masquee", raison="tu as déjà une skill de ce nom")
         elif en["name"] in best:
             en.update(etat="masquee", raison=f"même nom que celle de {best[en['name']]}, plus récente")
         else:
             best[en["name"]] = en["par"]
     parsed = []
-    if any(en["etat"] == "ok" for en in entries):
+    oks = [en for en in entries if en["etat"] == "ok"]
+    if oks:
         from . import skills
         stop = skills.desc_stop()
-        for en in entries:
-            if en["etat"] == "ok":
-                p = skills.parse(Path(en["dir"]) / "SKILL.md", plugin=SOURCE, ident=en["name"], stop=stop)
-                if p:
-                    parsed.append(dict(p, ref=en["ref"]))
+        try:
+            extra = _author_triggers(friends, {en["ref"] for en in oks}, cfg)
+        except Exception as exc:
+            log(f"échange (déclencheurs des auteurs) : {exc!r}")
+            extra = {}
+        for en in oks:
+            p = skills.parse(Path(en["dir"]) / "SKILL.md", plugin=SOURCE, ident=en["name"], stop=stop)
+            if p:
+                if extra.get(en["ref"]):
+                    p = skills.with_triggers([p], {p["name"]: extra[en["ref"]]})[0]
+                parsed.append(dict(p, ref=en["ref"]))
     out = {"v": INDEX_V, "sig": sig, "skills": entries, "parsed": parsed,
            "miennes": [checked(friend, sk, tree, {}, {}) for friend, sk, tree in mine]}
     try:
         write_json(INDEX, out, indent=None)
-    except OSError:
-        pass
+    except Exception as exc:  # jamais une raison de faire échouer une commande : l'index sert quand même, cette fois
+        log(f"échange (index non écrit) : {exc!r}")
     return out
 
 
@@ -858,9 +986,10 @@ def hint_line(r, entry) -> str:
     return line
 
 
-def reflex(text, st, cfg=None) -> list:
+def reflex(text, st, cfg=None, take=None) -> list:
     """→ lignes 🧩 des skills reçues qui collent au message (déclencheur reconnu ou nom cité ; une fois par session et
-    par skill). `st` : état « plus » de la session, modifié."""
+    par skill). `st` : état « plus » de la session, modifié. `take(ligne)` : la ligne tient-elle sous le plafond de
+    contexte du hook ? Une ligne refusée n'est pas notée comme soufflée : elle le sera à un prochain message."""
     cfg = cfg or load_config()
     if not receiving(cfg) or not me():
         return []
@@ -878,9 +1007,11 @@ def reflex(text, st, cfg=None) -> list:
         entry = by_ref.get(r["skill"].get("ref"))
         if not r["strong"] or not entry:
             continue
-        out.append(hint_line(r, entry))
-        done.append(r["name"])
-        _bump(entry["ref"], "soufflee")
+        line = hint_line(r, entry)
+        if take is None or take(line):
+            out.append(line)
+            done.append(r["name"])
+            _bump(entry["ref"], "soufflee")
         break
     if out:
         st["recues"] = done
@@ -905,12 +1036,13 @@ def followed(paths) -> None:
     """SKILL.md lus avec Read pendant une session : ceux d'une skill reçue comptent comme « suivie »."""
     marker = f"/{SKILLS}/"
     base = _members_dir().as_posix().rstrip("/") + "/"
+    who = me()
     for p in dict.fromkeys(paths):
         p = str(p).replace("\\", "/")
         if not p.endswith("/SKILL.md") or base.lower() not in p.lower() or marker not in p:
             continue
         rel = p[p.lower().index(base.lower()) + len(base):].split("/")
-        if len(rel) == 4 and rel[1] == SKILLS:
+        if len(rel) == 4 and rel[1] == SKILLS and rel[0] != who:  # (relire ma propre copie envoyée ne compte pas)
             _bump(f"{rel[0]}/{rel[2]}", "suivie")  # (_bump ne compte qu'un « ami/skill » bien formé)
 
 
@@ -927,10 +1059,11 @@ def import_triggers(cfg=None) -> list:
     for friend, d in _friends():
         rows = _friend_json(d / TRIGGERS).get("skills")
         for skill, phrases in (list(rows.items())[:200] if isinstance(rows, dict) else ()):
+            if not isinstance(skill, str) or skill.startswith(f"{SOURCE}:"):
+                continue  # ceux d'une skill partagée par son auteur vont avec elle : voir _author_triggers
             for p in phrases[:12] if isinstance(phrases, list) else ():
-                if isinstance(p, str) and 3 <= len(p) <= 60 and len(p.split()) <= 6 and _PHRASE.fullmatch(p) \
-                        and not lint_text(p) and not lint_text(p, code=True):
-                    offers.append((str(skill)[:140], " ".join(p.split()), friend))
+                if _phrase_ok(p):
+                    offers.append((skill[:140], " ".join(p.split()), friend))
     if not offers:
         return []
     from . import skills
@@ -943,8 +1076,8 @@ def import_triggers(cfg=None) -> list:
     new = []
     for skill, phrase, friend in offers:
         if skill not in names or fold(phrase) in have.get(skill, set()) or fold(phrase) in refused \
-                or len(got.get(skill, [])) >= 5:
-            continue
+                or len(got.get(skill, [])) >= 5 or fold(phrase) in {fold(x) for x in got.get(skill, [])}:
+            continue  # (déjà reçu puis retiré par l'utilisateur : il ne revient pas)
         g = skills.phrase_groups(phrase)
         if len(g) < 2 or not skills.usable(g):
             continue
@@ -990,6 +1123,17 @@ def drop_triggers() -> str:
         e["declencheurs_refuses"] = sorted(refused)
     update_config(change)
     return f"✓ {sum(n)} déclencheur(s) reçu(s) des amis retiré(s) ; plus aucun ne sera pris (`{CMD} echange declencheurs oui`)"
+
+
+def allow_triggers() -> str:
+    """`brain echange declencheurs oui` : les déclencheurs des amis sont de nouveau pris, y compris ceux qui avaient
+    été retirés d'un coup par `declencheurs non`."""
+    def change(c):
+        e = c.setdefault("echange", {})
+        e["declencheurs"] = "oui"
+        e.pop("declencheurs_refuses", None)
+    update_config(change)
+    return "✓ les déclencheurs appris par tes amis sont de nouveau pris à chaque synchro"
 
 
 # ------------------------------------------------------------------------------------------ adopter, approuver
@@ -1067,7 +1211,9 @@ def adopt(ref, oui=False, scripts=False, cfg=None, sig=None) -> list:
     if en["etat"] == "quarantaine":  # l'utilisateur l'a lue et l'accepte telle qu'elle est : notée sur son empreinte
         set_config(f"echange.acceptees.{en['ref']}", en["sig"])
     if scripts and en["scripts"]:
-        approve(ref, oui=True, cfg=cfg, sig=en["sig"])
+        res = approve(en["ref"], oui=True, sig=en["sig"])
+        if any(line.startswith("✗") for line in res):
+            return res
     shutil.rmtree(dest, ignore_errors=True)
     done = _write_all(files, dest, skip=() if with_scripts else script_files)
     write_json(dest / ADOPTED, {"de": en["par"], "le": now_iso(), "sig": en["sig"], "scripts": with_scripts})
@@ -1198,9 +1344,10 @@ def proposals(cfg=None, build=True) -> list:
                 use.setdefault(ref, {})[friend] = max(0, min(int(n), 1000))
             except (TypeError, ValueError, OverflowError):
                 continue
-    for ref, u in (state().get("usage") or {}).items():  # mon usage, même pas encore exporté
-        if who and isinstance(u, dict) and u.get("suivie") and REF_RE.fullmatch(str(ref)):
-            use.setdefault(ref, {})[who] = int(u["suivie"])
+    for ref, u in (state().get("usage") or {}).items():  # mon usage des skills des autres, même pas encore exporté
+        if who and isinstance(u, dict) and isinstance(u.get("suivie"), int) and REF_RE.fullmatch(str(ref)) \
+                and ref.split("/")[0] != who:
+            use.setdefault(ref, {})[who] = max(0, min(u["suivie"], 1000))
     idx = index(cfg, build)
     out = []
     for en in (idx.get("skills") or []) + (idx.get("miennes") or []):
@@ -1330,33 +1477,36 @@ def on_session_end(cfg=None) -> None:
     cfg = cfg or load_config()
     if not me() or (sending(cfg) != "oui" and not receiving(cfg)):
         return
-    if days_since(state().get("sync_demande")) * 86400 < 900:
+    if _recent(state().get("sync_demande"), 900):
         return
     _edit(lambda d: d.update(sync_demande=now_iso()))
     spawn_sync()
 
 
 # ------------------------------------------------------------------------------------------ notices et état
-def notice(cfg=None) -> str:
+def notice(cfg=None, take=None) -> str:
     """Lignes du démarrage (chacune une seule fois) : proposition de partager ce que le cerveau apprend, nouvelles skills
-    reçues, scripts en attente d'accord, et — pour le propriétaire du plugin — skills qui ont fait leurs preuves."""
+    reçues, scripts en attente d'accord, et — pour le propriétaire du plugin — skills qui ont fait leurs preuves.
+    `take(ligne)` : la ligne tient-elle sous le plafond de contexte du hook ? Une ligne refusée n'est notée nulle part
+    comme montrée : elle attend un prochain démarrage."""
     cfg = cfg or load_config()
     if not me() or os.environ.get("CLAUDE_CODE_REMOTE"):
         return ""
+    take = take or (lambda line: True)
     st, lines = state(), []
     if sending(cfg) is None and days_since(st.get("propose_le")) >= 7:
-        _edit(lambda d: d.update(propose_le=now_iso()))
-        lines.append(
-            "🤝 Échange de skills : ton cerveau peut aussi partager avec tes amis les skills qu'il apprend, ses "
-            "déclencheurs et des compteurs techniques sans texte (jamais une skill écrite à la main sans accord, jamais un "
-            f"secret). Propose-le une fois à l'utilisateur avec ce qui partirait (`{CMD} echange apercu`) ; s'il accepte : "
-            f"`{CMD} echange oui` ; s'il refuse : `{CMD} echange non`.")
+        line = ("🤝 Échange de skills : ton cerveau peut aussi partager avec tes amis les skills qu'il apprend, ses "
+                "déclencheurs et des compteurs techniques sans texte (jamais une skill écrite à la main sans accord, jamais "
+                f"un secret). Propose-le une fois à l'utilisateur avec ce qui partirait (`{CMD} echange apercu`) ; s'il "
+                f"accepte : `{CMD} echange oui` ; s'il refuse : `{CMD} echange non`.")
+        if take(line):
+            _edit(lambda d: d.update(propose_le=now_iso()))
+            lines.append(line)
     if receiving(cfg):
         rows = received(cfg, build=False)
         seen = set(st.get("vues") or [])
         fresh = [r for r in rows if r["ref"] not in seen and r["etat"] in ("ok", "quarantaine")]
         if fresh:
-            _edit(lambda d: d.update(vues=sorted(seen | {r["ref"] for r in fresh})[-300:]))
             ok = [r for r in fresh if r["etat"] == "ok"]
             held = [r for r in fresh if r["etat"] == "quarantaine"]
             parts = []
@@ -1370,19 +1520,24 @@ def notice(cfg=None) -> str:
             waiting = [r["ref"] for r in ok if r["scripts"] and not r["scripts_ok"]]
             if waiting:
                 parts.append(f"scripts en attente de son accord : {', '.join(waiting[:3])} (`{CMD} echange approuver <ami/nom>`)")
-            lines.append("🤝 Échange de skills — " + " · ".join(parts) + f". Détail : `{CMD} echange liste` ; ne plus en "
-                         f"recevoir : `{CMD} echange recevoir non`. À dire à l'utilisateur en une phrase.")
+            line = ("🤝 Échange de skills — " + " · ".join(parts) + f". Détail : `{CMD} echange liste` ; ne plus en "
+                    f"recevoir : `{CMD} echange recevoir non`. À dire à l'utilisateur en une phrase.")
+            if take(line):
+                _edit(lambda d: d.update(vues=sorted(seen | {r["ref"] for r in fresh})[-300:]))
+                lines.append(line)
     if not PLUGIN or (cfg.get("publish") or {}).get("dir"):  # propriétaire du plugin : arbre de développement ou clone
         try:
             known = set(st.get("propositions_vues") or [])
             new = [r for r in proposals(cfg, build=False)
                    if r["ref"] not in known and r["ref"] not in (st.get("promues") or {})]
             if new:
-                _edit(lambda d: d.update(propositions_vues=sorted(known | {r["ref"] for r in new})[-300:]))
-                lines.append("🧩 Pour le plugin : " + ", ".join(
+                line = ("🧩 Pour le plugin : " + ", ".join(
                     f"« {r['name']} » de {r['par']}" + (" (proposée)" if r["propose"] else f" (suivie {r['suivies']}× par {r['membres']} membre(s))")
                     for r in new[:4]) + f" — à dire à l'utilisateur ; `{CMD} echange propositions`, puis "
                     f"`{CMD} echange promouvoir <ami/nom>` s'il veut la donner à tous.")
+                if take(line):
+                    _edit(lambda d: d.update(propositions_vues=sorted(known | {r["ref"] for r in new})[-300:]))
+                    lines.append(line)
         except Exception as exc:
             log(f"échange (propositions) : {exc!r}")
     return "\n".join(lines)
@@ -1396,6 +1551,8 @@ def preview(cfg=None) -> str:
     for name, (files, scripts, appris) in sorted(pl["partent"].items()):
         L.append(f"  + {name} ({'apprise par le cerveau' if appris else 'partagée par toi'}, {len(files)} fichier(s)"
                  + (f", {len(scripts)} script(s) : chez eux, en attente de leur accord" if scripts else "") + ")")
+    for name, why in sorted(pl["avis"].items()):
+        L.append(_held_line(name, why))
     for name, why in sorted(pl["privees"].items()):
         L.append(f"  · {name} reste privée — {why}")
     trig = shared_triggers(cfg, set(pl["partent"]))
@@ -1428,6 +1585,7 @@ def listing(cfg=None) -> str:
     pl = plan(cfg)
     L.append(f"Tes skills partagées ({len(pl['partent'])}) : " + (", ".join(sorted(pl["partent"])) or "aucune")
              + ("" if sending(cfg) == "oui" else " — envoi pas accepté, rien ne part"))
+    L += [_held_line(name, why) for name, why in sorted(pl["avis"].items())]
     L.append(f"`{CMD} echange voir|adopter|approuver <ami/nom>` · `{CMD} echange partager|garder|proposer <nom>`")
     return "\n".join(L)
 

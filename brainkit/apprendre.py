@@ -215,7 +215,7 @@ def _hinted(sid) -> set:
     return set(st.get("skills_hinted") or [])
 
 
-def _absorb(sid, st, found, cfg) -> None:
+def _absorb(sid, st, found) -> None:
     """Range ce que la lecture vient de trouver : erreurs résolues en attente dans la session, déclencheurs manqués et
     skills reçues suivies dans les fichiers d'état."""
     seen = set(st.get("ap_vues") or [])
@@ -265,7 +265,7 @@ def on_stop(data, cfg=None, blocking=False) -> str:
         return ""
     from . import plus
     st = plus.load_state(sid)
-    _absorb(sid, st, scan(tp, st), cfg)
+    _absorb(sid, st, scan(tp, st))
     out = ""
     if blocking and st.get("ap_attente"):
         out = stop_phrase(st["ap_attente"][:2])
@@ -284,7 +284,7 @@ def on_session_end(data, cfg=None) -> None:
     if sid and tp:
         from . import plus
         st = plus.load_state(sid)
-        _absorb(sid, st, scan(tp, st), cfg)
+        _absorb(sid, st, scan(tp, st))
         left = st.pop("ap_attente", None) or []
         plus.save_state(sid, st)
         if left:
@@ -544,28 +544,30 @@ def upkeep() -> str:
     return f"✓ entretien de l'apprentissage : {len(learned)} déclencheur(s) appris, {n} point(s) au dossier"
 
 
-def notice(cfg=None) -> str:
-    """Ligne 🎓 du démarrage : au plus une fois par jour, quand le dossier compte assez de points."""
+def notice(cfg=None, take=None) -> str:
+    """Lignes 🎓 du démarrage : annonces en attente, et — au plus une fois par jour — le dossier quand il compte assez
+    de points. `take(ligne)` : la ligne tient-elle sous le plafond de contexte du hook ? Une ligne refusée n'est pas
+    notée comme montrée : elle attend le prochain démarrage."""
     cfg = cfg or load_config()
     a = settings(cfg)
     if not enabled(cfg) or not a.get("notice", True):
         return ""
+    take = take or (lambda line: True)
     d = load()
-    lines = []
-    note = take_annonce(cfg)
-    if note:
-        lines.append(f"{note} (dis-le à l'utilisateur en une phrase au début de ta réponse)")
+    lines = take_annonces(take)
     n = int(d.get("attente") or 0)
     if n >= int(a.get("min_items", 3)) and days_since(d.get("notifie_le")) >= 1:
-        _edit(lambda x: x.update(notifie_le=now_iso()))
         from . import delegation
         agent = "archiviste" in delegation.available() and delegation.mode(cfg) != "off"
         who = (f"confie-le en arrière-plan à l'agent `{delegation.call_name('archiviste')}` (modèle moins cher, contexte à part)"
                if agent else "traite-le toi-même")
-        lines.append(f"🎓 Apprentissage du cerveau : {n} point(s) à trancher (erreurs résolues, déclencheurs manqués, "
-                     f"méthodes répétées). Après la première demande de l'utilisateur, {who} : `{CMD} apprendre`, appliquer "
-                     f"ce qui est sûr, laisser un doute et le citer, terminer par `{CMD} apprendre --fait` ; dire en une "
-                     "ligne ce qui a été fait.")
+        line = (f"🎓 Apprentissage du cerveau : {n} point(s) à trancher (erreurs résolues, déclencheurs manqués, "
+                f"méthodes répétées). Après la première demande de l'utilisateur, {who} : `{CMD} apprendre`, appliquer "
+                f"ce qui est sûr, laisser un doute et le citer, terminer par `{CMD} apprendre --fait` ; dire en une "
+                "ligne ce qui a été fait.")
+        if take(line):
+            _edit(lambda x: x.update(notifie_le=now_iso()))
+            lines.append(line)
     return "\n".join(lines)
 
 
@@ -579,13 +581,21 @@ def announce(text) -> None:
     _edit(change)
 
 
-def take_annonce(cfg=None) -> str:
-    """Les annonces en attente (déclencheur appris, skill reçue…) : montrées une seule fois."""
-    if not load().get("annonces"):
-        return ""
-    taken = []
-    _edit(lambda d: taken.extend(d.pop("annonces", None) or []))
-    return "\n".join(taken)
+def take_annonces(take=None) -> list:
+    """Les annonces en attente (déclencheur appris, skill reçue…), montrées une seule fois → celles que `take` accepte
+    (place sous le plafond de contexte du hook) ; les autres attendent le prochain message."""
+    rows = [x for x in load().get("annonces") or [] if isinstance(x, str) and x]
+    if not rows:
+        return []
+    shown = []
+    for text in rows:
+        line = f"{text} (dis-le à l'utilisateur en une phrase au début de ta réponse)"
+        if take is None or take(line):
+            shown.append((text, line))
+    if shown:
+        gone = {text for text, _ in shown}
+        _edit(lambda d: d.update(annonces=[x for x in d.get("annonces") or [] if x not in gone]))
+    return [line for _, line in shown]
 
 
 # ------------------------------------------------------------------------------------------ skill apprise
@@ -597,18 +607,19 @@ def learned_skill(name, description, body="", force=False, memory=True, scripts=
     import shutil
     from pathlib import Path
     from . import skills
-    from .echange import MAX_FILE, SAFE_REL, SCRIPT_EXT
+    from .echange import MAX_FILE, SCRIPT_EXT, safe_rel
     files = [Path(x) for x in scripts or ()]
     for f in files:  # tout est vérifié avant de créer quoi que ce soit
         if not f.is_file():
             raise ValueError(f"script introuvable : {f}")
         if f.suffix.lower() not in SCRIPT_EXT:
             raise ValueError(f"{f.name} : type de script non pris en charge ({', '.join(SCRIPT_EXT)})")
-        if not SAFE_REL.fullmatch(f.name):
-            raise ValueError(f"{f.name} : nom de fichier à simplifier (lettres sans accent, chiffres, tirets, points)")
+        if not safe_rel(f.name):
+            raise ValueError(f"{f.name} : nom de fichier à simplifier (lettres sans accent, chiffres, tirets, points ; "
+                             "pas un nom réservé par Windows)")
         if f.stat().st_size > MAX_FILE:
             raise ValueError(f"{f.name} : script trop gros ({f.stat().st_size // 1000} k, {MAX_FILE // 1000} k au plus)")
-    path = skills.scaffold(name, description, body, force=force)
+    path = skills.scaffold(name, description, (body or "").replace("\ufeff", ""), force=force)
     write_json(path.parent / MARK, {"le": now_iso()})
     out = [f"✓ skill apprise : {path}"]
     for f in files:
@@ -681,7 +692,7 @@ def feedback(days=14) -> dict:
     try:
         from .skills import OWN_PLUGIN, load_stats
         for name, s in load_stats().items():
-            if isinstance(s, dict) and (name.startswith(f"{OWN_PLUGIN}:") or name.startswith("commun:")) and s.get("hinted"):
+            if isinstance(s, dict) and name.startswith(f"{OWN_PLUGIN}:") and s.get("hinted"):
                 reflex[name] = [int(s.get("hinted") or 0), int(s.get("used_after_hint") or 0)]
     except Exception as exc:
         log(f"apprendre (retours, réflexe) : {exc!r}")

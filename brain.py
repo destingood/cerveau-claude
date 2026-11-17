@@ -51,24 +51,36 @@ PLUS_HOOKS = ("session-start", "prompt", "stop", "session-end")  # sortie compl�
 def hook_with_plus(exe, event):
     """Hook exécuté par brain.exe, puis complété par la couche « plus » (Python : délégation, apprentissage, échange de
     skills). BRAIN_PLUS=0 dans l'environnement de l'exe : s'il repasse à Python, la couche ne s'applique pas deux fois.
-    Une sortie qu'on ne sait pas compléter repart telle quelle. OSError (exe bloqué) : l'entrée déjà lue est rendue à
-    Python, qui fait tout."""
+    Une sortie qu'on ne sait pas compléter repart telle quelle. OSError au lancement (exe bloqué) : l'entrée déjà lue
+    est rendue à Python, qui fait tout."""
     import subprocess
     import tempfile
     payload = sys.stdin.buffer.read()
+    env = dict(os.environ, BRAIN_PYTHON=sys.executable, BRAIN_PLUS="0")
     # Sortie de l'exe dans un fichier temporaire, pas dans un tube : un tube ne se ferme que lorsque TOUS les processus
     # qui en ont hérité sont finis, et l'exe lance des tâches de fond détachées (carte du projet, synchro…) — on
     # attendrait leur fin, au-delà du délai du hook. Avec un fichier, on n'attend que l'exe.
-    with tempfile.TemporaryFile() as tmp:
-        try:
-            r = subprocess.run([exe] + sys.argv[1:], input=payload, stdout=tmp,
-                               env=dict(os.environ, BRAIN_PYTHON=sys.executable, BRAIN_PLUS="0"))
-        except OSError:
-            import io
-            sys.stdin = io.TextIOWrapper(io.BytesIO(payload), encoding="utf-8")
-            raise
+    try:
+        tmp = tempfile.TemporaryFile()
+    except OSError:
+        tmp = None  # dossier temporaire inutilisable : l'exe écrit lui-même sa sortie, sans la couche « plus »
+    try:
+        r = subprocess.run([exe] + sys.argv[1:], input=payload, stdout=tmp, env=env)
+    except OSError:
+        import io
+        if tmp is not None:
+            tmp.close()
+        sys.stdin = io.TextIOWrapper(io.BytesIO(payload), encoding="utf-8")  # rien n'a tourné : Python reprend l'entrée
+        raise
+    if tmp is None:
+        return r.returncode
+    try:  # (l'exe a tourné : quoi qu'il arrive ensuite, le hook n'est pas relancé)
         tmp.seek(0)
         out = tmp.read()
+    except OSError:
+        out = b""
+    finally:
+        tmp.close()
     text = None
     if r.returncode == 0:
         try:

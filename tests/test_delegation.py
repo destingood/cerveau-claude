@@ -342,6 +342,30 @@ if os.name == "posix":
     c, obj, out = X.hook("session-start", "x3", env={**X.env, "BRAIN_PLUS": "0"})
     check("↪ Délégation" not in out and "Cerveau persistant" in out,
           "retour à Python sous brain.exe (BRAIN_PLUS=0) : la couche plus ne s'applique pas une deuxième fois", out[-200:])
+    Path(str(exe) + ".echec").unlink()
+    driver2 = X.root / "pilote2.py"
+    driver2.write_text("import importlib.util, sys, tempfile\n"
+                       "def plein(*a, **k):\n    raise OSError('dossier temporaire inutilisable')\n"
+                       "tempfile.TemporaryFile = plein\n"
+                       "spec = importlib.util.spec_from_file_location('lanceur', sys.argv[1])\n"
+                       "m = importlib.util.module_from_spec(spec); spec.loader.exec_module(m)\n"
+                       "exe, event = sys.argv[2], sys.argv[3]\n"
+                       "sys.argv = ['brain.py', 'hook', event]\n"
+                       "try:\n    sys.exit(m.hook_with_plus(exe, event))\n"
+                       "except OSError:\n    print('RENDU:' + sys.stdin.read())\n", encoding="utf-8")
+
+    def via2(target, payload):
+        r = subprocess.run([sys.executable, "-I", "-S", str(driver2), str(CODE / "brain.py"), str(target), "session-start"],
+                           input=json.dumps(payload).encode(), capture_output=True, env=X.env, cwd=str(X.work), timeout=60)
+        return r.returncode, r.stdout.decode("utf-8", "replace")
+
+    c, out = via2(exe, {"session_id": "x4", "cwd": str(X.work)})
+    check(c == 0 and json.loads(out)["hookSpecificOutput"]["additionalContext"] == "RUST"
+          and json.loads(Path(str(exe) + ".entree").read_text(encoding="utf-8"))["session_id"] == "x4",
+          "brain.exe simulé, dossier temporaire inutilisable : l'exe reçoit l'entrée et écrit lui-même sa sortie", out[:200])
+    c, out = via2(X.root / "exe-absent", {"session_id": "x5", "cwd": str(X.work)})
+    check(out.startswith("RENDU:") and json.loads(out[6:])["session_id"] == "x5",
+          "brain.exe introuvable ou bloqué : l'entrée déjà lue est rendue à Python, même sans dossier temporaire", out[:200])
 else:
     print("· brain.exe simulé : sauté (faux exécutable en shell, POSIX seulement)")
 
