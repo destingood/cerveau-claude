@@ -161,7 +161,7 @@ SB = Brain(brain_of([
          project="jardin"),
     node("tomates-cuisine", "fact", "Sauce aux tomates", "Faire revenir les tomates avec ail et basilic, cuisson lente."),
     node("livraison", "fact", "Colis du fournisseur", "Cartons livrés le 12/11/2026.", created="2026-11-12T18:00:00"),
-], links=[("velo-chaine", "recette-crepes")]))
+], links=[("velo-chaine", "recette-crepes"), ("tomates", "tomates-cuisine")]))
 
 
 def found(query, **kw):
@@ -181,7 +181,8 @@ check(set(ids("magasin")) == {"robots-shopify", "theme-dawn"}, "synonyme : « ma
 check(ids("zeppelin volcanique") == [], "sujet inconnu : aucun résultat", ids("zeppelin volcanique"))
 check(ids("dentiste centre-ville", types=["todo"]) == ["dentiste"] and "dentiste-fact" in ids("dentiste centre-ville"),
       "filtre types : seulement les à-faire")
-check(ids("tomates", project="jardin", only_project=True) == ["tomates"], "only_project : seulement le projet")
+got = ids("tomates", project="jardin", only_project=True)
+check(got == ["tomates"], "only_project : seulement le projet, voisins du graphe compris", got)
 plain = {r["node"]["id"]: r["score"] for r in found("tomates")}
 boosted = {r["node"]["id"]: r["score"] for r in found("tomates", project="jardin")}
 check(plain["tomates"] == plain["tomates-cuisine"] and boosted["tomates"] > boosted["tomates-cuisine"],

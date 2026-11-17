@@ -320,6 +320,8 @@ def search_memories(brain, query, limit=8, project=None, types=None, include_arc
                     continue
                 if types and m["type"] not in types:
                     continue
+                if only_project and project and m.get("project") != project and m["id"] != project:
+                    continue
                 seen.add(m["id"])
                 extra.append({"key": m["id"], "score": round(r["score"] * 0.35, 2), "matched": 0,
                               "midf": 0.0, "nq": r["nq"], "node": m, "via": f"{r['node']['id']} · {rel}"})
