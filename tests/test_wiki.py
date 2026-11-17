@@ -545,9 +545,16 @@ st_d = json.loads(DREAM.read_text(encoding="utf-8"))
 check(code == 0 and (st_d.get("sources") or 0) >= 1, "rêve : sources du wiki à ingérer comptées", (st_d, out[-300:]))
 brain("config", "dream.min_items", "999")
 o = hook("session-start", {"session_id": "r1", "cwd": str(WORK)})
-check("🌙" in o and "source(s) du wiki à ingérer" in o and "sans sous-agent" in o and "dream --done" in o,
-      "rêve : ligne au démarrage dès une source à ingérer, à traiter par Claude lui-même", o[-800:])
+check("🌙" in o and "source(s) du wiki à ingérer" in o and "cerveau:archiviste" in o and "sans sous-agent" not in o
+      and "dream --done" in o,
+      "rêve : ligne au démarrage dès une source à ingérer, confiée à l'agent archiviste (modèle moins cher)", o[-800:])
 check("🌙" not in hook("session-start", {"session_id": "r2", "cwd": str(WORK)}), "rêve : une seule fois par jour")
+brain("config", "delegation.reve", "false")  # v8.21 : sans l'agent archiviste, Claude le traite lui-même, comme avant
+write_json(DREAM, {**json.loads(DREAM.read_text(encoding="utf-8")), "notified": None})
+o = hook("session-start", {"session_id": "r2b", "cwd": str(WORK)})
+check("🌙" in o and "sans sous-agent" in o and "en arrière-plan à l'agent" not in o,
+      "delegation.reve false : le rêve est traité par Claude lui-même, sans sous-agent", o[-800:])
+brain("config", "delegation.reve", "true")
 brain("config", "dream.auto", "false")
 write_json(DREAM, {**json.loads(DREAM.read_text(encoding="utf-8")), "notified": None})
 o = hook("session-start", {"session_id": "r3", "cwd": str(WORK)})

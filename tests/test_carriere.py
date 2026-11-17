@@ -113,7 +113,7 @@ modele = json.loads(out)
 (TMP / "cv.json").write_text(out, encoding="utf-8")
 code, out = run("cv.py", TMP / "cv.json")
 check(code == 1 and not (TMP / "cv.html").exists(), "cv.py : modèle non rempli → rien d'écrit", out)
-modele.update(nom="Camille <Test>", contact={"telephone": "06 11 22 33 44", "email": "c.test@exemple.fr"},
+modele.update(nom="Camille <Test>", contact={"telephone": "06 11 22 33 44", "email": "c.test@example.fr"},
               accroche="Je suis dynamique et motivé.")
 modele["experiences"] = [{"poste": "Vendeur", "entreprise": "Magasin", "debut": "2025-09", "fin": "2026-06",
                           "resultats": ["Conseil des clients en rayon"]},
