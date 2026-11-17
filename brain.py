@@ -99,6 +99,45 @@ def hook_with_plus(exe, event):
     return r.returncode
 
 
+def _pipe(stream) -> bool:
+    try:
+        import stat
+        return stat.S_ISFIFO(os.fstat(stream.fileno()).st_mode)
+    except (AttributeError, OSError, ValueError):
+        return False
+
+
+def run_exe(exe, args):
+    """Commande ordinaire exécutée par brain.exe → son code de sortie. Sortie vers un tube (outil Bash de Claude Code,
+    script, test) : l'exe écrit dans des fichiers temporaires, recopiés quand il a fini. Même raison que pour les hooks :
+    un tube ne se ferme que lorsque TOUS les processus qui en ont hérité sont finis, et sous Windows les tâches de fond
+    de l'exe en héritent (envoi différé du cerveau commun : 15 s). L'appelant attendrait leur fin, et un « garde ça pour
+    moi » juste après un ajout n'arriverait qu'une fois le premier jet parti. Console ou fichier : sortie au fil de
+    l'eau, comme avant. OSError au lancement (exe bloqué) : rien n'a tourné, Python fait tout."""
+    import subprocess
+    import tempfile
+    files = {}
+    for name in ("stdout", "stderr"):
+        if _pipe(getattr(sys, name)):
+            try:
+                files[name] = tempfile.TemporaryFile()
+            except OSError:
+                pass  # dossier temporaire inutilisable : l'exe écrit lui-même dans le tube (on attend ses tâches de fond)
+    try:
+        return subprocess.run([exe] + list(args), env=dict(os.environ, BRAIN_PYTHON=sys.executable), **files).returncode
+    finally:
+        for name, tmp in files.items():
+            try:
+                tmp.seek(0)
+                out = getattr(sys, name).buffer
+                out.write(tmp.read())
+                out.flush()
+            except (OSError, ValueError):
+                pass
+            finally:
+                tmp.close()
+
+
 if __name__ == "__main__":
     relay = newer_install()
     if relay:
@@ -110,11 +149,10 @@ if __name__ == "__main__":
     python_only = sys.argv[1:2] and sys.argv[1] in PYTHON_ONLY or hook_event in PYTHON_HOOKS
     exe = None if python_only else rust_exe()
     if exe:
-        import subprocess
         try:
             if hook_event in PLUS_HOOKS and os.environ.get("BRAIN_PLUS") != "0":
                 sys.exit(hook_with_plus(exe, hook_event))
-            sys.exit(subprocess.run([exe] + sys.argv[1:], env=dict(os.environ, BRAIN_PYTHON=sys.executable)).returncode)
+            sys.exit(run_exe(exe, sys.argv[1:]))
         except OSError:
             pass  # exe bloqué (antivirus…) : Python fait tout
     if hook_event:  # chemin rapide des hooks : ni argparse ni CLI à charger
