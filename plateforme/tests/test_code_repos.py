@@ -10,9 +10,10 @@ from typing import Any, cast
 import pytest
 import yaml
 
-from core.code.git import GitError, GitOutput, GitRunner
+from core.code.git import GIT_TOO_OLD, GitError, GitOutput, GitRunner, GitTooOldError
 from core.code.repos import (
     MAX_PATH_CHARS,
+    GitVersionError,
     RepoError,
     RepoReader,
     Repository,
@@ -256,6 +257,18 @@ def test_a_folder_that_is_not_a_repository_is_refused(reader: RepoReader, tmp_pa
     (tmp_path / "vide").mkdir()
     with pytest.raises(RepoError, match="pas un dépôt git lisible"):
         reader.open([listed("x", tmp_path / "vide")], "x")
+
+
+def test_a_git_too_old_is_said_as_such_not_as_an_unreadable_repository(tmp_path: Path) -> None:
+    class OldGit(FakeGit):
+        def run(self, repo: Path, args: Sequence[str], **_: Any) -> GitOutput:
+            raise GitTooOldError(GIT_TOO_OLD)
+
+    (tmp_path / "depot").mkdir()
+    old = RepoReader(cast(GitRunner, OldGit()), cerveau_root=Path("/cerveau-absent"))
+    with pytest.raises(GitVersionError) as caught:
+        old.open([listed("x", tmp_path / "depot")], "x")
+    assert str(caught.value) == GIT_TOO_OLD
 
 
 def test_a_subfolder_of_a_repository_is_refused(reader: RepoReader, repo: Path) -> None:
