@@ -23,7 +23,8 @@ from .common import CODE_DIR, load_config, read_json, remove_tree, set_config
 
 NAME = MARKET = "cerveau"
 AUTRES = {"plateforme"}  # dossiers d'autres projets du même dépôt (PR #8) : ni effacés, ni contrôlés, ni commités ici
-KEEP = {".git", ".github", "CONTRIBUTORS.md"} | AUTRES  # tenus dans le dépôt lui-même (CI comprise), jamais effacés
+# Tenus dans le dépôt lui-même, jamais effacés : CI (.github) et garde-fous de Claude Code ouverts à la racine (.claude)
+KEEP = {".git", ".github", ".claude", "CONTRIBUTORS.md"} | AUTRES
 # Serveur MCP du plugin, déclaré dans plugin.json et non dans un .mcp.json à la racine : ce fichier est aussi lu comme
 # configuration du projet quand le dépôt est ouvert dans Claude Code, où ${CLAUDE_PLUGIN_ROOT} n'existe pas (le
 # serveur échouait : « python: can't open file '…/${CLAUDE_PLUGIN_ROOT}/brain.py' »).

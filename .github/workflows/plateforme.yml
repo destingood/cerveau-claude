@@ -1,20 +1,28 @@
-# CERVEAU continuous integration (phase 0): lint, tests, secret scan, dependency audit,
+# CERVEAU platform continuous integration (phase 0): lint, tests, secret scan, dependency audit,
 # promptfoo witness eval, compose validation and the Discord bot's tests and npm audit (phase 5).
+# GitHub reads workflows from the repository root only: this file lives here and runs every step
+# in plateforme/ (it sat unread in plateforme/.github/ until 2026-11-17).
 # No job holds a secret or a write permission.
 # Actions are pinned to a major tag checked on 2026-10-17; pinning by commit SHA is in the backlog.
-name: CI
+name: Plateforme
 
 on:
   push:
     branches: [main]
+    paths: ["plateforme/**", ".github/workflows/plateforme.yml"]
   pull_request:
+    paths: ["plateforme/**", ".github/workflows/plateforme.yml"]
 
 permissions:
   contents: read
 
 concurrency:
-  group: ci-${{ github.ref }}
+  group: plateforme-${{ github.ref }}
   cancel-in-progress: true
+
+defaults:
+  run:
+    working-directory: plateforme
 
 env:
   PROMPTFOO_DISABLE_TELEMETRY: "1"
@@ -36,6 +44,7 @@ jobs:
         with:
           python-version: "3.12"
           enable-cache: true
+          cache-dependency-glob: plateforme/uv.lock
       - run: uv sync --frozen
       - run: uv run ruff check .
       - run: uv run ruff format --check .
@@ -100,6 +109,7 @@ jobs:
         with:
           python-version: "3.12"
           enable-cache: true
+          cache-dependency-glob: plateforme/uv.lock
       - run: uv sync --frozen
       - name: Offline evals (no API key reaches promptfoo)
         run: uv run cerveau eval
@@ -114,7 +124,7 @@ jobs:
     runs-on: ubuntu-latest
     defaults:
       run:
-        working-directory: interfaces/discord_bot
+        working-directory: plateforme/interfaces/discord_bot
     steps:
       - uses: actions/checkout@v7
         with:

@@ -567,6 +567,8 @@ dest = Path(tempfile.mkdtemp(prefix="cerveau-publish-"))
 (dest / "ancien.txt").write_text("x", encoding="utf-8")
 (dest / ".github" / "workflows").mkdir(parents=True)
 (dest / ".github" / "workflows" / "ci.yml").write_text("name: CI\n", encoding="utf-8")
+(dest / ".claude").mkdir()
+(dest / ".claude" / "settings.json").write_text("{}\n", encoding="utf-8")
 (dest / "plateforme").mkdir()
 (dest / "plateforme" / "README.md").write_text("# Plateforme\ncontact : equipe" + "@" + "plateforme.fr", encoding="utf-8")  # adresse en morceaux : pas d'e-mail dans le dépôt public
 files = publish.build(dest, "Moi", "moi/depot")
@@ -574,8 +576,8 @@ check((dest / "CONTRIBUTORS.md").is_file() and not (dest / "ancien.txt").exists(
       "publish : CONTRIBUTORS.md du dépôt gardé, le reste reconstruit")
 check((dest / "plateforme" / "README.md").is_file() and not any(f.startswith("plateforme/") for f in files)
       and not publish.secrets_in(dest), "publish : plateforme/ (autre projet du dépôt) gardé, hors liste et hors contrôle")
-check((dest / ".github" / "workflows" / "ci.yml").is_file(),
-      "publish : .github/ (CI du dépôt) gardé, jamais effacé par la reconstruction")
+check((dest / ".github" / "workflows" / "ci.yml").is_file() and (dest / ".claude" / "settings.json").is_file(),
+      "publish : .github/ (CI) et .claude/ (garde-fous du dépôt) gardés, jamais effacés par la reconstruction")
 shutil.rmtree(dest, ignore_errors=True)
 c, out = World("aide").run("econome")
 check(c == 0 and "Mode éco" in out, "alias « econome »", out)
