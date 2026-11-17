@@ -5,6 +5,7 @@ from __future__ import annotations
 
 import base64
 import json
+import re
 from datetime import UTC, date, datetime, timedelta
 from decimal import Decimal
 from pathlib import Path
@@ -560,8 +561,15 @@ def test_the_daily_report_names_no_amount(root: Path, defined: Path) -> None:
     assert lines[-1].startswith(
         f"Journal d'audit : chaîne vérifiée, tête n° {body['audit']['head_seq']}"
     )
+    # Digests and identifiers are random hex: '2500' or '512' can occur inside one by chance
+    # (seen on CI: the audit head '…992500a…'). Only the text around them must carry no amount.
+    scrubbed = re.sub(
+        r"\b[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\b|(?:sha256:)?[0-9a-f]{32,}",
+        "<id>",
+        response.text,
+    )
     for amount in ("10000", "10150", "10 150", "2500", "CW8", "512"):
-        assert amount not in response.text
+        assert amount not in scrubbed
     assert opened.get("/reports/daily", params={"day": "2026-10-19"}).is_success
     missing = opened.get("/reports/daily", params={"day": "2026-10-20"})
     assert missing.status_code == 404
