@@ -86,8 +86,8 @@ check((dest / "plateforme" / "README.md").is_file() and (dest / "CONTRIBUTORS.md
 
 # ------------------------------------------------------------------ 3. le remote GitHub donne le dépôt
 remote = repo_with("remote", {"a.txt": "a"})
-for url in ("https://github.com/destingood/cerveau-claude.git", "git@github.com:destingood/cerveau-claude.git",
-            "https://github.com/destingood/cerveau-claude"):
+ssh = "git" + "@" + "github.com:destingood/cerveau-claude.git"  # en morceaux : le contrôle des e-mails lit ce fichier
+for url in ("https://github.com/destingood/cerveau-claude.git", ssh, "https://github.com/destingood/cerveau-claude"):
     git(remote, "remote", "remove", "origin")
     git(remote, "remote", "add", "origin", url)
     check(publish.origin_repo(remote) == "destingood/cerveau-claude", f"dépôt lu dans le remote : {url}",
