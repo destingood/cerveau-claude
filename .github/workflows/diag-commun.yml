@@ -3,7 +3,7 @@ name: Diag commun
 on:
   push:
     branches: [claude/eloquent-lovelace-ds7vsi]
-    paths: [".github/workflows/diag-commun.yml", ".github/diag_commun.py", "brainkit/**", "tests/test_commun.py"]
+    paths: [".github/workflows/diag-commun.yml", ".github/diag_commun.py", "brain.py", "brainkit/**", "tests/test_commun.py"]
   workflow_dispatch:
 permissions:
   contents: read
