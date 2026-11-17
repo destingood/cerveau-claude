@@ -95,6 +95,8 @@ PRIVATE_HOSTS = re.compile(
     r"localhost|local|lan|internal|intranet|home|corp)$")
 PRIVATE_QUERY = re.compile(r"(?i)[?&#;](?:[\w.-]*(?:token|key|sig|signature|secret|auth|password|pwd|session|code|"
                            r"access|credential|invite)[\w.-]*|x-amz-[\w-]+|expires)=")
+# index git illisible (git interrompu pendant qu'il l'écrivait) : messages de git (read-cache.c)
+INDEX_BROKEN = re.compile(r"index file (?:smaller than expected|corrupt)|bad (?:signature|index (?:version|file))")
 WIKI_LINK = re.compile(r"\[\[([^\]\n|#]{1,160})(#[^\]\n|]*)?(?:\|([^\]\n]{1,160}))?\]\]")
 
 
@@ -410,6 +412,8 @@ def _pull(path, me) -> str:
     else:
         args = ["pull", "--rebase", "--autostash"]
     code, out = git(path, *args, timeout=120)
+    if code and _repair_index(path, out):
+        code, out = git(path, *args, timeout=120)
     if code == 0:
         return ""
     mine = f"{MEMBERS}/{me}/"
@@ -448,9 +452,29 @@ def _unstick(path) -> None:
         git(path, "rebase", "--abort", timeout=30)
 
 
+def _repair_index(path, out) -> bool:
+    """Index git illisible (PC éteint, git tué ou dérangé pendant qu'il l'écrivait : vide, tronqué) : sans réparation,
+    plus aucune synchronisation ne passerait. Refait depuis le dernier commit (git reset), fichiers du dossier gardés tels
+    quels : l'export suivant les remet dans l'index. Appelé sous GIT_LOCK. → True si réparé (l'appelant réessaie)."""
+    if not INDEX_BROKEN.search(out or ""):
+        return False
+    try:
+        (Path(path) / ".git" / "index").unlink()
+    except FileNotFoundError:
+        pass
+    except OSError as exc:
+        log(f"commun : index git illisible, pas effaçable : {exc!r}")
+        return False
+    git(path, "reset", "-q", timeout=60)  # dépôt encore sans commit : échoue, et l'index absent suffit
+    log(f"commun : index git illisible ({short(out, 160)}) : refait depuis le dernier commit")
+    return True
+
+
 def _commit(path, me, message) -> bool | None:
     """→ True : commit fait ; False : rien de nouveau ; None : git a échoué (verrou, dépôt occupé), rien n'est parti."""
     code, out = git(path, "add", "-A", "--", f"{MEMBERS}/{me}")
+    if code and _repair_index(path, out):
+        code, out = git(path, "add", "-A", "--", f"{MEMBERS}/{me}")
     if code:
         log(f"commun : add : {short(out, 300)}")
         return None
@@ -460,6 +484,7 @@ def _commit(path, me, message) -> bool | None:
                     message, timeout=60)
     if code:
         log(f"commun : commit : {out}")
+        _repair_index(path, out)  # rien n'est parti : le tour suivant refait l'ajout puis le commit
         return None
     return True
 
