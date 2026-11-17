@@ -36,6 +36,11 @@ Rotation du cas plafonné (Souverain ≤ 20 %) : 0,7232686 à 1e-8, puis 0,72323
 0,7232371 (1e-11), 0,7232372 (1e-12), 0,7232373 (1e-13). La valeur convergée s'affiche
 **72,32 %**. La référence « 72,33 % » du golden venait d'une résolution imprécise.
 
+VaR à 99 % après rééquilibrage, sans plafond (`risque/apres/var/99`, golden du plugin
+`finance_optimize`, cas `fo-015`) : 1 088,61 € à 1e-8, 1 088,558 € (1e-10), 1 088,561 €
+(1e-12 et 1e-13). La valeur convergée s'affiche **1 088,56 €** ; la référence « 1 088,57 € »
+venait elle aussi d'une résolution imprécise. Constaté par la CI Linux du 17/11/2026.
+
 ## Options
 - Tolérance 1e-12 pour `RiskBudgeting` seul (retenu) : la plus serrée sans avertissement ; les
   poids se stabilisent à environ 1e-7.
@@ -50,6 +55,8 @@ Rotation du cas plafonné (Souverain ≤ 20 %) : 0,7232686 à 1e-8, puis 0,72323
 - Golden Finance, cas `optim-plafond-souverain` : la rotation attendue passe de « 72,33 % » à
   « 72,32 % » (chiffre de référence et point clé). Aucun seuil ne change, aucun cas n'est retiré.
   Les trois cas Globex gardent « 4,10 % », que la solution serrée confirme.
+- Golden du plugin `finance_optimize`, cas `fo-015` : la VaR à 99 % après rééquilibrage attendue
+  passe de « 1 088,57 € » à « 1 088,56 € ».
 
 ## Conséquences
 - Golden Finance 96/96 sous Linux. Sous Windows, à revérifier par la CI (job `windows-latest`).
