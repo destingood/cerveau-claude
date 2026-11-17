@@ -1,0 +1,38 @@
+# Sources du pack Business & commerce (section 9.1, complément de plan P6 §3).
+#
+# api : les deux API lues par les plugins du pack, en accès anonyme et en lecture seule. Les
+# entrées qui gouvernent (hôte, débit, cache, licence) sont dans config/data_sources.yaml ; celles-ci
+# les documentent, lues le 2026-10-29 (détail : docs/licences.md). Les réponses sont lues à la
+# demande et gardées au plus le temps du cache.
+api:
+  - id: entreprises
+    hote: recherche-entreprises.api.gouv.fr
+    plugin: entreprises
+    editeur: DINUM (données INSEE et INPI)
+    licence: Licence Ouverte 2.0 (etalab-2.0)
+    mention: "Source : API Recherche d'entreprises (DINUM, données INSEE et INPI), date de lecture"
+    personnes: aucune — dirigeants, dates de naissance et adresses filtrés par le code (I4)
+    verifie_le: "2026-10-29"
+  - id: insee_melodi
+    hote: api.insee.fr
+    plugin: insee_stats
+    editeur: Insee
+    licence: Licence Ouverte 2.0 (etalab-2.0)
+    mention: "Source : Insee, avec l'identifiant du jeu et sa date de mise à jour"
+    verifie_le: "2026-10-29"
+#
+# jeux_melodi : la liste fermée des jeux que stats_series accepte. Celle qui gouverne est
+# plugins/insee_stats/catalog.py (DATASETS) ; elle ne grandit que si les évals le justifient (R13).
+jeux_melodi:
+  - id: DS_POPULATIONS_REFERENCE
+    titre: Populations de référence (recensement de la population)
+  - id: DS_SIDE_CREA_DEP_REG_NAT
+    titre: Créations d'entreprises et d'établissements par département, région et France
+  - id: DS_FILOSOFI_CC
+    titre: Revenus et niveau de vie des ménages (Filosofi), communes et départements
+#
+# web : aucune liste fermée de sites pour ce domaine (I6) ; une étude de marché lit des sites
+# variés. Les pages sont des données (R5), lues par un lecteur sans outil d'action.
+#
+# sources : corpus RAG autorisé du pack. Vide : pas de RAG en phase 6.
+sources: []

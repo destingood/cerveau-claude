@@ -4,7 +4,7 @@
     (R3, niveau 3 ; ADR-003, ADR-036).
 
 .DESCRIPTION
-    Lancé à la main par Lucas, dans un PowerShell « Exécuter en tant qu'administrateur ».
+    Lancé à la main par l'utilisateur, dans un PowerShell « Exécuter en tant qu'administrateur ».
     Claude Code ne lance jamais ce script.
 
     Protection (par défaut), pour le fichier live.yaml et pour le dossier des signatures :
@@ -28,7 +28,7 @@
 
 .PARAMETER Unprotect
     Rend les deux chemins au compte courant et rétablit les droits hérités, avant une
-    modification manuelle par Lucas. Relancer ensuite le script sans option.
+    modification manuelle par l'utilisateur. Relancer ensuite le script sans option.
 
 .PARAMETER Check
     Affiche propriétaires et droits, puis tente une ouverture de live.yaml en écriture sans rien

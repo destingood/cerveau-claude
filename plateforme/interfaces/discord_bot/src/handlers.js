@@ -1,4 +1,4 @@
-// What the bot does with an interaction. Lucas, in his private messages with the bot, is the
+// What the bot does with an interaction. The user, in his private messages with the bot, is the
 // only one answered: anyone else, anywhere else, is ignored and reported to the API for the
 // journal, with neither identifier nor content (ADR-037, R5). The one-time code is relayed to
 // the API and never logged, echoed or kept.
@@ -24,7 +24,7 @@ export const REFUSAL_REASON = 'refusée depuis Discord';
 export const MAX_LISTED = 10;
 const DAY = /^\d{4}-\d{2}-\d{2}$/;
 
-/** Why an interaction is ignored, `utilisateur` or `salon`, or null when it is Lucas's. */
+/** Why an interaction is ignored, `utilisateur` or `salon`, or null when it is the user's. */
 export function refusalOf(interaction, ownerId) {
   if (interaction.user?.id !== ownerId) return 'utilisateur';
   // The commands exist in the bot's private messages only; Discord may omit the context, but

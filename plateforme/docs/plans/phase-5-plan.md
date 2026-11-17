@@ -1,6 +1,6 @@
 # Plan — Phase 5 : supervision et activation contrôlée (N3) : bot Discord, approbations, adaptateur live désactivé, rapport de promotion, dashboard
 
-Date : 21/10/2026 · Statut : **validé par Lucas le 21/10/2026**, avec les recommandations D1 à D26 du §14.
+Date : 21/10/2026 · Statut : **validé par l'utilisateur le 21/10/2026**, avec les recommandations D1 à D26 du §14.
 
 ## 0. En une phrase
 
@@ -34,7 +34,7 @@ Une action financière en N3 attend ton approbation, une par une : un bouton Dis
 
 Critères de sortie du §17 :
 
-- activation impossible sans action manuelle de Lucas (test dédié, §7) ;
+- activation impossible sans action manuelle de l'utilisateur (test dédié, §7) ;
 - approbation expirée = refus ;
 - journal complet ;
 - Claude Code n'active rien ;
@@ -68,7 +68,7 @@ Critères de sortie du §17 :
   - Le secret vit dans une variable d'environnement de l'utilisateur (`CERVEAU_TOTP_SECRET`), que tu poses et que Claude Code ne lit jamais.
   - `cerveau approvals enroll` génère le secret et l'URI `otpauth://` à scanner, dans ton terminal seulement. Les hooks refusent cette commande à Claude Code.
 - **Magasin** : `var/approvals/approvals.db`, SQLite en ajout seul, comme le carnet. Il est protégé par les hooks (D18).
-- **Journal** : une entrée `APPROVAL` par transition, avec `approval_id`, `intent_id`, état, raison et acteur. L'acteur est `lucas` pour un accord vérifié par code, `interface` pour une demande (nouvel acteur).
+- **Journal** : une entrée `APPROVAL` par transition, avec `approval_id`, `intent_id`, état, raison et acteur. L'acteur est `owner` pour un accord vérifié par code, `interface` pour une demande (nouvel acteur).
 - **Kill switch** : toutes les demandes ouvertes passent à REFUSEE (« kill switch »).
 - **Compteurs N3 → N4** : approbations, refus et taux d'accord entre toi et CERVEAU, enregistrés dès maintenant.
 
@@ -77,7 +77,7 @@ Critères de sortie du §17 :
 - **Décision accordée** (D5) : `approbation` pour `FINANCIERE`, dans le domaine `finance` seulement. `COMMUNICATION_EXTERNE` et `IRREVERSIBLE` restent refusés, car aucun composant ne les porte. Un test parcourt toute la matrice pour vérifier qu'aucun chemin ne devient plus permissif qu'écrit.
 - **Effet** `approbation` : l'intention passe la Porte, puis attend. Elle n'est envoyée qu'après un accord valide, à l'adaptateur que désigne l'environnement.
 - **Niveau effectif** (D6, durcissement) : le minimum entre le niveau de `autonomy.yaml` et le plus haut niveau signé dans `governance/approvals/AAAA-MM-JJ-finance-NX.md`. Modifier `autonomy.yaml` seul ne promeut donc rien.
-- **Fichier de signature** (D7) : un en-tête YAML minimal (`domain`, `level`, `date`, `promotion_report_sha256`, `signed_by: lucas`). Le code le lit, ne l'écrit jamais, et vérifie que le rapport cité existe et a cette empreinte.
+- **Fichier de signature** (D7) : un en-tête YAML minimal (`domain`, `level`, `date`, `promotion_report_sha256`, `signed_by: owner`). Le code le lit, ne l'écrit jamais, et vérifie que le rapport cité existe et a cette empreinte.
 - **Répétition N3 sur le paper** (D10) : en N3 avec le live désactivé, une intention approuvée part au simulateur paper, étiquetée « paper ». Le circuit complet s'éprouve ainsi sans argent réel.
 - **Défense en profondeur** : `live.yaml` à `enabled: true` sans les autres conditions du §7 donne un refus avec alerte, comme en phase 4.
 
@@ -202,7 +202,7 @@ Reportés : B166 et B180 (multi-devise et multi-place), B168, B182 et B191 (éta
 
 Avant chaque ajout : `source-verifier`, `pip-audit` ou `npm audit`, `docs/licences.md`. Le bot a son propre `package.json` et un `package-lock.json` épinglé. Le TOTP n'ajoute aucune dépendance.
 
-## 14. Décisions demandées à Lucas
+## 14. Décisions demandées à l'utilisateur
 
 | # | Décision | Options | Ma recommandation |
 |---|---|---|---|

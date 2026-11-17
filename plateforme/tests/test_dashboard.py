@@ -52,7 +52,7 @@ HOSTILE = "<script>alert(1)</script>"
 ESCAPED = "&lt;script&gt;alert(1)&lt;/script&gt;"
 
 
-def basic(password: str, user: str = "lucas") -> str:
+def basic(password: str, user: str = "owner") -> str:
     return "Basic " + base64.b64encode(f"{user}:{password}".encode()).decode("ascii")
 
 
@@ -117,7 +117,7 @@ def test_every_page_needs_the_token_as_basic_password(
     assert list(root.iterdir()) == []
 
 
-@pytest.mark.parametrize("user", ["", "lucas", "n'importe qui"])
+@pytest.mark.parametrize("user", ["", "owner", "n'importe qui"])
 def test_any_user_name_with_the_token_opens_it(root: Path, config_dir: Path, user: str) -> None:
     opened = client(root, config_dir, token=None)
     assert opened.get("/dashboard", headers={"Authorization": basic(TOKEN, user)}).is_success
@@ -254,7 +254,7 @@ def test_a_filled_home_is_shown_escaped_and_left_untouched(root: Path, config_di
     assert "Au 19/10/2026" in paper
     assert _euros(Decimal("10150")) in paper
     assert _euros(Decimal("10000")) in paper
-    assert "CW8" in paper  # amounts and positions may show on Lucas's machine (D12)
+    assert "CW8" in paper  # amounts and positions may show on the user's machine (D12)
 
     risk = pages["/dashboard/risque"]
     assert "[Approximation]" in risk
@@ -404,10 +404,10 @@ def test_the_last_errors_come_newest_first_and_bounded(root: Path) -> None:
     journal.append(actor="interface", event="APPROVAL", payload={"error": "pas une erreur"})
     journal.append(actor="interface", event="ERROR", payload="y" * 500)
     journal.append(actor="interface", event="ERROR")
-    journal.append(actor="lucas", event="ERROR", payload={"kind": "k", "error": "z" * 500})
+    journal.append(actor="owner", event="ERROR", payload={"kind": "k", "error": "z" * 500})
     errors = recent_errors(root, 3)
     assert [e["seq"] for e in errors] == [5, 4, 3]
-    assert errors[0]["actor"] == "lucas"
+    assert errors[0]["actor"] == "owner"
     assert errors[0]["kind"] == "k"
     assert errors[0]["error"] == "z" * 200
     assert (errors[1]["kind"], errors[1]["error"]) == ("—", "—")  # no payload

@@ -1,6 +1,6 @@
 # Images de l'agent de code (phase 6, P3b)
 
-Deux images, construites par Lucas seulement ; CERVEAU les lance avec `--pull never` et ne les
+Deux images, construites par l'utilisateur seulement ; CERVEAU les lance avec `--pull never` et ne les
 construit ni ne les télécharge jamais.
 
 | Image | Fichier | Contenu | ADR |
@@ -75,7 +75,7 @@ Rien ne part tant que ces valeurs restent `A_DEFINIR` (R7) :
 - `config/code.yaml` : `repositories` (liste blanche), `agent.image`, `agent.proxy_image`,
   `agent.max_requests` ;
 - `config/budgets.yaml` : budgets journalier et mensuel en euros ;
-- la variable d'environnement `ANTHROPIC_API_KEY` de Lucas, reprise par son nom dans le seul
+- la variable d'environnement `ANTHROPIC_API_KEY` de l'utilisateur, reprise par son nom dans le seul
   conteneur du proxy (`docker run --env ANTHROPIC_API_KEY`), jamais écrite ni journalisée.
 
 Points à vérifier lors du premier essai (`A_VERIFIER`, ADR-054) :

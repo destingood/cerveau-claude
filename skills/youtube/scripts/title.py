@@ -24,7 +24,7 @@ STOP = {"the","a","an","of","for","to","in","on","and","or","is","are","with","y
         "this","that","it","how","what","why",
         "le","la","les","l'","un","une","des","de","du","d'","et","ou","en","au","aux","pour","avec",
         "sur","dans","ce","cette","ces","mon","ma","mes","ton","ta","tes","votre","vos","je","j'","tu",
-        "il","on","est","sont","c'est","comment","pourquoi","quoi","qui","que","qu'"}
+        "il","est","sont","c'est","comment","pourquoi","quoi","qui","que","qu'"}
 
 def words(t): return re.findall(r"[a-zà-öø-ÿœæ0-9]+['’]?", t.lower().replace("’", "'"))
 

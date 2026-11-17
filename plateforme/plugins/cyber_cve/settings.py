@@ -1,4 +1,4 @@
-"""What Lucas sets for the tools: the optional NVD key, the watched products and the gates.
+"""What the user sets for the tools: the optional NVD key, the watched products and the gates.
 
 - ``NVD_API_KEY`` (G3) is read from the environment the adapter passes (``runtime.env``); a value
   that does not look like a key is ignored, and the key is never written anywhere.

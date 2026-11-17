@@ -1,6 +1,6 @@
 # ADR-025 — Criblage vectorbt 1.1.2 isolé (licence Commons Clause) ; Qlib et RD-Agent reportés
 
-- Statut : accepté (D2, D3 et D12 du plan de phase 3, validées par Lucas le 19/10/2026)
+- Statut : accepté (D2, D3 et D12 du plan de phase 3, validées par l'utilisateur le 19/10/2026)
 - Date : 2026-10-19
 - Phase : 3
 

@@ -30,4 +30,4 @@ argument-hint: "<titre de la décision>"
    ```
 4. Les faits cités (versions, licences, fonctionnalités) sont vérifiés à la source le jour même
    (agent `source-verifier`) ; une incertitude est écrite comme telle.
-5. Statut « proposé » tant que Lucas n'a pas validé.
+5. Statut « proposé » tant que l'utilisateur n'a pas validé.

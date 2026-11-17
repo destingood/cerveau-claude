@@ -2,7 +2,7 @@
 # CERVEAU — golden sets des packs Généraliste et Finance (seuils : config/evals.yaml, D6, D17).
 # Cases: core/evals/cases.py loads and validates them; cerveau.py runs each one end to end.
 # Offline (make eval): scripted models, every deterministic layer for real, no key, no cost.
-# Live (make eval-live CAMPAIGN=<name> SUITES=golden): only for a campaign Lucas agreed to (D8).
+# Live (make eval-live CAMPAIGN=<name> SUITES=golden): only for a campaign the user agreed to (D8).
 description: "CERVEAU — golden sets des packs Généraliste et Finance (seuils : config/evals.yaml, D6, D17)"
 
 prompts:

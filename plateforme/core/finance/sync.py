@@ -1,6 +1,6 @@
 """Fetch a provider, date its revisions at the fetch, store the batch and check its quality.
 
-Only ``cerveau finance sync`` calls this, on Lucas's command: it is the one writer of the store
+Only ``cerveau finance sync`` calls this, on the user's command: it is the one writer of the store
 (ADR-012). A value that differs from the stored one is a revision; nothing says when the
 provider corrected it, so it counts as published at the fetch that saw it (ADR-017, R10).
 """
@@ -138,7 +138,7 @@ def default_start(series: dict[str, Callable[..., Any]], now: datetime) -> date:
     """``DEFAULT_LOOKBACK`` before the oldest of the last stored sessions of ``series``.
 
     ``series`` maps a name to a store reader (``store.fx_rates`` bound to a currency, for
-    instance); an empty series has no default, since how far back to start is Lucas's choice.
+    instance); an empty series has no default, since how far back to start is the user's choice.
     """
     lasts: list[date] = []
     for name, read in series.items():

@@ -423,8 +423,8 @@ def test_a_cancel_frees_the_rest_of_a_working_order_once() -> None:
     sim = simulator()
     sim.submit(make_intent(0), now=SUBMITTED)
     intent_id = make_intent(0).intent_id
-    assert sim.cancel(intent_id, reason="demande de Lucas", now=SUBMITTED)
-    assert not sim.cancel(intent_id, reason="demande de Lucas", now=SUBMITTED)
+    assert sim.cancel(intent_id, reason="demande de l'utilisateur", now=SUBMITTED)
+    assert not sim.cancel(intent_id, reason="demande de l'utilisateur", now=SUBMITTED)
     assert not sim.cancel(make_intent(9).intent_id, reason="inconnu", now=SUBMITTED)
     assert sim.open_orders() == ()
     assert sim.close_session(SESSION, Market(bar()), now=CLOSED).fills == ()

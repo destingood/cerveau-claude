@@ -3,7 +3,7 @@
 ``kill`` never refuses: a configuration, a book, a simulator or an approval store that cannot be
 read is reported, and the stop goes on without it; every open approval request is refused, then
 the stop is alerted on the configured channels (ADR-038), whose failures never change the exit.
-``rearm`` is Lucas's alone, at an interactive terminal; Claude Code's hooks refuse it (ADR-034).
+``rearm`` is the user's alone, at an interactive terminal; Claude Code's hooks refuse it (ADR-034).
 """
 
 from __future__ import annotations
@@ -91,7 +91,7 @@ def _kill_journal(root: Path, journal: Path | None, outside: bool) -> Path:
 
 
 def kill_command(
-    raison: ReasonOpt = "commande de Lucas",
+    raison: ReasonOpt = "commande de l'utilisateur",
     journal: JournalOpt = None,
     config_dir: ConfigDirOpt = None,
     outside: OutsideVarOpt = False,
@@ -111,7 +111,7 @@ def kill_command(
         trigger="commande",
         reason=raison,
         journal=audit,
-        actor="lucas",
+        actor="owner",
         request_id=request_id,
         now=now,
         alerts=alert_channels(config, root),
@@ -122,7 +122,7 @@ def kill_command(
 
 
 def rearm_command(journal: JournalOpt = None, outside: OutsideVarOpt = False) -> None:
-    """Réarmer le kill switch : Lucas seul, en terminal interactif (D12)."""
+    """Réarmer le kill switch : l'utilisateur seul, en terminal interactif (D12)."""
     root = _project_root()
     journal = var_path(journal, default_journal_path(root), option="--journal", outside=outside)
     now = datetime.now(UTC)
@@ -136,7 +136,7 @@ def rearm_command(journal: JournalOpt = None, outside: OutsideVarOpt = False) ->
         fail("Aucun arrêt en cours : rien à réarmer.", EXIT_ERROR)
     if not interactive_terminal():
         fail(
-            "Réarmement refusé : il se fait par Lucas, dans un terminal interactif (D12).",
+            "Réarmement refusé : il se fait par l'utilisateur, dans un terminal interactif (D12).",
             EXIT_BLOCKED,
         )
     recorded = recorded_stop(root)

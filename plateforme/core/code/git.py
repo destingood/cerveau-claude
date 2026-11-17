@@ -17,7 +17,15 @@ from pathlib import Path
 
 from core.code.process import MAX_STDERR_BYTES, run_bounded
 
-__all__ = ["GLOBAL_OPTIONS", "MAX_STDERR_BYTES", "GitError", "GitOutput", "GitRunner"]
+__all__ = [
+    "GIT_TOO_OLD",
+    "GLOBAL_OPTIONS",
+    "MAX_STDERR_BYTES",
+    "GitError",
+    "GitOutput",
+    "GitRunner",
+    "GitTooOldError",
+]
 
 GIT_TIMEOUT_S = 10.0
 
@@ -34,10 +42,19 @@ GLOBAL_OPTIONS = (
     "color.ui=false",
 )
 _PASSED = ("PATH", "SYSTEMROOT", "TEMP", "TMP")
+# git answers 129 to an option it does not know. --no-lazy-fetch arrived in git 2.45: an older git
+# refuses every call, and the runner never retries without it (the option keeps a promisor remote
+# from being fetched).
+_USAGE_ERROR = 129
+GIT_TOO_OLD = "git trop ancien : la version 2.45 ou plus est requise (option --no-lazy-fetch)"
 
 
 class GitError(Exception):
     """git could not run or ran too long. The message is French and safe to show."""
+
+
+class GitTooOldError(GitError):
+    """The installed git predates an option every call needs."""
 
 
 @dataclass(frozen=True)
@@ -97,4 +114,6 @@ class GitRunner:
             raise GitError(f"git ne peut pas être lancé ({type(exc).__name__})") from None
         if out.timed_out:
             raise GitError(f"git : délai de {self.timeout_s:g} s dépassé")
+        if out.returncode == _USAGE_ERROR and "--no-lazy-fetch" in out.stderr:
+            raise GitTooOldError(GIT_TOO_OLD)
         return GitOutput(out.returncode, out.stdout, out.stderr, out.truncated)

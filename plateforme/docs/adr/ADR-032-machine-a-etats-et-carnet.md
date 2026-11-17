@@ -1,6 +1,6 @@
 # ADR-032 — Machine à états des ordres et carnet append-only
 
-- Statut : accepté (plan de phase 4, §6, validé par Lucas le 20/10/2026)
+- Statut : accepté (plan de phase 4, §6, validé par l'utilisateur le 20/10/2026)
 - Date : 2026-10-20
 - Phase : 4
 

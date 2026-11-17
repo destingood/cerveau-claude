@@ -14,6 +14,10 @@ from pathlib import Path
 
 TMP = Path(tempfile.mkdtemp(prefix="cerveau-eco-test-"))
 CODE = Path(__file__).resolve().parent.parent
+# Code testé = plugin publié (.claude-plugin + style livré) : le style concis est posé avec le mode éco ; dans le dossier
+# de développement (cerveau classique), il ne l'est pas. Les attentes « réglages posés » en tiennent compte.
+STYLE = ({"outputStyle": "cerveau:concis"} if (CODE / ".claude-plugin" / "plugin.json").exists()
+         and (CODE / "output-styles" / "concis.md").exists() else {})
 OK, FAIL = [], []
 for k in ("BRAIN_WIKI", "CLAUDE_CODE_REMOTE", "CERVEAU_CLOUD", "BASH_MAX_OUTPUT_LENGTH", "CLAUDE_CODE_AUTO_COMPACT_WINDOW",
           "CLAUDE_CODE_SUBAGENT_MODEL", "CLAUDE_CODE_FILE_READ_MAX_OUTPUT_TOKENS", "CLAUDE_CODE_DISABLE_AUTO_MEMORY",
@@ -200,7 +204,7 @@ check(c == 0 and "⚡ Mode éco activé" in eco_line and "liste des skills plafo
       and "mises en fichier" not in eco_line and "résumée vers" not in eco_line,
       "valeurs de l'utilisateur déjà là : gardées, seuls les autres leviers sont posés et annoncés", out[-400:])
 check(W.settings() == {"bashOutputMaxChars": 20000, "autoCompactWindow": 300000, "skillListingBudgetFraction": 0.005,
-                       "autoMemoryEnabled": False} and W.config("eco.applique_le"),
+                       "autoMemoryEnabled": False, **STYLE} and W.config("eco.applique_le"),
       "valeurs de l'utilisateur gardées ; liste des skills et mémoire auto posées (rien à importer)", W.settings())
 c, msg, out = W.hook("session-start", "e2")
 check(c == 0 and "⚡ Mode éco" not in context_of(msg) and W.settings()["bashOutputMaxChars"] == 20000,
@@ -209,8 +213,11 @@ W = World("tout-regle")
 mine = {"bashOutputMaxChars": 20000, "autoCompactWindow": 300000, "skillListingBudgetFraction": 0.02, "autoMemoryEnabled": True}
 W.write_settings(mine)
 c, msg, out = W.hook("session-start", "t1")
-check(c == 0 and "⚡ Mode éco" not in context_of(msg) and W.settings() == mine and W.config("eco.applique_le"),
-      "tout déjà réglé par l'utilisateur : rien posé, rien annoncé, application notée", W.settings())
+# Plugin qui livre le style : seul le style concis (absent) est posé et annoncé ; cerveau classique : rien.
+check(c == 0 and ("(style seul :" in context_of(msg)) == bool(STYLE) and "⚡ Mode éco — " not in context_of(msg)
+      and W.settings() == {**mine, **STYLE} and W.config("eco.applique_le"),
+      "tout déjà réglé par l'utilisateur : seul le style concis absent est posé et annoncé, application notée",
+      (W.settings(), context_of(msg)[-300:]))
 # installation qui avait déjà le mode éco (1re version des leviers) : les nouveaux leviers posés une fois, annoncés à part
 W = World("leviers-v2")
 W.write_settings({"bashOutputMaxChars": 10000, "autoCompactWindow": 200000})
@@ -221,7 +228,7 @@ check(c == 0 and "⚡ Mode éco — nouveaux réglages" in eco_line and "liste d
       and "mémoire auto de Claude Code coupée" in eco_line and "mises en fichier" not in eco_line,
       "nouveaux leviers d'une version plus récente : posés une fois, annonce « nouveaux réglages »", out[-400:])
 check(W.settings() == {"bashOutputMaxChars": 10000, "autoCompactWindow": 200000, "skillListingBudgetFraction": 0.005,
-                       "autoMemoryEnabled": False} and W.config("eco.leviers") == 3
+                       "autoMemoryEnabled": False, **STYLE} and W.config("eco.leviers") == 3
       and W.config("eco.applique_le") == "2026-10-01T00:00:00",
       "nouveaux leviers : posés, eco.leviers à 3, date d'application d'origine gardée", (W.settings(), W.config("eco")))
 c, msg, out = W.hook("session-start", "l2")
@@ -560,6 +567,10 @@ check("mode éco" in publish.readme("Moi", "moi/depot"), "README : le mode éco 
 dest = Path(tempfile.mkdtemp(prefix="cerveau-publish-"))
 (dest / "CONTRIBUTORS.md").write_text("# Contributeurs", encoding="utf-8")
 (dest / "ancien.txt").write_text("x", encoding="utf-8")
+(dest / ".github" / "workflows").mkdir(parents=True)
+(dest / ".github" / "workflows" / "ci.yml").write_text("name: CI\n", encoding="utf-8")
+(dest / ".claude").mkdir()
+(dest / ".claude" / "settings.json").write_text("{}\n", encoding="utf-8")
 (dest / "plateforme").mkdir()
 (dest / "plateforme" / "README.md").write_text("# Plateforme\ncontact : equipe" + "@" + "plateforme.fr", encoding="utf-8")  # adresse en morceaux : pas d'e-mail dans le dépôt public
 files = publish.build(dest, "Moi", "moi/depot")
@@ -567,6 +578,8 @@ check((dest / "CONTRIBUTORS.md").is_file() and not (dest / "ancien.txt").exists(
       "publish : CONTRIBUTORS.md du dépôt gardé, le reste reconstruit")
 check((dest / "plateforme" / "README.md").is_file() and not any(f.startswith("plateforme/") for f in files)
       and not publish.secrets_in(dest), "publish : plateforme/ (autre projet du dépôt) gardé, hors liste et hors contrôle")
+check((dest / ".github" / "workflows" / "ci.yml").is_file() and (dest / ".claude" / "settings.json").is_file(),
+      "publish : .github/ (CI) et .claude/ (garde-fous du dépôt) gardés, jamais effacés par la reconstruction")
 shutil.rmtree(dest, ignore_errors=True)
 c, out = World("aide").run("econome")
 check(c == 0 and "Mode éco" in out, "alias « econome »", out)
@@ -682,7 +695,7 @@ check(c == 0 and "Sur accord de l'utilisateur seulement" in out and "monserveur 
 check(W.settings() == orig, "eco sans option : aucune proposition n'est posée", W.settings())
 c, out = W.run("eco", "--poser", "outils", "connecteurs", "git", "lecture")
 now = W.settings()
-check(c == 0 and now["permissions"]["deny"] == list(eco.TOOL_WEIGHTS) + ["mcp__monserveur"]
+check(c == 0 and now["permissions"]["deny"] == [r for r in eco.TOOL_WEIGHTS if not eco._protected(r)] + ["mcp__monserveur"]
       and now["permissions"]["allow"] == ["Bash(ls)"] and now.get("includeGitInstructions") is False
       and now.get("env") == {"CLAUDE_CODE_FILE_READ_MAX_OUTPUT_TOKENS": "12000"},
       "--poser : règles de refus (outils, connecteur), consignes git retirées, lecture plafonnée ; le reste gardé", now)
@@ -724,6 +737,11 @@ for bad, why in (("Bash", "indispensable"), ("mcp__plugin_cerveau_cerveau", "ind
                  ("Bash(rm:*)", "nom d'outil invalide")):
     c, out = W.run("eco", "--refuser", bad)
     check(c != 0 and why in out and bad not in W.settings()["permissions"]["deny"], f"--refuser {bad} : refusé ({why})", out)
+c, out = W.run("eco", "--refuser", "Bash", "mcp__visualize", "Workflow")
+check(c == 0 and "Workflow" in W.settings()["permissions"]["deny"] and "Bash" not in W.settings()["permissions"]["deny"]
+      and "mcp__visualize" not in W.settings()["permissions"]["deny"] and "✗ Bash" in out and "✗ mcp__visualize" in out,
+      "--refuser mixte : les noms valides sont posés, les protégés signalés un par un sans annuler le reste", out)
+W.run("eco", "--rendre", "Workflow")
 c, out = W.run("eco", "--rendre", "PowerShell", "Inconnu")
 check(c == 0 and W.settings()["permissions"]["deny"] == ["mcp__monserveur", "Artifact"]
       and W.config("eco.propositions.outils") == ["Artifact"] and "Inconnu : pas refusé par le cerveau" in out,
@@ -875,7 +893,7 @@ for want in ("949 k sur 26 requête(s)",
              "5 min ferait gagner 22,3 % (en service : 1 h)",
              "« Compactions en série » 70,0 % · « Refonte du site » 29,5 % · « sc » 0,5 %",
              "≈ 140 k (en service 200 k) : `brain eco --fenetre 140000`",
-             "5 réglage(s) sur accord (outils, git, effort, lecture, sous-agents, ≈ 12.7 k tok de moins par requête)"):
+             "5 réglage(s) sur accord (outils, git, effort, lecture, sous-agents, ≈ 12.0 k tok de moins par requête)"):
     check(want in lines, f"brain tokens : « {want[:50]}… »", lines)
 
 # garde de consommation : seuil abaissé pour ces petits transcripts (en vrai : 20 M et 40 % des 24 h)
@@ -998,6 +1016,15 @@ check("Plugins du compte claude.ai jamais utilisés" in st and "- kindle ≈" in
       and "- sert" not in st, "brain eco : plugins du compte inutilisés, à retirer dans l'app", st[-600:])
 
 from brainkit.common import remove_tree  # noqa: E402
+
+# remove_tree : un dossier en lecture seule (objets git, sous-dossier 0o500) s'efface, et la reprise ne rend jamais un
+# dossier illisible (chmod 0o200 hors Windows, qui faisait planter Python 3.10 sur os.open).
+ro = TMP / "lecture-seule"
+(ro / "objets").mkdir(parents=True)
+(ro / "objets" / "pack").write_text("x", encoding="utf-8")
+os.chmod(ro / "objets" / "pack", 0o400)
+os.chmod(ro / "objets", 0o500)
+check(remove_tree(ro) and not ro.exists(), "remove_tree : dossier et fichier en lecture seule effacés")
 
 if not remove_tree(TMP, wait=60):  # tâches de fond du cerveau testé : on attend qu'elles aient fini d'y écrire
     print(f"(dossier pas effacé : {TMP})")

@@ -1,7 +1,7 @@
 # Paramètres de risque opérationnel cités dans le corps du méga-prompt (sections 3, 6.5, 8.5, 8.6, 13)
 # et absents de l'Annexe B. Regroupés ici pour respecter R7 : une valeur inconnue bloque la fonction.
 kill_switch:
-  target_seconds: 5                      # R4, ADR-034 : fixée par Lucas le 20/10/2026 (D11)
+  target_seconds: 5                      # R4, ADR-034 : fixée par l'utilisateur le 20/10/2026 (D11)
   data_loss_timeout_seconds: A_DEFINIR   # 8.5 : perte de connexion aux données
 plugin_health:
   slo_breach_days_before_disable: A_DEFINIR   # 6.5 : défaut documenté 2 jours
@@ -10,7 +10,7 @@ keys:
 infra:
   private_network: A_DEFINIR             # 13 : réseau privé de type WireGuard
 
-# Risque de marché du pack Finance (ADR-014), validé par Lucas le 2026-10-18 (D7, D8, D10, D11).
+# Risque de marché du pack Finance (ADR-014), validé par l'utilisateur le 2026-10-18 (D7, D8, D10, D11).
 # Les changer relance les évals (R9) ; les tolérances du recoupement ne s'assouplissent jamais.
 market_risk:
   var:
@@ -40,7 +40,7 @@ market_risk:
     monte_carlo_rel_tolerance: 0.02
     monte_carlo_draws: 100000
 
-# Frais et glissement (R10, D13) : ceux du courtier de Lucas. Tant qu'ils manquent, une
+# Frais et glissement (R10, D13) : ceux du courtier de l'utilisateur. Tant qu'ils manquent, une
 # proposition d'optimisation donne les poids cibles mais aucune liste d'opérations (R7).
 trading_costs:
   commission_pct: A_DEFINIR       # en % du montant de l'ordre : 0.1 pour 0,1 %
@@ -51,7 +51,7 @@ trading_costs:
 # Optimisation de portefeuille (F4, ADR-019). Positions longues seulement, sans levier
 # (risk_limits.paper : allow). La moyenne-variance maximise rendement - aversion x variance, sur
 # la moyenne historique, qui n'est pas une prévision : l'aversion au risque est une décision de
-# Lucas ; tant qu'elle manque, la méthode est bloquée (R7).
+# l'utilisateur ; tant qu'elle manque, la méthode est bloquée (R7).
 optimization:
   covariance: ledoit_wolf
   risk_aversion: A_DEFINIR

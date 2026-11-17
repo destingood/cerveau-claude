@@ -1,0 +1,64 @@
+# Plugin « cerveau » continuous integration: pyflakes-level lint and the ten test scripts, on the
+# three systems the plugin supports and on its oldest and newest Python. Each test script works in
+# a throwaway folder and prints « N vérifications OK, M échec(s) »; it exits non-zero on a failure.
+# No job holds a secret or a write permission.
+name: Plugin
+
+on:
+  push:
+    branches: [main]
+    paths-ignore: ["plateforme/**", ".github/workflows/plateforme.yml"]
+  pull_request:
+    paths-ignore: ["plateforme/**", ".github/workflows/plateforme.yml"]
+
+permissions:
+  contents: read
+
+concurrency:
+  group: plugin-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  lint:
+    name: Lint (pyflakes, syntax)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+      - uses: astral-sh/setup-uv@v10.3.3
+      # Undefined names, unused imports, syntax errors: the checks that find bugs, not style.
+      - run: uvx ruff@0.17.1 check --isolated --select F,E9 brain.py brainkit skills tests
+
+  tests:
+    name: Tests (${{ matrix.os }}, Python ${{ matrix.python }})
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - { os: ubuntu-latest, python: "3.10" }
+          - { os: ubuntu-latest, python: "3.13" }
+          - { os: windows-latest, python: "3.13" }
+          - { os: macos-latest, python: "3.13" }
+    runs-on: ${{ matrix.os }}
+    env:
+      PYTHONUTF8: "1"
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          # test_bascule.py rebuilds the classic 8.0.0 brain from history (commit 53ba68c).
+          fetch-depth: 0
+          persist-credentials: false
+      - uses: astral-sh/setup-uv@v10.3.3
+        with:
+          python-version: ${{ matrix.python }}
+      - name: Test scripts
+        shell: bash
+        run: |
+          status=0
+          for t in tests/test_*.py; do
+            echo "::group::$t"
+            uv run --no-project python "$t" || status=1
+            echo "::endgroup::"
+          done
+          exit $status

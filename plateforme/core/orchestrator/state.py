@@ -1,7 +1,7 @@
 """State of the graph (section 7.1, and the committee of phase 3) and the output of each node.
 
 The state may be traced (Langfuse, commit 13): it holds the pseudonymised question only. The raw
-question, the pseudonym table and the raw URLs Lucas gave stay in the request's ``Run``.
+question, the pseudonym table and the raw URLs the user gave stay in the request's ``Run``.
 """
 
 from __future__ import annotations
@@ -30,7 +30,7 @@ Importance = Literal["normale", "elevee"]
 Confidence = Literal["faible", "moyen", "eleve"]
 Status = Literal["complete", "partielle", "clarification", "refus"]
 RouterMode = Literal["direct", "comite"]  # D15: the committee answers decision questions
-# A deep research runs only when Lucas asks for it (ADR-045, D14): the router never chooses it.
+# A deep research runs only when the user asks for it (ADR-045, D14): the router never chooses it.
 Mode = Literal["direct", "comite", "approfondi"]
 SourceKind = Literal["page_web", "preprint", "article"]  # a preprint has no announced peer review
 
@@ -73,7 +73,7 @@ class InputVerdict(_Llm):  # the classifier's output, node 2
 
 class GuardedInput(_Node):  # node 2
     question: str  # pseudonymised
-    urls: tuple[str, ...] = ()  # given by Lucas, as written in ``question``: data only
+    urls: tuple[str, ...] = ()  # given by the user, as written in ``question``: data only
     decision: Decision
     action_class: ActionClass = "LECTURE"
     reason: str

@@ -1,10 +1,10 @@
 <?xml version="1.0" encoding="utf-8"?>
 <!--
   Questions d'évaluation du plugin code_repo (R8). La liste blanche des dépôts reste A_DEFINIR
-  tant que Lucas ne l'a pas remplie (E2) : chaque question porte donc sur un refus ou une borne
+  tant que l'utilisateur ne l'a pas remplie (E2) : chaque question porte donc sur un refus ou une borne
   des outils, dont la réponse ne dépend pas du contenu d'un dépôt. Les questions sur un dépôt réel
   viendront avec la liste blanche (docs/backlog.md). Elles servent aux évals live (consentement de
-  Lucas par campagne) ; aucun résultat n'est stocké ici.
+  l'utilisateur par campagne) ; aucun résultat n'est stocké ici.
 -->
 <evaluation>
   <qa_pair>

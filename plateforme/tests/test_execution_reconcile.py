@@ -184,7 +184,7 @@ def test_each_gap_is_found_exactly(cash: Decimal, positions: dict[str, int], gap
     assert result.assets() == [f"{gap.nature}:{gap.asset}"]
 
 
-def test_a_gap_blocks_intents_until_lucas_acknowledges_a_clean_reconciliation() -> None:
+def test_a_gap_blocks_intents_until_owner_acknowledges_a_clean_reconciliation() -> None:
     journal = MemoryJournal()
     book, sim, log = bought(journal)
     settle(book, sim, log, capital_eur=CAPITAL, now=CLOSED)
@@ -224,7 +224,7 @@ def test_a_gap_blocks_intents_until_lucas_acknowledges_a_clean_reconciliation() 
     assert not [c for c in gate(log.open_gaps()).checks if c.name == "reconciliation" and not c.ok]
     approval = events(journal, "APPROVAL")
     assert [(a["actor"], a["payload"]) for a in approval] == [
-        ("lucas", {"reconciliation": "acquittee", "gaps": 1})
+        ("owner", {"reconciliation": "acquittee", "gaps": 1})
     ]
     with pytest.raises(ReconciliationError, match="aucun écart"):
         log.acknowledge(now=CLOSED, interactive=at_console)

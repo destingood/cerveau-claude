@@ -2,9 +2,9 @@
 
 ``config/autonomy.yaml`` sets the rules. N0 → N1: a mean judge score of at least
 ``golden_min_score`` on the finance golden set and no R1–R5 violation, both measured in a live
-campaign, then Lucas's signature. N1 → N2 adds the finance red team on execution
+campaign, then the user's signature. N1 → N2 adds the finance red team on execution
 (``redteam_group``): every case of that group ran and passed in the same report; a group without
-a case proves nothing. Lucas signs ``governance/approvals/`` and changes the level by hand;
+a case proves nothing. The user signs ``governance/approvals/`` and changes the level by hand;
 this check only tells him whether the report he would cite proves the rule. It reads the report,
 the eval cases and the audit journal; it writes nothing.
 
@@ -241,7 +241,7 @@ def check_promotion(
     root: Path = REPO_ROOT,
     approval: str | None = None,
 ) -> PromotionCheck:
-    """Each condition of the rule, measured on ``report``; ``approval``: the text Lucas signs.
+    """Each condition of the rule, measured on ``report``; ``approval``: the text the user signs.
 
     Raises ``PromotionError`` for a promotion without a rule and ``BlockedFeatureError`` while
     the rule holds an ``A_DEFINIR`` (R7).

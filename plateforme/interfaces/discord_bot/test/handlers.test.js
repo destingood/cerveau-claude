@@ -31,7 +31,7 @@ function setup(overrides = {}) {
 
 const reply = (interaction) => interaction.sent.find(([name]) => name === 'editReply')?.[1];
 
-test("only Lucas, in the bot's private messages, is answered", () => {
+test("only the user, in the bot's private messages, is answered", () => {
   const dm = { user: { id: OWNER }, guildId: null, context: InteractionContextType.BotDM };
   assert.equal(refusalOf(dm, OWNER), null);
   assert.equal(refusalOf({ ...dm, context: undefined }, OWNER), null); // Discord may omit it
@@ -89,7 +89,7 @@ test('the stop leaves even when Discord loses the interaction', async () => {
   assert.deepEqual(lines, ['interaction non traitée : Error']);
 });
 
-test('an unconfirmed stop sends Lucas to his terminal', async () => {
+test('an unconfirmed stop sends the user to his terminal', async () => {
   const { lines, run } = setup({
     kill: () => {
       throw new ApiFailure(null, null);

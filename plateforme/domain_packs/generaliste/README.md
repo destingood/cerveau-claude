@@ -2,7 +2,7 @@
 
 Pack P0 de CERVEAU (section 9.2) : raisonnement, recherche web et vérification, et repli pour toute
 question sans pack de domaine dédié. Autonomie maximale N1 (`config/autonomy.yaml`) : le pack lit,
-il n'agit pas. Statut : **expérimental** jusqu'à ce que Lucas le passe en « actif » au vu d'une
+il n'agit pas. Statut : **expérimental** jusqu'à ce que l'utilisateur le passe en « actif » au vu d'une
 mesure réelle du golden set (section 9.3).
 
 ## Contenu
@@ -28,7 +28,7 @@ make eval
 
 Hors ligne et gratuit : chaque cas rejoue le vrai graphe avec un modèle scripté et les pages des
 fixtures ; les contrôles déterministes (statut, sources, notes, canaris, R5) s'appliquent. Le
-score du juge n'existe qu'en mesure réelle, payante, lancée seulement avec l'accord de Lucas pour
+score du juge n'existe qu'en mesure réelle, payante, lancée seulement avec l'accord de l'utilisateur pour
 chaque campagne (D8) :
 
 ```bash
@@ -40,4 +40,4 @@ make eval-live CAMPAIGN=<nom> SUITES="golden"
 Le prompt système porte la version `system@<version Annexe D>+sha256:<empreinte>` (modèles et rôle
 du pack) et la grille du juge `rubric@<version>+sha256:<empreinte>` ; les deux sont écrites dans le
 journal d'audit à chaque appel (R11). Toute modification d'un prompt relance les évals (R9) ; un
-seuil ne baisse jamais et un cas du golden set ne se retouche pas sans l'accord de Lucas.
+seuil ne baisse jamais et un cas du golden set ne se retouche pas sans l'accord de l'utilisateur.

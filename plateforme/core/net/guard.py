@@ -8,7 +8,7 @@ header, the SNI and the certificate check. A DNS answer that changes between the
 connection (rebinding) therefore cannot reach another address.
 
 Error messages reach the planner and the traces in clear: they never show a resolved address nor
-the host (the models only see the masked form of an address Lucas gave, B67), and any value a
+the host (the models only see the masked form of an address the user gave, B67), and any value a
 page controls (scheme of a redirect, headers) is shown only through ``shown`` (B66).
 """
 

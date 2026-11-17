@@ -35,7 +35,7 @@ def repo_path(tmp_path_factory: pytest.TempPathFactory) -> str:
     return str(tmp_path_factory.mktemp("depot"))
 
 
-def test_the_repositories_and_the_image_wait_for_lucas() -> None:
+def test_the_repositories_and_the_image_wait_for_owner() -> None:
     config = load_config(REPO_ROOT / "config")
     assert config.code.repositories == "A_DEFINIR"  # E2
     assert config.code.checks.image == "A_DEFINIR"  # E4
@@ -58,7 +58,7 @@ def test_the_bounds_are_those_of_e5() -> None:
 def test_a_listed_repository_and_a_pinned_image_unblock_the_checks(
     config_dir: Path, repo_path: str
 ) -> None:
-    with_repositories(config_dir, {"id": "mon-projet", "path": repo_path, "github": "lucas/projet"})
+    with_repositories(config_dir, {"id": "mon-projet", "path": repo_path, "github": "owner/projet"})
     edit_code(config_dir, lambda d: d["checks"].update(image=IMAGE))
     config = load_config(config_dir)
     assert config.blockers("code.repositories") == []
@@ -67,8 +67,8 @@ def test_a_listed_repository_and_a_pinned_image_unblock_the_checks(
     assert (repo.id, repo.path, repo.github, repo.pytest, repo.image) == (
         "mon-projet",
         Path(repo_path),
-        "lucas/projet",
-        False,  # E3: pytest only when Lucas says so
+        "owner/projet",
+        False,  # E3: pytest only when the user says so
         None,
     )
 
@@ -203,7 +203,7 @@ def test_a_repository_id_is_a_short_slug(config_dir: Path, repo_path: str, repo_
         load_config(config_dir)
 
 
-@pytest.mark.parametrize("github", ["lucas/..", "lucas/.", "lucas", "lu cas/x", "a/b/c", "a/b?c"])
+@pytest.mark.parametrize("github", ["owner/..", "owner/.", "owner", "lu cas/x", "a/b/c", "a/b?c"])
 def test_a_github_slug_cannot_climb_the_api_path(
     config_dir: Path, repo_path: str, github: str
 ) -> None:
@@ -213,8 +213,8 @@ def test_a_github_slug_cannot_climb_the_api_path(
 
 
 def test_a_github_slug_may_hold_dots(config_dir: Path, repo_path: str) -> None:
-    with_repositories(config_dir, {"id": "a", "path": repo_path, "github": "lucas/mon.projet"})
-    assert load_config(config_dir).code.repositories[0].github == "lucas/mon.projet"
+    with_repositories(config_dir, {"id": "a", "path": repo_path, "github": "owner/mon.projet"})
+    assert load_config(config_dir).code.repositories[0].github == "owner/mon.projet"
 
 
 @pytest.mark.parametrize("value", ["oui", 1])
@@ -248,7 +248,7 @@ AGENT_BLOCKERS = [
 
 
 def unblock_agent(config_dir: Path, repo_path: str, **per_code_agent: int) -> None:
-    """Every value the code agent waits for, as Lucas would set them."""
+    """Every value the code agent waits for, as the user would set them."""
     with_repositories(config_dir, {"id": "mon-projet", "path": repo_path})
     agent = {"image": IMAGE, "proxy_image": "sha256:" + "b" * 64, "max_requests": 60}
     edit_code(config_dir, lambda d: (d["checks"].update(image=IMAGE), d["agent"].update(agent)))
@@ -260,7 +260,7 @@ def unblock_agent(config_dir: Path, repo_path: str, **per_code_agent: int) -> No
     path.write_text(yaml.safe_dump(data), encoding="utf-8")
 
 
-def test_the_agent_waits_for_lucas() -> None:
+def test_the_agent_waits_for_owner() -> None:
     config = load_config(REPO_ROOT / "config")
     agent = config.code.agent
     assert (agent.image, agent.proxy_image, agent.max_requests) == ("A_DEFINIR",) * 3

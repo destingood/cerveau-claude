@@ -8,7 +8,7 @@ command that removes, moves or rewrites governance/kill_switch/KILL or one of it
 refused; creating an absent KILL stays allowed, since it stops CERVEAU. Approvals (D2, D18,
 D22): `cerveau approvals enroll`, any write under var/approvals or var/promotion, and starting
 the Discord bot (anything but its tests, installation or inspection) are refused. The bot's
-package.json, whose scripts `make bot-test` runs, is written by Lucas alone (B229): naming it in
+package.json, whose scripts `make bot-test` runs, is written by the user alone (B229): naming it in
 a writing command, or a package manager that would rewrite it, is refused.
 
 The shell grammar is approximated on purpose: ambiguous constructs are refused rather than
@@ -96,7 +96,7 @@ RESERVED_LAUNCHERS = frozenset(
 )
 # Tools that `uv run` may launch with a reserved word as a mere argument (`pytest -k rearm`).
 RESERVED_SAFE = frozenset({"pytest", "ruff", "mypy", "coverage", "pre-commit", "pip-audit"})
-# The Discord bot is started by Lucas alone (D22): these launch it, or a script that does.
+# The Discord bot is started by the user alone (D22): these launch it, or a script that does.
 BOT_DIR = "interfaces/discord_bot"
 BOT_LAUNCHERS = frozenset(
     {
@@ -171,15 +171,23 @@ UNKNOWN_CWD_CANDIDATES = (
     "var/approvals", "var/audit", "var/incidents", "var/promotion", "interfaces/discord_bot",
     "infra", "secrets",
 )  # fmt: skip
-REARM_REFUSAL = "cerveau rearm est réservé à Lucas (R4, ADR-034) : Claude Code ne réarme jamais"
-ENROLL_REFUSAL = (
-    "cerveau approvals enroll est réservé à Lucas (D2, D18) : Claude Code n'enrôle jamais de secret"
+REARM_REFUSAL = (
+    "cerveau rearm est réservé à l'utilisateur (R4, ADR-034) : Claude Code ne réarme jamais"
 )
-API_REFUSAL = "l'API interne n'est lancée que par Lucas (D22) : Claude Code ne la démarre jamais"
+ENROLL_REFUSAL = (
+    "cerveau approvals enroll est réservé à l'utilisateur (D2, D18) : "
+    "Claude Code n'enrôle jamais de secret"
+)
+API_REFUSAL = (
+    "l'API interne n'est lancée que par l'utilisateur (D22) : Claude Code ne la démarre jamais"
+)
 RESERVED_REFUSALS = {"rearm": REARM_REFUSAL, "enroll": ENROLL_REFUSAL, "serve": API_REFUSAL}
-BOT_REFUSAL = "le bot Discord n'est lancé que par Lucas (D22) : Claude Code ne le démarre jamais"
+BOT_REFUSAL = (
+    "le bot Discord n'est lancé que par l'utilisateur (D22) : Claude Code ne le démarre jamais"
+)
 MANIFEST_REFUSAL = (
-    "le package.json du bot n'est modifié que par Lucas (B229) : ses scripts npm s'exécutent à "
+    "le package.json du bot n'est modifié que par l'utilisateur (B229) : ses scripts npm "
+    "s'exécutent à "
     "chaque make bot-test"
 )
 # ASGI servers that would start the internal API (D22), and the wrappers that launch them.
@@ -738,7 +746,7 @@ def check_git(call: GitCall) -> str | None:
     if call.sub == "push":
         return check_push(call)
     if call.sub == "stash" and _stashes_untracked(call.args) and c.kill_file_present():
-        return "git stash -u / -a retirerait le fichier KILL : seul Lucas réarme (R4)"
+        return "git stash -u / -a retirerait le fichier KILL : seul l'utilisateur réarme (R4)"
     if call.sub == "reset" and any(a.lower() == "--hard" for a in call.args):
         return "git reset --hard interdit (perte de travail non commité)"
     if call.sub == "clean" and not any(
@@ -1020,7 +1028,7 @@ def _words(tokens: list[str]) -> set[str]:
 
 def check_reserved(seg: Segment, tokens: list[str], cmd: str) -> str | None:
     """`cerveau rearm` (R4, ADR-034), `cerveau approvals enroll` (D2, D18) and `cerveau api
-    serve` (D22) are Lucas's alone, however they are launched: through uv and its options,
+    serve` (D22) are the user's alone, however they are launched: through uv and its options,
     winpty, Start-Process, a variable or the module path all count."""
     if cmd in INTERPRETERS:
         text = seg.raw + "\n" + seg.heredoc
@@ -1080,7 +1088,7 @@ def _rewrites_manifest(cmd: str, args: list[str]) -> bool:
 
 
 def check_bot_launch(seg: Segment, tokens: list[str], cmd: str, ctx: Context) -> str | None:
-    """The Discord bot is started by Lucas alone (D22): naming its folder, or standing in it
+    """The Discord bot is started by the user alone (D22): naming its folder, or standing in it
     or in an unknown folder, with a launcher that does not merely test or install refuses. A
     package manager that would rewrite its package.json refuses too (B229)."""
     names = {basename(w) for w in _words(tokens)}
@@ -1099,7 +1107,7 @@ def check_bot_launch(seg: Segment, tokens: list[str], cmd: str, ctx: Context) ->
 
 
 def check_api_launch(seg: Segment, tokens: list[str], cmd: str) -> str | None:
-    """The internal API is started by Lucas alone (D22): an ASGI server run directly, through
+    """The internal API is started by the user alone (D22): an ASGI server run directly, through
     a wrapper or a variable, as a module, or from an interpreter on CERVEAU's code refuses.
     Installing, auditing or searching for one stays allowed."""
     if cmd in API_SERVERS:

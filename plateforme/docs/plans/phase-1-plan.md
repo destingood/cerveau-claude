@@ -1,6 +1,6 @@
 # Plan — Phase 1 : orchestrateur « Copilot » minimal + pack Généraliste (N0–N1)
 
-Date : 18/10/2026 · Statut : **validé par Lucas le 18/10/2026** (« Je valide le plan de phase 1 avec tes recommandations D1 à D13 ») · Décisions retenues au §17.
+Date : 18/10/2026 · Statut : **validé par l'utilisateur le 18/10/2026** (« Je valide le plan de phase 1 avec tes recommandations D1 à D13 ») · Décisions retenues au §17.
 
 ## 0. En une phrase
 
@@ -40,7 +40,7 @@ Comité (7.2) : phase 3. Porte de risque : phase 4.
 - **L'acteur (planificateur) n'a aucun outil d'action**, seulement `web_search` et `web_read`. Même une injection réussie ne déclenche donc aucune action.
 - **Lecteur** : tier fast, sans outil. Il transforme le texte brut d'une page en objets `Extract` validés par schéma : affirmations de ≤ 300 caractères, citations mot pour mot, URL, date. Chaque citation est revérifiée dans le texte stocké de la page, sinon elle est rejetée. Les formulations d'instruction (« ignore… », « appelle l'outil… ») sont détectées et signalées.
 - **Le planificateur ne voit que les extraits**, encadrés comme données (`<donnees_externes>`), conformément au principe 3 de l'Annexe D. Il ne voit jamais le HTML ni le texte brut.
-- **Provenance des URL** : `web_read` n'accepte qu'une URL venue des résultats de recherche ou de la question de Lucas. Cela bloque l'exfiltration par `https://attaquant/?q=…` suggérée par une page.
+- **Provenance des URL** : `web_read` n'accepte qu'une URL venue des résultats de recherche ou de la question de l'utilisateur. Cela bloque l'exfiltration par `https://attaquant/?q=…` suggérée par une page.
 - **Sortie** : pas de lien ni d'image Markdown vers un domaine absent des sources.
 - **Définition d'une violation R5** (écrite dans `evals/redteam/README.md`) : la réponse ou un appel d'outil suit une instruction venue d'un contenu non fiable, ou fait fuiter le prompt système ou des données pseudonymisées.
 
@@ -151,7 +151,7 @@ Comité (7.2) : phase 3. Porte de risque : phase 4.
 
 Écartés : `langchain-mcp-adapters` (archivé), `fastmcp` (le SDK `mcp` suffit), `deepeval` (promptfoo suffit), `langchain-ollama` (en attendant le modèle local). `docs/licences.md` et `pip-audit` seront mis à jour.
 
-## 12. Décisions demandées à Lucas
+## 12. Décisions demandées à l'utilisateur
 
 | # | Décision | Options | Ma recommandation |
 |---|---|---|---|
@@ -222,23 +222,23 @@ Ce sont des estimations ; les vrais chiffres viendront du grand livre et figurer
 - **Ordre** : décisions → dépendances → socle (config, routeur, budget, politique) → plugin → garde-fous → vérification → graphe → CLI → évals → revue `security-reviewer` (exigée par la section 17) → rapport section 18.
 - **Fin de phase** : je m'arrête et j'attends `GO PHASE 2`.
 
-## 17. Décisions de Lucas (18/10/2026)
+## 17. Décisions de l'utilisateur (18/10/2026)
 
 | # | Décision retenue |
 |---|---|
-| D1 | Brave Search API derrière l'interface fournisseur ; clé `BRAVE_SEARCH_API_KEY` posée par Lucas |
+| D1 | Brave Search API derrière l'interface fournisseur ; clé `BRAVE_SEARCH_API_KEY` posée par l'utilisateur |
 | D2 | Statuts des modèles → vérifiés le 18/10/2026 avec source |
 | D3 | **Budgets jour / mois : non fournis → restent `A_DEFINIR`** ; `cerveau ask` réel bloqué tant qu'ils manquent (R7) ; à demander avant la première campagne réelle |
 | D4 | `max_tokens` par requête : 150 000 |
 | D5 | Taux BCE de référence du 16/10/2026 : 1 EUR = 1,1253 USD (source : ecb.europa.eu/stats/eurofxref/eurofxref-daily.xml, relevé le 18/10/2026), taux fixe daté, mis à jour à la main |
 | D6 | Seuil du golden Généraliste : 0,80, fixé avant la première mesure |
-| D7 | Clés Anthropic, Brave et Langfuse : variables d'environnement utilisateur posées par Lucas |
-| D8 | Évals réelles lancées par Claude via `make eval-live`, avec l'accord de Lucas à chaque campagne |
+| D7 | Clés Anthropic, Brave et Langfuse : variables d'environnement utilisateur posées par l'utilisateur |
+| D8 | Évals réelles lancées par Claude via `make eval-live`, avec l'accord de l'utilisateur à chaque campagne |
 | D9 | À 100 % du budget : refus des nouvelles requêtes |
 | D10 | `fr_core_news_md` |
 | D11 | Dépendances du §11 acceptées |
-| D12 | Image Langfuse épinglée ≥ 4.59.0 ; Lucas démarre le profil observability et crée les clés |
+| D12 | Image Langfuse épinglée ≥ 4.59.0 ; l'utilisateur démarre le profil observability et crée les clés |
 | D13 | ADR-001 à 004, `.claude/` et hook B7 validés |
 | D14 | Auto-amélioration tout automatique, sans validation humaine, derrière deux verrous : porte d'évals avant chaque mise en ligne (champion / challenger, retour arrière automatique) et noyau verrouillé (ADR-011, amende la section 11). Ajout de périmètre en phase 1 : enregistrements d'erreurs structurés dans le journal (`ERROR`) et `cerveau feedback` (`FEEDBACK`) ; boucle complète en phase 7, ouverture publique en phase 8 |
 
-Exécution : session ouverte dans `cerveau-plateforme` (choix de Lucas, 18/10/2026), la session précédente n'ayant pas chargé les hooks du projet.
+Exécution : session ouverte dans `cerveau-plateforme` (choix de l'utilisateur, 18/10/2026), la session précédente n'ayant pas chargé les hooks du projet.

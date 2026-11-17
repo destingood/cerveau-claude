@@ -15,7 +15,7 @@ summariser.
 """
 import json, os, re, sys
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
-from deadair import load, parse_ts  # noqa: E402  (same parser, one implementation)
+from deadair import load  # noqa: E402  (same parser, one implementation)
 
 STOP = set("the a an of for to in on and or is are was were be been with this that it as at by from "
            "you your i my we our they them he she but so if then than there here what which who how "

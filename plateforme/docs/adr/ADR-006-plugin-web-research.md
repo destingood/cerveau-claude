@@ -39,13 +39,13 @@ outils :
   Ports 80 et 443 seulement (phase 2, B24). Les messages d'erreur ne montrent ni l'hôte ni
   l'adresse résolue (B67), et une valeur contrôlée par la page n'y paraît qu'en jeton court (B66).
 - Provenance : `web_read` n'accepte qu'une URL issue des résultats de recherche de la requête ou
-  de la question de Lucas (contrôle fait côté orchestrateur, qui détient la liste). Un résultat
+  de la question de l'utilisateur (contrôle fait côté orchestrateur, qui détient la liste). Un résultat
   dont l'adresse a une formulation d'instruction est montré sans elle et ne peut pas être lu
   (phase 2, B68).
 
 ## Conséquences
 - Plus simple : le fournisseur se remplace sans toucher au graphe.
-- Plus difficile : une clé `BRAVE_SEARCH_API_KEY` à poser par Lucas ; les pages rendues en
+- Plus difficile : une clé `BRAVE_SEARCH_API_KEY` à poser par l'utilisateur ; les pages rendues en
   JavaScript ne sont pas lues (backlog : outil web fetch d'Anthropic ou navigateur headless).
 - Les proxys HTTP de l'environnement sont ignorés (`trust_env=False`) pour que l'épinglage tienne.
 - Réversible : oui.

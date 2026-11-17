@@ -2,7 +2,7 @@
 
 ``check_question`` refuses an empty or oversized question, removes invisible characters that can
 hide instructions (controls, bidirectional overrides, zero-width and Unicode tag characters) and
-lists the URLs Lucas provided: they are untrusted content, read as data only, and they are the
+lists the URLs the user provided: they are untrusted content, read as data only, and they are the
 only addresses ``web_read`` may open besides search results. ``mark_untrusted`` wraps external
 text in ``<donnees_externes>`` so that the text cannot close the wrapper itself.
 """
@@ -27,13 +27,13 @@ _WRAPPER = re.compile(r"<\s*(/?)\s*donnees_externes", re.IGNORECASE)
 
 
 class InputRefusedError(Exception):
-    """The question is refused before anything else runs; the message is shown to Lucas."""
+    """The question is refused before anything else runs; the message is shown to the user."""
 
 
 @dataclass(frozen=True)
 class CheckedQuestion:
     text: str
-    urls: tuple[str, ...]  # provided by Lucas, untrusted: data only, never instructions
+    urls: tuple[str, ...]  # provided by the user, untrusted: data only, never instructions
     removed_characters: int
 
 

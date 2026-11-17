@@ -46,7 +46,10 @@ def classic_tar():
             ["git", "-C", str(CODE), "cat-file", "-e", f"{ref}:{p}"], capture_output=True).returncode == 0]
         if "brainkit" in paths:
             return subprocess.run(["git", "-C", str(CODE), "archive", ref, *paths], capture_output=True, check=True).stdout
-    sys.exit("✗ cerveau classique 8.0.0 introuvable dans ce dépôt (commit 53ba68c ou tag v8.0.0)")
+    shallow = subprocess.run(["git", "-C", str(CODE), "rev-parse", "--is-shallow-repository"],
+                             capture_output=True, text=True).stdout.strip() == "true"
+    sys.exit("✗ cerveau classique 8.0.0 introuvable dans ce dépôt (commit 53ba68c ou tag v8.0.0)"
+             + (" : clone superficiel, récupère l'historique avec `git fetch --unshallow`" if shallow else ""))
 
 
 def classic_brain(home):
@@ -81,8 +84,10 @@ def hook(code_dir, event, home, sid="s1"):
 
 
 def vise(plugin):
-    """Le lanceur stable mène à ce dossier du plugin. Il l'écrit avec repr() : sous Windows, antislashs doublés."""
-    return repr(str(plugin))[1:-1] in (BRAIN / "brain.py").read_text(encoding="utf-8")
+    """Le lanceur stable mène à ce dossier du plugin. Il l'écrit avec repr() : sous Windows, antislashs doublés. Le
+    dossier temporaire peut porter un nom court Windows (RUNNER~1) et le lanceur son nom long résolu : les deux valent."""
+    text = (BRAIN / "brain.py").read_text(encoding="utf-8")
+    return any(repr(str(p))[1:-1] in text for p in (plugin, Path(os.path.realpath(plugin))))
 
 
 def settings(home):

@@ -23,7 +23,12 @@ from .common import CODE_DIR, load_config, read_json, remove_tree, set_config
 
 NAME = MARKET = "cerveau"
 AUTRES = {"plateforme"}  # dossiers d'autres projets du même dépôt (PR #8) : ni effacés, ni contrôlés, ni commités ici
-KEEP = {".git", "CONTRIBUTORS.md"} | AUTRES  # tenus dans le dépôt lui-même, jamais effacés par la construction
+# Tenus dans le dépôt lui-même, jamais effacés : CI (.github) et garde-fous de Claude Code ouverts à la racine (.claude)
+KEEP = {".git", ".github", ".claude", "CONTRIBUTORS.md"} | AUTRES
+# Serveur MCP du plugin, déclaré dans plugin.json et non dans un .mcp.json à la racine : ce fichier est aussi lu comme
+# configuration du projet quand le dépôt est ouvert dans Claude Code, où ${CLAUDE_PLUGIN_ROOT} n'existe pas (le
+# serveur échouait : « python: can't open file '…/${CLAUDE_PLUGIN_ROOT}/brain.py' »).
+MCP_SERVERS = {"cerveau": {"command": "python", "args": ["-I", "-S", "${CLAUDE_PLUGIN_ROOT}/brain.py", "mcp"]}}
 DESC = ("Cerveau persistant pour Claude Code : souvenirs en graphe, rappel automatique à chaque message, wiki Markdown "
         "tenu par Claude (sources ingérées, coffre Obsidian, dépôt git), cartes de projets, à-faire datés, serveur MCP, "
         "et un cerveau e-commerce qui suit chaque boutique (clients sans pub, SEO, GEO, tunnel de vente, chiffres de "
@@ -117,7 +122,7 @@ Rien à faire : parle normalement à Claude. Pour aller plus loin :
 | Tu dis… | Et le cerveau… |
 |---|---|
 | « qu'est-ce que tu sais sur … ? », « retiens que … », ou `/brain` | répond depuis ta mémoire, ou y note ce que tu lui confies |
-| « fais décoller ma boutique », « trouve-moi des clients sans pub », « audite mon site », « quel produit vendre ? », « fais le point de la semaine », « où en est ma boutique ? » | passe au [cerveau e-commerce](#le-cerveau-e-commerce) (ou tape `/cerveau:ecommerce`), qui tient le suivi de chaque boutique |
+| « fais décoller ma boutique », « trouve-moi des clients sans pub », « audite mon site », « quel produit vendre ? », « teste ma fiche avant de la publier », « fais le point de la semaine », « où en est ma boutique ? » | passe au [cerveau e-commerce](#le-cerveau-e-commerce) (ou tape `/cerveau:ecommerce`), qui tient le suivi de chaque boutique |
 | « ma map fortnite n'a pas de joueurs », « titre et tags de ma map », « quelles maps marchent en ce moment ? » | passe à la skill [Maps Fortnite](#les-outils-que-claude-installe-pour-toi) (`/cerveau:fortnite`) : niche, fiche de l'île, rétention, lancement, SEO et GEO |
 | « je veux devenir vendeur », « mon CV de vendeur », « prépare mon entretien », « je veux gagner plus » | passe à la skill [Carrière commerciale](#les-outils-que-claude-installe-pour-toi) (`/cerveau:carriere-commerciale`) : premier poste, alternance, échelons et salaires, CV, entretiens, négociation |
 | « ingère cet article », « range cette réponse dans le wiki », « fais le point sur le wiki » | alimente ton [wiki](#le-cerveau-en-wiki-et-la-veille-automatique) ; le point, c'est un contrôle de santé (pages à créer, sources en attente, pages dépassées) |
@@ -234,6 +239,13 @@ du hasard, le canal qui rapporte le plus par heure et le goulot à traiter ; des
 inclus : audit de tout le catalogue et flux Google Shopping, relecture des textes avant publication (allégations
 interdites, fausse urgence), comparaison des marges entre ta boutique, Etsy, Vinted ou TikTok Shop, modèles de textes
 prêts à adapter.
+
+**Un panel de clients simulés** (l'idée de MiroFish, sans clé d'API) : avant de publier une fiche, un prix, une idée de
+produit ou une accroche vidéo, Claude la fait juger par 24 personas variées (âge, budget, méfiance, canal) jouées par
+ses sous-agents en parallèle, puis leur fait lire les avis des autres pour voir ce qui se propage. Tu obtiens les
+objections, les questions à traiter sur la page, les segments chauds et froids, et la variante la plus solide. C'est
+une hypothèse, jamais présentée comme de vrais avis : une fois la variante en ligne, les chiffres de la semaine disent
+si le panel avait vu juste (`brain boutique panel`).
 
 ## Les outils que Claude installe pour toi
 
@@ -410,8 +422,6 @@ def build(dest: Path, owner: str = "", repo: str = "") -> list:
     _json(dest / "hooks" / "hooks.json", {"description": "Cerveau : injection au démarrage, rappel à chaque message, "
                                                          "sorties de commandes compactes, mémorisation en fin de tâche",
                                           "hooks": hooks})
-    _json(dest / ".mcp.json", {"mcpServers": {"cerveau": {
-        "command": "python", "args": ["-I", "-S", "${CLAUDE_PLUGIN_ROOT}/brain.py", "mcp"]}}})
     _lf(dest / "skills" / "brain" / "SKILL.md", SKILL)
     for name, src in skills.items():  # skills métier (cerveau e-commerce…) : Claude Code les lit dans le plugin
         shutil.copytree(src, dest / "skills" / name, ignore=shutil.ignore_patterns("__pycache__", "*.pyc", SKILL_MARK))
@@ -420,7 +430,7 @@ def build(dest: Path, owner: str = "", repo: str = "") -> list:
     if (CODE_DIR / "agents").is_dir():  # agents de délégation (cerveau:eclaireur…) : Claude Code les lit dans le plugin
         shutil.copytree(CODE_DIR / "agents", dest / "agents", ignore=shutil.ignore_patterns("__pycache__", "*.pyc"))
     plugin = {"name": NAME, "version": __version__, "description": DESC, "author": {"name": owner},
-              "keywords": KEYWORDS}
+              "keywords": KEYWORDS, "mcpServers": MCP_SERVERS}
     if repo:
         plugin["homepage"] = plugin["repository"] = f"https://github.com/{repo}"
     _json(dest / ".claude-plugin" / "plugin.json", plugin)

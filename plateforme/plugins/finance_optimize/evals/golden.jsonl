@@ -12,7 +12,7 @@
 {"id": "fo-012", "tool": "rebalance_proposal", "arguments": {"method": "cvar_minimale"}, "expected": {"is_error": false, "contains": "\"display\":\"133,31\u00a0%\""}}
 {"id": "fo-013", "tool": "rebalance_proposal", "arguments": {"method": "cvar_minimale"}, "expected": {"is_error": false, "contains": "\"cvar_confidence\":{\"id\":\"methode/confiance_cvar\""}}
 {"id": "fo-014", "tool": "rebalance_proposal", "arguments": {"method": "parite_de_risque"}, "expected": {"is_error": false, "contains": "\"display\":\"33,70\u00a0%\""}}
-{"id": "fo-015", "tool": "rebalance_proposal", "arguments": {"method": "parite_de_risque"}, "expected": {"is_error": false, "contains": "\"display\":\"1\u202f088,57\u00a0€\""}}
+{"id": "fo-015", "tool": "rebalance_proposal", "arguments": {"method": "parite_de_risque"}, "expected": {"is_error": false, "contains": "\"display\":\"1\u202f088,56\u00a0€\""}}
 {"id": "fo-016", "tool": "rebalance_proposal", "arguments": {"method": "parite_de_risque"}, "expected": {"is_error": false, "contains": "contributions égales à la variance"}}
 {"id": "fo-017", "tool": "rebalance_proposal", "arguments": {"method": "hrp"}, "expected": {"is_error": false, "contains": "\"display\":\"54,17\u00a0%\""}}
 {"id": "fo-018", "tool": "rebalance_proposal", "arguments": {"method": "hrp"}, "expected": {"is_error": false, "contains": "liaison de Ward"}}

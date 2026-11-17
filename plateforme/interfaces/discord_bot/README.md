@@ -1,6 +1,6 @@
 # Bot Discord de CERVEAU
 
-Bot mince (ADR-037) : il relaie les commandes de Lucas à l'API interne locale et lui poste les
+Bot mince (ADR-037) : il relaie les commandes de l'utilisateur à l'API interne locale et lui poste les
 alertes et les demandes d'approbation. Il ne décide rien : un refus, un verrouillage ou un arrêt
 est la réponse de l'API, relayée telle quelle.
 
@@ -44,7 +44,7 @@ Variables d'environnement de l'utilisateur, jamais dans un fichier du dépôt (R
 3. Les commandes n'existent que dans les messages privés avec le bot. Ailleurs, ou venant d'un
    autre compte, une interaction est ignorée et signalée à l'API, sans identifiant ni contenu.
 
-## Lancement (Lucas seul, D22)
+## Lancement (l'utilisateur seul, D22)
 
 Dans ce dossier :
 

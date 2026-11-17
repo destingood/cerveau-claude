@@ -1,6 +1,6 @@
-"""`cerveau portfolio`: Lucas imports his transactions and reconciles a statement (ADR-018).
+"""`cerveau portfolio`: the user imports his transactions and reconciles a statement (ADR-018).
 
-Only Lucas runs these commands: neither the scheduler nor an MCP tool imports a file. Every run
+Only the user runs these commands: neither the scheduler nor an MCP tool imports a file. Every run
 is journaled (R11) with counts, accounts and identifiers, never an amount nor a label; the
 quantities of a gap are printed here only.
 """
@@ -80,7 +80,7 @@ class _Run:
         except (ProviderError, FinanceStoreError, PortfolioError, SchemaError) as exc:
             self.refuse(exc)
         self.audit.append(
-            actor="lucas",
+            actor="owner",
             event="TOOL_CALL",
             request_id=self.request_id,
             versions=self.versions,
@@ -91,7 +91,7 @@ class _Run:
     def refuse(self, exc: Exception) -> NoReturn:
         # These messages name a file, a line, an account or an identifier, never a value (R5).
         self.audit.append(
-            actor="lucas",
+            actor="owner",
             event="ERROR",
             request_id=self.request_id,
             versions=self.versions,

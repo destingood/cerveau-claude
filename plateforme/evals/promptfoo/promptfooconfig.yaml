@@ -7,7 +7,7 @@ description: "CERVEAU — test témoin du harness d'évals (phase 0, sans LLM)"
 
 prompts:
   - |-
-    Question de Lucas : {{question}}
+    Question de l'utilisateur : {{question}}
     Consigne : distingue faits sourcés, estimations, hypothèses et opinions (R12).
 
 providers:

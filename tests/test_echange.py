@@ -64,7 +64,7 @@ def context(who, text, sid, fg=True):
 def inproc(who, code):
     """Un bout de Python lancé dans le cerveau de `who` (sans tâche de fond immédiate, comme un vrai hook) ; sa dernière
     ligne de sortie, du JSON, est rendue."""
-    r = subprocess.run([sys.executable, "-I", "-S", "-c", f"import sys\nsys.path.insert(0, {str(CODE)!r})\n" + code],
+    r = subprocess.run([sys.executable, "-I", "-S", "-X", "utf8", "-c", f"import sys\nsys.path.insert(0, {str(CODE)!r})\n" + code],
                        capture_output=True, cwd=str(TMP / who / "work"), env=env(who, fg=False), timeout=180)
     out = r.stdout.decode("utf-8", "replace")
     try:

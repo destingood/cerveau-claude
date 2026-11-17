@@ -1,6 +1,6 @@
 # Plan — Phase 3 : recherche, backtest et Comité (N1) : F5, F11
 
-Date : 19/10/2026 · Statut : **validé par Lucas le 19/10/2026**, avec les recommandations D1 à D27 du §14.
+Date : 19/10/2026 · Statut : **validé par l'utilisateur le 19/10/2026**, avec les recommandations D1 à D27 du §14.
 
 ## 0. En une phrase
 
@@ -28,7 +28,7 @@ Une stratégie s'écrit une seule fois, comme une fonction pure qui transforme �
 |---|---|---|---|
 | F5 Recherche et backtest | stratégie en fonction pure ; moteur maison et NautilusTrader 1.231 recoupés ; criblage vectorbt ; protocole complet du §10.6 ; journal des essais ; registre des stratégies ; rapport standard ; outil `strategy_lab` | `[Parité]` pour la méthode. La démonstration tourne sur données synthétiques et frais fictifs : elle n'a aucune valeur d'investissement. | Qlib, RD-Agent, NautilusTrader 2, données intrajournalières |
 | F11 Comité d'investissement | sous-graphe enregistré ; trois analystes ; débat ; gestionnaire ; contrôleur de risque ; règles vérifiées par le code ; journal | `[Reconstruction]` (inspiration TradingAgents) | analystes fondamental et sentiment, Comité des autres domaines, intention d'ordre (phase 4) |
-| Autonomie | la finance reste en N0 ; en N1, le Comité produit une proposition non exécutée | — | promotion par Lucas après une campagne réelle (B107 outille la vérification) |
+| Autonomie | la finance reste en N0 ; en N1, le Comité produit une proposition non exécutée | — | promotion par l'utilisateur après une campagne réelle (B107 outille la vérification) |
 
 Critères de sortie du §17 :
 
@@ -125,7 +125,7 @@ Les portes (D9) vont dans un nouveau fichier `config/research.yaml`. Elles sont 
 ## 8. Registre des stratégies et rapport standard — ADR-027
 
 - **Registre** : un fichier `domain_packs/finance/strategies/<id>.yaml` par stratégie. Il contient la description en français de l'hypothèse et de la règle, le module Python, la grille de paramètres, l'univers, la fréquence et le statut, `recherche` ou `candidate`. Une stratégie neuve est en `recherche`.
-- **Promotion** : seul Lucas passe une stratégie en `candidate`, à la main.
+- **Promotion** : seul l'utilisateur passe une stratégie en `candidate`, à la main.
   - `cerveau config check` refuse le statut `candidate` sans un rapport de protocole `reussi` dont l'empreinte (code et paramètres) correspond à l'état actuel.
   - Toute modification du code invalide le verdict.
   - En phase 4, le paper n'acceptera que des stratégies `candidate`.
@@ -194,7 +194,7 @@ Le Copilot doit pouvoir répondre à « cette stratégie passe-t-elle le protoco
 - le texte complet, pseudonymisé comme les autres sorties, va dans `var/finance/committee/<id>.json`. L'empreinte enregistrée dans le journal chaîné rend toute retouche détectable ;
 - `cerveau committee show <id>` relit une séance.
 
-**Réponse à Lucas** : le format du §7.3, complété par la décision proposée, la confiance, l'horizon, les conditions d'invalidation, les désaccords non résolus, le verdict du contrôleur et l'identifiant de la séance. La mention R16 (aide à la décision personnelle) est toujours présente.
+**Réponse à l'utilisateur** : le format du §7.3, complété par la décision proposée, la confiance, l'horizon, les conditions d'invalidation, les désaccords non résolus, le verdict du contrôleur et l'identifiant de la séance. La mention R16 (aide à la décision personnelle) est toujours présente.
 
 **Politique** (D20) : inchangée. `PHASE_DECISIONS` reste `{auto}` et la classe `FINANCIERE` reste refusée : le Comité produit un document, pas une action. B108 (intention structurée) reste pour la phase 4.
 
@@ -264,7 +264,7 @@ Règle des 7 jours : vectorbt 1.2.0 est publiée aujourd'hui, donc j'épingle 1.
 
 `docs/licences.md` sera mis à jour.
 
-## 14. Décisions demandées à Lucas
+## 14. Décisions demandées à l'utilisateur
 
 | # | Décision | Options | Ma recommandation |
 |---|---|---|---|

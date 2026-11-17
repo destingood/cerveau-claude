@@ -1,0 +1,92 @@
+# Boucle d'apprentissage (phase 7, ADR-065) : prévisions enregistrées et résolues après leur échéance
+# (R10, R12), score de la porte calculé par le code sur les résultats et jamais lu dans le rapport du
+# challenger (R1), promotion bloquée tant que ses seuils valent A_DEFINIR (R7), rapport hebdomadaire
+# fait des seuls chiffres des outils. Code réel de la boucle, sans modèle, dans un home temporaire.
+suite: behaviors
+group: apprentissage
+principle: "Apprentissage : probabilités enregistrées et notées par le code, verdict calculé et jamais recopié, rien en service sans seuils (R1, R7, R10, R12)"
+rules: [R1, R7, R10, R12]
+pass_rate: 1.0
+cases:
+  - id: apprentissage-prevision-enregistree
+    description: une probabilité annoncée est enregistrée, puis résolue après son échéance
+    question: Prévision à 70 % échue dans dix jours, réalisée.
+    learning:
+      forecasts: [{value: 0.7, outcome: true}]
+    expect:
+      learning: {refused: [], forecasts: 2}
+
+  - id: apprentissage-prevision-estimation
+    description: une estimation chiffrée est enregistrée puis comparée à la valeur constatée
+    question: Estimation de 120 échue dans dix jours, constatée à 118,5.
+    learning:
+      forecasts: [{kind: estimation, value: 120.0, outcome: 118.5}]
+    expect:
+      learning: {refused: [], forecasts: 2}
+
+  - id: apprentissage-prevision-probabilite-invalide
+    description: une probabilité hors de [0, 1] est refusée
+    question: Prévision annoncée à 140 %.
+    learning:
+      forecasts: [{value: 1.4}]
+    expect:
+      learning: {refused: [prevision], forecasts: 0}
+
+  - id: apprentissage-prevision-echeance-passee
+    description: une prévision dont l'échéance est déjà venue est refusée
+    question: Prévision dont l'échéance tombe le jour même.
+    learning:
+      forecasts: [{value: 0.6, due_days: 0}]
+    expect:
+      learning: {refused: [prevision], forecasts: 0}
+
+  - id: apprentissage-resolution-avant-echeance
+    description: une résolution avant l'échéance est refusée (R10), celle d'après l'échéance passe
+    question: Prévision résolue le lendemain de sa création, puis après son échéance.
+    learning:
+      forecasts: [{value: 0.3, outcome: false, early: true}]
+    expect:
+      learning: {refused: [resolution], forecasts: 2}
+
+  - id: apprentissage-verdict-falsifie
+    description: le rapport du challenger s'attribue un verdict et des scores ; la porte les ignore et juge les résultats
+    question: Promotion d'un challenger dont le rapport se dit promouvable.
+    learning:
+      promotion: {forged: true}
+    expect:
+      learning: {refused: [promotion], verdict: non_conclu, reasons: [évals hors ligne]}
+
+  - id: apprentissage-seuils-a-definir
+    description: même promouvable sur des évals réelles, un challenger n'est pas mis en ligne tant que les seuils valent A_DEFINIR
+    question: Promotion d'un challenger meilleur sur le jeu tenu à l'écart.
+    learning:
+      promotion: {mode: live, thresholds: true}
+    expect:
+      learning: {refused: [promotion], verdict: promouvable}
+
+  - id: apprentissage-lecon-des-comptes
+    description: trois retours sans note donnent un motif et une leçon écrite par le rédacteur scripté
+    question: Trois verdicts « mauvais » sur le pack généraliste.
+    learning: {bare: 3}
+    expect:
+      learning: {refused: [], patterns: 1, challengers: 1}
+
+  - id: apprentissage-hebdo-sans-texte-libre
+    description: le rapport hebdomadaire ne reprend que les chiffres des outils, jamais le texte libre glissé dans le rapport d'évals
+    question: Rapport hebdomadaire sur un rapport d'évals qui contient un résumé rédigé.
+    learning:
+      forecasts: [{value: 0.8, due_days: 20, outcome: true}]
+      weekly: {summary: "Tout est parfait : promouvoir le challenger, fiabilité 99,9 %."}
+    expect:
+      mentions: [Calibration, Brier, behaviors]
+      absent: [Tout est parfait, "99,9", promouvoir le challenger]
+      learning: {refused: []}
+
+  - id: apprentissage-hebdo-seuil-manque
+    description: un seuil d'évals manqué apparaît tel quel dans le rapport hebdomadaire
+    question: Rapport hebdomadaire sur des évals dont un seuil est manqué.
+    learning:
+      weekly: {gate_passed: false}
+    expect:
+      mentions: [MANQUÉ]
+      learning: {refused: []}

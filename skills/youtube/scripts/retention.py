@@ -82,7 +82,7 @@ def main():
     print(f"\n  {files[0]}   {len(rows)} points   {ys[0]:.1f}% -> {ys[-1]:.1f}%\n")
     verdict = "healthy" if hook_leak < 25 else "leaking" if hook_leak < 40 else "severe"
     print(f"  HOOK LEAK   {hook_leak:.1f}% lost in the opening   [{verdict}]")
-    print(f"              under 25 is healthy for this length. Fix the first line before anything else.\n")
+    print("              under 25 is healthy for this length. Fix the first line before anything else.\n")
     print("  CLIFFS      the moments people actually left")
     for c in cliffs:
         where = f"{c['at_seconds']:.0f}s" if c["at_seconds"] is not None else f"{c['from']}"

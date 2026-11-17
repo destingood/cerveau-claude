@@ -1,6 +1,6 @@
 # ADR-053 — Proxy de l'API d'Anthropic pour l'agent de code
 
-- Statut : **proposé** (F2 et F3 du complément de plan P3b, validés par Lucas le 22/10/2026)
+- Statut : **proposé** (F2 et F3 du complément de plan P3b, validés par l'utilisateur le 22/10/2026)
 - Date : 2026-10-22
 - Phase : 6 (P3b)
 
@@ -52,7 +52,7 @@ Option 4, un conteneur `cerveau-llm-proxy` par tâche (`infra/agent/llm-proxy.Do
 - État : comptes seuls (requêtes, jetons, USD, raison d'arrêt), écrits de façon atomique ; ni
   contenu, ni clé. Une erreur interne tient en une ligne, sans détail.
 - Image : le seul fichier du proxy, `python -I -B`, utilisateur 65534 ; condensé de
-  `python:3.12-slim` `A_DEFINIR` (Lucas).
+  `python:3.12-slim` `A_DEFINIR` (l'utilisateur).
 
 ## Conséquences
 - Le plafond ne dépend plus du client ; il est dépassé d'une requête au plus (verrou). `code_agent`

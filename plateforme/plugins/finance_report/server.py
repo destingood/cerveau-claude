@@ -1,6 +1,6 @@
 """MCP stdio server of the ``finance_report`` plugin: ``performance_report`` (CALCUL).
 
-The server reads the finance store read only and ``config/`` at each call, so a value Lucas
+The server reads the finance store read only and ``config/`` at each call, so a value the user
 changes applies at the next call and a marker blocks it (R7). It returns the performance of the
 book known at ``as_of`` over a period: TWR, MWR, volatility, Sharpe and Sortino over the €STR,
 maximum drawdown and Calmar, and the contributions of each line and sector (ADR-020). Every number
@@ -46,7 +46,8 @@ ANNOTATIONS = ToolAnnotations(
     read_only_hint=True, idempotent_hint=True, destructive_hint=False, open_world_hint=False
 )
 INSTRUCTIONS = (
-    "Performance et attribution du portefeuille de Lucas, calculées sur la base finance locale. "
+    "Performance et attribution du portefeuille de l'utilisateur, calculées sur la base finance "
+    "locale. "
     "Les chiffres viennent de l'outil : les citer avec leur affichage et leurs hypothèses, ne "
     "jamais les recalculer (R1). Aide à la décision personnelle, pas un conseil en "
     "investissement (R16)."

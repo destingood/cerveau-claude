@@ -1,6 +1,6 @@
 ---
 name: phase-report
-description: Produit le compte rendu de fin de phase au format imposé de la section 18 dans docs/rapports/. Déclenché uniquement par Lucas.
+description: Produit le compte rendu de fin de phase au format imposé de la section 18 dans docs/rapports/. Déclenché uniquement par l'utilisateur.
 disable-model-invocation: true
 argument-hint: "<numéro de phase>"
 ---
@@ -22,7 +22,7 @@ argument-hint: "<numéro de phase>"
    4. Écarts à ce document + ADR produits
    5. Risques ouverts et dette technique
    6. Coûts de la phase (LLM, infrastructure)
-   7. Décisions demandées à Lucas (liste des A_DEFINIR rencontrés)
+   7. Décisions demandées à l'utilisateur (liste des A_DEFINIR rencontrés)
    8. Optimisation & Prochaines Étapes
    ```
 4. Un résultat non mesuré s'écrit « non mesuré », jamais estimé sans le dire (R12).

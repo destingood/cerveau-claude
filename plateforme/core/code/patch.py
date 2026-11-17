@@ -14,7 +14,7 @@ command runs on whatever ``.git`` folder the agent may have written (same reason
 - A text file gets a hunk in git's format (``git apply``); a binary or too large one is listed.
   Secret-looking strings are masked (R6): the patch then no longer applies as is, which the
   result says. The patch is data written by an untrusted agent (R5).
-- Paths that run code or configure tools on Lucas's machine (CI, hooks, ``conftest.py``,
+- Paths that run code or configure tools on the user's machine (CI, hooks, ``conftest.py``,
   ``pyproject.toml``…) are flagged for review.
 """
 
