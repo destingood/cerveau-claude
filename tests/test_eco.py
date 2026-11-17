@@ -210,12 +210,14 @@ c, msg, out = W.hook("session-start", "e2")
 check(c == 0 and "⚡ Mode éco" not in context_of(msg) and W.settings()["bashOutputMaxChars"] == 20000,
       "démarrage suivant : rien de plus (pas d'essai à chaque démarrage)", out[-300:])
 W = World("tout-regle")
-mine = {"bashOutputMaxChars": 20000, "autoCompactWindow": 300000, "skillListingBudgetFraction": 0.02, "autoMemoryEnabled": True,
-        **({"outputStyle": "Explanatory"} if STYLE else {})}  # style livré : l'utilisateur a aussi le sien
+mine = {"bashOutputMaxChars": 20000, "autoCompactWindow": 300000, "skillListingBudgetFraction": 0.02, "autoMemoryEnabled": True}
 W.write_settings(mine)
 c, msg, out = W.hook("session-start", "t1")
-check(c == 0 and "⚡ Mode éco" not in context_of(msg) and W.settings() == mine and W.config("eco.applique_le"),
-      "tout déjà réglé par l'utilisateur : rien posé, rien annoncé, application notée", W.settings())
+# Plugin qui livre le style : seul le style concis (absent) est posé et annoncé ; cerveau classique : rien.
+check(c == 0 and ("(style seul :" in context_of(msg)) == bool(STYLE) and "⚡ Mode éco — " not in context_of(msg)
+      and W.settings() == {**mine, **STYLE} and W.config("eco.applique_le"),
+      "tout déjà réglé par l'utilisateur : seul le style concis absent est posé et annoncé, application notée",
+      (W.settings(), context_of(msg)[-300:]))
 # installation qui avait déjà le mode éco (1re version des leviers) : les nouveaux leviers posés une fois, annoncés à part
 W = World("leviers-v2")
 W.write_settings({"bashOutputMaxChars": 10000, "autoCompactWindow": 200000})
@@ -693,7 +695,7 @@ check(c == 0 and "Sur accord de l'utilisateur seulement" in out and "monserveur 
 check(W.settings() == orig, "eco sans option : aucune proposition n'est posée", W.settings())
 c, out = W.run("eco", "--poser", "outils", "connecteurs", "git", "lecture")
 now = W.settings()
-check(c == 0 and now["permissions"]["deny"] == list(eco.TOOL_WEIGHTS) + ["mcp__monserveur"]
+check(c == 0 and now["permissions"]["deny"] == [r for r in eco.TOOL_WEIGHTS if not eco._protected(r)] + ["mcp__monserveur"]
       and now["permissions"]["allow"] == ["Bash(ls)"] and now.get("includeGitInstructions") is False
       and now.get("env") == {"CLAUDE_CODE_FILE_READ_MAX_OUTPUT_TOKENS": "12000"},
       "--poser : règles de refus (outils, connecteur), consignes git retirées, lecture plafonnée ; le reste gardé", now)
@@ -735,6 +737,11 @@ for bad, why in (("Bash", "indispensable"), ("mcp__plugin_cerveau_cerveau", "ind
                  ("Bash(rm:*)", "nom d'outil invalide")):
     c, out = W.run("eco", "--refuser", bad)
     check(c != 0 and why in out and bad not in W.settings()["permissions"]["deny"], f"--refuser {bad} : refusé ({why})", out)
+c, out = W.run("eco", "--refuser", "Bash", "mcp__visualize", "Workflow")
+check(c == 0 and "Workflow" in W.settings()["permissions"]["deny"] and "Bash" not in W.settings()["permissions"]["deny"]
+      and "mcp__visualize" not in W.settings()["permissions"]["deny"] and "✗ Bash" in out and "✗ mcp__visualize" in out,
+      "--refuser mixte : les noms valides sont posés, les protégés signalés un par un sans annuler le reste", out)
+W.run("eco", "--rendre", "Workflow")
 c, out = W.run("eco", "--rendre", "PowerShell", "Inconnu")
 check(c == 0 and W.settings()["permissions"]["deny"] == ["mcp__monserveur", "Artifact"]
       and W.config("eco.propositions.outils") == ["Artifact"] and "Inconnu : pas refusé par le cerveau" in out,
@@ -886,7 +893,7 @@ for want in ("949 k sur 26 requête(s)",
              "5 min ferait gagner 22,3 % (en service : 1 h)",
              "« Compactions en série » 70,0 % · « Refonte du site » 29,5 % · « sc » 0,5 %",
              "≈ 140 k (en service 200 k) : `brain eco --fenetre 140000`",
-             "5 réglage(s) sur accord (outils, git, effort, lecture, sous-agents, ≈ 12.7 k tok de moins par requête)"):
+             "5 réglage(s) sur accord (outils, git, effort, lecture, sous-agents, ≈ 12.0 k tok de moins par requête)"):
     check(want in lines, f"brain tokens : « {want[:50]}… »", lines)
 
 # garde de consommation : seuil abaissé pour ces petits transcripts (en vrai : 20 M et 40 % des 24 h)
