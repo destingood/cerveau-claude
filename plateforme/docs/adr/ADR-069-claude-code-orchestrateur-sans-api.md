@@ -51,4 +51,21 @@ Le code LangGraph reste en place, inchangé, pour le jour où un budget API exis
   jamais chez ses amis.
 - **Tests** : un client MCP de test vérifie, sans réseau, qu'une question de risque répond avec les
   chiffres de `finance_risk` et l'écrit au journal, et qu'une demande d'ordre devient une intention
-  refusée en N0.
+  refusée en N0 (`tests/test_mcp_bridge.py`).
+
+## Mise en œuvre (17/11/2026)
+`interfaces/mcp_server/server.py`, lancé par `python -m interfaces.mcp_server`, publie cinq outils :
+`domaines`, `outils(domaine)`, `appeler(domaine, outil, arguments)`, `verifier(brouillon)` et
+`proposer_action(domaine, classe, resume)`. Cinq outils fixes plutôt qu'un outil par outil de
+plugin : la liste vue par Claude Code reste courte, et le filtre par domaine (25 au plus) se fait
+dans `outils`, avec la règle de l'adaptateur (`McpPlugin._refusal`). Aucun plugin ne déclare encore
+d'outil d'action : `proposer_action` rend donc la décision de la politique pour une action décrite
+par Claude, l'écrit au journal (le résumé par son empreinte seulement, R6) et n'exécute rien.
+
+## Mise en service, par l'utilisateur seul
+Le serveur n'est déclaré nulle part. Claude Code ne touche ni à `.mcp.json` ni aux garde-fous. Pour
+l'activer :
+1. Déclarer le serveur dans `.mcp.json`, ou dans la configuration MCP de Claude Code sur le PC :
+   commande `uv`, arguments `run --project <dossier de la plateforme> python -m interfaces.mcp_server`.
+2. Ajouter ses cinq outils à la liste d'autorisation de `.claude/hooks/guard_mcp.py`
+   (`PROJECT_TOOLS`) ; sans cela, le garde-fou les refuse.

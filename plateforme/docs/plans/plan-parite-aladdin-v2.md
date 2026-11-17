@@ -230,6 +230,11 @@ PR de ce plan :
 - Fin (test automatique, avec un client MCP de test) : « quel est le risque de mon portefeuille ? »
   répond avec les chiffres de `finance_risk`, et l'appel est au journal ; une demande d'ordre devient
   une intention, refusée en N0.
+- **Fait le 17/11 (PR #21, ADR-069)**, sauf la mise en service : serveur `cerveau-plateforme`
+  (`python -m interfaces.mcp_server`) à cinq outils (`domaines`, `outils`, `appeler`, `verifier`,
+  `proposer_action`) ; critère de fin vérifié par `tests/test_mcp_bridge.py`. Toi : le déclarer dans
+  `.mcp.json` et ajouter ses outils à `guard_mcp.py` quand tu veux t'en servir (ADR-069) ; le plugin
+  le déclarera sur ton PC une fois la plateforme dans son dépôt privé.
 
 **Étape 5 — Une seule mémoire, une seule base** (C14)
 - La plateforme lit la mémoire du plugin (préférences, faits, décisions), avec source, date,
