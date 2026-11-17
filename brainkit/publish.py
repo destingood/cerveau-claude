@@ -6,7 +6,12 @@ version publiée ; ses souvenirs restent chez lui, dans ~/.claude/brain, et ne p
 Ne part dans le dépôt que le code (brain.py, brainkit/) et les skills (/brain, et les skills métier de skills/<nom>/,
 comme le cerveau e-commerce) et les styles de réponse (output-styles/) : jamais les souvenirs ni la configuration. Les tests publics que le dépôt a déjà
 (tests/) restent, mis à jour depuis le code ; les tests privés (PRIVATE_TESTS : ils lisent la vraie mémoire), jamais.
-L'envoi sur GitHub est une publication : il n'a lieu qu'avec `--push`."""
+L'envoi sur GitHub est une publication : il n'a lieu qu'avec `--push`.
+
+Lancé depuis le clone du dépôt lui-même (D1 du plan v2 : GitHub est la seule source du code), `brain publish` publie
+sur place : il ne réécrit que les fichiers générés (hooks, skill /brain, manifestes, README) et brain.exe, refuse de
+partir avec des changements non validés, et n'efface rien. Depuis un autre dossier (l'ancien mode, qui recopie le code
+dans le clone), il refuse d'effacer un fichier suivi par git qui n'appartient pas au plugin."""
 from __future__ import annotations
 
 import json
@@ -25,6 +30,10 @@ NAME = MARKET = "cerveau"
 AUTRES = {"plateforme"}  # dossiers d'autres projets du même dépôt (PR #8) : ni effacés, ni contrôlés, ni commités ici
 # Tenus dans le dépôt lui-même, jamais effacés : CI (.github) et garde-fous de Claude Code ouverts à la racine (.claude)
 KEEP = {".git", ".github", ".claude", "CONTRIBUTORS.md"} | AUTRES
+# Ce que la construction écrit à la racine du dépôt (et .mcp.json, qu'elle écrivait avant la 8.22) : elle peut le
+# refaire. Un fichier suivi par git hors de KEEP et d'OWNED appartient à autre chose : il n'est jamais effacé (C23).
+OWNED = {"brain.py", "brain.exe", "brainkit", "hooks", "skills", "output-styles", "agents", ".claude-plugin",
+         "README.md", ".gitignore", "tests", ".mcp.json"}
 # Serveur MCP du plugin, déclaré dans plugin.json et non dans un .mcp.json à la racine : ce fichier est aussi lu comme
 # configuration du projet quand le dépôt est ouvert dans Claude Code, où ${CLAUDE_PLUGIN_ROOT} n'existe pas (le
 # serveur échouait : « python: can't open file '…/${CLAUDE_PLUGIN_ROOT}/brain.py' »).
@@ -391,44 +400,51 @@ def public_tests(dest: Path) -> dict:
     return found
 
 
-def build(dest: Path, owner: str = "", repo: str = "") -> list:
-    """Écrit le plugin complet dans dest (le clone du dépôt) : l'ancien contenu est remplacé, .git et les tests publics
-    sont gardés. owner : nom public de l'auteur, par défaut le compte GitHub de repo (jamais le prénom du réglage local).
-    → liste des fichiers écrits (chemins relatifs)."""
-    dest = Path(dest)
-    owner = owner or repo.partition("/")[0] or NAME
-    dest.mkdir(parents=True, exist_ok=True)
-    if (dest / "brainkit").exists() and (dest / "graph.json").exists():
-        raise RuntimeError(f"{dest} contient des souvenirs (graph.json) : ce n'est pas un dépôt de plugin")
-    if dest.resolve() == CODE_DIR.resolve():
-        raise RuntimeError(f"{dest} est le dossier du code lui-même : donne le clone du dépôt du plugin")
-    from .install import EVENTS, SKILL, SKILL_MARK, skill_sources
-    skills = skill_sources()  # relevées avant le nettoyage du dépôt
-    tests = public_tests(dest)  # idem
-    for item in dest.iterdir():
-        if item.name not in KEEP:
-            shutil.rmtree(item) if item.is_dir() else item.unlink()
-    shutil.copy2(CODE_DIR / "brain.py", dest / "brain.py")
+def git_files(dest: Path, others: bool = False) -> list:
+    """Fichiers suivis par git dans dest (chemins relatifs en /), et avec others ceux qui ne sont ni suivis ni ignorés ;
+    [] hors d'un dépôt git."""
+    if not (Path(dest) / ".git").exists():
+        return []
+    args = ["git", "-C", str(dest), "ls-files", "-z", "--cached"] + (["--others", "--exclude-standard"] if others else [])
+    r = subprocess.run(args, capture_output=True)
+    return sorted({p for p in r.stdout.decode("utf-8", "replace").split("\0") if p}) if r.returncode == 0 else []
+
+
+def foreign_files(dest: Path) -> list:
+    """Fichiers suivis par git que la construction effacerait sans les refaire : ils appartiennent à autre chose (un
+    projet rangé dans le même dépôt, par exemple). La construction les refuse au lieu de les effacer (C23)."""
+    return [f for f in git_files(dest) if f.split("/")[0] not in KEEP | OWNED]
+
+
+def origin_repo(dest: Path) -> str:
+    """« proprietaire/depot » du remote origin de dest quand c'est GitHub, sinon ""."""
+    r = subprocess.run(["git", "-C", str(dest), "remote", "get-url", "origin"], capture_output=True)
+    m = re.search(r"github\.com[:/]+([\w.-]+/[\w.-]+?)(?:\.git)?/?$", r.stdout.decode("utf-8", "replace").strip())
+    return m.group(1) if r.returncode == 0 and m else ""
+
+
+def _fresh_exe():
+    """brain.exe construit dans rust/ (version Rust pour Windows : brain.py la lance, elle repasse à Python pour ce qui
+    n'est pas porté) → son chemin ; None s'il n'y en a pas ; refusé s'il est plus ancien que ses sources."""
     exe = CODE_DIR / "rust" / "target" / "release" / "brain.exe"
-    if exe.is_file():  # version Rust (Windows) : brain.py la lance, elle repasse à Python pour ce qui n'est pas porté
-        rust = CODE_DIR / "rust"
-        srcs = list((rust / "src").glob("*.rs")) + [rust / "Cargo.toml", rust / "Cargo.lock"]
-        if exe.stat().st_mtime < max(p.stat().st_mtime for p in srcs if p.exists()):
-            raise RuntimeError(f"{exe} est plus ancien que ses sources : relance cargo build --release dans rust/")
-        shutil.copy2(exe, dest / "brain.exe")
-    shutil.copytree(CODE_DIR / "brainkit", dest / "brainkit", ignore=shutil.ignore_patterns("__pycache__", "*.pyc"))
+    if not exe.is_file():
+        return None
+    rust = CODE_DIR / "rust"
+    srcs = list((rust / "src").glob("*.rs")) + [rust / "Cargo.toml", rust / "Cargo.lock"]
+    if exe.stat().st_mtime < max((p.stat().st_mtime for p in srcs if p.exists()), default=0):
+        raise RuntimeError(f"{exe} est plus ancien que ses sources : relance cargo build --release dans rust/")
+    return exe
+
+
+def _generated(dest: Path, owner: str, repo: str) -> None:
+    """Les fichiers que le plugin tire de son code : hooks, skill /brain, manifestes, README."""
+    from .install import EVENTS, SKILL
     hooks = {event: [{**({"matcher": matcher} if matcher else {}), "hooks": [_hook(arg, timeout, status)]}]
              for event, arg, timeout, status, matcher in EVENTS}
     _json(dest / "hooks" / "hooks.json", {"description": "Cerveau : injection au démarrage, rappel à chaque message, "
                                                          "sorties de commandes compactes, mémorisation en fin de tâche",
                                           "hooks": hooks})
     _lf(dest / "skills" / "brain" / "SKILL.md", SKILL)
-    for name, src in skills.items():  # skills métier (cerveau e-commerce…) : Claude Code les lit dans le plugin
-        shutil.copytree(src, dest / "skills" / name, ignore=shutil.ignore_patterns("__pycache__", "*.pyc", SKILL_MARK))
-    if (CODE_DIR / "output-styles").is_dir():  # styles de réponse : /output-style cerveau:<nom>, au choix de chacun
-        shutil.copytree(CODE_DIR / "output-styles", dest / "output-styles")
-    if (CODE_DIR / "agents").is_dir():  # agents de délégation (cerveau:eclaireur…) : Claude Code les lit dans le plugin
-        shutil.copytree(CODE_DIR / "agents", dest / "agents", ignore=shutil.ignore_patterns("__pycache__", "*.pyc"))
     plugin = {"name": NAME, "version": __version__, "description": DESC, "author": {"name": owner},
               "keywords": KEYWORDS, "mcpServers": MCP_SERVERS}
     if repo:
@@ -439,6 +455,59 @@ def build(dest: Path, owner: str = "", repo: str = "") -> list:
         "metadata": {"description": f"Le cerveau persistant de {owner} pour Claude Code", "version": __version__},
         "plugins": [{"name": NAME, "source": "./", "description": DESC, "version": __version__}]})
     _lf(dest / "README.md", readme(owner, repo))
+
+
+def build_in_place(dest: Path, owner: str = "", repo: str = "") -> list:
+    """Le dépôt est le dossier du code (D1 du plan v2 : GitHub est la seule source, le PC travaille sur un clone). Rien
+    n'est effacé ni recopié : seuls les fichiers générés sont réécrits, et brain.exe s'il vient d'être construit dans
+    rust/. Seul run() l'appelle, une fois vérifié que le dépôt n'a aucun changement non validé.
+    → les fichiers publiés (suivis par git, ou nouveaux et non ignorés)."""
+    dest = Path(dest)
+    if not (dest / ".git").exists():
+        raise RuntimeError(f"{dest} n'est pas un clone git du dépôt : rien à publier sur place")
+    _generated(dest, owner or repo.partition("/")[0] or NAME, repo)
+    exe = _fresh_exe()
+    if exe:
+        shutil.copy2(exe, dest / "brain.exe")
+    return git_files(dest, others=True)
+
+
+def build(dest: Path, owner: str = "", repo: str = "") -> list:
+    """Écrit le plugin complet dans dest (le clone du dépôt) : l'ancien contenu est remplacé, .git et les tests publics
+    sont gardés. owner : nom public de l'auteur, par défaut le compte GitHub de repo (jamais le prénom du réglage local).
+    Un fichier suivi par git qui n'appartient pas au plugin n'est jamais effacé : la construction s'arrête avant.
+    → liste des fichiers écrits (chemins relatifs)."""
+    dest = Path(dest)
+    owner = owner or repo.partition("/")[0] or NAME
+    dest.mkdir(parents=True, exist_ok=True)
+    if (dest / "brainkit").exists() and (dest / "graph.json").exists():
+        raise RuntimeError(f"{dest} contient des souvenirs (graph.json) : ce n'est pas un dépôt de plugin")
+    if dest.resolve() == CODE_DIR.resolve():
+        raise RuntimeError(f"{dest} est le dossier du code lui-même : donne le clone du dépôt du plugin, ou lance "
+                           "`brain publish` sans dossier depuis ce clone (publication sur place, sans rien effacer)")
+    lost = foreign_files(dest)
+    if lost:
+        raise RuntimeError(f"la publication effacerait {len(lost)} fichier(s) suivi(s) par git qui n'appartiennent pas "
+                           f"au plugin ({', '.join(lost[:5])}{' …' if len(lost) > 5 else ''}) : déplace-les dans un autre "
+                           "dépôt, ou ajoute leur dossier à AUTRES dans brainkit/publish.py ; rien n'a été effacé")
+    from .install import SKILL_MARK, skill_sources
+    skills = skill_sources()  # relevées avant le nettoyage du dépôt
+    tests = public_tests(dest)  # idem
+    exe = _fresh_exe()  # refusé avant tout nettoyage s'il est périmé
+    for item in dest.iterdir():
+        if item.name not in KEEP:
+            shutil.rmtree(item) if item.is_dir() else item.unlink()
+    shutil.copy2(CODE_DIR / "brain.py", dest / "brain.py")
+    if exe:
+        shutil.copy2(exe, dest / "brain.exe")
+    shutil.copytree(CODE_DIR / "brainkit", dest / "brainkit", ignore=shutil.ignore_patterns("__pycache__", "*.pyc"))
+    _generated(dest, owner, repo)
+    for name, src in skills.items():  # skills métier (cerveau e-commerce…) : Claude Code les lit dans le plugin
+        shutil.copytree(src, dest / "skills" / name, ignore=shutil.ignore_patterns("__pycache__", "*.pyc", SKILL_MARK))
+    if (CODE_DIR / "output-styles").is_dir():  # styles de réponse : /output-style cerveau:<nom>, au choix de chacun
+        shutil.copytree(CODE_DIR / "output-styles", dest / "output-styles")
+    if (CODE_DIR / "agents").is_dir():  # agents de délégation (cerveau:eclaireur…) : Claude Code les lit dans le plugin
+        shutil.copytree(CODE_DIR / "agents", dest / "agents", ignore=shutil.ignore_patterns("__pycache__", "*.pyc"))
     _lf(dest / ".gitignore", "__pycache__/\n*.pyc\n")
     for rel, data in tests.items():
         (dest / "tests" / rel).parent.mkdir(parents=True, exist_ok=True)
@@ -458,12 +527,13 @@ def claude_cli():
     return str(exes[-1]) if exes else None
 
 
-def secrets_in(dest: Path) -> list:
-    """Fichiers du dépôt qui contiennent un secret (clé, jeton, mot de passe) ou une adresse e-mail : rien ne part."""
+def secrets_in(dest: Path, files=None) -> list:
+    """Fichiers du dépôt qui contiennent un secret (clé, jeton, mot de passe) ou une adresse e-mail : rien ne part.
+    files : les chemins relatifs à contrôler (publication sur place : ceux que git publierait), sinon tout le dossier."""
     from .privacy import find
     email = re.compile(r"[\w.+-]+@[A-Za-z0-9-]+(?:\.[A-Za-z0-9-]+)*\.[A-Za-z]{2,}\b")  # pas « paquet@1.80.0 »
     bad = []
-    for p in dest.rglob("*"):
+    for p in (dest / f for f in files) if files is not None else dest.rglob("*"):
         rel = p.relative_to(dest).parts
         if p.is_file() and ".git" not in rel and rel[0] not in AUTRES and p.suffix in (".py", ".json", ".md", ""):
             text = p.read_text(encoding="utf-8", errors="replace")
@@ -539,19 +609,38 @@ def smoke(dest: Path) -> list:
     return problems
 
 
+def _status(dest: Path) -> list:
+    """Changements non validés du dépôt (git status --porcelain), une ligne par fichier."""
+    r = subprocess.run(["git", "-C", str(dest), "status", "--porcelain"], capture_output=True)
+    return r.stdout.decode("utf-8", "replace").splitlines() if r.returncode == 0 else ["(git status a échoué)"]
+
+
 def run(dest=None, owner=None, repo=None, push=False, check=True) -> int:
     cfg = load_config().get("publish", {})
-    dest = Path(dest or cfg.get("dir") or "")
+    # Sans dossier donné ni retenu : le dossier du code lui-même, s'il est un clone git (publication sur place, D1).
+    dest = Path(dest or cfg.get("dir") or (CODE_DIR if (CODE_DIR / ".git").exists() else ""))
     if not str(dest) or str(dest) == ".":
         print("✗ dossier du dépôt manquant : brain publish <dossier du clone GitHub> [--repo proprietaire/depot]")
         return 1
-    repo = repo or cfg.get("repo") or ""
-    files = build(dest, owner or "", repo)  # auteur : --owner, sinon le compte GitHub (publish.owner reste local)
-    print(f"✓ plugin « cerveau » {__version__} construit dans {dest} ({len(files)} fichiers)")
+    in_place = dest.resolve() == CODE_DIR.resolve()
+    if in_place and (dest / ".git").exists():
+        dirty = _status(dest)
+        if dirty:
+            print("✗ des changements ne sont pas validés dans le dépôt : valide-les (git commit) ou mets-les de côté "
+                  "(git stash), puis relance :\n  " + "\n  ".join(dirty[:10]) + ("\n  …" if len(dirty) > 10 else ""))
+            return 1
+    repo = repo or cfg.get("repo") or (origin_repo(dest) if in_place else "") or ""
+    try:  # auteur : --owner, sinon le compte GitHub (publish.owner reste local)
+        files = build_in_place(dest, owner or "", repo) if in_place else build(dest, owner or "", repo)
+    except RuntimeError as exc:
+        print(f"✗ {exc}")
+        return 1
+    where = "sur place, dans le dépôt du code" if in_place else f"dans {dest}"
+    print(f"✓ plugin « cerveau » {__version__} construit {where} ({len(files)} fichiers)")
     for key, val in (("publish.dir", str(dest)), ("publish.repo", repo)):
         if val and cfg.get(key.split(".")[1]) != val:
             set_config(key, val)
-    bad = secrets_in(dest)
+    bad = secrets_in(dest, files if in_place else None)
     if bad:
         print("✗ secret ou adresse e-mail dans le dépôt, rien n'est publié :\n  " + "\n  ".join(bad))
         return 1

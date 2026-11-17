@@ -2371,7 +2371,8 @@ def build_parser():
     cmd("mcp", cmd_mcp, "serveur MCP (stdio) : la même mémoire dans le chat Claude, Cowork ou tout client MCP")
     s = cmd("publish", cmd_publish, "publier le plugin Claude Code « cerveau » pour les amis (code seul, jamais les "
                                     "souvenirs) dans le clone du dépôt GitHub", ["publier"])
-    s.add_argument("dir", nargs="?", help="clone local du dépôt (retenu ensuite)")
+    s.add_argument("dir", nargs="?", help="clone local du dépôt (retenu ensuite) ; sans lui, le dossier du code s'il "
+                                          "est un clone git : publication sur place, sans rien effacer")
     s.add_argument("--repo", help="dépôt GitHub « proprietaire/depot » (retenu ensuite)")
     s.add_argument("--owner", help="nom public de l'auteur (défaut : le compte GitHub de --repo)")
     s.add_argument("--push", action="store_true", help="envoyer sur GitHub après le commit (publication)")
