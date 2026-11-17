@@ -174,7 +174,7 @@ def migrate_classic() -> list:
         settings = _read_settings(settings_path)  # illisible : on s'arrête avant de toucher à quoi que ce soit
         archive.mkdir(parents=True, exist_ok=False)
         ignore = shutil.ignore_patterns("__pycache__", "*.pyc")
-        for name in ("brain.py", "brainkit", "tests", "skills"):
+        for name in ("brain.py", "brainkit", "tests", "skills", "agents"):
             src = BRAIN_DIR / name
             if src.is_dir():
                 shutil.copytree(src, archive / name, ignore=ignore)
@@ -212,6 +212,7 @@ def migrate_classic() -> list:
         if skill.exists() and "Cerveau — référence" in skill.read_text(encoding="utf-8", errors="replace"):
             shutil.rmtree(skill.parent, ignore_errors=True)
         install.sync_skills(uninstall=True)
+        install.sync_agents(uninstall=True)  # le plugin fournit les siens : « cerveau:<nom> »
     except Exception as exc:  # le plugin fonctionne quand même ; le doctor le signalera
         log(f"passage au plugin (CLAUDE.md, skills) : {exc!r}")
     # 5. Code classique retiré (archivé plus haut) ; un fichier verrouillé sera retiré au prochain démarrage
@@ -224,10 +225,10 @@ def migrate_classic() -> list:
 
 
 def remove_classic_code() -> bool:
-    """Retire le code classique déjà archivé (brainkit, tests, skills métier) ; True s'il n'en reste rien."""
+    """Retire le code classique déjà archivé (brainkit, tests, skills métier, agents) ; True s'il n'en reste rien."""
     if not (load_config().get("plugin") or {}).get("migre_le"):
         return False
-    for name in ("brainkit", "tests", "skills"):
+    for name in ("brainkit", "tests", "skills", "agents"):
         path = BRAIN_DIR / name
         if path.is_dir():
             shutil.rmtree(path, ignore_errors=True)

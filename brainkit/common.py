@@ -115,6 +115,24 @@ DEFAULT_CONFIG = {
            "orphan_patterns": ["mcp", "\\claude\\", "\\.claude\\plugins", "claude_pzs8sxrjxfjjc", "npm-cache\\_npx"],
            "idle_hours": 3, "spin_cores": 0.5, "ram_alert_gb": 2.5, "ram_alert_pct": 92, "alert_repeat_minutes": 60,
            "history_days": 14},
+    # Délégation (`brain delegation`, brainkit/delegation.py) : chaque tâche au modèle le moins cher qui suffit, dans un
+    # contexte à part. `mode` : "auto" (un sous-agent lancé sans modèle part sur Haiku pour chercher, lire, résumer, sur
+    # Sonnet pour une modification mécanique ; conception, débogage et décisions jamais touchés), "max" (tout
+    # sous-agent générique au moins sur Sonnet), "conseil" (consigne et conseils seulement), "off". `modeles` :
+    # {agent du cerveau: alias} ou {"Explore" | "general-purpose": alias | "off"}. `reflexe` : la ligne ↪ par message
+    # (au plus `session_cap` par session). `reve` : le rêve est confié à l'agent archiviste.
+    "delegation": {"mode": "auto", "modeles": {}, "reflexe": True, "session_cap": 2, "reve": True},
+    # Apprentissage (`brain apprendre`, brainkit/apprendre.py) : erreurs résolues, déclencheurs manqués, méthodes
+    # répétées, retours techniques — détectés sans token. `declencheurs_auto` : une tournure commune à deux messages qui
+    # ont chargé la même skill devient un déclencheur (annoncé, retirable). `notice` : la ligne 🎓 du démarrage, à
+    # partir de `min_items` points au dossier (au plus une fois par jour).
+    "apprendre": {"enabled": True, "declencheurs_auto": True, "notice": True, "min_items": 3},
+    # Échange de skills entre membres du cerveau commun (`brain echange`, brainkit/echange.py). `envoi` : None tant que
+    # l'utilisateur n'a pas répondu, puis "oui" ou "non" (rien ne part sans son oui). `reception` : le texte des skills
+    # des amis est proposé quand un message colle ("non" : jamais) ; un script attend toujours un accord (`scripts` :
+    # empreintes approuvées). `partager` / `garder` : skills écrites à la main à envoyer / skills à ne jamais envoyer.
+    "echange": {"envoi": None, "reception": "oui", "declencheurs": "oui", "partager": [], "garder": [], "proposees": [],
+                "scripts": {}, "acceptees": {}},
 }
 
 

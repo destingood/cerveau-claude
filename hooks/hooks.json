@@ -128,6 +128,25 @@
           }
         ]
       }
+    ],
+    "PreToolUse": [
+      {
+        "matcher": "Agent",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "python",
+            "args": [
+              "-I",
+              "-S",
+              "${CLAUDE_PLUGIN_ROOT}/brain.py",
+              "hook",
+              "pre-agent"
+            ],
+            "timeout": 5
+          }
+        ]
+      }
     ]
   }
 }

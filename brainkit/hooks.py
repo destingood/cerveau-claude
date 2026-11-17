@@ -1277,7 +1277,27 @@ HANDLERS = {
 
 
 def run(event) -> int:
+    """Hook `event`, puis sa sortie complétée par la couche « plus » (délégation, apprentissage, échange de skills :
+    plus.py). BRAIN_PLUS=0 : brain.py s'en charge lui-même après brain.exe, dont ce processus est un retour à Python."""
     data = read_stdin_json()
+    from . import plus
+    if event not in plus.EVENTS or os.environ.get("BRAIN_PLUS") == "0":
+        return _run(event, data)
+    import io
+    real, buf = sys.stdout, io.StringIO()
+    sys.stdout = buf
+    try:
+        code = _run(event, data)
+    finally:
+        sys.stdout = real
+    out = plus.apply(event, buf.getvalue(), data)
+    if out:
+        real.write(out)
+        real.flush()
+    return code
+
+
+def _run(event, data) -> int:
     from .common import PLUGIN
     if PLUGIN:
         from . import plugin

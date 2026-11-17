@@ -70,7 +70,8 @@ décisions et de ce qu'il a appris, d'une session à l'autre. Tout reste chez to
 ![Version {__version__}](https://img.shields.io/badge/version-{__version__}-2ea44f) ![Python 3.10 ou plus](https://img.shields.io/badge/python-3.10%2B-3776ab) ![Windows, macOS, Linux](https://img.shields.io/badge/Windows_%C2%B7_macOS_%C2%B7_Linux-555)
 
 **Sommaire** — [Installer](#installer-une-seule-fois) · [Au quotidien](#au-quotidien) · [Ce que fait le cerveau](#ce-que-fait-le-cerveau) ·
-[Moins de tokens](#moins-de-tokens) · [Wiki et veille](#le-cerveau-en-wiki-et-la-veille-automatique) · [E-commerce](#le-cerveau-e-commerce) ·
+[Moins de tokens](#moins-de-tokens) · [Il apprend tout seul](#le-cerveau-apprend-tout-seul) ·
+[Wiki et veille](#le-cerveau-en-wiki-et-la-veille-automatique) · [E-commerce](#le-cerveau-e-commerce) ·
 [Outils installés pour toi](#les-outils-que-claude-installe-pour-toi) · [Cerveau commun](#le-cerveau-commun-avec-tes-amis) ·
 [Prérequis et dépannage](#prérequis) · [Désinstaller](#désinstaller)
 
@@ -118,6 +119,7 @@ Rien à faire : parle normalement à Claude. Pour aller plus loin :
 | « fais décoller ma boutique », « trouve-moi des clients sans pub », « audite mon site », « quel produit vendre ? », « fais le point de la semaine », « où en est ma boutique ? » | passe au [cerveau e-commerce](#le-cerveau-e-commerce) (ou tape `/cerveau:ecommerce`), qui tient le suivi de chaque boutique |
 | « ingère cet article », « range cette réponse dans le wiki », « fais le point sur le wiki » | alimente ton [wiki](#le-cerveau-en-wiki-et-la-veille-automatique) ; le point, c'est un contrôle de santé (pages à créer, sources en attente, pages dépassées) |
 | « installe agent-browser », « transforme ce site en API », « teste mon site dans le navigateur »… | installe sur ton PC, avec ton accord, [l'outil qui convient](#les-outils-que-claude-installe-pour-toi), puis le pilote |
+| « qu'est-ce que tu as appris ? », « partage cette skill avec mes amis », « qu'est-ce qui est parti sur un modèle moins cher ? » | montre ce qu'il a [appris de tes sessions](#le-cerveau-apprend-tout-seul), partage une skill avec ton accord, ou fait le point sur la [délégation](#moins-de-tokens) |
 
 Vue 3D de ta mémoire : `~/.claude/brain/cerveau.html` (souvenirs, projets, le cerveau e-commerce avec ses fiches et ses
 outils, et tes boutiques suivies).
@@ -146,6 +148,14 @@ garde sa propre mémoire.
 
 ## Moins de tokens
 
+- **La délégation** : chercher dans tout un projet, lire de longues pages ou appliquer une modification déjà décidée
+  n'a pas besoin du modèle le plus cher. Le cerveau apporte trois agents — l'éclaireur (Haiku : chercher, lire,
+  résumer), l'ouvrier (Sonnet : modification cadrée, tests à écrire) et l'archiviste (Sonnet : entretien de ta
+  mémoire) — et les souffle à Claude au bon moment ; un sous-agent lancé sans modèle part de lui-même sur le moins cher
+  qui suffit. Ta conversation ne garde que leur rapport ; la conception, le débogage et les décisions restent sur ton
+  modèle. Au tarif de l'API du 03/11/2026, Haiku coûte 40 à 80 fois moins par token qu'Opus ou Fable, Sonnet 2 à 4 fois
+  moins. `brain delegation` dit ce qui est parti où et ce que ça a épargné ; `brain delegation --mode conseil` (le
+  cerveau conseille sans rien changer) ou `off` pour reprendre la main.
 - **Le mode éco**, posé une fois au démarrage : les sorties de commandes très longues vont dans un fichier (aperçu
   seul dans la conversation), la conversation est résumée plus tôt, et `brain eco` liste les plugins jamais utilisés.
   `brain eco --annuler` pour revenir.
@@ -164,6 +174,24 @@ garde sa propre mémoire.
   en français (65 en ont d'office) ; un connecteur ou une skill qui arrive sans phrase française est signalé au
   démarrage, et `brain outils trig` ou `brain skill trig` lui en donne. `brain outils` montre ce qui est branché.
 - **Le compteur** : `brain tokens` donne ta consommation et son coût au tarif de l'API, en dollars.
+
+## Le cerveau apprend tout seul
+
+Il regarde ce qui se passe dans tes sessions et en tire de quoi mieux faire la fois suivante. Repérer ne coûte aucun
+token ; seul ce qui demande du jugement arrive devant un modèle, et c'est l'archiviste (moins cher) qui s'en charge.
+
+- **Les erreurs résolues** : une commande échoue, puis réussit lancée autrement. Le cerveau le signale à Claude en fin
+  de tâche, qui en fait un souvenir si le piège risque de revenir.
+- **Les phrases qui déclenchent une skill** : tu as dû appeler toi-même une skill deux fois avec les mêmes mots ? Le
+  cerveau retient la tournure et la proposera seul la prochaine fois. Il te l'annonce, et
+  `brain apprendre oublier <skill> "…"` la retire. Une skill proposée souvent et jamais suivie est signalée aussi.
+- **Les méthodes répétées** : la même demande revient dans plusieurs sessions, sur plusieurs jours ? Il propose d'en
+  faire une skill, rédigée d'après ces sessions.
+- **Les retours techniques** : pannes et lenteurs de ses propres hooks, précision de ses propositions — des compteurs,
+  jamais un mot de tes sessions (`brain apprendre retours`).
+
+`brain apprendre` montre ce qui reste à trancher ; `brain config apprendre.enabled false` coupe tout. Ce que ton cerveau
+apprend peut aussi servir à tes amis, puis à tous : voir [le cerveau commun](#le-cerveau-commun-avec-tes-amis).
 
 ## Le cerveau en wiki et la veille automatique
 
@@ -292,6 +320,25 @@ projet X avec les amis »), le texte de tes sessions. Coordonnées, secrets, che
 (documents partagés, invitations, réunions) sont retirés du reste. « Garde ça pour moi » : la page reste privée.
 `brain commun` montre l'état ; `brain commun quitter` pour en sortir (tes pages sont retirées).
 
+**Les skills aussi** (`brain echange`). Avec ton oui, ce que ton cerveau apprend part chez tes amis : les skills qu'il
+a rédigées, les phrases qui les déclenchent, et des compteurs techniques sans texte. Jamais une skill que tu as écrite
+toi-même sans que tu la désignes (`brain echange partager <nom>`), jamais un secret ; `brain echange garder <nom>` en
+garde une pour toi. Ce que tes amis partagent arrive chez toi en deux temps :
+
+- **Le texte d'une skill s'active seul** : contrôlé à l'arrivée (consigne cachée, téléchargement exécuté, commande
+  destructrice, accès à tes secrets ou aux réglages de Claude, envoi de données), puis proposé quand ton message s'y
+  prête, marqué 🤝 et présenté à Claude comme la méthode d'un ami, pas comme un ordre. Une skill qui échoue au contrôle,
+  ou dont le dossier contient autre chose que du texte et des scripts au nom simple (fichier caché, lien, autre type),
+  reste en quarantaine jusqu'à ce que tu l'adoptes (`brain echange adopter <ami/nom>`). Ce contrôle se fait en tâche
+  de fond, jamais pendant que tu attends une réponse.
+- **Un script attend ton accord** : il tournerait sur ton PC, donc Claude te le montre d'abord
+  (`brain echange approuver <ami/nom>`). L'accord vaut pour ce que tu as vu, à l'octet près : si le script change, même
+  entre le moment où tu le regardes et ton oui, il est redemandé.
+
+Une skill qui a fait ses preuves (suivie par plusieurs membres) est proposée pour le plugin ; une fois que {owner} l'a
+relue et publiée, tous ceux qui ont le plugin la reçoivent à la mise à jour. `brain echange` montre où tu en es,
+`brain echange non` arrête l'envoi et retire ce qui était parti, `brain echange recevoir non` coupe la réception.
+
 Pour le lancer ({owner}) : crée sur GitHub le dépôt **privé et vide** `{commun}`,
 invite tes amis (Settings → Collaborators → Add people), puis rejoins-le le premier (dis oui quand Claude le propose).
 
@@ -363,6 +410,8 @@ def build(dest: Path, owner: str = "", repo: str = "") -> list:
         shutil.copytree(src, dest / "skills" / name, ignore=shutil.ignore_patterns("__pycache__", "*.pyc", SKILL_MARK))
     if (CODE_DIR / "output-styles").is_dir():  # styles de réponse : /output-style cerveau:<nom>, au choix de chacun
         shutil.copytree(CODE_DIR / "output-styles", dest / "output-styles")
+    if (CODE_DIR / "agents").is_dir():  # agents de délégation (cerveau:eclaireur…) : Claude Code les lit dans le plugin
+        shutil.copytree(CODE_DIR / "agents", dest / "agents", ignore=shutil.ignore_patterns("__pycache__", "*.pyc"))
     plugin = {"name": NAME, "version": __version__, "description": DESC, "author": {"name": owner},
               "keywords": KEYWORDS}
     if repo:
