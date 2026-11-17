@@ -17,8 +17,8 @@ from .store import Brain
 
 VIZMAP_DIR = STATE_DIR / "vizmaps"
 VIZMAP_VERSION = 2
-SKILL_LABELS = {"ecommerce": "Cerveau e-commerce"}
-SKILL_ICONS = {"ecommerce": "🛒"}
+SKILL_LABELS = {"ecommerce": "Cerveau e-commerce", "fortnite": "Maps Fortnite", "carriere-commerciale": "Carrière commerciale"}
+SKILL_ICONS = {"ecommerce": "🛒", "fortnite": "🎮", "carriere-commerciale": "📈"}
 VIRTUAL = ("skill", "boutique")  # nœuds de la vue qui ne sont pas des souvenirs
 
 
