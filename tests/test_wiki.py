@@ -619,9 +619,14 @@ code, out = brain("auto")
 brain("config", "auto.enabled", "true")
 check("coupée" in out, "veille : coupée par la configuration", out)
 code, out = brain("auto", "--installer", "--dry-run")
-check(code == 0 and "rien n'est fait" in out and "<Interval>PT30M</Interval>" in out and "pythonw.exe" in out
-      and "InteractiveToken" in out and "LeastPrivilege" in out and "&quot; auto" not in out and '" auto</Arguments>' in out,
-      "veille : --installer --dry-run montre la tâche (30 min, pythonw, sans mot de passe, droits limités)", out[:900])
+if os.name == "nt":
+    check(code == 0 and "rien n'est fait" in out and "<Interval>PT30M</Interval>" in out and "pythonw.exe" in out
+          and "InteractiveToken" in out and "LeastPrivilege" in out and "&quot; auto" not in out
+          and '" auto</Arguments>' in out,
+          "veille : --installer --dry-run montre la tâche (30 min, pythonw, sans mot de passe, droits limités)", out[:900])
+else:  # macOS, Linux : aucune tâche posée, la ligne de crontab à ajouter soi-même (toutes les 30 min)
+    check(code == 0 and "crontab" in out and "*/30 * * * *" in out and '" auto >/dev/null 2>&1' in out,
+          "veille : --installer --dry-run hors Windows montre la ligne de crontab (30 min), sans rien poser", out[:900])
 # auto-réparation : jamais la vraie tâche de Windows (même nom pour tous) → install et lecture simulées
 _real = (auto.install, auto.task_action)
 posees = []

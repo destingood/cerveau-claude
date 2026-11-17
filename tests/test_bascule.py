@@ -46,7 +46,10 @@ def classic_tar():
             ["git", "-C", str(CODE), "cat-file", "-e", f"{ref}:{p}"], capture_output=True).returncode == 0]
         if "brainkit" in paths:
             return subprocess.run(["git", "-C", str(CODE), "archive", ref, *paths], capture_output=True, check=True).stdout
-    sys.exit("✗ cerveau classique 8.0.0 introuvable dans ce dépôt (commit 53ba68c ou tag v8.0.0)")
+    shallow = subprocess.run(["git", "-C", str(CODE), "rev-parse", "--is-shallow-repository"],
+                             capture_output=True, text=True).stdout.strip() == "true"
+    sys.exit("✗ cerveau classique 8.0.0 introuvable dans ce dépôt (commit 53ba68c ou tag v8.0.0)"
+             + (" : clone superficiel, récupère l'historique avec `git fetch --unshallow`" if shallow else ""))
 
 
 def classic_brain(home):
