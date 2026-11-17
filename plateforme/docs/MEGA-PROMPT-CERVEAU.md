@@ -1,7 +1,7 @@
 MÉGA-PROMPT — PROJET CERVEAU
 Plateforme d'IA personnelle multi-domaines inspirée d'Aladdin et d'Aladdin Copilot (BlackRock)
 > **Version** 1.0 — 17/10/2026
-> **Auteur** Lucas Quemar (DesTinGOOD) — **Destinataire** Claude Code
+> **Auteur** destingood — **Destinataire** Claude Code
 > **Base documentaire** architecture d'Aladdin Copilot (présentation BlackRock, 2025), documentation officielle Claude Code, ~60 dépôts GitHub vérifiés le 17/10/2026 via l'API GitHub (licence, activité, transferts) — voir Annexe A.
 ---
 0. Mode d'emploi (pour Lucas — Claude Code ignore cette section)
