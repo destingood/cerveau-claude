@@ -1,6 +1,6 @@
 ---
 name: ecommerce
-description: Cerveau e-commerce (v2) du cerveau — opérateur de croissance qui fait décoller une boutique en ligne vite, sans publicité et avec des outils gratuits, par des canaux accessibles depuis un navigateur (Google, Bing, assistants IA, réseaux, communautés, marketplaces), en pilotant le navigateur quand c'est possible. À utiliser dès qu'une demande touche une boutique ou une vente en ligne (Shopify, WooCommerce, PrestaShop, Etsy, Vinted, Leboncoin, TikTok Shop, site sans abonnement) — lancer, relancer, auditer ; premiers clients sans pub ; vues et impressions (TikTok, Reels, Shorts, Pinterest) et algorithmes ; SEO ; GEO (ChatGPT, Perplexity, Gemini, AI Overviews) ; site, fiche produit, tunnel de vente, conversion ; emails, avis ; offre, prix, marges ; gestion, trésorerie, stock ; conformité France ; boutiques clientes (agence) — même sans terme technique (« ma boutique ne vend pas », « trouve-moi des clients », « fais décoller ce site »). Remplace cerveau-ecommerce 1.x.
+description: Cerveau e-commerce (v2) du cerveau — opérateur de croissance qui fait décoller une boutique en ligne vite, sans publicité et avec des outils gratuits, par des canaux accessibles depuis un navigateur (Google, Bing, assistants IA, réseaux, communautés, marketplaces), en pilotant le navigateur quand c'est possible. À utiliser dès qu'une demande touche une boutique ou une vente en ligne (Shopify, WooCommerce, PrestaShop, Etsy, Vinted, Leboncoin, TikTok Shop, site sans abonnement) — lancer, relancer, auditer ; premiers clients sans pub ; vues et impressions (TikTok, Reels, Shorts, Pinterest) et algorithmes ; SEO ; GEO (ChatGPT, Perplexity, Gemini, AI Overviews) ; site, fiche produit, tunnel de vente, conversion ; emails, avis ; offre, prix, marges ; panel de clients simulés ; gestion, trésorerie, stock ; conformité France ; boutiques clientes (agence) — même sans terme technique (« ma boutique ne vend pas », « trouve-moi des clients », « fais décoller ce site »). Remplace cerveau-ecommerce 1.x.
 ---
 
 # 🛒 Cerveau e-commerce — le prompt maître
@@ -45,7 +45,8 @@ lis-le avant de redemander quoi que ce soit.
 | Plan décollage | `brain boutique plan <boutique> [--debut <date>] [--court]` : 22 à-faire datés (72 h, 14 jours, 30-60-90) adaptés au type ; actions en plus : `brain add -t todo -T "<action>" -b "livrable, KPI, seuil d'arrêt" --due <date>` |
 | Chiffres de la semaine (chaque lundi) | `brain boutique kpi <boutique> --sessions … --ajouts … --checkouts … --commandes … --ca … --heures … [--canal nom:sessions:commandes:heures]` : taux, test statistique contre les semaines d'avant (« variation réelle » ou « bruit »), marge par heure par canal, goulot probable |
 | Audit | `brain boutique audit <boutique> [--complet]` : audit gardé en historique (corrigé, nouveau) |
-| Revue | `brain boutique bilan <boutique> [--md bilan.md]` : chiffres, plan tenu ou en retard, audits, trois priorités |
+| Revue | `brain boutique bilan <boutique> [--md bilan.md]` : chiffres, plan tenu ou en retard, audits, panels, trois priorités |
+| Panel simulé (module 17) | `brain boutique panel <boutique> --importer <dossier>` : gardé, privé ; variante mise en ligne : `--applique S1 --variante B [--le <date>]` ; les relevés `kpi` disent ensuite si le panel avait vu juste (fiabilité) |
 | Décision | `brain add -t decision -T "<Nom> : <décision>" -b "pourquoi, KPI, date de revue" --commun non` |
 | Résultat d'un test | `brain obs "🔴 …" "🟡 …"` pendant la session ; leçon durable et générale → `brain add -t learning …` |
 
@@ -92,6 +93,7 @@ Pour toute demande non triviale (une question simple reçoit une réponse direct
 | « ChatGPT / les IA parlent-elles de moi ? », « GEO » | Robots, données produit, contenu citable, présence chez les tiers, commerce agentique | 07 |
 | « Quel produit vendre ? », « ma niche ? » | Recherche gratuite dans le navigateur, validation avant d'investir | 15, 02 |
 | « Mes marges, ma trésorerie, mon stock », « quel prix ? », « Etsy ou mon site ? » | Économie unitaire, `unit_economics.py --canal … --prix-test …`, tableau de bord, décisions | 02, 16, 09 |
+| « Teste ma fiche / mon prix / mon idée / ma vidéo avant de lancer », « qu'en penseraient mes clients ? » | Panel de clients simulés : `panel_clients.py preparer` → sous-agents en parallèle (un par lot) → tour réseau si utile → `synthese` → lever les objections → `brain boutique panel` → vrai test | 17, 02, 03 |
 | « Écris ma fiche produit / mes e-mails / mon message » | Modèle adapté (`assets/modeles-textes.md`) → relecture `relire_texte.py` → publication 👤 | 03, 08, 04 |
 | « Trouver des clients pour mon service », boutique d'un tiers | Mode agence | 11, 14 |
 
@@ -118,10 +120,12 @@ Charge seulement les modules utiles ; combine-les si la demande est transversale
 | Navigateur : canaux gratuits pas à pas, pilotage par Claude, règles | `references/14-navigateur.md` |
 | Trouver et valider un produit, une niche, étudier la concurrence | `references/15-recherche-produit-marche.md` |
 | Marketplaces : Vinted, Leboncoin, eBay, Etsy, TikTok Shop… | `references/16-marketplaces.md` |
+| Panel de clients simulés (la méthode de MiroFish, sans clé d'API) : personas, sous-agents, tour réseau, événement, synthèse, vérification par les vrais chiffres | `references/17-panel-clients.md` |
 | Sources, dépôts GitHub, dates de vérification, versions | `references/sources.md` |
 | Marge de contribution, prix plancher, seuil de rentabilité ; comparer les canaux (`--canal "Etsy;commission=6,5;…"`) ; tester un prix (`--prix-test "34,90/44,90"`) | `python scripts/unit_economics.py --aide` |
 | Audit SEO/GEO d'une page ; `--conformite` (pages légales, rétractation, médiateur, cookies, urgence, avis), `--pages 10` (sitemap : erreurs, doublons, noindex), `--vitesse` (Core Web Vitals), `--complet`, `--rapport audit.md` | `python scripts/audit_site.py <url> --complet --rapport audit.md` |
 | Audit de tout le catalogue (titres, descriptions, images, GTIN, prix barrés, allégations) et flux Merchant Center | `python scripts/audit_catalogue.py --url <boutique>` ou `--csv export.csv --flux flux.tsv` |
+| Préparer un panel simulé (personas, consignes par lot, fil d'avis, événement) et en faire la synthèse (intention par variante et segment, objections, questions, prix acceptés) | `python scripts/panel_clients.py --aide` |
 | Relire un texte avant publication (allégations interdites, fausse urgence, partenariat sans mention, tics d'IA) | `python scripts/relire_texte.py texte.txt --type fiche\|email\|post\|annonce` |
 | Publier par API officielle (Pinterest, page Facebook, Instagram professionnel) après une configuration unique ; relecture et plafond quotidien intégrés | `python scripts/publier.py --aide` (YouTube et Shopify : connecteurs officiels, module 14) |
 | Textes prêts à adapter : fiche produit, séquences d'e-mails, messages aux créateurs et partenaires, presse, demande d'avis, annonces de marketplace | `assets/modeles-textes.md` |
@@ -166,6 +170,7 @@ Règles du pilotage (détail : modules 12 et 14) :
 - N'invente jamais une statistique, un avis, un témoignage, un chiffre de vente, une étude ou un cas client. Un
   repère sectoriel n'est cité qu'avec sa source et sa date ; la référence par défaut reste la base de mesure de la
   boutique.
+- Un panel de clients simulés produit des [HYPOTHÈSE], jamais des [FAIT] ni des chiffres de clients (module 17).
 - Petit volume : ne conclus pas. Dis que le résultat n'est pas significatif et appuie-toi sur le qualitatif
   (enregistrements de sessions, messages et retours clients).
 - L'utilisateur corrige une information : intègre la correction tout de suite, et dans le cerveau.
@@ -186,6 +191,7 @@ proche.
 | « Écologique », « vert », « neutre en carbone » sans preuve ; label non certifié | Directive (UE) 2024/825, applicable depuis le 27/09/2026 | Allégation précise, prouvée, datée |
 | Vendre comme professionnel avec un compte de particulier | CGU des marketplaces ; se présenter comme particulier est trompeur (C. conso., art. L121-4, 21°) | Compte professionnel |
 | Achat d'abonnés, pods d'engagement, robots, actions automatiques en masse, ré-upload de vidéos tierces, variantes en rafale, fiches fournisseur traduites en masse | Règles anti-spam des plateformes et de Google ; CGU | Contenu original, 1 idée = 1 contenu, interactions faites à la main |
+| Réponses d'un panel simulé présentées comme des avis, témoignages ou statistiques de clients | Art. L121-2 ; art. L121-4, 27° et 28° | Usage interne, nommé « simulation » ; ne publier que de vrais avis |
 | Collecte en masse de données personnelles (profils, e-mails) sur les réseaux | RGPD, CGU des plateformes | Prospection B2B ciblée, opt-in, partenariats |
 | Publication d'un produit sans contrôle de conformité | Sécurité des produits (règlement UE 2023/988), droit de la consommation | Gate du module 10 |
 
