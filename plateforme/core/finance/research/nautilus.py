@@ -12,7 +12,9 @@ NautilusTrader with the in-house conventions, then compares trades and final val
   cash and positions of the NautilusTrader account, and ``target_orders`` sizes the orders;
 - at the next session, once every instrument's bar is in, the common scheduler (``schedule``)
   turns them into market orders, sells first, filled at that close;
-- a fee model returns slippage plus commission of ``Costs.fill``, rounded to the cent.
+- a fee model returns slippage plus commission of ``Costs.fill``, rounded to the cent;
+- every quantity, price and amount read back from NautilusTrader goes through its exact decimal
+  value: on its 16-decimal build (Linux), ``as_double()`` is not exact (C27).
 
 The pre-trade balance check of NautilusTrader cannot price a market order without a quote or a
 trade tick: with bars only, it lets every order through, and the cash account refuses any fill
@@ -61,6 +63,23 @@ VENUE = Venue("SIM")
 BAR_VOLUME = 10**10  # shares per bar, under QUANTITY_MAX: no backtest order comes near it
 MAX_PRICE_DECIMALS = 9
 BAR_LEAD = timedelta(seconds=1)  # a session's bar is stamped this long before its cut-off
+
+
+def _shares(quantity: Quantity) -> int:
+    """Whole shares, read exactly (C27).
+
+    On the 16-decimal build of NautilusTrader, ``as_double()`` reads 999 499 shares as
+    999 498.9999999999, and ``int()`` dropped a share from the fees and from the recorded fill.
+    """
+    exact = quantity.as_decimal()
+    if exact != exact.to_integral_value():
+        raise BacktestError(f"quantité fractionnaire {exact} dans {ENGINE}")
+    return int(exact)
+
+
+def _amount(value: Price | Money) -> float:
+    """A price or an amount as the float nearest to its exact decimal value (C27)."""
+    return float(value.as_decimal())
 
 
 @dataclass(frozen=True)
@@ -153,8 +172,8 @@ class _CostsFeeModel(FeeModel):
         self, order: Any, fill_qty: Quantity, fill_px: Price, instrument: Any
     ) -> Money:
         side = 1 if order.side == OrderSide.BUY else -1
-        quantity = side * int(fill_qty.as_double())
-        fill = self._costs.fill(self._names[instrument.id], quantity, fill_px.as_double())
+        quantity = side * _shares(fill_qty)
+        fill = self._costs.fill(self._names[instrument.id], quantity, _amount(fill_px))
         return Money(fill.fees, EUR)
 
 
@@ -230,7 +249,7 @@ class _Runner(NautilusStrategy):
         if replay.seen == 0:
             replay.session += 1
             replay.prices = {}
-        replay.prices[self._names[bar.bar_type.instrument_id]] = bar.close.as_double()
+        replay.prices[self._names[bar.bar_type.instrument_id]] = _amount(bar.close)
         replay.seen += 1
         if replay.seen < len(replay.ids):
             return
@@ -257,9 +276,9 @@ class _Runner(NautilusStrategy):
                 decided=replay.sessions[k - 1],
                 executed=replay.sessions[k],
                 instrument_id=self._names[event.instrument_id],
-                quantity=side * int(event.last_qty.as_double()),
-                price=event.last_px.as_double(),
-                fees=event.commission.as_double(),
+                quantity=side * _shares(event.last_qty),
+                price=_amount(event.last_px),
+                fees=_amount(event.commission),
             )
         )
 
@@ -267,7 +286,7 @@ class _Runner(NautilusStrategy):
         raise BacktestError(f"ordre {event.client_order_id} {what} : {event.reason}")
 
     def _cash(self) -> float:
-        return float(self.portfolio.account(VENUE).balance_total(EUR).as_double())
+        return _amount(self.portfolio.account(VENUE).balance_total(EUR))
 
     def _held(self) -> dict[str, int]:
         held: dict[str, int] = {}

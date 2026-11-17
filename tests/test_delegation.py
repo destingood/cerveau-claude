@@ -302,6 +302,8 @@ if os.name == "posix":
     X = World("exe")
     exe = X.root / "faux-brain-exe"
     exe.write_text('#!/bin/sh\ncat > "$0.entree"\necho "$BRAIN_PLUS" > "$0.plus"\n'
+                   # commande ordinaire (add) : sortie et erreurs, puis une tâche de fond qui garde les deux ouvertes
+                   'if [ "$1" = "add" ]; then echo "AJOUT $2"; echo "AVERTI" >&2; (sleep 6) & exit 4; fi\n'
                    'if [ "$2" = "stop" ]; then exit 0; fi\n'
                    'if [ -f "$0.echec" ]; then echo "sortie brute"; exit 3; fi\n'
                    'if [ -f "$0.fond" ]; then (sleep 6) 2>/dev/null & fi\n'  # tâche de fond qui garde sa sortie ouverte
@@ -336,6 +338,18 @@ if os.name == "posix":
           "brain.exe simulé : une tâche de fond qui garde sa sortie ouverte ne retient pas le hook (on n'attend que l'exe)",
           (round(time.time() - t0, 1), out[:120]))
     Path(str(exe) + ".fond").unlink()
+    driver3 = X.root / "pilote3.py"
+    driver3.write_text("import importlib.util, sys\n"
+                       "spec = importlib.util.spec_from_file_location('lanceur', sys.argv[1])\n"
+                       "m = importlib.util.module_from_spec(spec); spec.loader.exec_module(m)\n"
+                       "sys.exit(m.run_exe(sys.argv[2], sys.argv[3:]))\n", encoding="utf-8")
+    t0 = time.time()
+    r = subprocess.run([sys.executable, "-I", "-S", str(driver3), str(CODE / "brain.py"), str(exe), "add", "Rempoter"],
+                       input=b"", capture_output=True, env=X.env, cwd=str(X.work), timeout=60)
+    took = time.time() - t0
+    check(r.returncode == 4 and took < 4 and r.stdout.decode() == "AJOUT Rempoter\n" and r.stderr.decode() == "AVERTI\n",
+          "brain.exe simulé : commande ordinaire, sa tâche de fond (envoi différé) ne retient pas l'appelant ; sortie, "
+          "erreurs et code rendus", (round(took, 1), r.returncode, r.stdout[:80], r.stderr[:80]))
     Path(str(exe) + ".echec").write_text("1")
     c, out = via_exe("session-start", {"session_id": "x2", "cwd": str(X.work)})
     check(c == 3 and out.strip() == "sortie brute", "brain.exe simulé : code d'erreur → sortie et code rendus tels quels", (c, out))

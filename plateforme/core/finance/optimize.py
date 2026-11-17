@@ -39,7 +39,7 @@ TURNOVER_METHODS: frozenset[Method] = frozenset(
 SECTOR_METHODS: frozenset[Method] = TURNOVER_METHODS | {"parite_de_risque"}
 TOLERANCE = 1e-6  # on a weight, a sector sum or the turnover; above it, the solution is refused
 RESIDUE = 1e-9  # a weight below it is a solver residue and set to zero
-# Risk budgeting (ADR-061): with Clarabel's default tolerances (1e-8) a weight was off by about
+# Risk budgeting (ADR-068): with Clarabel's default tolerances (1e-8) a weight was off by about
 # 4e-6 and its rounded display changed between Linux and Windows (4,09 % / 4,10 %). At 1e-12
 # it settles within about 1e-7 on both; tighter, Clarabel reports an inaccurate solution.
 RISK_BUDGETING_SOLVER = "CLARABEL"

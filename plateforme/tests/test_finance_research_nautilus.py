@@ -13,7 +13,7 @@ from pathlib import Path
 import pytest
 from hypothesis import assume, event, given, settings
 from hypothesis import strategies as st
-from nautilus_trader.model.objects import MONEY_MAX
+from nautilus_trader.model.objects import MONEY_MAX, Quantity
 
 from core.config.loader import load_config
 from core.finance.fixtures import load_research, research_costs
@@ -246,6 +246,32 @@ def test_nautilus_agrees_on_any_small_market(
     check = nautilus.cross_check(ours, theirs, TOLERANCE)
     assert check.passed, (check.trade_gaps[:3], check.relative_gap)
     assert theirs.positions.equals(ours.positions)
+    assert check.fees_gap == pytest.approx(0, abs=1e-6)
+
+
+def test_nautilus_quantities_are_read_exactly() -> None:
+    """C27: on the 16-decimal build (Linux), ``as_double()`` reads 999 499 shares as
+    999 498.9999999999; the adapter reads the exact decimal value instead."""
+    for shares in (1, 59_045, 999_499, 123_456_789):
+        assert nautilus._shares(Quantity.from_int(shares)) == shares
+
+
+def test_nautilus_counts_every_share_of_a_large_order() -> None:
+    """C27, the shape of the market the property test found: 999 499 shares bought with all
+    the cash, then sold. Both engines report the same quantities and the same fees."""
+    days = DAYS[:11]
+    history = synthetic(
+        [row(IDS[0], day, 1.0) for day in days] + [row(IDS[1], day, 499.0) for day in days]
+    )
+    plan = {day: {IDS[0]: 1.0} for day in days[1:9]} | {days[9]: {IDS[1]: 0.6}}
+    costs = Costs("frais tirés (test)", 0.0, 1.0, 0.0005)
+    window = {"start": days[0], "end": days[-1], "cutoff": CUTOFF, "costs": costs}
+    ours = engine.run(Script(plan), {}, history, **window, initial_cash=1_000_000.0)
+    theirs = nautilus.run(Script(plan), {}, history, **window, initial_cash=1_000_000.0)
+    assert ours.trades[0].fill.quantity == 999_499
+    assert [t.quantity for t in theirs.trades] == [t.fill.quantity for t in ours.trades]
+    check = nautilus.cross_check(ours, theirs, TOLERANCE)
+    assert check.passed, check.trade_gaps
     assert check.fees_gap == pytest.approx(0, abs=1e-6)
 
 
