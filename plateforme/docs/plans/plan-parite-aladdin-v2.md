@@ -1,6 +1,7 @@
 # Plan v2 — Réparer le cerveau et l'amener au niveau d'Aladdin dans tes domaines
 
-Date : 17/11/2026 · Statut : **proposé**, en attente de ta validation.
+Date : 17/11/2026, mis à jour le même jour après l'intégration des PR #12 et #7 dans la PR #18 ·
+Statut : **proposé**, en attente de ta validation.
 
 Cette version remplace la v1 du même jour (`docs/plans/plan-parite-aladdin.md`, dans la
 [PR #18](https://github.com/destingood/cerveau-claude/pull/18)). Elle garde l'étape 0 de la v1, déjà
@@ -18,7 +19,8 @@ finance et l'organisation du dépôt.
    mémoire par un serveur MCP (le branchement standard des outils de Claude). C'est le schéma
    d'Aladdin Copilot : un chef d'orchestre, un registre d'outils testés, des garde-fous.
 3. D'abord, réparer : **un seul endroit pour le code** (il y en a trois, et `brain publish` écrase
-   GitHub), puis **fusionner le travail qui attend** (PR #12 depuis 19 jours, PR #18 depuis cette nuit).
+   GitHub), puis **finir de fusionner le travail qui attend** : la PR #18 réunit désormais l'étape 0
+   de la v1, la PR #12 et la PR #7.
 4. Ensuite, chacun de tes domaines devient un « pack » mesuré, avec le même cycle qu'Aladdin :
    données → analyse → décision → **action après ton accord** → résultat mesuré → leçon.
 5. 16 étapes en 4 blocs : Réparer, Unifier, Étendre, Durer. Chaque étape finit par un critère
@@ -52,7 +54,7 @@ privés.
 | Plan v1 | L'améliorer | Cette v2 ; l'étape 0 de la v1 est gardée |
 | Domaines | Finance ; e-commerce et business ; création de contenu ; code et automatisation ; et en détail : montage vidéo, gestion client, recherche de clients, recherche d'emploi, CV (contenu et design), rétention (vidéos et clients), Windows, réseaux (sociaux et internet du PC) | 4 nouveaux packs (§5) |
 | Autonomie hors finance | Agir après ton accord (N3) | Une seule chaîne d'approbation pour tous les domaines (étape 7) |
-| PR #12 | L'intégrer d'abord | Étape 1 |
+| PR #12 | L'intégrer d'abord | Faite dans la PR #18 ; reste à fusionner dans `main` (étape 1) |
 | Budget API | 0 € | Claude Code dirige (étape 4) ; aucune campagne payante ; mesures sur ton abonnement (étape 8) |
 | Logiciel de montage | After Effects | Scripts After Effects générés et rendu en ligne de commande (étape 10) |
 
@@ -60,14 +62,14 @@ privés.
 
 Mesures de cette session sur `main` (`176a9c2`, cerveau 8.22.0) : Linux, Python 3.13, git 2.43,
 clone superficiel. Le reste vient des PR et de leur CI. Les lignes « Travail en attente » et
-« Plugin, tests » tiennent compte des trois PR que tu as fusionnées pendant la rédaction
-(`main` à `a190251`).
+« Plugin, tests » tiennent compte de ce qui a bougé depuis : trois PR fusionnées dans `main`
+(`a190251`) et l'intégration des PR #12 et #7 dans la PR #18.
 
 | Sujet | Constat |
 |---|---|
 | Où vit le code | À trois endroits : ton dossier de développement du plugin (avec le code Rust de `brain.exe`, absent du dépôt), le dépôt local de la plateforme (recopié ici en sous-arbre), et GitHub, que les sessions cloud modifient directement. `brain publish` efface le dépôt et le recopie depuis ton dossier ; il ne garde que `.git`, `CONTRIBUTORS.md` et `plateforme/` |
-| Travail en attente | 6 PR ouvertes et 15 autres branches au moment de la mesure ; tu as fusionné depuis les PR #13, #14 et #16 (17/11, 04:19 UTC). Restent la PR #7, la PR #12 (phase 7 et pack Business : 499 fichiers, 77 689 lignes ajoutées), en attente depuis le 29/10, et la PR #18 (étape 0 de la v1), depuis cette nuit. Les PR #12 et #18 créent un **ADR-061** différent et modifient 4 mêmes fichiers. Ton prénom revient dans 23 lignes de la PR #18, alors que la PR #12 l'a retiré du dépôt. Depuis la fusion de la PR #14, la PR #18 est aussi en conflit avec `main` sur `tests/test_eco.py` |
-| Plugin, tests | 8 scripts sur 12 passent. Échecs : `test_eco` (3), `test_ecommerce` (3, dont 2 données personnelles dans un dépôt public), `test_wiki` (1), `test_bascule` (ne démarre pas). La PR #18 les corrige ; sa CI passe sous Linux et macOS, échoue sous Windows (`test_commun`, envoi différé, cause inconnue). Depuis la fusion de la PR #14, `test_eco` passe sur `main` (203 vérifications) |
+| Travail en attente | 6 PR ouvertes et 15 autres branches au moment de la mesure. Depuis : les PR #13, #14 et #16 sont fusionnées dans `main` (04:19 UTC). À ta demande (« fusionner toutes les PR »), une autre session a intégré dans la PR #18 `main`, la PR #12 (phase 7 et pack Business, en attente depuis le 29/10) et la PR #7, conflits résolus. La PR #19 corrige l'échec Windows de `test_commun` par-dessus la PR #18. Il reste dans la PR #18 **deux ADR-061** (calculateur business et tolérance du solveur) |
+| Plugin, tests | 8 scripts sur 12 passent. Échecs : `test_eco` (3), `test_ecommerce` (3, dont 2 données personnelles dans un dépôt public), `test_wiki` (1), `test_bascule` (ne démarre pas). La PR #18 les corrige ; sa CI passe sous Linux et macOS, échoue sous Windows (`test_commun`, envoi différé). Depuis la fusion de la PR #14, `test_eco` passe sur `main` (203 vérifications). La PR #19 corrige `test_commun` : sa CI passe sous Linux, macOS et Windows |
 | Plugin, serveur MCP | Ne démarre pas quand le dépôt est ouvert comme projet (`${CLAUDE_PLUGIN_ROOT}` non défini), reproduit dans cette session. Corrigé dans la PR #18 |
 | Plugin, code | 30 347 lignes ; 14 alertes de lint réelles (8 imports inutiles, 6 f-strings vides) ; `mapper.py` et `cli.py` dépassent 2 400 lignes |
 | Plateforme, tests | 6 801 réussis, 205 échecs, 5 erreurs, en 17 min 32 s. 208 viennent de git 2.43 (le pack Code exige 2.45). 2 viennent de NautilusTrader : le plafond de montant diffère entre Linux et Windows (C18), et un cas trouvé par un test aléatoire, reproductible, où le backtest maison vend 999 499 titres et NautilusTrader 999 498 (C27). Avec un git récent, la CI de la PR #18 passe sous Linux |
@@ -83,14 +85,14 @@ clone superficiel. Le reste vient des PR et de leur CI. Les lignes « Travail en
 
 | # | Problème | État |
 |---|---|---|
-| C1, C2, C6 à C11, C18 | CI, garde-fous à la racine, serveur MCP, tests et lint du plugin, git < 2.45, plafond NautilusTrader | Corrigés dans la PR #18, pas encore fusionnée ; un échec Windows reste (C22) |
+| C1, C2, C6 à C11, C18 | CI, garde-fous à la racine, serveur MCP, tests et lint du plugin, git < 2.45, plafond NautilusTrader | Corrigés dans la PR #18, pas encore fusionnée ; l'échec Windows restant (C22) est corrigé par la PR #19 |
 | C3 | Le plugin livre toute la plateforme | Ouvert → étape 2 |
 | C4 | Données personnelles dans un dépôt public | Fichiers corrigés (PR #18) ; ton nom complet reste dans l'historique git → D4 |
 | C5 | `brain.exe` sans son code source | Ouvert → étape 0 |
 | C12 | 38 fonctions bloquées par des réglages | Ouvert → étape 6 |
 | C13 | Aucune mesure réelle | Ouvert ; à 0 €, autre méthode → étape 8 |
 | C14 | Plateforme sans mémoire | Ouvert → étape 5 |
-| C15 | Sécurité avant toute action réelle | B200, B230, B292 et B316 fermés par la PR #12 (à vérifier après fusion). Restent B8, B9, B228, B235 → étapes 7 et 15 |
+| C15 | Sécurité avant toute action réelle | B200, B230, B292 et B316 fermés par la PR #12, désormais dans la PR #18 (à vérifier). Restent B8, B9, B228, B235 → étapes 7 et 15 |
 | C16 | Erreurs de calcul de la revue quantitative | Ouvert → étape 9 |
 | C17 | `ref.db` à la racine (B148) | Ta décision, déjà au backlog |
 
@@ -99,10 +101,10 @@ clone superficiel. Le reste vient des PR et de leur CI. Les lignes « Travail en
 | # | Problème | Étape |
 |---|---|---|
 | C19 | **Trois endroits pour le code.** `brain publish` efface GitHub et le recopie depuis ton dossier : les corrections faites dans le cloud (PR #18 : CI, garde-fous, serveur MCP, tests) disparaîtront à la prochaine publication si personne ne les recopie à la main | 0 |
-| C20 | PR #12 et PR #18 non fusionnées et en conflit : deux ADR-061, 4 fichiers modifiés des deux côtés, prénom réintroduit par la PR #18. La PR #18 est aussi en conflit avec `main` (`tests/test_eco.py`, modifié par la PR #14) | 1 |
+| C20 | Rien de tout cela n'est encore dans `main`. La PR #18 réunit l'étape 0, la PR #12 et la PR #7, conflits résolus ; il y reste deux ADR-061 (calculateur business et tolérance du solveur) | 1 |
 | C21 | **À 0 € d'API, la plateforme ne fait rien en vrai.** Son chef d'orchestre (LangGraph) appelle l'API, et aucun serveur MCP ne la relie à Claude Code | 4 |
-| C22 | `test_commun` échoue sous Windows (envoi différé) ; il n'avait jamais tourné ailleurs que sur ton PC | 1 |
-| C23 | Dépôt encombré : 6 branches déjà fusionnées ou contenues ailleurs, 3 anciennes à vérifier, et désormais celles des PR #13, #14 et #16 ; la PR #7 attend une décision. Les dossiers `fortnite-arene-prestige/` et `fortnite-ile/` (PR #13 et #16) sont à la racine de `main`, hors de ce que `brain publish` garde : la prochaine publication les effacera, et chaque utilisateur du plugin les reçoit | 0 et 1 |
+| C22 | `test_commun` échoue sous Windows (envoi différé) ; il n'avait jamais tourné ailleurs que sur ton PC. Correctif proposé dans la PR #19, CI verte sur les quatre configurations | 1 |
+| C23 | Dépôt encombré : 6 branches déjà fusionnées ou contenues ailleurs, 3 anciennes à vérifier, et désormais celles des PR #7, #12, #13, #14 et #16. Les dossiers `fortnite-arene-prestige/` et `fortnite-ile/` (PR #13 et #16) sont à la racine de `main`, hors de ce que `brain publish` garde : la prochaine publication les effacera, et chaque utilisateur du plugin les reçoit | 0 et 1 |
 | C24 | Les hooks lancent `python` : sur un Mac ou un Linux sans cet alias, le cerveau ne tourne pas et ne le dit pas (le README donne la parade à la main) | 3 |
 | C25 | 33 skills sans aucune mesure de qualité ; certaines automatisent des sites tiers (aspiration, rétro-ingénierie d'API) : conditions d'utilisation à vérifier (R15) | 3 |
 | C26 | Hors finance, aucun critère pour passer de N1 à N3, et l'autonomie maximale écrite est N1 ou N2 : « agir après ton accord » est impossible aujourd'hui | 7 |
@@ -167,20 +169,19 @@ compte rendu, arrêt jusqu'à ton GO. « Toi » dit ce qui ne peut venir que de 
   ajoutes le code Rust de `brain.exe`, ou tu choisis de l'abandonner (D2) ; la plateforme suit D3.
 - Fin : une correction faite dans le cloud et une faite sur ton PC arrivent toutes les deux dans la
   version publiée (test).
-- La PR #12 peut être fusionnée avant (étape 1) : elle ne touche que `plateforme/`, que
-  `brain publish` n'efface pas.
+- D'ici là, pas de `brain publish` : il effacerait les dossiers Fortnite de `main`, même avec la
+  liste de dossiers gardés de la PR #18.
 
-**Étape 1 — Fusionner le travail en attente** (C20, C22, C23, C27)
-1. PR #12 : CI verte (Linux, Windows, évals hors ligne), puis vérifier que B200, B230, B292 et B316
-   sont bien fermés.
-2. PR #18 remise à jour sur la nouvelle `main` : son ADR-061 devient ADR-068 ; les conflits, dont
-   `tests/test_eco.py` avec la PR #14, sont résolus sans baisser un seuil ni retirer un cas (R9) ; le prénom devient « l'utilisateur », comme
-   dans la PR #12.
-3. Les deux échecs restants : `test_commun` sous Windows et le cas NautilusTrader de C27. Chacun
-   est expliqué puis corrigé, sans désactiver le test ; le cas de C27 est gardé comme exemple fixe
-   du test, pour que la CI le rejoue toujours.
-4. PR #7 selon D10 ; dossiers Fortnite selon D11, avant toute publication ; branches fusionnées
-   supprimées.
+**Étape 1 — Finir la fusion du travail en attente** (C20, C22, C23, C27)
+
+La PR #18 a déjà intégré `main`, la PR #12 et la PR #7, et la PR #19 corrige `test_commun`. Reste :
+1. PR #19 fusionnée dans la PR #18 ; CI de la PR #18 entièrement verte.
+2. Doublon ADR-061 : l'ADR du solveur devient ADR-068 ; celui du calculateur business, cité par le
+   backlog, garde son numéro.
+3. Le cas NautilusTrader de C27 : expliqué puis corrigé, sans désactiver le test, et gardé comme
+   exemple fixe pour que la CI le rejoue toujours.
+4. B200, B230, B292 et B316 vérifiés, puis la PR #18 fusionnée dans `main`.
+5. Dossiers Fortnite selon D11, avant toute publication ; branches fusionnées supprimées.
 - Fin : `main` contient la phase 7, le pack Business et l'étape 0 de la v1 ; CI verte sous Linux,
   Windows et macOS ; chaque PR et chaque branche restante a une suite décidée.
 
@@ -362,10 +363,10 @@ compte rendu, arrêt jusqu'à ton GO. « Toi » dit ce qui ne peut venir que de 
 | D7 | Les réseaux sociaux visés | À préciser avant l'étape 10 |
 | D8 | Canal des approbations | Discord, déjà construit ; alertes ntfy sur ton téléphone |
 | D9 | Modèle local pour la nuit | Seulement si ta carte graphique le permet (`brain pc` le mesure) |
-| D10 | PR #7 (panel de clients simulés) | L'intégrer au pack Clients |
+| D10 | PR #7 (panel de clients simulés) | Tranché : intégrée dans la PR #18 ; elle servira au pack Clients |
 | D11 | Dossiers Fortnite des PR #13 et #16, fusionnés le 17/11 | Les déplacer dans un dépôt à part pour tes projets ; sinon, les protéger de `brain publish` |
 | D12 | Courtier | Interactive Brokers (v1, P5) |
-| D13 | ADR-061 du solveur (PR #18) | Le valider, renuméroté ADR-068 |
+| D13 | ADR-061 du solveur (PR #18) | Le valider, renuméroté ADR-068, avec ses deux valeurs de référence corrigées (rotation 72,32 %, VaR 1 088,56 €) |
 
 ## 9. Confiance et points à vérifier
 
@@ -395,5 +396,6 @@ compte rendu, arrêt jusqu'à ton GO. « Toi » dit ce qui ne peut venir que de 
 1. Tu valides ce plan, ou tu le corriges, et tu tranches D1 à D4.
    **D'ici là, ne lance pas `brain publish`** : d'après `brainkit/publish.py` de `main`, il
    effacerait les dossiers Fortnite que tu viens de fusionner.
-2. L'étape 1 peut commencer tout de suite par la PR #12 : elle ne touche que `plateforme/`.
+2. L'étape 1 est presque faite par les PR #18 et #19 : il reste le doublon ADR-061, le cas
+   NautilusTrader (C27), puis la fusion dans `main`.
 3. L'étape 0 demande une action sur ton PC ; son complément de plan te donnera les commandes.
