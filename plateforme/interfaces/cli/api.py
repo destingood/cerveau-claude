@@ -1,6 +1,6 @@
 """`cerveau api serve`: the local internal API, on the loopback only (D1, D16, ADR-037).
 
-Lucas starts it himself, with ``CERVEAU_API_TOKEN`` set as a user environment variable; Claude
+The user starts it himself, with ``CERVEAU_API_TOKEN`` set as a user environment variable; Claude
 Code's hooks refuse to start it (D22). Without a long enough token the API does not start.
 """
 

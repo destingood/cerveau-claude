@@ -1454,7 +1454,7 @@
       "reason": "ok"
     },
     {
-      "case": "approbation-refus-de-lucas",
+      "case": "approbation-refus-de-l-utilisateur",
       "suite": "behaviors",
       "group": "finance_approbation",
       "mode": "offline",

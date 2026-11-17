@@ -6,7 +6,7 @@ step of delay; one step ahead covers a phone clock that runs fast), every candid
 constant time, and a step at or below the last accepted one is refused: a code never serves twice
 (RFC 6238 §5.2).
 
-The secret is base32, as the ``otpauth://`` URI carries it, and lives in Lucas's environment
+The secret is base32, as the ``otpauth://`` URI carries it, and lives in the user's environment
 variable ``CERVEAU_TOTP_SECRET``; it never reaches the repository, a log or the journal (R6). A
 missing or malformed secret refuses every code.
 """
@@ -92,7 +92,7 @@ def generate_secret() -> str:
     return base64.b32encode(secrets.token_bytes(SECRET_BYTES)).decode().rstrip("=")
 
 
-def provisioning_uri(secret: str, *, account: str = "lucas") -> str:
+def provisioning_uri(secret: str, *, account: str = "owner") -> str:
     """The ``otpauth://`` URI an authenticator application scans (Key Uri Format)."""
     decode_secret(secret)
     label = quote(f"{ISSUER}:{account}")

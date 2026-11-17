@@ -1,4 +1,4 @@
-// CERVEAU's Discord bot (ADR-037). Only Lucas starts it (D22): `npm start` in this folder, with
+// CERVEAU's Discord bot (ADR-037). Only the user starts it (D22): `npm start` in this folder, with
 // DISCORD_BOT_TOKEN, CERVEAU_API_TOKEN and CERVEAU_API_URL set and the internal API running.
 // It refuses to start while config/interfaces.yaml leaves its owner A_DEFINIR (R7).
 
@@ -34,10 +34,10 @@ async function main() {
   client.once(Events.ClientReady, async (ready) => {
     try {
       await ready.application.commands.set(COMMANDS);
-      const lucas = await ready.users.fetch(owner);
+      const owner = await ready.users.fetch(owner);
       const poller = createPoller({
         api,
-        send: (payload) => lucas.send(message(payload)),
+        send: (payload) => owner.send(message(payload)),
         cursor,
         log,
       });

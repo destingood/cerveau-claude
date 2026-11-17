@@ -1,6 +1,6 @@
 # ADR-048 — Bac à sable Docker des contrôles de code (plugin `code_checks`)
 
-- Statut : proposé (pytest seulement dans un environnement préparé, image construite par Lucas et
+- Statut : proposé (pytest seulement dans un environnement préparé, image construite par l'utilisateur et
   plafonds validés par E3, E4 et E5 du complément de plan de P3)
 - Date : 2026-10-22
 - Phase : 6 (P3a, pack Code)
@@ -9,9 +9,9 @@
 `run_checks` lance ruff check, ruff format --check et pytest sur un dépôt de la liste blanche
 (ADR-047). Une suite de tests exécute le code du dépôt : ce code est non fiable (R5) et peut
 chercher à lire des secrets (R6), à joindre le réseau, à écrire dans le dépôt ou sur le poste, ou
-à épuiser la machine. E3 : ruff toujours, pytest seulement si Lucas a préparé l'environnement du
+à épuiser la machine. E3 : ruff toujours, pytest seulement si l'utilisateur a préparé l'environnement du
 dépôt, jamais d'installation dans le conteneur. E4 : image `python:3.12-slim` avec ruff et pytest
-figés, construite par Lucas, désignée par son condensé ou son ID (`A_DEFINIR`). E5 : 2 processeurs,
+figés, construite par l'utilisateur, désignée par son condensé ou son ID (`A_DEFINIR`). E5 : 2 processeurs,
 2 Go, 256 processus, 300 s.
 
 Faits vérifiés le 2026-10-22 :
@@ -24,7 +24,7 @@ Faits vérifiés le 2026-10-22 :
   ruff 0.17.1 écrit en JSON `code`, `filename` (absolu), `location`, `message`, etc., et `format
   --check` y signale chaque fichier avec le code `unformatted` ;
 - un appel d'outil MCP dure 30 s au plus (`TOOL_TIMEOUT_S`, `core/mcp/adapter.py`) ;
-- le démon Docker est arrêté sur le poste de Lucas : aucun conteneur réel n'a été lancé pour cet ADR.
+- le démon Docker est arrêté sur le poste de l'utilisateur : aucun conteneur réel n'a été lancé pour cet ADR.
 
 ## Options
 1. **Conteneur Docker durci, copie jetable** : isolement réseau, système de fichiers et ressources
@@ -33,7 +33,7 @@ Faits vérifiés le 2026-10-22 :
 2. **Sous-processus local** (ruff et pytest de l'environnement de CERVEAU) : simple, mais le code du
    dépôt lit le poste, les variables d'environnement et le réseau ; rejeté.
 3. **Machine virtuelle ou WSL dédiée** : isolement plus fort, mais démarrage lent, au-delà du budget
-   d'un appel d'outil, et installation lourde pour Lucas.
+   d'un appel d'outil, et installation lourde pour l'utilisateur.
 4. **Service distant ou CI du dépôt** : aucun code sur le poste, mais exige un jeton et un envoi de
    code hors du poste (E6 : aucun jeton) ; la lecture du statut CI est laissée à `code_ci`.
 
@@ -73,7 +73,7 @@ Option 1, avec ces règles, toutes testées (`tests/test_code_sandbox.py`, `test
 - **Autonomie** : un outil `CALCUL` (`readOnly`, `openWorld: false`), plafond N1, pack à N0.
 
 ## Conséquences
-- L'outil reste bloqué tant que Lucas n'a pas construit l'image et rempli `checks.image` et
+- L'outil reste bloqué tant que l'utilisateur n'a pas construit l'image et rempli `checks.image` et
   `repositories`.
 - `A_VERIFIER` (backlog) : image désignée par un ID local `sha256:` ; chemins Windows dans
   `--mount` ; lecture de la copie par l'utilisateur 65534 ; `pids.max` sous Docker Desktop ; code

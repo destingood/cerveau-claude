@@ -315,7 +315,7 @@ def test_a_task_runs_the_agent_and_returns_its_patch(example: Path, tmp_path: Pa
     assert data["proxy"] == {"requests": 3, "usd": "0.025000", "stopped": None, "refusals": {}}
     assert data["depense"] == {"modeles": {MODEL: TOKENS}, "cout_inconnu": False}
     assert reported(IsolatedTask(MODEL, Decimal(2)), data) is not None
-    # The patch, written for Lucas, who applies it himself.
+    # The patch, written for the user, who applies it himself.
     patch = data["patch"]
     on_disk = done.patch()
     assert patch["folder"] == f"var/code/agent/{data['task_id']}"
@@ -357,7 +357,7 @@ def test_a_leaked_secret_is_masked_and_the_patch_no_longer_applies(
     assert TOKEN not in json.dumps(done.data) + report
 
 
-def test_files_that_run_code_on_lucass_machine_are_flagged(example: Path, tmp_path: Path) -> None:
+def test_files_that_run_code_on_owners_machine_are_flagged(example: Path, tmp_path: Path) -> None:
     patch = agent_task(example, tmp_path, "risque").data["patch"]
     assert patch["risky"] == [".github/workflows/ci.yml", "conftest.py"]
     assert all(f["risky"] for f in patch["files"])
@@ -953,7 +953,7 @@ def test_unwritable_helpers_say_so(tmp_path: Path) -> None:
 # --- configuration and entry point ------------------------------------------------------------
 
 
-def test_the_agent_is_blocked_while_lucas_has_not_set_it() -> None:
+def test_the_agent_is_blocked_while_owner_has_not_set_it() -> None:
     with pytest.raises(SandboxError, match=re.escape("fonction bloquée « code.agent »")):
         load_settings(REPO_ROOT / "config")
 

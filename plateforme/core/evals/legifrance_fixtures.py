@@ -44,7 +44,7 @@ OPEN_END = date(2999, 1, 1)  # how Légifrance writes a version with no end
 EXTRACT_CHARS = 200
 SOURCES_FILE = "data_sources.yaml"
 URLS = {env.name: url.encode("ascii") for url, env in ENVIRONMENTS.items()}
-# The url line of the legifrance block, whatever Lucas wrote there: the case decides in its copy.
+# The url line of the legifrance block, whatever the user wrote there: the case decides in its copy.
 _URL_LINE = re.compile(rb"^(    url: )[^ \t\r\n#]+([ \t]*(?:#[^\r\n]*)?\r?\n)", re.M)
 _BLOCK = re.compile(rb"\n  legifrance:\r?\n")
 _NEXT_KEY = re.compile(rb"\n(?:  )?[^ \r\n#]")  # the next key of the block's level or above

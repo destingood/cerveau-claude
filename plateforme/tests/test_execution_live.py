@@ -20,17 +20,19 @@ import yaml
 
 from core.approvals.store import ApprovalRules, ApprovalState, ApprovalStore, Trail
 from core.approvals.totp import totp
-from core.config.loader import Config, ConfigError, load_config
+from core.config.loader import Config, ConfigError, LiveConfig, load_config
 from core.execution.broker import AccountStatement, BrokerAck, BrokerAdapter, FillBatch
 from core.execution.intent import OrderIntent
 from core.execution.live import (
     LIVE_FILE,
+    NO_LIVE_GATE,
     ActivationCheck,
     Condition,
     LiveAdapter,
     LiveDisabled,
     Verdict,
     live_incomplete,
+    live_limits,
 )
 from core.governance.signatures import SIGNATURES_DIR
 from core.policy.engine import KILL_SWITCH_FILE
@@ -56,7 +58,7 @@ COMPLETE: dict[str, Any] = {
         "max_orders_per_day": 2,
     },
     "allow": {"leverage": False, "short_selling": False, "derivatives": False},
-    "instruments_whitelist": ["FR0010315770"],
+    "instruments_whitelist": ["FR0010315770", "FICT-ACME"],
 }
 ALL_HOLD: Verdict = dict.fromkeys(Condition)
 
@@ -148,9 +150,18 @@ def adapter(
     *,
     owner: bool = True,
     timeout: float = 5.0,
+    now: datetime = NOW,
 ) -> LiveAdapter:
-    check = ActivationCheck(root, store, owner=lambda _path: owner)
-    return LiveAdapter(client, store, check, call_timeout_s=timeout, kill_target_s=10)
+    check = ActivationCheck(root, store, owner=lambda _path: owner, limits=gate_passes)
+    return LiveAdapter(
+        client, store, check, call_timeout_s=timeout, kill_target_s=10, clock=lambda: now
+    )
+
+
+def gate_passes(live: LiveConfig, intent: OrderIntent) -> str | None:
+    """A live risk gate that accepts every whitelisted order: none exists yet (B353)."""
+    reason = live_limits(live, intent)
+    return None if reason == NO_LIVE_GATE else reason
 
 
 def failing(caught: pytest.ExceptionInfo[LiveDisabled]) -> set[Condition]:
@@ -218,7 +229,9 @@ def test_an_incomplete_live_file_refuses(
     client = Client()
     with pytest.raises(LiveDisabled, match="aucun appel au courtier") as caught:
         adapter(project(tmp_path, live=live), approvals, client).submit(intent, now=NOW)
-    assert caught.value.failures == ((Condition.CONFIGURATION, reason),)
+    # An empty whitelist also fails the seventh condition, which reads it.
+    assert caught.value.failures[0] == (Condition.CONFIGURATION, reason)
+    assert failing(caught) <= {Condition.CONFIGURATION, Condition.LIMITES}
     assert client.calls == []
     assert approvals.get(approval_id, now=NOW).state is ApprovalState.ACCORDEE
 
@@ -237,8 +250,10 @@ def test_a_file_the_current_account_owns_refuses(tmp_path: Path, approvals: Appr
         seen.append(path)
         return path != root / SIGNATURES_DIR
 
-    check = ActivationCheck(root, approvals, owner=owner)
-    live = LiveAdapter(Client(), approvals, check, call_timeout_s=5, kill_target_s=10)
+    check = ActivationCheck(root, approvals, owner=owner, limits=gate_passes)
+    live = LiveAdapter(
+        Client(), approvals, check, call_timeout_s=5, kill_target_s=10, clock=lambda: NOW
+    )
     with pytest.raises(LiveDisabled) as caught:
         live.submit(intent, now=NOW)
     assert caught.value.failures == (
@@ -253,8 +268,12 @@ def test_a_signature_file_left_writable_is_named(tmp_path: Path, approvals: Appr
     granted(approvals, intent)
     root = project(tmp_path)
     signature = root / SIGNATURES_DIR / "2026-10-21-finance-N3.md"
-    check = ActivationCheck(root, approvals, owner=lambda path: path != signature)
-    live = LiveAdapter(Client(), approvals, check, call_timeout_s=5, kill_target_s=10)
+    check = ActivationCheck(
+        root, approvals, owner=lambda path: path != signature, limits=gate_passes
+    )
+    live = LiveAdapter(
+        Client(), approvals, check, call_timeout_s=5, kill_target_s=10, clock=lambda: NOW
+    )
     with pytest.raises(LiveDisabled) as caught:
         live.submit(intent, now=NOW)
     assert caught.value.failures == (
@@ -333,8 +352,12 @@ def test_a_configuration_without_finance_refuses(tmp_path: Path, approvals: Appr
             config, autonomy=config.autonomy.model_copy(update={"domains": domains})
         )
 
-    check = ActivationCheck(root, approvals, owner=lambda _path: True, load=load)
-    live = LiveAdapter(Client(), approvals, check, call_timeout_s=5, kill_target_s=10)
+    check = ActivationCheck(
+        root, approvals, owner=lambda _path: True, load=load, limits=gate_passes
+    )
+    live = LiveAdapter(
+        Client(), approvals, check, call_timeout_s=5, kill_target_s=10, clock=lambda: NOW
+    )
     with pytest.raises(LiveDisabled) as caught:
         live.submit(intent, now=NOW)
     assert caught.value.failures == ((Condition.NIVEAU, "niveau effectif absent, N3 requis"),)
@@ -351,13 +374,18 @@ def test_an_unreadable_configuration_refuses(
     def load(_directory: Path) -> Config:
         raise error
 
-    check = ActivationCheck(root, approvals, owner=lambda _path: True, load=load)
-    live = LiveAdapter(Client(), approvals, check, call_timeout_s=5, kill_target_s=10)
+    check = ActivationCheck(
+        root, approvals, owner=lambda _path: True, load=load, limits=gate_passes
+    )
+    live = LiveAdapter(
+        Client(), approvals, check, call_timeout_s=5, kill_target_s=10, clock=lambda: NOW
+    )
     with pytest.raises(LiveDisabled) as caught:
         live.submit(intent, now=NOW)
     reason = f"configuration illisible ({type(error).__name__})"
     assert caught.value.failures == (
         (Condition.CONFIGURATION, reason),
+        (Condition.LIMITES, reason),
         (Condition.NIVEAU, reason),
     )
 
@@ -396,7 +424,7 @@ def test_an_overdue_approval_refuses(tmp_path: Path, approvals: ApprovalStore) -
     granted(approvals, intent)
     later = NOW + RULES.expiry
     with pytest.raises(LiveDisabled, match="approbation EXPIREE") as caught:
-        adapter(project(tmp_path), approvals, Client()).submit(intent, now=later)
+        adapter(project(tmp_path), approvals, Client(), now=later).submit(intent, now=NOW)
     assert failing(caught) == {Condition.APPROBATION}
 
 
@@ -417,7 +445,9 @@ def fixed(verdict: Verdict) -> Any:
 
 def test_a_condition_left_out_of_the_verdict_refuses(approvals: ApprovalStore) -> None:
     verdict = {c: None for c in Condition if c is not Condition.ACL}
-    live = LiveAdapter(Client(), approvals, fixed(verdict), call_timeout_s=5, kill_target_s=10)
+    live = LiveAdapter(
+        Client(), approvals, fixed(verdict), call_timeout_s=5, kill_target_s=10, clock=lambda: NOW
+    )
     with pytest.raises(LiveDisabled) as caught:
         live.submit(make_intent(0), now=NOW)
     assert caught.value.failures == ((Condition.ACL, "condition non évaluée"),)
@@ -425,7 +455,9 @@ def test_a_condition_left_out_of_the_verdict_refuses(approvals: ApprovalStore) -
 
 def test_a_request_gone_before_sending_refuses(approvals: ApprovalStore) -> None:
     client = Client()
-    live = LiveAdapter(client, approvals, fixed(ALL_HOLD), call_timeout_s=5, kill_target_s=10)
+    live = LiveAdapter(
+        client, approvals, fixed(ALL_HOLD), call_timeout_s=5, kill_target_s=10, clock=lambda: NOW
+    )
     with pytest.raises(LiveDisabled, match="demande disparue") as caught:
         live.submit(make_intent(0), now=NOW)
     assert failing(caught) == {Condition.APPROBATION}
@@ -436,7 +468,9 @@ def test_an_approval_that_cannot_be_spent_refuses(approvals: ApprovalStore) -> N
     intent = make_intent(0)
     granted(approvals, intent, sha="b" * 64)  # consume refuses another content
     client = Client()
-    live = LiveAdapter(client, approvals, fixed(ALL_HOLD), call_timeout_s=5, kill_target_s=10)
+    live = LiveAdapter(
+        client, approvals, fixed(ALL_HOLD), call_timeout_s=5, kill_target_s=10, clock=lambda: NOW
+    )
     with pytest.raises(LiveDisabled, match="autre intention") as caught:
         live.submit(intent, now=NOW)
     assert failing(caught) == {Condition.APPROBATION}
@@ -448,7 +482,9 @@ def test_cancelling_and_reading_need_no_condition(approvals: ApprovalStore) -> N
         raise AssertionError("the check is for submissions only")
 
     client = Client()
-    live = LiveAdapter(client, approvals, refuse, call_timeout_s=5, kill_target_s=10)
+    live = LiveAdapter(
+        client, approvals, refuse, call_timeout_s=5, kill_target_s=10, clock=lambda: NOW
+    )
     assert live.cancel_all(reason="kill switch", now=NOW) == ()
     assert live.cancel(make_intent(0).intent_id, reason="test", now=NOW)
     assert live.open_orders() == ()
@@ -468,7 +504,9 @@ def test_a_broker_that_does_not_answer_times_out(approvals: ApprovalStore) -> No
     granted(approvals, intent)
     client = Client()
     client.hold = threading.Event()
-    live = LiveAdapter(client, approvals, fixed(ALL_HOLD), call_timeout_s=0.05, kill_target_s=1)
+    live = LiveAdapter(
+        client, approvals, fixed(ALL_HOLD), call_timeout_s=0.05, kill_target_s=1, clock=lambda: NOW
+    )
     try:
         with pytest.raises(TimeoutError, match=r"submit sans réponse après 0\.05 s"):
             live.submit(intent, now=NOW)
@@ -482,7 +520,9 @@ def test_a_broker_error_reaches_the_caller(approvals: ApprovalStore) -> None:
     granted(approvals, intent)
     client = Client()
     client.error = ConnectionError("coupé")
-    live = LiveAdapter(client, approvals, fixed(ALL_HOLD), call_timeout_s=5, kill_target_s=10)
+    live = LiveAdapter(
+        client, approvals, fixed(ALL_HOLD), call_timeout_s=5, kill_target_s=10, clock=lambda: NOW
+    )
     with pytest.raises(ConnectionError, match="coupé"):
         live.submit(intent, now=NOW)
 
@@ -508,3 +548,53 @@ def test_the_timeout_stays_under_the_kill_switch_target(
         LiveAdapter(
             Client(), approvals, fixed(ALL_HOLD), call_timeout_s=timeout, kill_target_s=target
         )
+
+
+# The seventh condition and the adapter's clock (B200, B230, ADR-067) ---------------------------
+
+
+def test_without_a_live_gate_every_order_is_refused(
+    tmp_path: Path, approvals: ApprovalStore
+) -> None:
+    intent = make_intent(0)
+    granted(approvals, intent)
+    client = Client()
+    check = ActivationCheck(project(tmp_path), approvals, owner=lambda _path: True)
+    live = LiveAdapter(
+        client, approvals, check, call_timeout_s=5, kill_target_s=10, clock=lambda: NOW
+    )
+    with pytest.raises(LiveDisabled) as caught:
+        live.submit(intent, now=NOW)
+    assert caught.value.failures == ((Condition.LIMITES, NO_LIVE_GATE),)
+    assert client.calls == []
+
+
+def test_an_instrument_off_the_whitelist_is_refused(
+    tmp_path: Path, approvals: ApprovalStore
+) -> None:
+    intent = make_intent(0)
+    granted(approvals, intent)
+    client = Client()
+    root = project(tmp_path, live={**COMPLETE, "instruments_whitelist": ["FR0010315770"]})
+    with pytest.raises(LiveDisabled) as caught:
+        adapter(root, approvals, client).submit(intent, now=NOW)
+    assert caught.value.failures == ((Condition.LIMITES, "FICT-ACME hors de la liste blanche"),)
+    assert client.calls == []
+
+
+def test_the_adapter_reads_its_own_clock(tmp_path: Path, approvals: ApprovalStore) -> None:
+    """A caller passing an earlier time cannot revive an expired approval (B230)."""
+    intent = make_intent(0)
+    granted(approvals, intent)
+    client = Client()
+    check = ActivationCheck(
+        project(tmp_path), approvals, owner=lambda _path: True, limits=gate_passes
+    )
+    later = NOW + timedelta(days=30)
+    live = LiveAdapter(
+        client, approvals, check, call_timeout_s=5, kill_target_s=10, clock=lambda: later
+    )
+    with pytest.raises(LiveDisabled) as caught:
+        live.submit(intent, now=NOW)
+    assert failing(caught) == {Condition.APPROBATION}
+    assert client.calls == []

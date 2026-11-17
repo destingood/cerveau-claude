@@ -204,19 +204,19 @@ REFUSALS: list[tuple[str, dict[str, Any], str, str]] = [
         "exclude-symbol",
         {"compliance__exclusions_personnelles": ["aaa"]},
         "compliance",
-        "exclu par Lucas : aaa",
+        "exclu par l'utilisateur : aaa",
     ),
     (
         "exclude-sector",
         {"compliance__exclusions_personnelles": ["TECH"]},
         "compliance",
-        "exclu par Lucas : tech",
+        "exclu par l'utilisateur : tech",
     ),
     (
         "exclude-isin",
         {"compliance__exclusions_personnelles": ["fr0000000001"]},
         "compliance",
-        "exclu par Lucas : fr0000000001",
+        "exclu par l'utilisateur : fr0000000001",
     ),
     (
         "exclusion-marker",

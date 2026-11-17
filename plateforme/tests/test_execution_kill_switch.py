@@ -133,7 +133,7 @@ def stopped(root: Path, **changes: Any) -> Stop:
         "trigger": "commande",
         "reason": "essai",
         "journal": MemoryJournal(),
-        "actor": "lucas",
+        "actor": "owner",
         "request_id": "kill-test",
         "now": NOW,
         "target_seconds": 5.0,
@@ -142,7 +142,7 @@ def stopped(root: Path, **changes: Any) -> Stop:
 
 
 def booked(journal: Any) -> OrderBook:
-    return OrderBook.memory(Recorder(journal=journal, actor="lucas", request_id="kill-test"))
+    return OrderBook.memory(Recorder(journal=journal, actor="owner", request_id="kill-test"))
 
 
 def validated(book: OrderBook, n: int) -> UUID:
@@ -193,7 +193,7 @@ def test_a_stop_cancels_every_open_order_and_reports_what_is_unconfirmed(tmp_pat
 
     entries = journal.entries[before:]
     assert [e["event"] for e in entries] == ["KILL", "ORDER_STATE", "KILL"]
-    assert {e["actor"] for e in entries} == {"lucas"}
+    assert {e["actor"] for e in entries} == {"owner"}
     assert entries[0]["payload"] == {
         "kill_switch": "declenchement",
         "trigger": "commande",
@@ -240,7 +240,7 @@ def test_a_stop_refuses_every_open_approval(tmp_path: Path) -> None:
     with ApprovalStore.memory(RULES, Trail(journal, "kill-test")) as approvals:
         waiting, granted, refused = (ask(approvals, now=NOW) for _ in range(3))
         assert approvals.approve(granted, totp(KEY, NOW), key=KEY, now=NOW).accepted
-        approvals.refuse(refused, reason="non", actor="lucas", now=NOW)
+        approvals.refuse(refused, reason="non", actor="owner", now=NOW)
         stop = stopped(tmp_path, journal=journal, approvals=approvals)
         states = {key: approvals.get(key, now=NOW).state for key in (waiting, granted, refused)}
     assert sorted(stop.approvals_refused) == sorted((waiting, granted))
@@ -505,7 +505,7 @@ def test_a_thousand_open_orders_stop_within_five_seconds(tmp_path: Path) -> None
     journal = AuditJournal(tmp_path / "var" / "audit" / "journal.jsonl")
     adapter = Broker(cancel_all=[TimeoutError(), tuple(ids)], on_call=lambda: time.sleep(0.5))
     with OrderBook.open(
-        default_book_path(tmp_path), recorder=Recorder(journal, "lucas", "kill-test")
+        default_book_path(tmp_path), recorder=Recorder(journal, "owner", "kill-test")
     ) as book:
         started = time.monotonic()
         stop = stopped(tmp_path, journal=journal, adapter=adapter, book=book)
@@ -657,12 +657,12 @@ def test_a_rearm_is_refused(
     assert journal.entries == [] and kill_switch_engaged(tmp_path) is engaged
 
 
-def test_lucas_rearms_at_the_console(tmp_path: Path) -> None:
+def test_owner_rearms_at_the_console(tmp_path: Path) -> None:
     stopped(tmp_path)
     journal = MemoryJournal()
     _rearm(tmp_path, journal)
     assert kills(journal) == [{"kill_switch": "rearmement"}]
-    assert journal.entries[0]["actor"] == "lucas"
+    assert journal.entries[0]["actor"] == "owner"
     assert not kill_switch_engaged(tmp_path) and not state_path(tmp_path).exists()
     assert detect(tmp_path, journal=journal, request_id="start", now=NOW) == "armed"
 
@@ -854,7 +854,7 @@ def test_cerveau_kill_refuses_the_open_approvals(home: Path, config_dir: Path) -
 
 
 def _no_rules(_: object) -> ApprovalRules:
-    raise ApprovalError("paramètres d'approbation à définir par Lucas (R7)")
+    raise ApprovalError("paramètres d'approbation à définir par l'utilisateur (R7)")
 
 
 def test_cerveau_kill_without_approval_rules_or_store(
@@ -887,7 +887,7 @@ def test_cerveau_kill_reports_what_it_cannot_open(
     assert kill_switch_engaged(home)
 
 
-def test_lucas_rearms_with_the_cli(
+def test_owner_rearms_with_the_cli(
     home: Path, config_dir: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     order = _book_on_disk(home)  # sent, no simulator: its cancellation is unconfirmed

@@ -152,7 +152,7 @@ def test_a_token_of_the_minimum_length_starts_it(root: Path) -> None:
         None,
         "Bearer wrong",
         f"Basic {TOKEN}",
-        "Basic " + base64.b64encode(f"lucas:{TOKEN}".encode()).decode(),  # dashboard only
+        "Basic " + base64.b64encode(f"owner:{TOKEN}".encode()).decode(),  # dashboard only
         f"Bearer {TOKEN}x",
     ],
 )
@@ -303,7 +303,7 @@ def test_status_counts_the_requests_and_says_why_the_store_is_closed(
     assert approvals["pending"] == 1
 
     def closed(_: object) -> ApprovalRules:
-        raise ApprovalError("paramètres d'approbation à définir par Lucas (R7)")
+        raise ApprovalError("paramètres d'approbation à définir par l'utilisateur (R7)")
 
     monkeypatch.setattr(ApprovalRules, "from_config", staticmethod(closed))
     approvals = client(root, defined).get("/status").json()["approvals"]
@@ -498,7 +498,7 @@ def test_approving_needs_a_store_a_request_and_a_secret(
     assert "secret TOTP absent" in missing.json()["detail"]
 
     def closed(_: object) -> ApprovalRules:
-        raise ApprovalError("paramètres d'approbation à définir par Lucas (R7)")
+        raise ApprovalError("paramètres d'approbation à définir par l'utilisateur (R7)")
 
     monkeypatch.setattr(ApprovalRules, "from_config", staticmethod(closed))
     shut = opened.post(f"/approvals/{approval}/approve", json={"code": code()})
@@ -670,7 +670,7 @@ def test_serving_binds_the_loopback(
     assert kwargs["proxy_headers"] is False
 
 
-def test_enrolling_happens_at_lucas_terminal_only(
+def test_enrolling_happens_at_owner_terminal_only(
     root: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     monkeypatch.setenv("CERVEAU_HOME", str(root))

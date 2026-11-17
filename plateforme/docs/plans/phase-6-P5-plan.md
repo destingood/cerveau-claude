@@ -162,7 +162,7 @@ Répartition des cas du golden :
 - **Campagne réelle P5** : environ 32 cas du golden, une dizaine de cas de red team et les suites relancées, soit **5 à 15 $** (estimation, même base que P2 et P4). Elle n'a lieu qu'avec ton accord, après celles de P3a, P3b et P4, toujours en attente.
 - Budgets journalier et mensuel `A_DEFINIR` : tout appel réel reste bloqué (R7).
 
-## 11. Décisions demandées à Lucas
+## 11. Décisions demandées à l'utilisateur
 
 | # | Décision | Options | Ma recommandation |
 |---|---|---|---|

@@ -157,7 +157,7 @@ def test_the_agent_writes_to_its_copy_only(tmp_path: Path) -> None:
     assert option(command, "--network") == [TASK.network]
     confined(command, LIMITS, AGENT_TMPFS)
     assert "--init" in command
-    # No file of more than 100 MiB (F5); the unit is A_VERIFIER on Lucas's Docker (B287).
+    # No file of more than 100 MiB (F5); the unit is A_VERIFIER on the user's Docker (B287).
     assert option(command, "--ulimit") == [f"fsize={MAX_FILE_SIZE}"]
     assert MAX_FILE_SIZE == 100 * 1024 * 1024
     assert option(command, "--mount") == [

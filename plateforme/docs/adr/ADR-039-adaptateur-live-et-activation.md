@@ -1,12 +1,12 @@
 # ADR-039 — Adaptateur live présent mais désactivé : six conditions revérifiées à chaque appel
 
-- Statut : accepté (D8, D9 et D19 du plan de phase 5, validées par Lucas le 21/10/2026)
+- Statut : accepté (D8, D9 et D19 du plan de phase 5, validées par l'utilisateur le 21/10/2026)
 - Date : 2026-10-21
 - Phase : 5
 
 ## Contexte
 Le §17 exige un adaptateur live présent mais désactivé, et une activation impossible sans action
-manuelle de Lucas. `config/live.yaml` vaut `enabled: false`, `broker: A_DEFINIR`, limites à 0 et
+manuelle de l'utilisateur. `config/live.yaml` vaut `enabled: false`, `broker: A_DEFINIR`, limites à 0 et
 liste blanche vide. Les hooks sont un confort ; la protection effective est l'ACL (ADR-003, B1,
 B2).
 

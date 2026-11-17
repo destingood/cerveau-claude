@@ -1,6 +1,6 @@
 # ADR-052 — Délai d'un appel d'outil déclaré par le plugin
 
-- Statut : **proposé** (F8 du complément de plan P3b, validé par Lucas le 22/10/2026)
+- Statut : **proposé** (F8 du complément de plan P3b, validé par l'utilisateur le 22/10/2026)
 - Date : 2026-10-22
 - Phase : 6 (P3b)
 
@@ -42,7 +42,7 @@ Option 2.
 ## Conséquences
 - B272 n'est réglé qu'en partie : dans une requête ordinaire, `per_request.max_seconds` (120 s,
   `config/budgets.yaml`) coupe toujours l'appel plus tôt ; `code_checks` dispose alors d'au plus
-  105 s. Relever ce budget relève de Lucas ; `code_agent` aura un budget de tâche propre (commit 5).
+  105 s. Relever ce budget relève de l'utilisateur ; `code_agent` aura un budget de tâche propre (commit 5).
 - B282 est atténué pour `code_checks` (le budget des conteneurs finit avant la coupure) mais reste
   ouvert : un `docker kill` qui échoue laisse un conteneur vivant. `code_agent` le traite par
   `--init`, `--stop-timeout`, des étiquettes et un balayage.

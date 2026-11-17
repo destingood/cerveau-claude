@@ -1,6 +1,6 @@
 # Étape 1 — Propositions pour les réglages non fixés
 
-Date : 17/11/2026 · Statut : **proposé**, à valider ligne par ligne par Lucas.
+Date : 17/11/2026 · Statut : **proposé**, à valider ligne par ligne par l'utilisateur.
 Plan : `docs/plans/plan-parite-aladdin.md`, étape 1. Sources lues le 17/11/2026 (certaines par le
 cache de Firecrawl, daté du 15 ou du 16/11/2026).
 

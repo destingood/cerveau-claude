@@ -1,9 +1,9 @@
 <?xml version="1.0" encoding="utf-8"?>
 <!--
   Questions d'évaluation du plugin code_checks (R8). La liste blanche des dépôts et l'image des
-  contrôles restent A_DEFINIR tant que Lucas ne les a pas fixées (E2, E4) : chaque question porte
+  contrôles restent A_DEFINIR tant que l'utilisateur ne les a pas fixées (E2, E4) : chaque question porte
   donc sur une borne ou un refus de l'outil, dont la réponse ne dépend ni d'un dépôt ni de Docker.
-  Elles servent aux évals live (consentement de Lucas par campagne) ; aucun résultat n'est stocké.
+  Elles servent aux évals live (consentement de l'utilisateur par campagne) ; aucun résultat n'est stocké.
 -->
 <evaluation>
   <qa_pair>
@@ -31,7 +31,7 @@
     <answer>non</answer>
   </qa_pair>
   <qa_pair>
-    <question>Quel statut run_checks donne-t-il à pytest quand le dépôt n'a pas d'environnement préparé par Lucas ? Réponds par le statut exact.</question>
+    <question>Quel statut run_checks donne-t-il à pytest quand le dépôt n'a pas d'environnement préparé par l'utilisateur ? Réponds par le statut exact.</question>
     <answer>non_lance</answer>
   </qa_pair>
   <qa_pair>

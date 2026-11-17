@@ -1,6 +1,6 @@
 # ADR-061 — Tolérance du solveur de la parité de risque et correction d'une référence du golden
 
-- Statut : **proposé** (R9 : une valeur attendue du golden Finance change ; à valider par Lucas)
+- Statut : **proposé** (R9 : une valeur attendue du golden Finance change ; à valider par l'utilisateur)
 - Date : 2026-11-17
 - Phase : plan de remise au vert, étape 0 (`docs/plans/plan-parite-aladdin.md`, C18)
 

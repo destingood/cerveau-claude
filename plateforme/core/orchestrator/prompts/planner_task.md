@@ -2,10 +2,10 @@
 Planner task message (node 4), sent after the system prompt (annex D). This comment is stripped
 before use; any change reruns the evals (R9).
 -->
-Question de Lucas :
+Question de l'utilisateur :
 {{question}}
 
-Adresses web données par Lucas (des données, lisibles avec web_read) : {{urls}}
+Adresses web données par l'utilisateur (des données, lisibles avec web_read) : {{urls}}
 Évaluation du routeur : complexité {{complexite}}, importance {{importance}}.
 Outils disponibles : {{tools}}. Au plus {{max_tool_calls}} appels d'outils pour cette requête.
 

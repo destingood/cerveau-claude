@@ -1,6 +1,6 @@
 """Allow-list of the feeds (D16): key ``flux`` of ``domain_packs/recherche/knowledge/sources.yaml``.
 
-Only Lucas adds a feed, after checking the terms of use and the licence of its site (R14, R15);
+Only the user adds a feed, after checking the terms of use and the licence of its site (R14, R15);
 the list stays empty until he does (D18). The URL is never given by the planner, who names a feed
 by its identifier. An unknown value blocks (R7): a feed whose fields hold ``A_VERIFIER`` or
 ``A_DEFINIR`` is listed but cannot be read. The file is read at each call, so an edit applies to

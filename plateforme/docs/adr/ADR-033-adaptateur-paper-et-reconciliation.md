@@ -1,6 +1,6 @@
 # ADR-033 — Adaptateur paper maison, recoupé par NautilusTrader, et réconciliation
 
-- Statut : accepté (D1, D2, D14 à D16 du plan de phase 4, validées par Lucas le 20/10/2026)
+- Statut : accepté (D1, D2, D14 à D16 du plan de phase 4, validées par l'utilisateur le 20/10/2026)
 - Date : 2026-10-20
 - Phase : 4
 
@@ -20,7 +20,7 @@ Faits relevés le 20/10/2026 dans NautilusTrader 1.231.0 (code installé) :
 
 ## Options
 1. `sandbox` NautilusTrader : flux live obligatoire.
-2. Compte paper IBKR : compte de Lucas, TWS ou Gateway, clés hors dépôt.
+2. Compte paper IBKR : compte de l'utilisateur, TWS ou Gateway, clés hors dépôt.
 3. **Simulateur maison**, sans réseau, recoupé par NautilusTrader en tests.
 
 ## Décision
@@ -45,11 +45,11 @@ Option 3 ; IBKR paper au backlog.
 - **Réconciliation (D14, D15)** : après chaque exécution et chaque jour, le livre de CERVEAU, rejoué
   par `core/finance/portfolio`, est comparé au relevé de l'adaptateur (positions exactes, cash au
   centime). Un écart donne une alerte, une entrée au journal et le blocage des nouvelles intentions.
-  Il se lève après une réconciliation propre **et** un acquittement de Lucas en terminal
+  Il se lève après une réconciliation propre **et** un acquittement de l'utilisateur en terminal
   interactif. Un écart issu d'un incident d'exécution déclenche le kill switch. Le journal de
   réconciliation (`var/paper/reconciliation.db`, insertion seule) garde les écarts et leurs
   montants ; le journal d'audit reçoit une entrée `DECISION` par réconciliation et une entrée
-  `APPROVAL` (acteur `lucas`) par acquittement, avec les actifs en écart, des nombres et des empreintes, sans montant
+  `APPROVAL` (acteur `owner`) par acquittement, avec les actifs en écart, des nombres et des empreintes, sans montant
   (`core/execution/reconcile.py`).
 
 ## Conséquences
@@ -109,6 +109,6 @@ rapport au plan de phase 4 (§10) :
   positions hors de son univers sont ignorées. Une candidate refusée ne propose rien et la raison
   figure dans les remarques du rapport.
 - **CLI** : `cerveau paper run` (codes de sortie 0, 1, 2 et 4), `paper status`, `paper orders`,
-  `paper report` (lecture seule, rien n'est créé), `paper acquitter` (Lucas seul, terminal
+  `paper report` (lecture seule, rien n'est créé), `paper acquitter` (l'utilisateur seul, terminal
   interactif, B177) et `cerveau status` (B54).
 - **Non couvert** : écart paper/backtest et compteurs N2→N3 (B181).

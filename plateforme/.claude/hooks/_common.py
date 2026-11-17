@@ -26,7 +26,7 @@ IS_WINDOWS = os.name == "nt"
 # Write-protected: Claude Code never modifies these (R3, R4, R11, governance).
 WRITE_PROTECTED_FILES = ("config/live.yaml",)
 # var/approvals holds the approval store (D18) and var/promotion the promotion reports a signature
-# cites (ADR-040, B226): only CERVEAU, run by Lucas, writes there.
+# cites (ADR-040, B226): only CERVEAU, run by the user, writes there.
 WRITE_PROTECTED_DIRS = (
     "governance/approvals",
     "var/approvals",
@@ -34,10 +34,10 @@ WRITE_PROTECTED_DIRS = (
     "var/incidents",
     "var/promotion",
 )
-# The bot's npm scripts run at every `make bot-test` (B229): only Lucas changes them.
+# The bot's npm scripts run at every `make bot-test` (B229): only the user changes them.
 BOT_MANIFEST = "interfaces/discord_bot/package.json"
 # Kill switch (R4, ADR-034): creating KILL stops CERVEAU and stays allowed; removing, moving or
-# rewriting it would rearm CERVEAU, which only Lucas does (`cerveau rearm`).
+# rewriting it would rearm CERVEAU, which only the user does (`cerveau rearm`).
 KILL_FILE = "governance/kill_switch/KILL"
 # Read-protected: never read, never written (R6). `.env.example` is a template without secrets.
 ENV_EXAMPLE = ".env.example"
@@ -230,7 +230,7 @@ def kill_switch_reason(abs_norm: str, *, creating: bool = False) -> str | None:
     shown = relative_to_root(abs_norm) or abs_norm
     return (
         f"{shown} : supprimer, déplacer ou réécrire le fichier KILL réarmerait le kill switch ; "
-        "seul Lucas réarme, par cerveau rearm (R4)"
+        "seul l'utilisateur réarme, par cerveau rearm (R4)"
     )
 
 
@@ -248,11 +248,11 @@ def write_protection_reason(abs_norm: str, *, creating: bool = False) -> str | N
     rel = relative_to_root(abs_norm)
     if rel is not None:
         if rel in map(_fold, WRITE_PROTECTED_FILES):
-            return f"{rel} est protégé (R3) : seul Lucas le modifie, à la main"
+            return f"{rel} est protégé (R3) : seul l'utilisateur le modifie, à la main"
         if rel == _fold(BOT_MANIFEST):
             return (
                 f"{rel} est protégé (B229) : ses scripts npm s'exécutent à chaque make bot-test ; "
-                "seul Lucas le modifie"
+                "seul l'utilisateur le modifie"
             )
         for directory in map(_fold, WRITE_PROTECTED_DIRS):
             if rel == directory or rel.startswith(directory + "/"):

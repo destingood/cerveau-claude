@@ -628,7 +628,7 @@ def test_injected_page_is_treated_as_data(rig: Rig) -> None:
     assert injection["extracts_rejected"] == 2
 
 
-def test_a_link_cannot_carry_lucas_data_back(rig: Rig) -> None:
+def test_a_link_cannot_carry_owner_data_back(rig: Rig) -> None:
     _read_insee(
         rig,
         final(
@@ -640,7 +640,7 @@ def test_a_link_cannot_carry_lucas_data_back(rig: Rig) -> None:
         ),
     )
     answer = rig.ask("Quelle est la population de la France ? Je suis Jean Dupont.").answer
-    assert "nom=" not in answer.developpement  # the domain is a source's, the data is Lucas's
+    assert "nom=" not in answer.developpement  # the domain is a source's, the data is the user's
     assert answer.developpement.endswith(f"le détail,  et {REMOVED} pour Jean Dupont.")
     assert answer.links_removed == 3
     assert any("(insee.fr)" in note for note in answer.signalements)
@@ -663,7 +663,7 @@ def test_no_link_keeps_a_pseudonym(text: str) -> None:
     assert "PERSON_1" not in _Links([INSEE])(text)
 
 
-def test_an_address_lucas_gave_is_read_but_journaled_masked(
+def test_an_address_owner_gave_is_read_but_journaled_masked(
     rig: Rig, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     monkeypatch.setattr(FakePseudonymiser, "NAMES", ("jean-dupont",))
@@ -677,10 +677,10 @@ def test_an_address_lucas_gave_is_read_but_journaled_masked(
     assert rig.world.calls == [("web_read", {"url": given})]  # the plugin reads the real page
     assert rig.world.journaled == [("web_read", {"url": masked})]
     assert "jean-dupont" not in rig.brain.texts()
-    assert [source.url for source in answer.sources] == [given]  # shown as Lucas wrote it
+    assert [source.url for source in answer.sources] == [given]  # shown as the user wrote it
 
 
-def test_an_address_lucas_gave_keeps_its_pseudonyms() -> None:
+def test_an_address_owner_gave_keeps_its_pseudonyms() -> None:
     given = "https://blog.example/u/<PERSON_1>"
     links = _Links([given])
     text = f"[profil]({given}), {given}. Mais pas {given}?x=<EMAIL_2> ni <PERSON_1> seul."
@@ -952,7 +952,7 @@ def test_trace_sees_only_pseudonymised_text(traced: tuple[Rig, FakeTracer]) -> N
     rig.brain.route["web"] = False
     rig.brain.planner = [final(synthese="Rien de fiable sur <PERSON_1>.")]
     result = rig.ask("Que sait-on de Jean Dupont ?")
-    assert "Jean Dupont" in result.answer.synthese  # re-identified for Lucas only
+    assert "Jean Dupont" in result.answer.synthese  # re-identified for the user only
     traced_text = " ".join(tracer.handler.texts) + json.dumps(tracer.finished)
     assert "<PERSON_1>" in traced_text
     assert "Jean Dupont" not in traced_text
@@ -1052,7 +1052,7 @@ CODE_ROUTE = {
     "complexite": "simple",
     "importance": "normale",
     "web": False,
-    "raison": "dépôt de Lucas",
+    "raison": "dépôt de l'utilisateur",
 }
 
 
@@ -1080,7 +1080,7 @@ def _code_rig(root: Path, config: Config, verdict: dict[str, Any]) -> tuple[Rig,
     return rig, seen
 
 
-def test_a_code_agent_task_waits_for_lucas(tmp_path: Path, config_dir: Path) -> None:
+def test_a_code_agent_task_waits_for_owner(tmp_path: Path, config_dir: Path) -> None:
     rig, seen = _code_rig(tmp_path, _config(config_dir), AGENT_TASK)
     answer = rig.ask("Corrige le test en échec de mon dépôt.").answer
     assert answer.statut == "refus"

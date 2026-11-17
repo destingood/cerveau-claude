@@ -1,6 +1,7 @@
 """Frozen index of MITRE ATT&CK Enterprise, built from one pinned STIX bundle (ADR-056).
 
-`cerveau cyber attack-fetch`, run by Lucas, checks the downloaded bundle against its pin and builds
+`cerveau cyber attack-fetch`, run by the user, checks the downloaded bundle against its pin and
+builds
 this index; the bundle itself is not kept. The ``cyber_attack`` plugin reads the index only: no
 network. Texts of the bundle are external data (R5): one line, invisible characters and
 citations removed, cut.
@@ -46,7 +47,7 @@ NOTICE = (
     "of The MITRE Corporation."
 )
 TERMS_URL = "https://attack.mitre.org/resources/legal-and-branding/terms-of-use/"
-FETCH_HINT = "lancer `cerveau cyber attack-fetch --version {version}` (Lucas)"
+FETCH_HINT = "lancer `cerveau cyber attack-fetch --version {version}` (the user)"
 
 Kind = Literal[
     "tactic",
@@ -177,7 +178,7 @@ class AttackIndex(_Strict):
 
 @dataclass
 class BuildReport:
-    """What the build kept and left out, shown to Lucas after a fetch."""
+    """What the build kept and left out, shown to the user after a fetch."""
 
     kinds: Counter[str] = field(default_factory=Counter)
     skipped: int = 0  # a known type without a valid ATT&CK identifier or name

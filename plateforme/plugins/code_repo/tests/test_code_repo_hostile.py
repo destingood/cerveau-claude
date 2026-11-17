@@ -52,7 +52,7 @@ def hostile(tmp_path: Path) -> tuple[Path, Path]:
     # A commit carrying a signature, on its own branch: showing it would call gpg.program.
     tree = git(repo, "rev-parse", "HEAD^{tree}").strip()
     parent = git(repo, "rev-parse", "HEAD").strip()
-    who = "Lucas Test <lucas@example.test> 1792483200 +0200"
+    who = "Utilisateur Test <utilisateur@example.test> 1792483200 +0200"
     raw = (
         f"tree {tree}\nparent {parent}\nauthor {who}\ncommitter {who}\n"
         "gpgsig -----BEGIN PGP SIGNATURE-----\n \n iQEzBAABCAAdFiEE\n -----END PGP SIGNATURE-----\n"

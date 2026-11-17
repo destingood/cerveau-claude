@@ -471,7 +471,8 @@ class _Researcher:
 
     def _head(self) -> str:
         return (
-            f"Question de Lucas :\n{self.research.question}\n\nDate du jour : {self.research.now}"
+            f"Question de l'utilisateur :\n{self.research.question}\n\n"
+            f"Date du jour : {self.research.now}"
         )
 
     async def plan(self) -> list[SubQuestion]:

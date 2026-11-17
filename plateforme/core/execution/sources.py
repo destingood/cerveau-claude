@@ -53,13 +53,13 @@ class SourceError(Exception):
 
 
 def approved_report(spec: StrategySpec, root: Path) -> Path:
-    """The protocol report Lucas's approval cites, found by its print in ``var/``."""
+    """The protocol report the user's approval cites, found by its print in ``var/``."""
     try:
         approval = load_approval(spec, root / APPROVALS_DIR)
     except RegistryError as exc:
         raise SourceError(str(exc)) from exc
     if approval is None:
-        raise SourceError(f"{spec.id} : aucune approbation de Lucas (ADR-027)")
+        raise SourceError(f"{spec.id} : aucune approbation de l'utilisateur (ADR-027)")
     for path in sorted(default_reports_dir(root).glob(f"{spec.id}-*.json")):
         if report_sha256(path) == approval.rapport_sha256:
             return path

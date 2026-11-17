@@ -7,11 +7,12 @@ is the snapshot bundled with tldextract: no network call.
 
 A link is an exfiltration channel: its URL can carry data, and a Markdown image is fetched by the
 renderer without any click. ``strip_foreign_links`` therefore removes every link or image whose
-domain is not allowed (the verified sources and the URLs Lucas gave). A foreign image disappears;
+domain is not allowed (the verified sources and the URLs the user gave). A foreign image disappears;
 a foreign link keeps its visible text; a bare foreign URL becomes ``(lien retiré)``. Links with
 any other scheme (``javascript:``, ``data:``, relative paths) are removed the same way.
 
-A domain match is not enough for a URL that carries data about Lucas: with ``exact_only``, a URL in
+A domain match is not enough for a URL that carries data about the user: with ``exact_only``, a
+URL in
 which that pattern occurs survives only when it is one of the allowed URLs as is.
 """
 

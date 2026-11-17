@@ -3,7 +3,7 @@
 - every finding cites a tool call or a page of its analyst's own session;
 - every argument cites findings that exist, and answers only arguments of earlier rounds;
 - the manager treats every argument exactly once, a figure in an invalidation condition comes
-  from a tool output, and a figure in a proposal to act from a tool output or Lucas's question,
+  from a tool output, and a figure in a proposal to act from a tool output or the user's question,
   never from a page (R1, R5);
 - a decision to act names its catalyst, tied to findings that exist; without one the proposal
   is blocked, never repaired, and no order intent is drafted from it (ADR-029);
@@ -37,7 +37,7 @@ from core.guardrails.injection import ORDER_SIGNAL, injection_signals
 from core.verification.trace import FIGURE_ORIGIN, Evidence, trace
 
 _SOURCE = re.compile(r"^source \[([1-9][0-9]*)\]$")
-QUESTION = "question"  # origins of the evidence the code writes: Lucas's question, the date
+QUESTION = "question"  # origins of the evidence the code writes: the user's question, the date
 TODAY = "date du jour"
 NO_CATALYST = "décision « agir » sans catalyseur : aucune intention d'ordre n'en naîtra (ADR-029)"
 # A decision to act has no size until its intents exist: the Risk Gate measures each one (B108).

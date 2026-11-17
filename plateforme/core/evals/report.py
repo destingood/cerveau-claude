@@ -22,6 +22,7 @@ from core.evals.cases import REPO_ROOT, Case, Suite, load_cases, suite_files
 from core.evals.checks import Mode
 from core.evals.harness import CASES_DIR
 from core.evals.judge import CRITERIA, golden_threshold
+from core.learning.layer import LEARNED_DIR, layer_digest, snapshot
 
 REPORT_MD = "report.md"
 REPORT_JSON = "report.json"
@@ -242,6 +243,7 @@ class Report:
     created: datetime
     suites: list[SuiteReport]
     review_sample: int
+    learned: str | None = None  # digest of the learned layer the run used (ADR-065)
 
     @property
     def gates(self) -> list[Gate]:
@@ -275,7 +277,7 @@ class Report:
         }
 
     def sample(self) -> list[dict[str, Any]]:
-        """Judgements for Lucas's review: a reproducible draw, not the best or the worst."""
+        """Judgements for the user's review: a reproducible draw, not the best or the worst."""
         judged = [r for suite in self.suites for r in suite.judged]
 
         def draw(result: dict[str, Any]) -> str:
@@ -289,6 +291,7 @@ class Report:
             "mode": self.mode,
             "campaign": self.campaign,
             "config": self.config_digest,
+            "learned": self.learned,
             "created": self.created.isoformat(timespec="seconds"),
             "passed": self.passed,
             "costs": {**self.costs(), "simulated": self.mode == "offline"},
@@ -316,6 +319,7 @@ def build_report(
     campaign: str | None = None,
     root: Path = REPO_ROOT,
     now: datetime | None = None,
+    learned_dir: Path = LEARNED_DIR,
 ) -> Report:
     reports = [
         suite_report(
@@ -336,6 +340,7 @@ def build_report(
         created=now or datetime.now().astimezone(),
         suites=reports,
         review_sample=int(config.evals.judge_human_review_sample_weekly),
+        learned=layer_digest(snapshot(learned_dir)),
     )
 
 
@@ -388,7 +393,8 @@ def _markdown(report: Report) -> list[str]:
     lines += [
         "",
         "Comparaison à la dernière exécution de référence : **bloquée**, "
-        "`regression_block_delta` vaut `A_DEFINIR` dans `config/evals.yaml` (décision de Lucas).",
+        "`regression_block_delta` vaut `A_DEFINIR` dans `config/evals.yaml` (décision de "
+        "l'utilisateur).",
         "",
         "## Suites",
         "",
@@ -438,7 +444,7 @@ def _review(report: Report) -> list[str]:
     sample = report.sample()
     lines = [
         "",
-        f"## Jugements à relire par Lucas ({len(sample)})",
+        f"## Jugements à relire par l'utilisateur ({len(sample)})",
         "",
         "Tirage reproductible (empreinte de l'exécution et du cas), ni les meilleurs ni les pires.",
         "",

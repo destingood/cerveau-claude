@@ -1,4 +1,4 @@
-"""The kill switch (R4, ADR-034): stop everything within a measured target; only Lucas rearms.
+"""The kill switch (R4, ADR-034): stop everything within a measured target; only the user rearms.
 
 Engaged means that ``governance/kill_switch/KILL`` exists: the policy engine then refuses every
 action at N0 (:func:`core.policy.engine.decide`), and so does every reader of the file.
@@ -12,8 +12,8 @@ comes first.
 An order whose cancellation is not confirmed stays open in the book, marked as such in the
 journal, the state and the report, until a reconciliation settles it.
 
-Only Lucas rearms (D12): :func:`rearm` refuses outside an interactive terminal and without the
-confirmation phrase, journals ``KILL`` (actor ``lucas``), then removes the file. A file Lucas
+Only the user rearms (D12): :func:`rearm` refuses outside an interactive terminal and without the
+confirmation phrase, journals ``KILL`` (actor ``owner``), then removes the file. A file the user
 removes by hand is found by :func:`detect` at the next start, from the state file the program
 keeps, and journaled.
 """
@@ -281,7 +281,7 @@ def engage(
 
     ``adapter``, ``book`` and ``approvals`` are None when there is no paper account, book or
     approval store yet: nothing to cancel or refuse there. What the caller could not open goes in
-    ``unavailable``, reported as errors. The book must journal on behalf of ``actor``: ``lucas``
+    ``unavailable``, reported as errors. The book must journal on behalf of ``actor``: ``owner``
     for ``cerveau kill``, ``policy`` for an automatic trigger. An order is moved to ANNULEE when
     the adapter confirms its cancellation, or when it was VALIDEE and the reachable adapter does
     not work it (it was never sent); any other open order stays open, and its cancellation is
@@ -345,7 +345,7 @@ def engage(
         try:
             refused = approvals.refuse_open(
                 reason=f"kill switch ({trigger})",
-                actor="lucas" if actor == "lucas" else "policy",
+                actor="owner" if actor == "owner" else "policy",
                 now=now,
             )
         except Exception as exc:  # still open, but never sent while the stop lasts (R4)
@@ -442,7 +442,7 @@ def render_report(stop: Stop) -> str:
     else:
         verdict = f"AU-DELÀ de la cible de {_seconds(stop.target_s)} s"
     kill = (
-        "présent : l'arrêt dure jusqu'au réarmement par Lucas"
+        "présent : l'arrêt dure jusqu'au réarmement par l'utilisateur"
         if stop.persisted
         else "NON CRÉÉ : l'arrêt ne survit pas au processus, le créer à la main"
     )
@@ -475,7 +475,7 @@ def render_report(stop: Stop) -> str:
         "",
         "## Réarmer",
         "",
-        "Seul Lucas réarme, après avoir vérifié les ordres non confirmés et lancé une "
+        "Seul l'utilisateur réarme, après avoir vérifié les ordres non confirmés et lancé une "
         f"réconciliation : `cerveau rearm` dans un terminal interactif, phrase « {REARM_PHRASE} »,"
         " ou suppression manuelle du fichier, détectée et journalisée au lancement suivant.",
         "",
@@ -492,7 +492,7 @@ def detect(
     versions: Mapping[str, str] | None = None,
 ) -> Status:
     """At start: ``new_file`` when KILL exists without a stop recorded (the caller then engages
-    with the ``fichier`` trigger), ``removed_by_hand`` when a recorded stop lost its file (Lucas
+    with the ``fichier`` trigger), ``removed_by_hand`` when a recorded stop lost its file (the user
     rearmed by hand: journaled, the state cleared), else ``engaged`` or ``armed``."""
     engaged = kill_switch_engaged(project_root)
     state = state_path(project_root)
@@ -515,7 +515,7 @@ def detect(
 
 @dataclass(frozen=True)
 class Recorded:
-    """The stop in force as the state file records it, for Lucas before he rearms."""
+    """The stop in force as the state file records it, for the user before he rearms."""
 
     engaged_at: str
     trigger: str
@@ -557,18 +557,18 @@ def rearm(
     versions: Mapping[str, str] | None = None,
     interactive: Callable[[], bool] = interactive_terminal,
 ) -> None:
-    """Lucas lifts the stop (D12): refused outside an interactive terminal, without the exact
+    """The user lifts the stop (D12): refused outside an interactive terminal, without the exact
     phrase or without a stop. Journaled first, so that no removal goes unrecorded; a removal
     that fails leaves the stop in force."""
     if not interactive():
         raise KillSwitchError(
-            "réarmement refusé : il se fait par Lucas, dans un terminal interactif (D12)"
+            "réarmement refusé : il se fait par l'utilisateur, dans un terminal interactif (D12)"
         )
     if phrase != REARM_PHRASE:
         raise KillSwitchError("réarmement refusé : phrase de confirmation incorrecte")
     if not kill_switch_engaged(project_root):
         raise KillSwitchError("aucun arrêt en cours : rien à réarmer")
-    entries = _Entries(journal, "lucas", request_id, versions, now)
+    entries = _Entries(journal, "owner", request_id, versions, now)
     entries.write({"kill_switch": "rearmement"})
     try:
         (project_root / KILL_SWITCH_FILE).unlink()

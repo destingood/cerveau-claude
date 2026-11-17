@@ -3,7 +3,7 @@
 The server has no action tool. It reads ``BRAVE_SEARCH_API_KEY`` from its own environment (the
 MCP adapter passes it through a whitelist) and never logs or returns it; without the key,
 ``web_search`` answers with an error and ``web_read`` still works. Which URLs may be read is
-decided by the orchestrator (search results or Lucas's question), not here. When the orchestrator
+decided by the orchestrator (search results or the user's question), not here. When the orchestrator
 sets ``CERVEAU_WEB_ALLOWLIST`` (ADR-058), the search drops the results off that list and the
 reader refuses any hop off it, redirections included.
 

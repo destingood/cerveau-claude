@@ -1,6 +1,6 @@
 # ADR-036 — Niveau effectif plafonné par la signature, politique `approbation` en N3
 
-- Statut : accepté (D5, D6, D7 et D10 du plan de phase 5, validées par Lucas le 21/10/2026)
+- Statut : accepté (D5, D6, D7 et D10 du plan de phase 5, validées par l'utilisateur le 21/10/2026)
 - Date : 2026-10-21
 - Phase : 5
 
@@ -19,7 +19,7 @@ modifier ce fichier suffirait donc à promouvoir. Le moteur n'accorde que `auto`
 Option 2, et la décision `approbation` en N3.
 
 - **Signature (D7)** : `governance/approvals/AAAA-MM-JJ-<domaine>-N<k>.md`, avec un en-tête YAML
-  `domain`, `level`, `date`, `promotion_report_sha256`, `signed_by: lucas`. Le code le lit et ne
+  `domain`, `level`, `date`, `promotion_report_sha256`, `signed_by: owner`. Le code le lit et ne
   l'écrit jamais. Une signature compte si son nom, son en-tête et sa date concordent et, à partir
   de N3, si le rapport de promotion cité existe sous `var/promotion/` avec cette empreinte. Une
   signature invalide est ignorée et signalée. Depuis la phase 6 (B240), une signature datée après

@@ -449,7 +449,7 @@ APPROVAL_RULES = ApprovalRules(
 )
 
 
-def test_at_n3_the_intent_waits_for_lucas_approval(tmp_path: Path) -> None:
+def test_at_n3_the_intent_waits_for_owner_approval(tmp_path: Path) -> None:
     built = World(tmp_path, config("N3"))
     built.env.approvals = ApprovalStore.memory(APPROVAL_RULES, Trail(built.journal, "loop-test"))
     report = built.run(MONDAY_RUN)
@@ -666,7 +666,7 @@ SENDING = MONDAY_RUN + timedelta(minutes=3)
 
 @contextmanager
 def drafted_at_n3(tmp_path: Path, at: datetime = MONDAY_RUN) -> Iterator[tuple[World, UUID]]:
-    """A day at N3 whose intent waits for Lucas's approval."""
+    """A day at N3 whose intent waits for the user's approval."""
     built = World(tmp_path, config("N3"))
     built.env.approvals = ApprovalStore.memory(APPROVAL_RULES, Trail(built.journal, "loop-test"))
     try:
@@ -683,7 +683,7 @@ def approvals_of(built: World) -> ApprovalStore:
 
 
 def grant(built: World, intent_id: UUID, at: datetime = GRANTED) -> UUID:
-    """Lucas's right code, ``at``."""
+    """The user's right code, ``at``."""
     request = approvals_of(built).for_intent(intent_id, now=at)
     assert request is not None
     code = totp(KEY, at)
@@ -694,7 +694,7 @@ def grant(built: World, intent_id: UUID, at: datetime = GRANTED) -> UUID:
 def test_an_approved_intent_is_sent_once_to_the_simulator(tmp_path: Path) -> None:
     with drafted_at_n3(tmp_path) as (built, intent_id):
         waiting = send_approved(built.env, now=SENDING)
-        assert (waiting.outcome, waiting.sent) == ("terminee", [])  # Lucas has not answered
+        assert (waiting.outcome, waiting.sent) == ("terminee", [])  # the user has not answered
         assert built.book.order(intent_id).state == OrderState.INTENTION
         approval_id = grant(built, intent_id)
         report = send_approved(built.env, now=SENDING)
@@ -735,7 +735,7 @@ def test_an_answer_other_than_a_grant_rejects_the_intent(
         if answer is ApprovalState.REFUSEE:
             request = approvals.for_intent(intent_id, now=GRANTED)
             assert request is not None
-            approvals.refuse(request.approval_id, reason="non", actor="lucas", now=GRANTED)
+            approvals.refuse(request.approval_id, reason="non", actor="owner", now=GRANTED)
         elif answer is ApprovalState.EXPIREE:
             now = MONDAY_RUN + timedelta(minutes=11)
         else:  # consumed, yet the book still holds the intent: it is never sent twice

@@ -1,22 +1,27 @@
-"""The live adapter: a real broker behind six conditions checked at every submission (ADR-039).
+"""The live adapter: a real broker behind seven conditions checked at every submission (ADR-039,
+ADR-067).
 
 No broker client exists in this phase (D8): :class:`LiveAdapter` wraps any
-:class:`BrokerClient` and refuses to submit an order unless, at that very call (D9):
+:class:`BrokerClient` and refuses to submit an order unless, at that very call (D9), read on its
+own clock (B230):
 
 1. ``config/live.yaml`` is complete: ``enabled``, a broker named, every limit above 0 and a
    non-empty whitelist (R3, R7);
 2. ``config/live.yaml``, ``governance/approvals/`` and every file in it belong to the
    Administrators group, which alone with SYSTEM may write them, or to root, as
    ``protect-live.ps1`` leaves them (B1, B2, ADR-003);
-3. Lucas signed N3 or above for finance, citing a promotion report that exists (ADR-036, D7);
+3. The user signed N3 or above for finance, citing a promotion report that exists (ADR-036, D7);
 4. the effective finance level, min(written, signed), is N3 or above (D6);
 5. the kill switch is not engaged (R4);
-6. the intent has a granted, unexpired approval for ``live``, bound to its very content (D4).
+6. the intent has a granted, unexpired approval for ``live``, bound to its very content (D4);
+7. the order keeps within ``live.yaml``: its instrument is whitelisted, and its size, the position,
+   the day's loss, the day's order count and ``allow`` are checked by a live risk gate. No such gate
+   exists yet, so this condition fails for every order (B200, B353, R7): live stays closed.
 
 Every condition is read again from disk at each submission: nothing is cached, so a change by
-Lucas, or the kill switch, applies to the next call. A false condition raises
+the user, or the kill switch, applies to the next call. A false condition raises
 :class:`LiveDisabled`, which names every failing condition, and the client is never called. Once
-all six hold, the approval is spent, once, before the submission (D4).
+all seven hold, the approval is spent, once, before the submission (D4).
 
 Cancelling and reading never add exposure: ``cancel``, ``cancel_all`` (the kill switch's move)
 and the reads stay allowed whatever the conditions. Every call to the client is bounded by a
@@ -50,9 +55,10 @@ _T = TypeVar("_T")
 
 
 class Condition(StrEnum):
-    """The six conditions of a live submission (D9), in the order they are checked."""
+    """The seven conditions of a live submission (D9), in the order they are checked."""
 
     CONFIGURATION = "configuration_live"
+    LIMITES = "limites_live"
     ACL = "acl"
     SIGNATURE = "signature_n3"
     NIVEAU = "niveau_effectif"
@@ -62,6 +68,7 @@ class Condition(StrEnum):
 
 Verdict = Mapping[Condition, str | None]  # None: the condition holds; else why it does not
 Check = Callable[[OrderIntent, datetime], Verdict]
+Limits = Callable[[LiveConfig, OrderIntent], str | None]  # condition 7: why not, or None
 
 
 class LiveDisabled(Exception):
@@ -107,8 +114,23 @@ def live_incomplete(live: LiveConfig) -> str | None:
     return None
 
 
+NO_LIVE_GATE = (
+    "taille, position, perte du jour, ordres du jour et allow de live.yaml : aucune Porte live "
+    "pour les vérifier (B200, B353, R7)"
+)
+
+
+def live_limits(live: LiveConfig, intent: OrderIntent) -> str | None:
+    """Why the order does not keep within ``live.yaml``, or None (condition 7). Without a live
+    risk gate the limits cannot be checked: an order that cannot be checked is refused."""
+    instrument = intent.instrument
+    if not {instrument.symbol, instrument.isin} & set(live.instruments_whitelist):
+        return f"{instrument.symbol} hors de la liste blanche"
+    return NO_LIVE_GATE
+
+
 class ActivationCheck:
-    """The six conditions, read from the files under ``root`` at each call (D9)."""
+    """The seven conditions, read from the files under ``root`` at each call (D9)."""
 
     def __init__(
         self,
@@ -117,8 +139,10 @@ class ActivationCheck:
         *,
         owner: Callable[[Path], bool] = protected,
         load: Callable[[Path], Config] = load_config,
+        limits: Limits = live_limits,
     ) -> None:
         self.root = root
+        self.limits = limits
         self.approvals = approvals
         self.owner = owner
         self.load = load
@@ -145,9 +169,11 @@ class ActivationCheck:
         }
         if isinstance(config, str):
             verdict[Condition.CONFIGURATION] = config
+            verdict[Condition.LIMITES] = config
             verdict[Condition.NIVEAU] = config
         else:
             verdict[Condition.CONFIGURATION] = live_incomplete(config.live)
+            verdict[Condition.LIMITES] = self.limits(config.live, intent)
             effective = effective_autonomy(config.autonomy, self.root, signed=signed)
             spec = effective.autonomy.domains.get(LIVE_DOMAIN)
             level = "absent" if spec is None else spec.level
@@ -160,7 +186,7 @@ class ActivationCheck:
 
     def _acl(self) -> str | None:
         """Why the live file, the signatures folder or a file in it is not out of reach, or
-        None: a signature left writable could be replaced by one Lucas never wrote."""
+        None: a signature left writable could be replaced by one the user never wrote."""
         folder = self.root / SIGNATURES_DIR
         paths = [self.root / LIVE_FILE, folder]
         try:
@@ -187,7 +213,10 @@ class ActivationCheck:
 
 
 class LiveAdapter:
-    """``BrokerAdapter`` over a real client; only ``submit`` needs the six conditions."""
+    """``BrokerAdapter`` over a real client; only ``submit`` needs the seven conditions.
+
+    ``submit`` judges the conditions and the approval's expiry on ``clock``, never on the caller's
+    ``now`` (B230): a caller cannot revive an expired approval by passing an earlier time."""
 
     def __init__(
         self,
@@ -197,6 +226,7 @@ class LiveAdapter:
         *,
         call_timeout_s: float,
         kill_target_s: float | None,
+        clock: Callable[[], datetime] = lambda: datetime.now().astimezone(),
     ) -> None:
         if not math.isfinite(call_timeout_s) or call_timeout_s <= 0:
             raise ValueError("délai d'appel au courtier : nombre de secondes > 0 attendu")
@@ -212,8 +242,11 @@ class LiveAdapter:
         self._approvals = approvals
         self._check = check
         self._timeout_s = call_timeout_s
+        self._clock = clock
 
     def submit(self, intent: OrderIntent, *, now: datetime) -> BrokerAck:
+        del now  # the caller's time is not trusted (B230)
+        now = self._clock()
         verdict = self._check(intent, now)
         reasons = {c: verdict.get(c, "condition non évaluée") for c in Condition}
         failures = tuple((c, reason) for c, reason in reasons.items() if reason is not None)

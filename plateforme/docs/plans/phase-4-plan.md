@@ -1,10 +1,10 @@
 # Plan — Phase 4 : paper trading (N2) : Porte de risque, intentions d'ordre, exécution simulée, kill switch : F7, F8, F2
 
-Date : 20/10/2026 · Statut : **validé par Lucas le 20/10/2026**, avec les recommandations D1 à D25 du §14.
+Date : 20/10/2026 · Statut : **validé par l'utilisateur le 20/10/2026**, avec les recommandations D1 à D25 du §14.
 
 ## 0. En une phrase
 
-Toute action financière devient une intention d'ordre structurée (Annexe C.2). Des outils déterministes la dimensionnent et la chiffrent ; le moteur de politique puis la Porte de risque la filtrent. La Porte est une fonction pure, couverte à 100 % et éprouvée sur au moins 10 000 cas générés. L'intention ne s'exécute que sur un compte paper simulé. Une machine à états journalisée suit chaque ordre. Une réconciliation a lieu après chaque exécution et chaque jour. Un kill switch, mesuré sous sa cible, coupe tout. La finance reste en N0 tant que Lucas n'a pas signé sa promotion.
+Toute action financière devient une intention d'ordre structurée (Annexe C.2). Des outils déterministes la dimensionnent et la chiffrent ; le moteur de politique puis la Porte de risque la filtrent. La Porte est une fonction pure, couverte à 100 % et éprouvée sur au moins 10 000 cas générés. L'intention ne s'exécute que sur un compte paper simulé. Une machine à états journalisée suit chaque ordre. Une réconciliation a lieu après chaque exécution et chaque jour. Un kill switch, mesuré sous sa cible, coupe tout. La finance reste en N0 tant que l'utilisateur n'a pas signé sa promotion.
 
 ## 1. Vérifié aujourd'hui (20/10/2026)
 
@@ -31,7 +31,7 @@ Toute action financière devient une intention d'ordre structurée (Annexe C.2).
 | F7 Pré-trade et conformité | Porte de risque déterministe (§8.4) ; contrôles de `compliance.yaml` | `[Parité]` pour des règles personnelles | — |
 | F8 Gestion d'ordres | intention C.2 ; machine à états ; carnet d'ordres append-only ; adaptateur paper ; glissement mesuré | `[Approximation]` | adaptateur live (phase 5, désactivé) ; IBKR paper selon D1 |
 | F2 Portefeuille | réconciliation du compte paper après chaque exécution et chaque jour | `[Parité]` | API IBKR en lecture |
-| Autonomie | `proposition` en N1 et `paper` en N2 pour FINANCIERE ; règle N1→N2 ; rétrogradation automatique | — | promotion signée par Lucas après campagne réelle et red team |
+| Autonomie | `proposition` en N1 et `paper` en N2 pour FINANCIERE ; règle N1→N2 ; rétrogradation automatique | — | promotion signée par l'utilisateur après campagne réelle et red team |
 | Kill switch (§8.5) | fichier, `cerveau kill`, dépassement de limite, données perdues, incident d'exécution | — | `/kill` Discord (phase 5) ; ntfy selon D13 |
 
 Critères de sortie du §17 :
@@ -59,7 +59,7 @@ Nouveau paquet `core/execution/` : intentions, machine à états, carnet, adapta
   - Il prend le dernier cours connu à la décision (R10). Le prix limite vaut ce cours ± `limit_offset_pct`, qui doit rester dans la bande de prix (D17).
   - Il cite les appels d'outil sources.
 - **Sources d'intentions** (D7) :
-  1. Une stratégie au statut `candidate` (ADR-027, approuvée par Lucas). Elle rejoue chaque jour le même code qu'en backtest (§10.6), ce qui mesure l'écart paper/backtest exigé pour N2→N3. La fiche gagne `invalidation` et `horizon_jours` ; les empreintes du code et de la grille sont inchangées.
+  1. Une stratégie au statut `candidate` (ADR-027, approuvée par l'utilisateur). Elle rejoue chaque jour le même code qu'en backtest (§10.6), ce qui mesure l'écart paper/backtest exigé pour N2→N3. La fiche gagne `invalidation` et `horizon_jours` ; les empreintes du code et de la grille sont inchangées.
   2. Une décision « agir » du Comité sur une proposition de rééquilibrage. `ManagerDecision` gagne `catalyseur`, obligatoire pour « agir ». Les quantités viennent de `rebalance.py`, jamais du modèle. Ce changement de prompt relance les évals (R9).
 
 ## 4. Moteur de politique : `proposition` en N1, `paper` en N2 — ADR-030
@@ -69,7 +69,7 @@ Nouveau paquet `core/execution/` : intentions, machine à états, carnet, adapta
   - `paper` : l'intention est envoyée au seul adaptateur paper.
   - `simule` (IRREVERSIBLE) et `brouillon` restent refusés : aucun composant ne les porte.
 - **`PolicyDecision`.** Elle remplit enfin `risk_gate` (C.4). La propriété `allowed` est remplacée par un effet explicite : `executer`, `proposer`, `paper` ou `refuser`. Aucun chemin ne devient plus permissif : un test le vérifie sur toute la matrice.
-- **Niveau.** La finance **reste en N0** : en pratique, tout est refusé tant que Lucas ne promeut pas le domaine. Le paper ne tourne qu'en tests, en évals et en développement, avec un niveau injecté dans les tests.
+- **Niveau.** La finance **reste en N0** : en pratique, tout est refusé tant que l'utilisateur ne promeut pas le domaine. Le paper ne tourne qu'en tests, en évals et en développement, avec un niveau injecté dans les tests.
 - **Règle N1→N2** ajoutée à `autonomy.yaml` (D9) : conditions N0→N1, plus red team Finance à 0 violation, plus signature manuelle. `cerveau promotion check` la vérifie. C'est un durcissement, pas un assouplissement.
 - **Rétrogradation automatique** (D10). `execution_incident`, `limit_breach` et `drawdown_breach` déclenchent le kill switch, qui force N0, avec un réarmement manuel. Les trois autres déclencheurs vont au backlog.
 - **Défense en profondeur.** Si `live.yaml` dit `enabled: true`, tout est refusé avec une alerte, car aucun adaptateur live n'existe en phase 4.
@@ -138,7 +138,7 @@ Nouveau paquet `core/execution/` : intentions, machine à états, carnet, adapta
   - Le simulateur tient **sa propre comptabilité**, séparée du livre de CERVEAU : la réconciliation a ainsi un sens.
 - **Recoupement indépendant** (B154). Les exécutions paper sont rejouées dans NautilusTrader avec **son modèle de commission natif**, et le cash et les positions finaux sont comparés (tolérance D12 de la phase 3). Les tests marquent un refus explicite au-delà de `MONEY_MAX` (B122).
 - **Pas de réseau.** Le simulateur lit la base Finance point-in-time ; en tests et en développement, il lit le marché synthétique de la phase 3. Un paper sur cours réels attend une source de cours (D19).
-- **IBKR paper** : backlog sauf choix contraire en D1. Il faut le compte de Lucas, TWS ou Gateway, des clés hors dépôt, et Claude Code n'active jamais un compte broker.
+- **IBKR paper** : backlog sauf choix contraire en D1. Il faut le compte de l'utilisateur, TWS ou Gateway, des clés hors dépôt, et Claude Code n'active jamais un compte broker.
 
 ## 8. Réconciliation (F2, §10.3)
 
@@ -147,7 +147,7 @@ Nouveau paquet `core/execution/` : intentions, machine à états, carnet, adapta
   - Positions : égalité exacte.
   - Cash : égalité au centime.
 - **Écart** : alerte, entrée au journal, blocage des nouvelles intentions (contrôle « Réconciliation » de la Porte).
-  - Le blocage se lève après une réconciliation propre **et** un acquittement de Lucas en terminal interactif (D14).
+  - Le blocage se lève après une réconciliation propre **et** un acquittement de l'utilisateur en terminal interactif (D14).
   - Un écart qui vient d'un incident d'exécution déclenche aussi le kill switch (D15).
 
 ## 9. Kill switch (§8.5) — ADR-034
@@ -167,8 +167,8 @@ Nouveau paquet `core/execution/` : intentions, machine à états, carnet, adapta
   - alerte (D13).
   - Si une annulation n'est pas confirmée, l'ordre est marqué « annulation non confirmée » et une alerte est levée, dans un nombre d'essais borné par la cible.
 - **Cible** : `kill_switch.target_seconds`, recommandé à 5 s (D11). La durée est mesurée du déclenchement jusqu'à tous les ordres annulés et l'état écrit. Un test l'impose avec 1 000 ordres ouverts et un adaptateur lent.
-- **Réarmement par Lucas seulement** (D12).
-  - `cerveau rearm` refuse sans terminal interactif et sans phrase de confirmation, puis journalise `KILL` (« réarmement », acteur `lucas`).
+- **Réarmement par l'utilisateur seulement** (D12).
+  - `cerveau rearm` refuse sans terminal interactif et sans phrase de confirmation, puis journalise `KILL` (« réarmement », acteur `owner`).
   - Une suppression manuelle du fichier est détectée et journalisée.
   - Les hooks refusent à Claude Code `cerveau rearm` ainsi que la suppression, le déplacement ou la modification de `KILL`. C'est un durcissement : la création reste permise, car elle arrête.
 
@@ -185,7 +185,7 @@ Nouveau paquet `core/execution/` : intentions, machine à états, carnet, adapta
 - **Autres commandes** :
   - `cerveau paper status`, `cerveau paper orders`, `cerveau paper report --date` ;
   - `cerveau kill`, `cerveau rearm`, `cerveau status` (B54, partiel).
-- **Lancement** : manuel en phase 4. Le Planificateur de tâches Windows reste un choix de Lucas, documenté (D24).
+- **Lancement** : manuel en phase 4. Le Planificateur de tâches Windows reste un choix de l'utilisateur, documenté (D24).
 - **Rapport quotidien** (Markdown, français, `var/paper/reports/`). Chaque chiffre cite son outil (R1). Il donne :
   - ordres et états ;
   - exécutions, glissement et frais ;
@@ -236,7 +236,7 @@ Nouveau paquet `core/execution/` : intentions, machine à états, carnet, adapta
 
 Aucune. Hypothesis, pytest-cov et NautilusTrader sont déjà là ; l'UUID v7 est écrit dans le projet. Si D1 retient IBKR : ib_async ou l'adaptateur IB de NautilusTrader, vérifiés avant l'ajout (source-verifier, pip-audit, licence).
 
-## 14. Décisions demandées à Lucas
+## 14. Décisions demandées à l'utilisateur
 
 | # | Décision | Options | Ma recommandation |
 |---|---|---|---|

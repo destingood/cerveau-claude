@@ -576,7 +576,8 @@ def _verdict(figs: _Figures, result: ProtocolResult) -> Section:
     notes = [
         "Verdict : « échoué » si une porte échoue, sinon « incomplet » si une porte n'est pas "
         "évaluable, sinon « réussi ». Seul « réussi » rend une stratégie promouvable, et "
-        "seulement sur données et frais réels, par une approbation écrite par Lucas (ADR-027).",
+        "seulement sur données et frais réels, par une approbation écrite par l'utilisateur "
+        "(ADR-027).",
         "Le détail brut de chaque porte, tel que le protocole l'a rendu, est dans le JSON "
         "(portes).",
     ]

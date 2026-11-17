@@ -1,4 +1,4 @@
-"""Lucas's portfolio rebuilt from his transactions, valued in euros and reconciled (ADR-018).
+"""The user's portfolio rebuilt from his transactions, valued in euros and reconciled (ADR-018).
 
 Every imported file is kept. The ledger that stands is recomputed at each read: files apply in
 import order, and each one replaces, account by account, what earlier imports said about its
@@ -490,7 +490,7 @@ def reconciliation_status(
     return result
 
 
-# The two commands Lucas runs -------------------------------------------------------------------
+# The two commands the user runs -------------------------------------------------------------------
 
 
 def _alert(reconciliation: Sequence[AccountReconciliation]) -> dict[str, Any]:

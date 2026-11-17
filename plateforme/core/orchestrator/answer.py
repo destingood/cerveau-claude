@@ -1,12 +1,12 @@
 """Node 6: the answer in format 7.3, and its Markdown rendering (section 7.3, annex D).
 
 Every text the models wrote goes through ``strip_foreign_links``: a link or an image may only
-point to a source that was read or to an address Lucas gave (R5, no exfiltration through a
+point to a source that was read or to an address the user gave (R5, no exfiltration through a
 URL). What was dropped, masked or refused on the way is listed under « Signalements ».
 
 The pseudonyms are put back only after the graph. A link that holds one (``…?d=<EMAIL_1>``) would
-then carry Lucas's data to a domain that a domain check allows: such a link survives only when it
-is exactly an address Lucas gave or a source that was read.
+then carry the user's data to a domain that a domain check allows: such a link survives only when it
+is exactly an address the user gave or a source that was read.
 
 A committee session (D15) answers in the same format, with its decision, horizon, invalidation
 conditions, unresolved disagreements and verdict on top: an « analyse » at N0, a « proposition
@@ -26,7 +26,7 @@ from core.committee.schemas import HORIZONS
 from core.guardrails.injection import injection_signals
 from core.guardrails.pii import PSEUDONYM
 from core.orchestrator.intake import KILL_MESSAGE, LIVE_MESSAGE
-from core.orchestrator.notices import domain_sources, notices, page_sources
+from core.orchestrator.notices import domain_sources, draft_sources, notices, page_sources
 from core.orchestrator.packs import experimental_note
 from core.orchestrator.planner import LIMIT_TEXT, MAX_PLANNER_TURNS
 from core.orchestrator.runtime import Run
@@ -380,7 +380,9 @@ async def output_node(run: Run, state: CerveauState) -> dict[str, Any]:
     if research is not None:
         notes += research_notes(research)
     pages = page_sources(draft.sources)
-    keys = [*draft.data_sources, *pages, *domain_sources(route.domain)]
+    texts = (answer.synthese, answer.developpement, *answer.prochaines_etapes)
+    marker = draft_sources(route.domain, guarded.question, texts)  # D22: by the code (I5)
+    keys = [*draft.data_sources, *pages, *domain_sources(route.domain), *marker]
     update = {
         "signalements": tuple(notes),
         "non_verifies": unverified,

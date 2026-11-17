@@ -1,7 +1,7 @@
 """Test helper: a promotion signature in a temporary project root (ADR-036).
 
 Only tests use it, and only under ``tmp_path``: the real ``governance/approvals/`` belongs to
-Lucas and is never written by code (D18).
+the user and is never written by code (D18).
 """
 
 from __future__ import annotations

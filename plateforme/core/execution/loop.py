@@ -28,7 +28,7 @@ treated again, and a past day is never replayed (R10). Every figure of the repor
 simulator, the book, the store or the Gate, named next to it (R1). The book must journal on
 behalf of ``policy``, the kill switch's automatic actor.
 
-:func:`send_approved` then sends the intents Lucas approved, the same evening: while the live is
+:func:`send_approved` then sends the intents the user approved, the same evening: while the live is
 disabled, an approved intent is a paper order (D10). Each goes through the Gate and the policy
 again before its approval is consumed; the loop's log is not written.
 """
@@ -116,7 +116,7 @@ def default_reports_dir(project_root: Path) -> Path:
 
 
 class LoopError(Exception):
-    """The day cannot go on without Lucas: nothing more is recorded."""
+    """The day cannot go on without the user: nothing more is recorded."""
 
 
 MIGRATIONS: tuple[tuple[int, tuple[str, ...]], ...] = (
@@ -275,7 +275,7 @@ class LoopLog:
                     return
                 raise LoopError(
                     f"valorisation du {valuation.day} déjà enregistrée avec un autre compte : "
-                    "à examiner par Lucas"
+                    "à examiner par l'utilisateur"
                 )
             self._conn.execute(
                 "INSERT INTO valuations (day, equity_eur, cash_eur, positions, valued_at) "
@@ -354,7 +354,7 @@ class PaperDay:
     request_id: str
     sources: Sequence[IntentSource] = ()
     ids: Callable[[], UUID] = uuid7
-    approvals: ApprovalStore | None = None  # where an N3 intent waits for Lucas (ADR-036)
+    approvals: ApprovalStore | None = None  # where an N3 intent waits for the user (ADR-036)
     alerts: Alerts | None = None  # ntfy and Discord (ADR-038); None: journal and console only
 
 
@@ -376,7 +376,7 @@ class IntentOutcome:
 
 @dataclass(frozen=True)
 class SendOutcome:
-    """One intent Lucas was asked to approve, as :func:`send_approved` left it."""
+    """One intent the user was asked to approve, as :func:`send_approved` left it."""
 
     intent_id: UUID
     approval_id: UUID
@@ -782,7 +782,7 @@ def _treat(
         if why is not None:
             reasons = (*reasons, why)
     elif effect == "approbation":
-        # ADR-036: the intent stays INTENTION until Lucas grants, refuses or lets it expire.
+        # ADR-036: the intent stays INTENTION until the user grants, refuses or lets it expire.
         filed = _file_for_approval(env, booked, gate, now)
         if filed is not None:
             env.book.transition(key, OrderState.REJETEE, reason=filed, now=now)
@@ -818,9 +818,9 @@ def _send(
 def _file_for_approval(
     env: PaperDay, booked: OrderIntent, gate: RiskGateResult, now: datetime
 ) -> str | None:
-    """Ask Lucas to approve ``booked`` as the Gate left it; why it cannot be asked, or None.
+    """Ask the user to approve ``booked`` as the Gate left it; why it cannot be asked, or None.
 
-    The summary is the one message that names an amount (D12): what Lucas approves."""
+    The summary is the one message that names an amount (D12): what the user approves."""
     if env.approvals is None:
         return "aucun registre des approbations : l'intention ne peut pas être soumise"
     side = {"BUY": "Achat", "SELL": "Vente"}[booked.side]
@@ -1051,7 +1051,7 @@ def finish_day(env: PaperDay, report: DayReport) -> str:
 
 
 def send_approved(env: PaperDay, *, now: datetime) -> DayReport:
-    """Send to the simulator the intents Lucas approved (ADR-036): while the live is disabled,
+    """Send to the simulator the intents the user approved (ADR-036): while the live is disabled,
     an approved intent is a paper order (D10).
 
     The kill switch is read first, as by :func:`run_day`. Then each intent still ``INTENTION``
@@ -1089,7 +1089,7 @@ def _send_approved(env: PaperDay, approvals: ApprovalStore, report: DayReport) -
         intent = order.intent
         request = approvals.for_intent(intent.intent_id, now=now)
         if request is None or request.state is ApprovalState.DEMANDEE:
-            continue  # a proposal (N1, N2), or a request Lucas has not answered yet
+            continue  # a proposal (N1, N2), or a request the user has not answered yet
         if request.state is not ApprovalState.ACCORDEE:
             why = NOT_SENT[request.state]
             env.book.transition(intent.intent_id, OrderState.REJETEE, reason=why, now=now)
@@ -1405,7 +1405,7 @@ def render_report(report: DayReport, env: PaperDay) -> str:
             f"{len(stop.unconfirmed)}.",
         ]
     elif report.outcome == "arret":
-        lines.append("Déjà engagé : rien n'est traité avant le réarmement par Lucas.")
+        lines.append("Déjà engagé : rien n'est traité avant le réarmement par l'utilisateur.")
     else:
         lines.append("Armé.")
     lines.append("")

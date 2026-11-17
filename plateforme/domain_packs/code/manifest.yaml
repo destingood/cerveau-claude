@@ -4,13 +4,13 @@
 id: code
 version: 0.1.0
 # « expérimental » tant que le golden set n'a pas atteint son seuil en mesure réelle (section 9.3) ;
-# seul Lucas passe le pack en « actif », au vu du rapport d'évals (D2).
+# seul l'utilisateur passe le pack en « actif », au vu du rapport d'évals (D2).
 statut: experimental
 perimetre:
   - Lecture de l'historique, des différences et des fichiers commités des dépôts de la liste
     blanche (code_repo, config/code.yaml#repositories, E2), sans écriture ni copie de travail
     (ADR-047).
-  - Contrôles ruff et, si Lucas a préparé l'environnement du dépôt, pytest, dans un conteneur sans
+  - Contrôles ruff et, si l'utilisateur a préparé l'environnement du dépôt, pytest, dans un conteneur sans
     réseau, en lecture seule et borné (code_checks, ADR-048, E3 à E5).
   - État des derniers runs GitHub Actions d'un dépôt public de la liste blanche, sans jeton
     (code_ci, E6).
@@ -19,7 +19,7 @@ perimetre:
   - Tâche de code confiée à un agent Claude Code (code_agent, ADR-053, ADR-054) sur une copie d'un
     dépôt de la liste blanche, dans un conteneur sans Internet dont seul le proxy de l'API sort ;
     il rend un patch sous var/code/agent/<id>/, contrôlé par ruff et pytest sur la copie, que
-    Lucas relit et applique lui-même (N0, F9).
+    l'utilisateur relit et applique lui-même (N0, F9).
 hors_perimetre:
   - Toute écriture dans un dépôt (commit, branche, push, PR, merge, relance d'un run de CI) ;
     l'agent n'écrit que dans sa copie. N2 (branche locale et PR en brouillon) n'est pas livré ; il
@@ -41,19 +41,19 @@ plugins:
   - code_ci
   - code_agent
 autonomie:
-  # Niveau courant N0, niveau maximal N2 : config/autonomy.yaml, domains.code (D3). Seul Lucas
+  # Niveau courant N0, niveau maximal N2 : config/autonomy.yaml, domains.code (D3). Seul l'utilisateur
   # promeut le pack, à la main, au vu du rapport.
   source: config/autonomy.yaml#domains.code
 sources_autorisees:
-  # Dépôts git locaux de Lucas : la liste blanche de config/code.yaml, A_DEFINIR tant qu'il ne l'a
+  # Dépôts git locaux de l'utilisateur : la liste blanche de config/code.yaml, A_DEFINIR tant qu'il ne l'a
   # pas remplie (R7) ; le dépôt de CERVEAU en est exclu par le code (ADR-047).
   depots: config/code.yaml#repositories
-  # Conteneur des contrôles : image construite par Lucas, figée par condensé (E4), jamais
+  # Conteneur des contrôles : image construite par l'utilisateur, figée par condensé (E4), jamais
   # téléchargée par CERVEAU.
   conteneur: config/code.yaml#checks
   # GitHub Actions : API REST publique, sans jeton (E6), pour le miroir déclaré de chaque dépôt.
   ci: api.github.com (GET /repos/{owner}/{repo}/actions/runs)
-  # Agent : images construites par Lucas, figées par condensé, et modèle, plafonds et budget de
+  # Agent : images construites par l'utilisateur, figées par condensé, et modèle, plafonds et budget de
   # tâche (budgets.yaml#per_code_agent), A_DEFINIR tant qu'il ne les a pas fixés (R7).
   agent: config/code.yaml#agent
   # Seul le proxy de l'agent sort, vers POST /v1/messages ; la clé n'entre pas dans le conteneur

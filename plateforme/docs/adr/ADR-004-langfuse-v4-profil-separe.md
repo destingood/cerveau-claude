@@ -1,6 +1,6 @@
 # ADR-004 — Langfuse v4 auto-hébergé, dans un profil Compose séparé
 
-- Statut : accepté (Lucas, 2026-10-18, décision D13 du plan de phase 1)
+- Statut : accepté (l'utilisateur, 2026-10-18, décision D13 du plan de phase 1)
 - Date : 2026-10-17
 - Phase : 0
 
@@ -36,7 +36,7 @@ le 9090 de MinIO sur toutes les interfaces), secrets obligatoires (`${VAR:?}`) l
   profil `observability` non mesurée (Docker arrêté pendant la phase 0).
 - Dette : images Langfuse épinglées à la version majeure seulement, MinIO sans étiquette ;
   remplacement de MinIO (archivé) et évaluation de Valkey à la place de Redis au backlog.
-- Le premier compte Langfuse est créé par Lucas sur http://localhost:3000 ; fermer ensuite les
+- Le premier compte Langfuse est créé par l'utilisateur sur http://localhost:3000 ; fermer ensuite les
   inscriptions (backlog). Aucune clé Langfuse n'est créée par Claude Code.
 - Réversible : oui ; les volumes de données sont nommés et séparés.
 
@@ -48,7 +48,7 @@ le 9090 de MinIO sur toutes les interfaces), secrets obligatoires (`${VAR:?}`) l
   au 2026-10-18 (release GitHub `v4.63.0` du 2026-10-16 ; tags Docker Hub `langfuse/langfuse:4.63.0`
   et `langfuse/langfuse-worker:4.63.0` présents). La montée de version se fait à la main, avec
   relecture des notes de version.
-- Lucas démarre le profil `observability` et crée les clés du projet ; sans clés, CERVEAU
+- L'utilisateur démarre le profil `observability` et crée les clés du projet ; sans clés, CERVEAU
   désactive les traces avec un avertissement, sans panne.
 - La dette « images épinglées à la version majeure seulement » est levée pour Langfuse ; MinIO
   sans étiquette reste au backlog.

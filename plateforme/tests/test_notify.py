@@ -1,7 +1,7 @@
 """Alerts (ADR-038, B46, B172): minimal content, ntfy, the Discord outbox, never blocking.
 
 No test reaches the network: ntfy answers through ``httpx.MockTransport``, and conftest removes
-Lucas's NTFY_TOPIC and NTFY_TOKEN from every test's environment.
+the user's NTFY_TOPIC and NTFY_TOKEN from every test's environment.
 """
 
 from __future__ import annotations

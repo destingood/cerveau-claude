@@ -1,6 +1,6 @@
 """MCP stdio server of the ``finance_portfolio`` plugin: ``portfolio_snapshot`` (LECTURE).
 
-The server opens the finance store read only at each call; only Lucas's commands write it
+The server opens the finance store read only at each call; only the user's commands write it
 (`cerveau portfolio import`, `cerveau finance sync`). It returns the positions, the cash, the
 weights, the exposures and the reconciliation status as known at ``as_of`` (ADR-018). Every
 number is a figure with its French display and an id (R1); the quantities of a reconciliation
@@ -37,7 +37,8 @@ ANNOTATIONS = ToolAnnotations(
     read_only_hint=True, idempotent_hint=True, destructive_hint=False, open_world_hint=False
 )
 INSTRUCTIONS = (
-    "Lecture du portefeuille de Lucas dans la base finance locale. Les chiffres viennent de "
+    "Lecture du portefeuille de l'utilisateur dans la base finance locale. Les chiffres viennent "
+    "de "
     "l'outil : les citer avec leur affichage, ne jamais les recalculer (R1)."
 )
 

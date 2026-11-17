@@ -266,7 +266,7 @@ def test_a_digest_already_recorded_goes_back_to_its_marker_in_the_copy(tmp_path:
     source.mkdir()
     for path in (REPO_ROOT / "config").glob("*.yaml"):
         shutil.copyfile(path, source / path.name)
-    record_sha256(source, "ab" * 32)  # Lucas has run attack-fetch
+    record_sha256(source, "ab" * 32)  # the user has run attack-fetch
     (source / "notes.txt").write_text("pas une configuration", encoding="utf-8")
     recorded = (source / "data_sources.yaml").read_bytes()
     folder = tmp_path / "cas"

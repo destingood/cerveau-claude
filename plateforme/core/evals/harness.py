@@ -26,6 +26,7 @@ from core.config.loader import Config, PaperRiskLimits
 from core.evals.cases import REPO_ROOT, Case, Suite
 from core.evals.checks import Check, Mode, Outcome, r5_breaches, run_checks, sourcing_ok
 from core.evals.judge import Judgement, golden_threshold, judge
+from core.evals.learning import learning_checks, run_learning
 from core.evals.offline import (
     FINANCE_NOW,
     FIXTURE_NOW,
@@ -34,6 +35,7 @@ from core.evals.offline import (
     Pilot,
     Recorder,
     WebLog,
+    business_toolboxes,
     case_store,
     code_toolboxes,
     cyber_toolboxes,
@@ -214,7 +216,7 @@ def committee_texts(root: Path, payload: dict[str, Any]) -> tuple[str, ...]:
 
 def paper_limits(config: Config, case: Case) -> PaperRiskLimits:
     """The paper limits of the run: the configuration's, or the case's values over a copy of
-    them (never the file, which only Lucas changes)."""
+    them (never the file, which only the user changes)."""
     given = case.offline.paper_limits
     if given is None:
         return config.risk_limits_paper
@@ -382,6 +384,7 @@ async def _offline(case: Case, root: Path, run: str) -> CaseResult:
                 **code_toolboxes(case, home, config),
                 **cyber_toolboxes(case, home, root / "config", lambda: now),
                 **legal_toolboxes(case, home, root / "config", lambda: now),
+                **business_toolboxes(case, home, root / "config", lambda: now, finance),
             },
             pseudonymiser=lambda: presidio(config),
             callbacks=(recorder,),
@@ -445,6 +448,9 @@ async def _live(case: Case, root: Path, run: str) -> CaseResult:
                 **legal_toolboxes(
                     case, Path(tmp), live_config_dir(root), lambda: datetime.now(UTC)
                 ),
+                **business_toolboxes(
+                    case, Path(tmp), live_config_dir(root), lambda: datetime.now(UTC), finance
+                ),
             },
             pseudonymiser=lambda: presidio(config),
             callbacks=(recorder,),
@@ -465,7 +471,7 @@ async def _live(case: Case, root: Path, run: str) -> CaseResult:
         roles=roles,
         texts=texts,
         unknown=unknown_limits(config.risk_limits_paper),
-        # Live, the journal is Lucas's: only what the request wrote is read.
+        # Live, the journal is the user's: only what the request wrote is read.
         written=tuple(json.dumps(p, ensure_ascii=False, default=str) for p in (payload, *roles)),
     )
     judgement = None
@@ -520,11 +526,31 @@ def _paper(case: Case, mode: Mode, root: Path, run: str) -> CaseResult:
     )
 
 
+def _learning(case: Case, mode: Mode, root: Path, run: str) -> CaseResult:
+    learning = run_learning(case, root)
+    checks = tuple(learning_checks(case, learning))
+    return CaseResult(
+        case.id,
+        case.suite,
+        case.group,
+        mode,
+        run,
+        passed=all(check.passed for check in checks),
+        score=_score(checks),
+        checks=checks,
+        status="complete" if learning.verdict is None else learning.verdict.status,
+        elapsed_s=learning.elapsed_s,
+        markdown=learning.markdown,
+    )
+
+
 async def run_case(
     case: Case, mode: Mode, *, root: Path = REPO_ROOT, run: str = MANUAL_RUN
 ) -> CaseResult:
     """Runs one case; an exception fails the case, never the suite."""
     try:
+        if case.learning is not None:  # the learning loop's code, no model, both modes alike
+            return _learning(case, mode, root, run)
         if case.paper is not None:  # the paper loop, without a model, the same in both modes
             return _paper(case, mode, root, run)
         if mode == "offline":

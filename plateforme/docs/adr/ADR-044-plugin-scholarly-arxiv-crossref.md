@@ -1,7 +1,7 @@
 # ADR-044 — Plugins de lecture `scholarly` (arXiv, Crossref) et `feeds` (RSS, Atom)
 
 - Statut : proposé (sources, adresse e-mail et périmètre validés par D10 à D12 le 21/10/2026 ;
-  détails d'implémentation ci-dessous à valider par Lucas)
+  détails d'implémentation ci-dessous à valider par l'utilisateur)
 - Date : 2026-10-22
 - Phase : 6
 
@@ -71,7 +71,7 @@ Un outil de LECTURE, `feed_read`, pour la veille du pack (D16 à D18). Options �
 `web_read` (pas de structure d'entrée ni de date). Retenu : `defusedxml` et un parseur maison
 (environ 500 lignes et leurs tests, dont des tests de propriétés Hypothesis). Choix :
 - **Liste blanche** `flux` de `domain_packs/recherche/knowledge/sources.yaml`, relue à chaque appel
-  et livrée vide (D18) : le planificateur donne un identifiant, jamais une URL. Seul Lucas ajoute un
+  et livrée vide (D18) : le planificateur donne un identifiant, jamais une URL. Seul l'utilisateur ajoute un
   flux, après contrôle des CGU et de la licence du site ; elle tient lieu de robots.txt (R15).
 - **`A_VERIFIER` ou `A_DEFINIR` bloque** : un flux listé dont un champ n'est pas tranché n'est pas lu
   (R7). URL en https seulement.

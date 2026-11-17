@@ -1,4 +1,4 @@
-// Every POLL_MS, the bot posts to Lucas the alerts of the Discord outbox (ADR-038) and the
+// Every POLL_MS, the bot posts to the user the alerts of the Discord outbox (ADR-038) and the
 // approval requests he has not seen yet. A cursor saved after each post means a restart neither
 // loses nor repeats an alert; a failed post is tried again at the next round.
 

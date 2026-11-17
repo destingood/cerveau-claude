@@ -4,7 +4,7 @@
 # publications viennent du plugin scholarly (arXiv, Crossref), les pages du plugin web_research.
 #
 # flux : liste blanche des flux RSS et Atom que le plugin feeds peut lire (D16, ADR-044). Seul
-# Lucas y ajoute un flux, après avoir vérifié les conditions d'utilisation et la licence du site
+# l'utilisateur y ajoute un flux, après avoir vérifié les conditions d'utilisation et la licence du site
 # (R14, R15) ; elle reste vide tant qu'il ne l'a pas fait (D18). Chaque flux :
 #   - id : identifiant donné au planificateur (minuscules, chiffres, tirets ; 40 caractères au plus)
 #   - titre : nom affiché

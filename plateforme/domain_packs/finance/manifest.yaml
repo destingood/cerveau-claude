@@ -4,10 +4,10 @@
 id: finance
 version: 0.1.0
 # « expérimental » tant que le golden set n'a pas atteint son seuil en mesure réelle (section 9.3) ;
-# seul Lucas passe le pack en « actif », au vu du rapport d'évals.
+# seul l'utilisateur passe le pack en « actif », au vu du rapport d'évals.
 statut: experimental
 perimetre:
-  - Le portefeuille de Lucas tel que la base locale le connaît à une date (positions, poids, cash).
+  - Le portefeuille de l'utilisateur tel que la base locale le connaît à une date (positions, poids, cash).
   - Risque de marché, stress et décomposition de la VaR (finance_risk).
   - Rééquilibrage étudié, présenté comme une analyse tant que l'autonomie est N0 (finance_optimize).
   - Performance et attribution d'une période (finance_report).
@@ -38,7 +38,7 @@ agent:
   plugin: finance_committee
   mode: comite  # le routeur ou cerveau ask --comite le convoque (ADR-028, ADR-043)
 autonomie:
-  # Niveau courant N0, niveau maximal N4 : config/autonomy.yaml, domains.finance. Seul Lucas
+  # Niveau courant N0, niveau maximal N4 : config/autonomy.yaml, domains.finance. Seul l'utilisateur
   # promeut le pack, à la main, au vu du rapport (D16).
   source: config/autonomy.yaml#domains.finance
 sources_autorisees:

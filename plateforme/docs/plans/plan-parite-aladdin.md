@@ -3,7 +3,7 @@
 Date : 17/11/2026 · Statut : **validé** le 17/11/2026 (« ok valide le plan, commence l'étape 0 ») ;
 décisions P2 à P9 encore ouvertes (§7). Étape 0 : `docs/rapports/etape-0-2026-11-17.md`.
 
-Périmètre choisi par Lucas le 17/11/2026 : le plugin mémoire (`brainkit/`) **et** la plateforme
+Périmètre choisi par l'utilisateur le 17/11/2026 : le plugin mémoire (`brainkit/`) **et** la plateforme
 (`plateforme/`) ; exécution jusqu'au niveau **N3** (ordre réel après son accord) ; actions et ETF en
 euros, actions étrangères, obligations et options, crypto ; données **gratuites d'abord**.
 
@@ -11,7 +11,7 @@ euros, actions étrangères, obligations et options, crypto ; données **gratuit
 
 On corrige d'abord ce qui est cassé ou jamais exécuté, on débloque les 38 fonctions arrêtées par des
 réglages manquants, on mesure une première fois avec de vrais modèles, puis on complète les fonctions
-finance qui manquent face à Aladdin, jusqu'à un ordre réel approuvé par Lucas.
+finance qui manquent face à Aladdin, jusqu'à un ordre réel approuvé par l'utilisateur.
 
 ## 1. Ce que « niveau Aladdin » veut dire ici
 
@@ -36,9 +36,9 @@ plateforme, git 2.43, clone superficiel).
 | Plugin, lint | Aucune CI, aucun lint. `ruff` (règles F et B) : 48 alertes, dont 7 imports inutiles et 4 fonctions qui capturent une variable de boucle |
 | Plateforme, taille | 116 603 lignes de Python ; 60 ADR ; phases 0 à 5 livrées, phase 6 jusqu'à P5 |
 | Plateforme, lint | `ruff check` et `ruff format --check` : 0 erreur, 523 fichiers |
-| Plateforme, tests | 6 801 réussis, 205 échecs, 5 erreurs, 12 ignorés, en 478 s. 209 des 210 viennent de git 2.43 (le pack Code exige 2.45, voir C11) ; le dernier est une différence entre Windows et Linux (C18). Le rapport P5 annonçait 7 017 réussis sur la machine de Lucas |
+| Plateforme, tests | 6 801 réussis, 205 échecs, 5 erreurs, 12 ignorés, en 478 s. 209 des 210 viennent de git 2.43 (le pack Code exige 2.45, voir C11) ; le dernier est une différence entre Windows et Linux (C18). Le rapport P5 annonçait 7 017 réussis sur la machine de l'utilisateur |
 | Plateforme, configuration | Valide. **14 fonctions disponibles, 38 bloquées** par 57 marqueurs (39 `A_DEFINIR`, 18 `A_VERIFIER`) |
-| Plateforme, backlog | 264 points ouverts sur 332 : 138 fonctionnels, 58 sécurité, 38 évals, 11 infrastructure, 11 auto-amélioration, 8 chaîne de livraison. 12 attendent une décision de Lucas |
+| Plateforme, backlog | 264 points ouverts sur 332 : 138 fonctionnels, 58 sécurité, 38 évals, 11 infrastructure, 11 auto-amélioration, 8 chaîne de livraison. 12 attendent une décision de l'utilisateur |
 | Plateforme, évals | Toutes hors ligne, avec des modèles scriptés. **Aucune campagne réelle n'a jamais tourné** : le score du juge, la résistance d'un vrai modèle aux injections et les coûts réels sont inconnus |
 | Packs | Les 6 packs existants sont `experimental`. P6 Business n'existe pas. Phase 7 non commencée |
 
@@ -75,7 +75,7 @@ plateforme, git 2.43, clone superficiel).
 | C14 | `core/memory/` est vide (B58) : la plateforme n'a aucune mémoire, alors que le plugin en est une | Étape 7 |
 | C15 | 58 points de sécurité ouverts. Avant tout ordre réel : B200 (les limites live ne sont pas appliquées par la Porte), B230 (heure de l'approbation donnée par l'appelant), B235 (ACL POSIX), B228 (secrets hérités par tout processus), B8 (ancre externe du journal d'audit), B9 (durcissement du VPS) | Étapes 6 et 9 |
 | C16 | Erreurs de calcul relevées par la revue quantitative et encore ouvertes : B105 (fraîcheur jugée à la mauvaise date), B109 (variation de VaR), B110 (poids), B112 (VaR sur h séances), B113 (frais absents du rééquilibrage), B114 (ETF obligataire choqué comme une action), B115 (annualisation), B116 (ratio de split en flottant), B117 | Étape 4 |
-| C17 | `ref.db` (données de portefeuille) à la racine, ni suivi ni ignoré (B148) | Décision de Lucas, déjà au backlog |
+| C17 | `ref.db` (données de portefeuille) à la racine, ni suivi ni ignoré (B148) | Décision de l'utilisateur, déjà au backlog |
 
 ## 4. Écarts avec Aladdin, fonction par fonction
 
@@ -104,19 +104,19 @@ personnelles passe ; le serveur MCP se connecte ; les garde-fous s'appliquent qu
 dossier d'ouverture.
 
 **Étape 1 — Réglages et décisions.** Claude Code propose une valeur prudente et sourcée pour
-chacun des 57 marqueurs, en un seul document ; Lucas valide, corrige ou refuse ligne par ligne et
+chacun des 57 marqueurs, en un seul document ; l'utilisateur valide, corrige ou refuse ligne par ligne et
 écrit lui-même les valeurs de gouvernance. Les 12 décisions en attente du backlog sont tranchées au
 même moment. Fin d'étape : `cerveau config check` ne laisse bloqués que le live et N4.
 
 **Étape 2 — Première mesure réelle.** Budgets fixés, puis une campagne d'évals payante sur les six
 packs (estimation du rapport de phase 1 : 6 à 12 $ pour 95 cas, non mesurée ; les suites en comptent
-davantage aujourd'hui). Fin d'étape : score du juge par pack, 20 jugements relus par Lucas, coûts
+davantage aujourd'hui). Fin d'étape : score du juge par pack, 20 jugements relus par l'utilisateur, coûts
 p50 et p95, résistance réelle aux injections. Tout ce qui est sous le seuil devient la priorité de
 l'étape suivante, avant toute fonction nouvelle.
 
 **Étape 3 — Données gratuites (F1).** OpenBB, yfinance et FRED après lecture de leurs conditions ;
 fondamentaux et actualités ; séries de facteurs et indice de référence ; qualité des séries de
-change et de taux (B85). Fin d'étape : un portefeuille réel de Lucas valorisé chaque jour sans
+change et de taux (B85). Fin d'étape : un portefeuille réel de l'utilisateur valorisé chaque jour sans
 fichier CSV manuel, chaque série avec son score de qualité.
 
 **Étape 4 — Risque et performance complets (F3, F4, F9).** Corrections C16, chacune par ADR quand
@@ -143,8 +143,8 @@ répondent sur le portefeuille réel, sources citées.
 challenger, rapport hebdomadaire, red team hebdomadaire, revue de sécurité mensuelle. Fin d'étape :
 quatre semaines de rapports sans intervention.
 
-**Étape 9 — Activation N3, par Lucas seul.** B8, B9 et B228 fermés ; `docs/procedure-live.md`
-suivie à la main ; capital et limites fixés par Lucas ; premier ordre réel approuvé un par un.
+**Étape 9 — Activation N3, par l'utilisateur seul.** B8, B9 et B228 fermés ; `docs/procedure-live.md`
+suivie à la main ; capital et limites fixés par l'utilisateur ; premier ordre réel approuvé un par un.
 Claude Code n'active rien (R3). N4 reste hors de ce plan.
 
 En continu : à chaque étape, fermer les points de sécurité et d'évals du backlog qui touchent le
@@ -157,16 +157,16 @@ code modifié, plutôt qu'une étape « sécurité » à part.
 - Pas de N4, pas de marchés privés, pas d'analytique climat, pas de conseil à des tiers (R16).
 - Pas de source payante tant que les sources gratuites n'ont pas montré leur limite par une mesure.
 
-## 7. Décisions demandées à Lucas
+## 7. Décisions demandées à l'utilisateur
 
 | # | Décision | Recommandation |
 |---|---|---|
 | P1 | Valider l'ordre des étapes 0 à 9 | Oui : l'étape 0 d'abord, sans rien ajouter avant |
 | P2 | Un dépôt ou deux (C2, C3) | **Deux** : le plugin reste public, la plateforme passe dans un dépôt privé avec son `.claude/` à la racine |
 | P3 | `brain.exe` (C5) | Publier le source Rust et construire l'exe en CI ; sinon revenir au seul Python |
-| P4 | Le dépôt est-il public ? Si oui, C4 passe avant tout | À confirmer par Lucas |
-| P5 | Courtier pour la lecture et le paper trading | Interactive Brokers (adaptateur NautilusTrader marqué stable) ; conditions à lire par Lucas |
+| P4 | Le dépôt est-il public ? Si oui, C4 passe avant tout | À confirmer par l'utilisateur |
+| P5 | Courtier pour la lecture et le paper trading | Interactive Brokers (adaptateur NautilusTrader marqué stable) ; conditions à lire par l'utilisateur |
 | P6 | Mémoire de la plateforme | Pont en lecture vers le plugin d'abord ; module propre seulement si une mesure le justifie |
-| P7 | Budget de la première campagne réelle (étape 2) | Plafond fixé par Lucas dans `budgets.yaml` avant tout lancement |
+| P7 | Budget de la première campagne réelle (étape 2) | Plafond fixé par l'utilisateur dans `budgets.yaml` avant tout lancement |
 | P8 | Ordre des actifs à l'étape 5 | Actions étrangères, obligations, options, crypto |
-| P9 | Qui écrit les 57 valeurs de l'étape 1 | Claude Code propose, Lucas écrit lui-même celles de `config/live.yaml`, des limites et de l'autonomie |
+| P9 | Qui écrit les 57 valeurs de l'étape 1 | Claude Code propose, l'utilisateur écrit lui-même celles de `config/live.yaml`, des limites et de l'autonomie |
