@@ -589,8 +589,6 @@ def sync(pull=True, push=True, auto=False) -> list:
         return ["· pas membre du cerveau commun (`brain commun` pour voir)"]
     path = Path(settings()["path"])
     out = []
-    import time as _t
-    log(f"DIAG sync start pid={os.getpid()} t={_t.time():.2f} push={push} auto={auto}")
     save_state(pending=True, **({"push_pending": True} if push else {}))
     try:
         with FileLock(GIT_LOCK, timeout=1 if auto else 30, stale=600):
@@ -598,7 +596,6 @@ def sync(pull=True, push=True, auto=False) -> list:
             from .common import days_since
             from .store import Brain
             failed = False
-            log(f"DIAG sync lock pid={os.getpid()} t={time.time():.2f}")
             gone = member() != me  # parti (brain commun quitter) pendant l'attente du verrou : rien n'est republié
             if gone:
                 out.append("· plus membre du cerveau commun : rien n'est envoyé")
@@ -621,8 +618,6 @@ def sync(pull=True, push=True, auto=False) -> list:
                         out.append(f"✓ {rep['written']} page(s) écrite(s), {rep['removed']} retirée(s)"
                                    + (f", journal ({j} mois)" if j else ""))
                     save_state(exported=content_sig(brain.nodes))
-                    log(f"DIAG sync export pid={os.getpid()} t={time.time():.2f} sig={content_sig(brain.nodes)[:7]} "
-                        f"committed={committed} rep={rep}")
                 # rien de public n'a changé (un souvenir privé modifié) et récupéré il y a peu : pas d'aller-retour réseau
                 quiet = auto and push and not committed and days_since(state().get("pulled")) * 86400 < PULL_EVERY
                 if (pull or push) and not quiet:
@@ -648,14 +643,12 @@ def sync(pull=True, push=True, auto=False) -> list:
                         out.append(f"✗ envoi : {short(txt, 200)}")
                         break
                 st = state()
-                log(f"DIAG sync check pid={os.getpid()} t={time.time():.2f} st={st}")
                 if not st.get("pending") and not st.get("push_pending") and (
                         not push or st.get("exported") == content_sig(Brain.load().nodes)):
                     break  # rien de nouveau pendant ce tour (un changement arrivé entre-temps repart tout de suite)
             if failed:
                 out.append("✗ enregistrement local : git occupé, nouvel essai à la prochaine synchro")
     except TimeoutError:
-        log(f"DIAG sync lock timeout pid={os.getpid()} t={_t.time():.2f}")
         out.append("· synchronisation déjà en cours (elle reprendra ce changement)")
     if auto:
         log("commun : " + (" | ".join(out) or "à jour"))
@@ -712,8 +705,6 @@ def after_save(data) -> None:
         import time
         sig = content_sig(data.get("nodes") or {})
         st = state()
-        log(f"DIAG after_save pid={os.getpid()} t={time.time():.2f} sig={sig[:7]} exported={str(st.get('exported'))[:7]} "
-            f"queued={str(st.get('queued'))[:7]} scheduled={float(st.get('scheduled') or 0):.2f}")
         if sig == st.get("exported") or sig == st.get("queued"):
             return
         fg = os.environ.get("BRAIN_COMMUN_FG") == "1"
@@ -722,7 +713,6 @@ def after_save(data) -> None:
             return
         wait = 0.0 if fg else delay()
         save_state(queued=sig, pending=True, scheduled=time.time() + wait)
-        log(f"DIAG after_save spawn pid={os.getpid()} t={time.time():.2f} wait={wait}")
         if not spawn(["commun", "sync", "--auto"] + (["--delai", f"{wait:g}"] if wait else [])):
             save_state(scheduled=0)
     except Exception as exc:

@@ -149,7 +149,6 @@ if __name__ == "__main__":
     python_only = sys.argv[1:2] and sys.argv[1] in PYTHON_ONLY or hook_event in PYTHON_HOOKS
     exe = None if python_only else rust_exe()
     if exe:
-        import subprocess
         try:
             if hook_event in PLUS_HOOKS and os.environ.get("BRAIN_PLUS") != "0":
                 sys.exit(hook_with_plus(exe, hook_event))

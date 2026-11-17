@@ -1875,9 +1875,7 @@ def cmd_commun(a):
         elif act in ("sync", "synchro"):
             if a.delai and os.environ.get("BRAIN_COMMUN_FG") != "1":
                 import time
-                log(f"DIAG delai start pid={os.getpid()} t={time.time():.2f} delai={a.delai}")
-                time.sleep(min(float(a.delai), 600))
-                log(f"DIAG delai end pid={os.getpid()} t={time.time():.2f}")  # envoi différé (après un ajout) : les ajouts suivants partent avec
+                time.sleep(min(float(a.delai), 600))  # envoi différé (après un ajout) : les ajouts suivants partent avec
             for line in commun.sync(pull=True, push=not a.no_push, auto=a.auto):
                 print(line)
         elif act in ("verifier", "check"):  # accès au dépôt commun (lancé en arrière-plan au démarrage)
