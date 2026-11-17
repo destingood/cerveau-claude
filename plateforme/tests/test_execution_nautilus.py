@@ -264,11 +264,17 @@ def test_nautilus_leaves_unfilled_what_the_cash_does_not_cover() -> None:
 
 
 def test_the_simulator_refuses_what_nautilus_cannot_hold() -> None:
-    """B122: NautilusTrader refuses a Money above MONEY_MAX; the simulator says so first."""
-    assert Decimal(NAUTILUS_MONEY_MAX) == MONEY_MAX
+    """B122: NautilusTrader refuses a Money above its MONEY_MAX; the simulator says so first.
+
+    The library's ceiling depends on its build: 9 223 372 036 with 64-bit money (Windows wheels),
+    17 014 118 346 046 with 128-bit money (Linux wheels, 1.231.0). The simulator keeps the smaller
+    one on every platform, so the same order is accepted or refused everywhere (R1).
+    """
+    assert Decimal(NAUTILUS_MONEY_MAX) >= MONEY_MAX
     assert Money(MONEY_MAX, EUR).as_decimal() == MONEY_MAX
-    with pytest.raises(ValueError):  # its message reads "invalid format string" (1.231.0)
-        Money(MONEY_MAX + 1, EUR)
+    if Decimal(NAUTILUS_MONEY_MAX) == MONEY_MAX:  # 64-bit build: one cent more is refused
+        with pytest.raises(ValueError):  # its message reads "invalid format string" (1.231.0)
+            Money(MONEY_MAX + 1, EUR)
     sim = simulator()
     huge = make_intent(0, quantity=92_233_721, limit_price=Decimal("100.00"))  # 9 223 372 100 €
     ack = sim.submit(huge, now=SUBMITTED)

@@ -57,7 +57,9 @@ from core.finance.model import (
 )
 from core.finance.schema import migrate
 
-MONEY_MAX = Decimal(9_223_372_036)  # NautilusTrader's largest Money, read on 20/10/2026 (B122)
+# NautilusTrader's largest Money with 64-bit money (Windows wheels), read on 20/10/2026 (B122). Its
+# 128-bit build (Linux wheels) allows more; the smaller ceiling holds on every platform (R1).
+MONEY_MAX = Decimal(9_223_372_036)
 CENT = Decimal("0.01")
 PCT = Decimal(100)
 BPS = Decimal(10_000)
