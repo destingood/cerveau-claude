@@ -354,9 +354,9 @@ PR de ce plan :
 
 | # | Décision | Ma recommandation |
 |---|---|---|
-| D1 | Où vit le code | GitHub ; ton PC travaille sur un clone |
-| D2 | `brain.exe` | Code Rust dans le dépôt, exe construit en CI ; sinon, Python seul |
-| D3 | Un dépôt ou deux | Deux : plugin public, plateforme privée |
+| D1 | Où vit le code | **Tranché le 17/11 : GitHub**, ton PC travaille sur un clone |
+| D2 | `brain.exe` | **Tranché le 17/11 : code Rust dans le dépôt**, exe construit en CI |
+| D3 | Un dépôt ou deux | **Tranché le 17/11 : deux**, plugin public et plateforme privée (`cerveau-plateforme`). Le garde-fou de la plateforme interdit à Claude de manipuler `plateforme/` en bloc : tu pousses ton dépôt local de la plateforme dans le dépôt privé, Claude y reporte les changements faits ici depuis la dernière fusion (un seul diff, vérifié identique), puis tu retires `plateforme/` du dépôt public |
 | D4 | Ton nom complet dans l'historique public | Réécrire l'historique si le dépôt reste public (push forcé, toi seul) |
 
 À trancher plus tard, à l'étape concernée :
@@ -369,7 +369,7 @@ PR de ce plan :
 | D8 | Canal des approbations | Discord, déjà construit ; alertes ntfy sur ton téléphone |
 | D9 | Modèle local pour la nuit | Seulement si ta carte graphique le permet (`brain pc` le mesure) |
 | D10 | PR #7 (panel de clients simulés) | Tranché : dans `main` depuis le 17/11 (PR #18) ; elle servira au pack Clients |
-| D11 | Dossiers Fortnite des PR #13 et #16, fusionnés le 17/11 | Les déplacer dans un dépôt à part pour tes projets ; sinon, les protéger de `brain publish` |
+| D11 | Dossiers Fortnite des PR #13 et #16, fusionnés le 17/11 | **Tranché le 17/11 : un dépôt privé à part** (`mes-projets`) ; Claude y déplace les deux dossiers |
 | D12 | Courtier | Interactive Brokers (v1, P5) |
 | D13 | ADR-068 du solveur (ex-ADR-061) | Le valider, avec ses deux valeurs de référence corrigées (rotation 72,32 %, VaR 1 088,56 €) |
 
@@ -398,7 +398,9 @@ PR de ce plan :
 
 ## 11. Prochaines étapes
 
-1. Tu tranches D1 à D4, et D11 pour les dossiers Fortnite.
+1. D1, D2, D3 et D11 sont tranchés (17/11) ; D4 reste ouvert. Tu crées les dépôts privés
+   `cerveau-plateforme` et `mes-projets`, et tu pousses ton dépôt local de la plateforme dans le
+   premier.
    **D'ici là, ne lance pas `brain publish`** : d'après `brainkit/publish.py` de `main`, il
    effacerait les dossiers Fortnite que tu viens de fusionner.
 2. L'étape 1 est faite (§7), sauf le sort des dossiers Fortnite et des branches fusionnées.
