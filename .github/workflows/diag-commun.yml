@@ -13,7 +13,7 @@ jobs:
       fail-fast: false
       matrix:
         os: [windows-latest]
-        run: [1, 2]
+        run: [1, 2, 3]
     runs-on: ${{ matrix.os }}
     env:
       PYTHONUTF8: "1"
