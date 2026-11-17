@@ -115,6 +115,8 @@ def main():
         lines = [a[a.index("--hook") + 1]]
     elif a and os.path.exists(a[0]):
         lines = [l for l in open(a[0], encoding="utf-8-sig").read().splitlines() if l.strip()]
+    elif a and not a[0].startswith("-"):
+        print(f"file not found: {a[0]}"); sys.exit(1)
     else:
         print(__doc__); sys.exit(1 if not a else 0)
     out = []

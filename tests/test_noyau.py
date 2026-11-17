@@ -1,0 +1,344 @@
+"""Noyau du cerveau, testé en direct : garde anti-secrets (privacy.py), serveur MCP en mémoire et par stdio
+(mcp_server.py), recherche tolérante et filtre du rappel (search.py), index injecté, résumé de carte et export
+(index.py), rêve : partie sûre appliquée, le reste seulement listé (dream.py).
+
+Lancement : python tests/test_noyau.py   (sortie : « N vérifications OK, M échec(s) »)"""
+import copy
+import datetime as dt
+import gzip
+import json
+import os
+import subprocess
+import sys
+import tempfile
+import time
+from pathlib import Path
+
+TMP = Path(tempfile.mkdtemp(prefix="cerveau-noyau-test-"))
+CODE = Path(__file__).resolve().parent.parent
+OK, FAIL = [], []
+for k in ("BRAIN_WIKI", "CLAUDE_CODE_REMOTE", "CERVEAU_CLOUD", "BRAIN_IMPL", "BRAIN_PLUS"):
+    os.environ.pop(k, None)
+os.environ["CLAUDE_CONFIG_DIR"] = str(TMP / "claude")  # import en direct de brainkit : jamais le vrai PC
+os.environ["BRAIN_HOME"] = str(TMP / "brain")
+WORK = TMP / "travail"  # dossier courant hors de tout projet et de tout wiki
+WORK.mkdir(parents=True)
+os.chdir(WORK)
+sys.path.insert(0, str(CODE))
+
+from brainkit import dream, history, index, mcp_server, observations, privacy, search, store  # noqa: E402
+from brainkit.common import (EXPORT_FILE, GRAPH_FILE, INDEX_FILE, JOURNAL_FILE, budget_chars, load_config,  # noqa: E402
+                             read_json, remove_tree)
+from brainkit.store import Brain  # noqa: E402
+
+
+def check(cond, label, detail=""):
+    (OK if cond else FAIL).append(label)
+    if not cond:
+        print(f"✗ {label}" + (f" — {str(detail)[-700:]}" if detail else ""))
+
+
+OLD = "2026-03-10T09:00:00"  # date d'écriture fixe : aucune attente ne dépend du jour où le test tourne
+
+
+def node(nid, ntype, title, body="", project=None, created=OLD, updated=None, status="active", **meta):
+    return {"id": nid, "type": ntype, "title": title, "body": body, "tags": [], "project": project, "importance": 3,
+            "created": created, "updated": updated or created, "hits": 0, "source": "utilisateur", "status": status,
+            "meta": meta}
+
+
+def brain_of(nodes, links=()):
+    """Un cerveau neuf : copie des nœuds (un test qui les modifie ne touche pas les suivants)."""
+    return {"version": 1, "created": OLD, "nodes": {n["id"]: copy.deepcopy(n) for n in nodes},
+            "edges": [{"from": a, "to": b, "rel": "relates", "created": OLD[:10]} for a, b in links]}
+
+
+# Fausses valeurs assemblées ici : ce fichier est publié, `brain publish` n'y doit voir ni secret ni adresse.
+KEY = "sk-" + "ant-" + "a1b2c3d4e5" * 4
+V = "a1b2c3d4" + "e5f6g7h8i9j0k1l2"
+MAIL = "jean.dupont" + "@" + "example.com"
+
+# ------------------------------------------------------------------ 1. confidentialité (privacy.py)
+for label, text in (("clé API Anthropic/OpenAI", "ma clé " + KEY), ("jeton GitHub", "ghp" + "_" + "a1B2c3D4e5" * 4),
+                    ("clé AWS", "AKIA" + "ABCDEFGHIJKLMNOP"), ("mot de passe", "password" + ": Hunter2!x"),
+                    ("secret", "token" + "=" + V)):
+    check(privacy.find(text) == [label], f"secret repéré : {label}", privacy.find(text))
+ordinary = ("Le chat dort sur le canapé, rien à cacher.", "mot de passe : jamais dans le cerveau", "", None)
+check(not any(privacy.find(t) for t in ordinary) and privacy.mask(None) == ("", []),
+      "texte ordinaire (même s'il parle de mot de passe) : aucun faux secret")
+masked, found = privacy.mask(f"ma clé {KEY} pour l'API météo")
+check(masked == "ma clé «clé API Anthropic/OpenAI masqué» pour l'API météo" and found == ["clé API Anthropic/OpenAI"],
+      "mask : la clé remplacée par son type, le reste du texte gardé", masked)
+text = privacy.redact_contacts(f"Écrire à {MAIL} ou appeler le 06 12 34 56 78 (bureau : +33 1 23 45 67 89), clé {KEY}.")
+check(text == "Écrire à «e-mail» ou appeler le «téléphone» (bureau : «téléphone»), "
+              "clé «clé API Anthropic/OpenAI masqué».",
+      "redact_contacts : e-mail, téléphones et clé retirés", text)
+check(privacy.redact_contacts("commande 0612345678901, total 12,50 €") == "commande 0612345678901, total 12,50 €",
+      "redact_contacts : un numéro de 13 chiffres n'est pas un téléphone")
+# Fichier .env : le nom porte souvent un préfixe (MISTRAL_API_KEY, DISCORD_TOKEN, DB_PASSWORD) ; le secret doit y être
+# repéré comme après API_KEY= seul.
+missed = [t for t in ("MISTRAL_API" + "_KEY=" + V, "DISCORD" + "_TOKEN=" + V, "DB_PASS" + "WORD=Hunter2x")
+          if not privacy.find(t)]
+check(not missed, "secret d'un nom préfixé (…_API_KEY=, …_TOKEN=, …_PASSWORD=) repéré", missed)
+
+# ------------------------------------------------------------------ 2. serveur MCP (mcp_server.py)
+
+
+def rpc(method, params=None, mid=1):
+    msg = {"jsonrpc": "2.0", "id": mid, "method": method}
+    if params is not None:
+        msg["params"] = params
+    return mcp_server.handle(msg)
+
+
+def tool(name, **args):
+    res = rpc("tools/call", {"name": name, "arguments": args})["result"]
+    return res["content"][0]["text"], res["isError"]
+
+
+init = rpc("initialize", {"protocolVersion": "2025-06-18", "capabilities": {}})["result"]
+check(init["serverInfo"]["name"] == "cerveau" and init["protocolVersion"] == "2025-06-18" and "tools" in init["capabilities"],
+      "initialize : serveur « cerveau », version du client reprise", init)
+check(rpc("initialize", {"protocolVersion": "1999-01-01"})["result"]["protocolVersion"] == mcp_server.PROTOCOLS[0],
+      "initialize : version inconnue → la plus récente du serveur")
+check(mcp_server.handle({"jsonrpc": "2.0", "method": "notifications/initialized"}) is None, "notification : aucune réponse")
+tools = {t["name"]: t for t in rpc("tools/list")["result"]["tools"]}
+check({"memory_search", "memory_add"} <= set(tools) and tools["memory_add"]["inputSchema"]["required"] == ["type", "title", "body"],
+      "tools/list : memory_search et memory_add, champs requis", sorted(tools))
+ROBOTS = "robots-txt-de-la-boutique-shopify"
+out, err = tool("memory_add", type="learning", title="Robots.txt de la boutique Shopify",
+                body="Le fichier robots.txt se modifie dans le modèle robots.txt.liquid du thème.")
+saved = (read_json(GRAPH_FILE, {}) or {}).get("nodes", {}).get(ROBOTS, {})
+check(not err and f"✓ mémorisé `{ROBOTS}`" in out and saved.get("source") == "mcp" and saved.get("project") is None,
+      "memory_add : souvenir enregistré (global, provenance mcp)", out)
+out, err = tool("memory_search", query="robots shopfy")  # faute de frappe : la description promet de la tolérer
+check(not err and ROBOTS in out, "memory_search : le souvenir ajouté est retrouvé malgré la faute", out)
+out, err = tool("memory_add", type="fact", title="Clé du service météo", body=f"La clé est {KEY} pour l'appel.")
+leaks = [p.name for p in (TMP / "brain").rglob("*") if p.is_file() and KEY.encode() in p.read_bytes()]
+check(not err and "🔒 secret masqué" in out and not leaks and "«clé API Anthropic/OpenAI masqué»" in GRAPH_FILE.read_text("utf-8"),
+      "memory_add avec une clé : enregistré masqué, nulle part en clair, Claude prévenu", (out, leaks))
+check(rpc("méthode/inconnue")["error"]["code"] == -32601, "méthode inconnue : erreur JSON-RPC -32601")
+out, err = tool("outil_inexistant")
+check(err and "outil inconnu" in out, "outil inconnu : résultat en erreur (isError), pas de plantage", out)
+bad = mcp_server.handle({"jsonrpc": "2.0", "id": 9, "method": "tools/call", "params": "pas un objet"})
+check(bad.get("id") == 9 and bad.get("error", {}).get("code") == -32603, "paramètres malformés : erreur -32603", bad)
+out, err = tool("memory_add", type="fact", title="", body="sans titre")
+check(err and "titre vide" in out, "memory_add sans titre : l'erreur est rendue au modèle", out)
+
+lines = [json.dumps({"jsonrpc": "2.0", "id": 1, "method": "initialize", "params": {"protocolVersion": "2025-06-18"}}),
+         json.dumps({"jsonrpc": "2.0", "method": "notifications/initialized"}), "{pas du json",
+         json.dumps({"jsonrpc": "2.0", "id": 2, "method": "tools/call",
+                     "params": {"name": "memory_search", "arguments": {"query": "robots shopify"}}})]
+r = subprocess.run([sys.executable, "-I", "-S", str(CODE / "brain.py"), "mcp"], input=("\n".join(lines) + "\n").encode(),
+                   capture_output=True, timeout=180, cwd=str(WORK), env=dict(os.environ))
+
+
+def parse(line):
+    try:
+        return json.loads(line)
+    except ValueError:
+        return {"brut": line}
+
+
+resp = [parse(x) for x in r.stdout.decode("utf-8", "replace").splitlines() if x.strip()]
+check(r.returncode == 0 and [x.get("id", "?") for x in resp] == [1, None, 2] and resp[1]["error"]["code"] == -32700,
+      "stdio : une réponse par requête, JSON invalide → -32700, notification muette", (resp, r.stderr[-300:]))
+check(len(resp) == 3 and ROBOTS in json.dumps(resp[2], ensure_ascii=False),
+      "stdio : un autre processus retrouve le souvenir (même cerveau)", resp)
+
+# ------------------------------------------------------------------ 3. recherche (search.py)
+SB = Brain(brain_of([
+    node("robots-shopify", "learning", "Robots.txt de la boutique Shopify",
+         "Le fichier robots.txt se modifie dans le modèle robots.txt.liquid du thème."),
+    node("theme-dawn", "fact", "Thème Shopify Dawn", "La boutique utilise le thème Dawn, version 15."),
+    node("recette-crepes", "fact", "Recette des crêpes de grand-mère", "Farine, œufs, lait ; laisser reposer la pâte une heure."),
+    node("velo-chaine", "learning", "Entretien du vélo de course", "Graisser la chaîne toutes les 300 km et vérifier les pneus."),
+    node("ventes", "fact", "Objectif de ventes atteint", "Le chiffre de novembre dépasse l'objectif."),
+    node("dentiste", "todo", "Prendre rendez-vous chez le dentiste", "Détartrage annuel, cabinet du centre-ville."),
+    node("dentiste-fact", "fact", "Cabinet dentaire du centre-ville", "Le dentiste du centre-ville ferme le samedi."),
+    node("jardin", "project", "Potager du jardin", "Suivi du potager.", path="/x/jardin"),
+    node("tomates", "fact", "Arrosage des tomates", "Arroser les tomates le soir, au pied, deux fois par semaine.",
+         project="jardin"),
+    node("tomates-cuisine", "fact", "Sauce aux tomates", "Faire revenir les tomates avec ail et basilic, cuisson lente."),
+    node("livraison", "fact", "Colis du fournisseur", "Cartons livrés le 12/11/2026.", created="2026-11-12T18:00:00"),
+], links=[("velo-chaine", "recette-crepes"), ("tomates", "tomates-cuisine")]))
+
+
+def found(query, **kw):
+    return search.search_memories(SB, query, use_cache=False, **kw)
+
+
+def ids(query, **kw):
+    return [r["node"]["id"] for r in found(query, **kw)]
+
+
+got = ids("robots shopify")
+check(got == ["robots-shopify", "theme-dawn"], "classement : le souvenir qui a tous les mots d'abord, rien d'étranger", got)
+check(set(ids("shopfy")) == {"robots-shopify", "theme-dawn"}, "faute de frappe : « shopfy » trouve « shopify »", ids("shopfy"))
+check(ids("atin")[:1] == ["ventes"], "même prononciation : « atin » trouve « atteint »", ids("atin"))
+check(ids("graiss")[:1] == ["velo-chaine"], "préfixe : « graiss » trouve « graisser »", ids("graiss"))
+check(set(ids("magasin")) == {"robots-shopify", "theme-dawn"}, "synonyme : « magasin » trouve « boutique »", ids("magasin"))
+check(ids("zeppelin volcanique") == [], "sujet inconnu : aucun résultat", ids("zeppelin volcanique"))
+check(ids("dentiste centre-ville", types=["todo"]) == ["dentiste"] and "dentiste-fact" in ids("dentiste centre-ville"),
+      "filtre types : seulement les à-faire")
+got = ids("tomates", project="jardin", only_project=True)
+check(got == ["tomates"], "only_project : seulement le projet, voisins du graphe compris", got)
+plain = {r["node"]["id"]: r["score"] for r in found("tomates")}
+boosted = {r["node"]["id"]: r["score"] for r in found("tomates", project="jardin")}
+check(plain["tomates"] == plain["tomates-cuisine"] and boosted["tomates"] > boosted["tomates-cuisine"],
+      "projet courant : à égalité, son souvenir passe devant", (plain, boosted))
+got = [(r["node"]["id"], r["via"]) for r in found("vélo chaîne")]
+check(got == [("velo-chaine", None), ("recette-crepes", "velo-chaine · relates")]
+      and ids("vélo chaîne", expand=False) == ["velo-chaine"],
+      "voisin du graphe ajouté avec son origine (pas avec expand=False)", got)
+got = [(r["node"]["id"], r.get("via")) for r in found("qu'est-ce qui est arrivé hier", fuse=True, today=dt.date(2026, 11, 13))]
+check(got == [("livraison", "date")], "recherche fusionnée : « hier » retrouve le souvenir de ce jour-là par sa date", got)
+rc = load_config()["recall"]
+STRONG, WEAK = "comment modifier le robots.txt de la boutique shopify", \
+    "je voudrais organiser une grande fête surprise avec gâteau et ballons pour la boutique"
+
+
+def verdict(query):
+    top = found(query, expand=False)[0]
+    return search.accept_recall(top, rc["min_cov"], rc["min_score"], query), \
+        search.recall_refusal(top, rc["min_cov"], rc["min_score"], query)
+
+
+check(verdict(STRONG) == (True, ""), "rappel : résultat fort accepté, aucun motif de refus", verdict(STRONG))
+ok, why = verdict(WEAK)
+check(not ok and why.startswith("trop peu de mots"), "rappel : un seul mot commun avec un long message, refusé avec son motif", why)
+ok, why = verdict("shopfy")
+check(not ok and why.startswith("score"), "rappel : mot seulement rapproché, score trop faible, refusé", why)
+
+# ------------------------------------------------------------------ 4. index, résumé de carte, export (index.py)
+IB = Brain(brain_of([
+    node("profil-langue", "user", "Parle français", "Réponses en français, ton direct."),
+    node("regle-tests", "feedback", "Toujours lancer les tests", "Avant chaque commit, parce que la CI est lente."),
+    node("jardin", "project", "Potager du jardin", "Suivi du potager.", path="/x/jardin"),
+    node("tomates", "fact", "Arrosage des tomates", "Arroser le soir.", project="jardin"),
+    node("hebergement", "decision", "Hébergement du site vitrine", "Serveur mutualisé, parce que le trafic est faible.",
+         updated="2026-11-10T08:00:00"),
+    node("facture", "todo", "Payer la facture d'électricité", due="2020-01-15"),
+    node("ancien", "fact", "Ancien fournisseur", "Remplacé.", status="archived"),
+], links=[("hebergement", "tomates")]))
+cfg = load_config()
+text = index.build_index(IB, cfg)
+want = ("## 👤 Profil\n- Parle français — Réponses en français, ton direct. `profil-langue`",
+        "## 📏 Règles & préférences\n- Toujours lancer les tests — ",
+        "- **Potager du jardin** (`jardin`) — Suivi du potager. · `/x/jardin` · sans carte · 1 souvenir",
+        "- Hébergement du site vitrine — Serveur mutualisé, parce que le trafic est faible. `hebergement`",
+        "## ⏰ Échéances\n- Payer la facture d'électricité — en retard de ")
+check(all(w in text for w in want), "index : profil, règle, projet, savoir et échéance en retard, avec leurs ids",
+      [w for w in want if w not in text])
+check("Ancien fournisseur" not in text and "_6 souvenirs" in text, "index : un souvenir archivé n'y est pas", text[-200:])
+prev = []
+focused = index.build_index(IB, cfg, focus="jardin", previews=prev)
+check(sorted(prev) == ["facture", "hebergement"] and "- Hébergement du site vitrine `hebergement`" in focused
+      and "Serveur mutualisé" not in focused and "📂 Projets" not in focused,
+      "index d'un projet : savoir global en titres seulement, leurs ids rappelables", (prev, focused))
+big = Brain(brain_of([node(f"fait-{i:02d}", "fact", f"Fait numéro {i} sur un sujet assez long", "Corps détaillé " * 20)
+                      for i in range(80)]
+                     + [node(f"regle-{i:02d}", "feedback", f"Règle {i}", "Texte de la règle " * 15) for i in range(20)]
+                     + [node(f"profil-{i:02d}", "user", f"Profil {i}", "Description du profil " * 15) for i in range(15)]))
+for tokens in (cfg["inject"]["index_tokens"], 900):
+    c = {**cfg, "inject": {**cfg["inject"], "index_tokens": tokens}}
+    t, limit = index.build_index(big, c), budget_chars(c["inject"], "index_tokens")
+    check(len(t) <= limit and "- … +" in t, "index borné par son budget (le reste annoncé « … +N »)", (len(t), limit))
+
+TAIL = "→ Carte complète : `brain map show boutique`"
+digest = "\n".join(["# Carte de boutique (42 fichiers)", "", "Langages : Liquid 30, JSON 12",
+                    "Entrées : layout/theme.liquid, " + "x" * 300, "Scripts npm : build, dev, lint",
+                    "Dossiers clés : sections/ (18), snippets/ (9)", "Symboles : render_price, " + "y" * 100,
+                    "→ Avant d'explorer : brain where X · carte complète : `brain map show boutique`"])
+whole = index.fit_digest(digest, 10 ** 6).splitlines()
+check(len(whole) == 7 and "" not in whole and whole[-1] == TAIL,
+      "résumé de carte qui tient : entier, lignes vides retirées, ancien renvoi raccourci", whole)
+fit = index.fit_digest(digest, 250)
+rows = fit.splitlines()
+check(len(fit) <= 250 and rows[0] == "# Carte de boutique (42 fichiers)" and rows[-1] == TAIL
+      and not any(x.startswith(("Entrées", "Symboles")) for x in rows), "résumé de carte borné : titre et renvoi gardés, "
+      "lignes trop longues écartées entières", fit)
+check(rows.index("Scripts npm : build, dev, lint") > rows.index("Dossiers clés : sections/ (18), snippets/ (9)"),
+      "résumé de carte : les lignes les moins utiles en dernier", fit)
+
+DISK = Brain.load()  # le cerveau du disque : souvenirs ajoutés par le serveur MCP
+first = index.ensure_index(DISK)
+INDEX_FILE.write_text(first + "\nMARQUEUR", encoding="utf-8")
+now = time.time()
+for f in (GRAPH_FILE, JOURNAL_FILE):
+    if f.exists():
+        os.utime(f, (now - 60, now - 60))
+os.utime(INDEX_FILE, (now, now))
+check(ROBOTS in first and index.ensure_index(DISK).endswith("MARQUEUR"),
+      "ensure_index : BRAIN.md avec les souvenirs, relu tel quel tant qu'il est à jour", first)
+os.utime(INDEX_FILE, (now - 120, now - 120))
+again = index.ensure_index(DISK)
+check("MARQUEUR" not in again and ROBOTS in again and INDEX_FILE.read_text(encoding="utf-8") == again,
+      "ensure_index : régénéré quand le graphe a bougé depuis", again)
+md = index.export(IB)
+check(EXPORT_FILE.read_text(encoding="utf-8") == md and "### Hébergement du site vitrine\n`hebergement`" in md
+      and "### Ancien fournisseur _(archivé)_" in md and "projet : Potager du jardin" in md
+      and "Liens : → relates `tomates`" in md, "export : MEMOIRES.md avec titres, archivé signalé, projet et liens", md)
+check("**Hébergement du site vitrine**" in index.resume_delta(IB, "2026-11-01T00:00:00")
+      and index.resume_delta(IB, "2026-11-15T00:00:00") == "", "reprise de session : seulement les souvenirs modifiés depuis")
+
+# ------------------------------------------------------------------ 5. rêve (dream.py)
+dated = [node("appel", "fact", "Appel du fournisseur hier", "Il rappellera dans 2 semaines."),
+         node("retouche", "fact", "Réunion de demain", "Préparer les chiffres.", updated="2026-03-12T10:00:00"),
+         node("regle-demain", "feedback", "Répondre aux mails demain matin", "Jamais le soir, parce que la fatigue fait des fautes.")]
+DB = Brain(brain_of(dated))
+fixed, appel = dream.fix_relative_dates(DB), DB.nodes["appel"]
+check(fixed == ["appel"] and appel["title"] == "Appel du fournisseur hier (09/03/2026)"
+      and appel["body"] == "Il rappellera dans 2 semaines (24/03/2026).", "dates relatives → absolues d'après la date d'écriture", appel)
+check(DB.nodes["retouche"]["title"] == "Réunion de demain" and DB.nodes["regle-demain"]["title"] == "Répondre aux mails demain matin",
+      "souvenir retouché depuis, et règle : laissés tels quels")
+check(dream.fix_relative_dates(DB) == [] and appel["title"].count("(") == 1, "dates relatives : une seule fois (idempotent)")
+todos = [node("vieux-todo", "todo", "Payer la facture d'électricité", due="2020-01-15"),
+         node("todo-titre", "todo", "15/01/2020 : renouveler le passeport"),
+         node("futur-todo", "todo", "Réserver les vacances", due="2099-06-30"),
+         node("fait-date", "fact", "Échéance du bail", due="2020-01-15"),
+         node("todo-archive", "todo", "Ancienne tâche", due="2020-01-15", status="archived")]
+late = sorted((n["id"], d) for n, d in dream.overdue(Brain(brain_of(todos))))
+check(late == [("todo-titre", "2020-01-15"), ("vieux-todo", "2020-01-15")],
+      "à-faire en retard : échéance passée (donnée ou dans le titre) ; ni futur, ni fait, ni archivé", late)
+
+others = [node("choix", "decision", "Passer à PostgreSQL", "Migration prévue au printemps."),
+          node("doublon-a", "learning", "Vider le cache du navigateur après un déploiement", "Sinon l'ancien thème reste affiché."),
+          node("doublon-b", "learning", "Vider le cache du navigateur après chaque déploiement",
+               "Sinon l'ancien thème reste affiché à l'écran.")]
+store.replace_all(brain_of(dated + todos + others))
+observations.add(["🟡 Photos des produits refaites en lumière naturelle", "🟡 Fiche de la tasse réécrite avec ses dimensions"],
+                 now=dt.datetime(2020, 1, 15, 10, 0))
+before = GRAPH_FILE.read_bytes()
+text, items = dream.prepare(apply_safe=False)
+check(GRAPH_FILE.read_bytes() == before and len(observations.load()["obs"]) == 2 and "Déjà appliqué" not in text,
+      "rêve sans apply_safe : rien n'est modifié", text)
+text, items = dream.prepare(apply_safe=True)
+g = (read_json(GRAPH_FILE, {}) or {}).get("nodes", {})
+check(g["appel"]["title"] == "Appel du fournisseur hier (09/03/2026)"
+      and "dates relatives rendues absolues dans 1 souvenir(s) (`appel`)" in text, "rêve : dates relatives corrigées et annoncées", text)
+check(g["retouche"]["title"] == "Réunion de demain" and g["regle-demain"]["title"] == "Répondre aux mails demain matin"
+      and all(g[i]["status"] == "active" for i in ("doublon-a", "doublon-b", "vieux-todo", "todo-titre"))
+      and g["choix"]["body"] == "Migration prévue au printemps.", "rêve : doublons, retards, décision sans pourquoi pas touchés")
+check(items == 4 and all(s in text for s in ("## Doublons probables", "`doublon-a` ≈ `doublon-b`", "`choix` (Passer à PostgreSQL)",
+                                             "## À-faire en retard", "`vieux-todo`", "`todo-titre`")) and "futur-todo" not in text,
+      "dossier du rêve : 4 points à trancher (doublon, décision sans pourquoi, 2 retards)", text)
+obs, archived = observations.load(), observations.ARCHIVE_FILE.read_text(encoding="utf-8").splitlines()
+check(not obs["obs"] and len(obs["digests"]) == 1 and obs["digests"][0]["n"] == 2 and len(archived) == 2
+      and "2 observation(s) de plus de 7 jours condensée(s) en 1 résumé(s)" in text,
+      "rêve : observations de plus de 7 jours condensées, originales archivées", obs)
+snaps = [p for p in history.snapshots() if p.name.endswith("-avant-reve.json.gz")]
+check(len(snaps) == 1 and json.loads(gzip.decompress(snaps[0].read_bytes()))["nodes"]["appel"]["title"] == "Appel du fournisseur hier",
+      "rêve : instantané « avant-rêve » de l'état d'avant", [p.name for p in history.snapshots()])
+check(dream.DREAM_FILE.read_text(encoding="utf-8") == text and (read_json(dream.STATE_FILE, {}) or {}).get("pending") == items,
+      "REVE.md écrit, nombre de points noté pour le démarrage")
+line = dream.notice()
+check(line.startswith(f"🌙 Entretien du cerveau : {items} point(s) en attente") and "dream --done" in line and dream.notice() == "",
+      "démarrage : une ligne pour traiter le rêve, une fois par jour", line)
+dream.done()
+check((read_json(dream.STATE_FILE, {}) or {}).get("pending") == 0 and dream.notice() == "", "dream --done : plus rien en attente")
+
+if not remove_tree(TMP, wait=60):
+    print(f"(dossier pas effacé : {TMP})")
+print(f"\n{len(OK)} vérifications OK, {len(FAIL)} échec(s)")
+sys.exit(1 if FAIL else 0)

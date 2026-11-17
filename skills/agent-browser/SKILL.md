@@ -38,6 +38,8 @@ sessions sauvegardées, clé du coffre).
 - Lire une seule page sans interaction : l'outil de lecture web suffit, moins coûteux.
 
 ## Règles
+- Seulement des sites que l'utilisateur a le droit d'utiliser ; respecter leurs conditions d'utilisation et leur
+  `robots.txt`, à vitesse humaine. Rien de ce qu'ils interdisent (comptes en série, avis, collecte de profils).
 - Sa skill autorise d'office toutes les commandes `agent-browser` (`allowed-tools`) : prévenir l'utilisateur avant
   une action qui envoie quelque chose (formulaire, commande, message, envoi Slack), comme pour un clic à la main.
 - Jamais de mot de passe tapé par Claude, ni via `auth save` : l'utilisateur se connecte lui-même dans une fenêtre
