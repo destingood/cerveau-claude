@@ -59,13 +59,15 @@ privés.
 ## 3. État mesuré le 17/11/2026
 
 Mesures de cette session sur `main` (`176a9c2`, cerveau 8.22.0) : Linux, Python 3.13, git 2.43,
-clone superficiel. Le reste vient des PR et de leur CI.
+clone superficiel. Le reste vient des PR et de leur CI. Les lignes « Travail en attente » et
+« Plugin, tests » tiennent compte des trois PR que tu as fusionnées pendant la rédaction
+(`main` à `a190251`).
 
 | Sujet | Constat |
 |---|---|
 | Où vit le code | À trois endroits : ton dossier de développement du plugin (avec le code Rust de `brain.exe`, absent du dépôt), le dépôt local de la plateforme (recopié ici en sous-arbre), et GitHub, que les sessions cloud modifient directement. `brain publish` efface le dépôt et le recopie depuis ton dossier ; il ne garde que `.git`, `CONTRIBUTORS.md` et `plateforme/` |
-| Travail en attente | 6 PR ouvertes, 15 autres branches. La PR #12 (phase 7 et pack Business : 499 fichiers, 77 689 lignes ajoutées) attend depuis le 29/10 ; la PR #18 (étape 0 de la v1) depuis cette nuit. Les deux créent un **ADR-061** différent et modifient 4 mêmes fichiers. Ton prénom revient dans 23 lignes de la PR #18, alors que la PR #12 l'a retiré du dépôt |
-| Plugin, tests | 8 scripts sur 12 passent. Échecs : `test_eco` (3), `test_ecommerce` (3, dont 2 données personnelles dans un dépôt public), `test_wiki` (1), `test_bascule` (ne démarre pas). La PR #18 les corrige ; sa CI passe sous Linux et macOS, échoue sous Windows (`test_commun`, envoi différé, cause inconnue) |
+| Travail en attente | 6 PR ouvertes et 15 autres branches au moment de la mesure ; tu as fusionné depuis les PR #13, #14 et #16 (17/11, 04:19 UTC). Restent la PR #7, la PR #12 (phase 7 et pack Business : 499 fichiers, 77 689 lignes ajoutées), en attente depuis le 29/10, et la PR #18 (étape 0 de la v1), depuis cette nuit. Les PR #12 et #18 créent un **ADR-061** différent et modifient 4 mêmes fichiers. Ton prénom revient dans 23 lignes de la PR #18, alors que la PR #12 l'a retiré du dépôt. Depuis la fusion de la PR #14, la PR #18 est aussi en conflit avec `main` sur `tests/test_eco.py` |
+| Plugin, tests | 8 scripts sur 12 passent. Échecs : `test_eco` (3), `test_ecommerce` (3, dont 2 données personnelles dans un dépôt public), `test_wiki` (1), `test_bascule` (ne démarre pas). La PR #18 les corrige ; sa CI passe sous Linux et macOS, échoue sous Windows (`test_commun`, envoi différé, cause inconnue). Depuis la fusion de la PR #14, `test_eco` passe sur `main` (203 vérifications) |
 | Plugin, serveur MCP | Ne démarre pas quand le dépôt est ouvert comme projet (`${CLAUDE_PLUGIN_ROOT}` non défini), reproduit dans cette session. Corrigé dans la PR #18 |
 | Plugin, code | 30 347 lignes ; 14 alertes de lint réelles (8 imports inutiles, 6 f-strings vides) ; `mapper.py` et `cli.py` dépassent 2 400 lignes |
 | Plateforme, tests | 6 801 réussis, 205 échecs, 5 erreurs, en 17 min 32 s. 208 viennent de git 2.43 (le pack Code exige 2.45). 2 viennent de NautilusTrader : le plafond de montant diffère entre Linux et Windows (C18), et un cas trouvé par un test aléatoire, reproductible, où le backtest maison vend 999 499 titres et NautilusTrader 999 498 (C27). Avec un git récent, la CI de la PR #18 passe sous Linux |
@@ -97,10 +99,10 @@ clone superficiel. Le reste vient des PR et de leur CI.
 | # | Problème | Étape |
 |---|---|---|
 | C19 | **Trois endroits pour le code.** `brain publish` efface GitHub et le recopie depuis ton dossier : les corrections faites dans le cloud (PR #18 : CI, garde-fous, serveur MCP, tests) disparaîtront à la prochaine publication si personne ne les recopie à la main | 0 |
-| C20 | PR #12 et PR #18 non fusionnées et en conflit : deux ADR-061, 4 fichiers modifiés des deux côtés, prénom réintroduit par la PR #18 | 1 |
+| C20 | PR #12 et PR #18 non fusionnées et en conflit : deux ADR-061, 4 fichiers modifiés des deux côtés, prénom réintroduit par la PR #18. La PR #18 est aussi en conflit avec `main` (`tests/test_eco.py`, modifié par la PR #14) | 1 |
 | C21 | **À 0 € d'API, la plateforme ne fait rien en vrai.** Son chef d'orchestre (LangGraph) appelle l'API, et aucun serveur MCP ne la relie à Claude Code | 4 |
 | C22 | `test_commun` échoue sous Windows (envoi différé) ; il n'avait jamais tourné ailleurs que sur ton PC | 1 |
-| C23 | Dépôt encombré : 6 branches déjà fusionnées ou contenues ailleurs, 3 anciennes à vérifier ; la PR #14 (correctif éco) jamais fusionnée ; les PR #13 et #16 (maps Fortnite) ajoutent des dossiers que `brain publish` effacerait ; la PR #7 attend une décision | 1 |
+| C23 | Dépôt encombré : 6 branches déjà fusionnées ou contenues ailleurs, 3 anciennes à vérifier, et désormais celles des PR #13, #14 et #16 ; la PR #7 attend une décision. Les dossiers `fortnite-arene-prestige/` et `fortnite-ile/` (PR #13 et #16) sont à la racine de `main`, hors de ce que `brain publish` garde : la prochaine publication les effacera, et chaque utilisateur du plugin les reçoit | 0 et 1 |
 | C24 | Les hooks lancent `python` : sur un Mac ou un Linux sans cet alias, le cerveau ne tourne pas et ne le dit pas (le README donne la parade à la main) | 3 |
 | C25 | 33 skills sans aucune mesure de qualité ; certaines automatisent des sites tiers (aspiration, rétro-ingénierie d'API) : conditions d'utilisation à vérifier (R15) | 3 |
 | C26 | Hors finance, aucun critère pour passer de N1 à N3, et l'autonomie maximale écrite est N1 ou N2 : « agir après ton accord » est impossible aujourd'hui | 7 |
@@ -171,13 +173,13 @@ compte rendu, arrêt jusqu'à ton GO. « Toi » dit ce qui ne peut venir que de 
 **Étape 1 — Fusionner le travail en attente** (C20, C22, C23, C27)
 1. PR #12 : CI verte (Linux, Windows, évals hors ligne), puis vérifier que B200, B230, B292 et B316
    sont bien fermés.
-2. PR #18 remise à jour sur la nouvelle `main` : son ADR-061 devient ADR-068 ; les conflits sont
-   résolus sans baisser un seuil ni retirer un cas (R9) ; le prénom devient « l'utilisateur », comme
+2. PR #18 remise à jour sur la nouvelle `main` : son ADR-061 devient ADR-068 ; les conflits, dont
+   `tests/test_eco.py` avec la PR #14, sont résolus sans baisser un seuil ni retirer un cas (R9) ; le prénom devient « l'utilisateur », comme
    dans la PR #12.
 3. Les deux échecs restants : `test_commun` sous Windows et le cas NautilusTrader de C27. Chacun
    est expliqué puis corrigé, sans désactiver le test ; le cas de C27 est gardé comme exemple fixe
    du test, pour que la CI le rejoue toujours.
-4. PR #14 relue et fusionnée ; PR #7 selon D10 ; PR #13 et #16 selon D11 ; branches fusionnées
+4. PR #7 selon D10 ; dossiers Fortnite selon D11, avant toute publication ; branches fusionnées
    supprimées.
 - Fin : `main` contient la phase 7, le pack Business et l'étape 0 de la v1 ; CI verte sous Linux,
   Windows et macOS ; chaque PR et chaque branche restante a une suite décidée.
@@ -361,7 +363,7 @@ compte rendu, arrêt jusqu'à ton GO. « Toi » dit ce qui ne peut venir que de 
 | D8 | Canal des approbations | Discord, déjà construit ; alertes ntfy sur ton téléphone |
 | D9 | Modèle local pour la nuit | Seulement si ta carte graphique le permet (`brain pc` le mesure) |
 | D10 | PR #7 (panel de clients simulés) | L'intégrer au pack Clients |
-| D11 | PR #13 et #16 (maps Fortnite) | Un dépôt à part pour tes projets |
+| D11 | Dossiers Fortnite des PR #13 et #16, fusionnés le 17/11 | Les déplacer dans un dépôt à part pour tes projets ; sinon, les protéger de `brain publish` |
 | D12 | Courtier | Interactive Brokers (v1, P5) |
 | D13 | ADR-061 du solveur (PR #18) | Le valider, renuméroté ADR-068 |
 
@@ -391,5 +393,7 @@ compte rendu, arrêt jusqu'à ton GO. « Toi » dit ce qui ne peut venir que de 
 ## 11. Prochaines étapes
 
 1. Tu valides ce plan, ou tu le corriges, et tu tranches D1 à D4.
+   **D'ici là, ne lance pas `brain publish`** : d'après `brainkit/publish.py` de `main`, il
+   effacerait les dossiers Fortnite que tu viens de fusionner.
 2. L'étape 1 peut commencer tout de suite par la PR #12 : elle ne touche que `plateforme/`.
 3. L'étape 0 demande une action sur ton PC ; son complément de plan te donnera les commandes.
