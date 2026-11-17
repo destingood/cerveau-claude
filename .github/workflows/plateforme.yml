@@ -3,7 +3,8 @@
 # GitHub reads workflows from the repository root only: this file lives here and runs every step
 # in plateforme/ (it sat unread in plateforme/.github/ until 2026-11-17).
 # No job holds a secret or a write permission.
-# Actions are pinned to a major tag checked on 2026-10-17; pinning by commit SHA is in the backlog.
+# Actions are pinned to a major tag checked on 2026-10-17 (setup-uv publishes full versions only:
+# v10.3.3, checked on 2026-11-17); pinning by commit SHA is in the backlog (B10).
 name: Plateforme
 
 on:
@@ -40,7 +41,7 @@ jobs:
       - uses: actions/checkout@v7
         with:
           persist-credentials: false
-      - uses: astral-sh/setup-uv@v10
+      - uses: astral-sh/setup-uv@v10.3.3
         with:
           python-version: "3.12"
           enable-cache: true
@@ -89,7 +90,7 @@ jobs:
       - uses: actions/checkout@v7
         with:
           persist-credentials: false
-      - uses: astral-sh/setup-uv@v10
+      - uses: astral-sh/setup-uv@v10.3.3
         with:
           python-version: "3.12"
       - run: uv sync --frozen
@@ -105,7 +106,7 @@ jobs:
       - uses: actions/setup-node@v7
         with:
           node-version: "24"
-      - uses: astral-sh/setup-uv@v10
+      - uses: astral-sh/setup-uv@v10.3.3
         with:
           python-version: "3.12"
           enable-cache: true
