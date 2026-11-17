@@ -28,7 +28,7 @@ def load(path):
     raw = open(path, encoding="utf-8", errors="replace").read()
     if path.endswith(".json"):
         d = json.loads(raw)
-        segs = d.get("segments", d if isinstance(d, list) else [])
+        segs = d if isinstance(d, list) else d.get("segments", [])
         return [(float(s["start"]), float(s["end"]), (s.get("text") or "").strip()) for s in segs]
     cues, cur = [], None
     for line in raw.splitlines():

@@ -41,7 +41,8 @@ def main():
     a = sys.argv[1:]
     as_json = "--json" in a; a = [x for x in a if x != "--json"]
     tr = a[a.index("--transcript") + 1] if "--transcript" in a else None
-    files = [x for x in a if not x.startswith("--") and x != tr]
+    values = {i + 1 for i, x in enumerate(a) if x in ("--transcript", "--duration")}
+    files = [x for i, x in enumerate(a) if not x.startswith("--") and i not in values]
     if not files or not os.path.exists(files[0]): print(__doc__); sys.exit(1)
     rows = load_csv(files[0])
     if len(rows) < 8: print("could not read at least 8 data points from that csv"); sys.exit(1)
