@@ -17,11 +17,13 @@ _RULES = [
     ("clé Stripe", r"\b(?:sk|rk|pk)_(?:live|test)_[0-9A-Za-z]{16,}"),
     ("jeton JWT", r"\beyJ[A-Za-z0-9_-]{8,}\.[A-Za-z0-9_-]{8,}\.[A-Za-z0-9_-]{8,}"),
     ("clé privée", r"-----BEGIN [A-Z ]*PRIVATE KEY-----[\s\S]*?(?:-----END [A-Z ]*PRIVATE KEY-----|$)"),
-    ("secret", r"\b(?i:api[_ -]?key|client[_ -]?secret|secret|access[_ -]?token|token|jeton|bearer)\s*[:=]\s*['\"]?"
-               r"(?=[A-Za-z0-9_\-./+]*\d)[A-Za-z0-9_\-./+]{16,}"),
+    # Le mot-clé peut suivre un « _ » (MISTRAL_API_KEY, DISCORD_TOKEN, DB_PASSWORD) : pas de \b devant, qui exige
+    # une frontière de mot et ratait ces noms de variables, mais ni lettre ni chiffre juste avant.
+    ("secret", r"(?<![A-Za-z0-9])(?i:api[_ -]?key|client[_ -]?secret|secret|access[_ -]?token|token|jeton|bearer)"
+               r"\s*[:=]\s*['\"]?(?=[A-Za-z0-9_\-./+]*\d)[A-Za-z0-9_\-./+]{16,}"),
     # (?i:…) seulement sur le mot-clé : la valeur doit contenir un chiffre, un symbole ou une majuscule
     # (« mot de passe : jamais dans le cerveau » n'est pas un secret)
-    ("mot de passe", r"\b(?i:mot de passe|mdp|password|passwd|pwd)(?:[:=]['\"]?[^\s'\"]{4,}"
+    ("mot de passe", r"(?<![A-Za-z0-9])(?i:mot de passe|mdp|password|passwd|pwd)(?:[:=]['\"]?[^\s'\"]{4,}"
                      r"|\s*[:=]\s*['\"]?(?=\S*(?:[\dA-Z_]|[^\w\s]))[^\s'\"]{6,})"),
 ]
 RULES = [(label, re.compile(rx)) for label, rx in _RULES]
