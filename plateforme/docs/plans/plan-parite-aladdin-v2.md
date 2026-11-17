@@ -106,8 +106,8 @@ clone superficiel. Le reste vient des PR et de leur CI. Les lignes « Travail en
 | C21 | **À 0 € d'API, la plateforme ne fait rien en vrai.** Son chef d'orchestre (LangGraph) appelle l'API, et aucun serveur MCP ne la relie à Claude Code | 4 |
 | C22 | `test_commun` échoue sous Windows (envoi différé) ; il n'avait jamais tourné ailleurs que sur ton PC. Correctif de la PR #19 (CI verte sur les quatre configurations), intégré à l'étape 1 | 1 (fait) |
 | C23 | Dépôt encombré : 6 branches déjà fusionnées ou contenues ailleurs, 3 anciennes à vérifier, et désormais celles des PR #7, #12, #13, #14, #16, #18 et #19. Les dossiers `fortnite-arene-prestige/` et `fortnite-ile/` (PR #13 et #16) sont à la racine de `main`, hors de ce que `brain publish` garde : la prochaine publication les effacera, et chaque utilisateur du plugin les reçoit | 0 et 1 |
-| C24 | Les hooks lancent `python` : sur un Mac ou un Linux sans cet alias, le cerveau ne tourne pas et ne le dit pas (le README donne la parade à la main) | 3 |
-| C25 | 33 skills sans aucune mesure de qualité ; certaines automatisent des sites tiers (aspiration, rétro-ingénierie d'API) : conditions d'utilisation à vérifier (R15) | 3 |
+| C24 | Les hooks lancent `python` : sur un Mac ou un Linux sans cet alias, le cerveau ne tourne pas et ne le dit pas (le README donne la parade à la main). Aucune commande portable documentée : `python` gardé, essai sur un Windows sans Git Bash à faire avant tout changement (17/11) | 3 |
+| C25 | 33 skills sans aucune mesure de qualité ; certaines automatisent des sites tiers (aspiration, rétro-ingénierie d'API) : conditions d'utilisation à vérifier (R15). Revue R14/R15 faite le 17/11 ; restent les tests des scripts de 5 skills | 3 |
 | C26 | Hors finance, aucun critère pour passer de N1 à N3, et l'autonomie maximale écrite est N1 ou N2 : « agir après ton accord » est impossible aujourd'hui | 7 |
 | C27 | Le recoupement du backtest par NautilusTrader signalait un écart d'un titre (999 499 contre 999 498) sur un marché trouvé par Hypothesis ; la CI, qui tire d'autres marchés au hasard, ne le voyait pas. Cause : sous Linux, NautilusTrader garde 16 décimales et l'adaptateur lisait ses quantités par `int(as_double())`, qui tronque. Le moteur maison était juste. Corrigé à l'étape 1 : lecture exacte des quantités, prix et montants, deux tests qui figent le cas (B359) | 1 (fait) |
 
@@ -165,7 +165,11 @@ compte rendu, arrêt jusqu'à ton GO. « Toi » dit ce qui ne peut venir que de 
 
 **Étape 0 — Un seul endroit pour le code** (C5, C19)
 - Claude : `brain publish` construit la version depuis le dépôt lui-même et n'efface plus rien
-  d'autre ; un test refuse une publication qui supprimerait un fichier suivi par git.
+  d'autre ; un test refuse une publication qui supprimerait un fichier suivi par git. **Fait le
+  17/11 (PR #21)** : lancé sans dossier depuis le clone, il publie sur place et refuse des
+  changements non validés ; l'ancien mode s'arrête avant d'effacer un fichier suivi qui n'est pas au
+  plugin (`tests/test_publish.py`). Reste la construction de `brain.exe` en CI, quand `rust/` sera
+  dans le dépôt.
 - Toi : ton dossier de développement devient un clone du dépôt (`git pull`, `git push`) ; tu y
   ajoutes le code Rust de `brain.exe`, ou tu choisis de l'abandonner (D2) ; la plateforme suit D3.
 - Fin : une correction faite dans le cloud et une faite sur ton PC arrivent toutes les deux dans la
@@ -199,11 +203,19 @@ PR de ce plan :
 
 **Étape 3 — Un plugin solide** (C10, C24, C25)
 - Les hooks trouvent Python seuls (`python`, `python3` ou `py`), ou le disent clairement ;
-  `brain doctor` signale un hook qui ne tourne pas.
+  `brain doctor` signale un hook qui ne tourne pas. **Vérifié le 17/11** : la documentation de
+  Claude Code ne prévoit aucune commande propre à chaque système. Le repli `python3 … || python …`
+  passe par le shell, et sous Windows sans Git Bash ce shell est PowerShell, où `||` n'existe pas en
+  version 5.1. On garde donc `python` (sûr sur ton PC) tant qu'un essai sur un Windows sans Git
+  Bash n'a pas montré mieux.
 - Tests pour les modules jamais testés : recherche, index, rêve, serveur MCP, confidentialité.
 - `cli.py` et `mapper.py` découpés sans changer leur comportement, tests d'abord.
 - Revue des 33 skills : conditions d'utilisation (R15), licences (R14), un test minimal pour chaque
-  skill qui a des scripts.
+  skill qui a des scripts. **Faite le 17/11 pour R14 et R15** : les skills qui pilotent un navigateur
+  ou des sites tiers interdisent déjà les mots de passe tapés par Claude, les données personnelles
+  de tiers et le contournement d'un captcha ; agent-browser et scrapegraph exigent désormais aussi les
+  conditions d'utilisation et le `robots.txt` des sites. Les tests minimaux des scripts de
+  public-apis, replica, scrapegraph, uiverse et youtube restent à écrire.
 - Fin : CI du plugin verte sur les trois systèmes, 0 alerte de lint, chaque module a ses tests.
 
 ### Bloc B — Unifier
