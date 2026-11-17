@@ -1,8 +1,8 @@
 # Plan v2 — Réparer le cerveau et l'amener au niveau d'Aladdin dans tes domaines
 
-Date : 17/11/2026, mis à jour le même jour : PR #18 fusionnée dans `main`, étape 1 faite ·
-Statut : **en cours** ; GO donné le 17/11/2026 (« vsy ») pour l'étape 1 ; décisions D1 à D4 encore
-ouvertes.
+Date : 17/11/2026, mis à jour le même jour : PR #18 fusionnée dans `main`, étape 1 faite ; étapes
+0, 3 et 4 avancées dans la PR #21, publiée en cerveau 8.23.0 · Statut : **en cours** ; GO donné le
+17/11/2026 (« vsy ») ; D1, D2, D3 et D11 tranchés, D4 ouvert.
 
 Cette version remplace la v1 du même jour (`docs/plans/plan-parite-aladdin.md`, dans la
 [PR #18](https://github.com/destingood/cerveau-claude/pull/18)). Elle garde l'étape 0 de la v1, déjà
@@ -107,7 +107,7 @@ clone superficiel. Le reste vient des PR et de leur CI. Les lignes « Travail en
 | C22 | `test_commun` échoue sous Windows (envoi différé) ; il n'avait jamais tourné ailleurs que sur ton PC. Correctif de la PR #19 (CI verte sur les quatre configurations), intégré à l'étape 1 | 1 (fait) |
 | C23 | Dépôt encombré : 6 branches déjà fusionnées ou contenues ailleurs, 3 anciennes à vérifier, et désormais celles des PR #7, #12, #13, #14, #16, #18 et #19. Les dossiers `fortnite-arene-prestige/` et `fortnite-ile/` (PR #13 et #16) sont à la racine de `main`, hors de ce que `brain publish` garde : la prochaine publication les effacera, et chaque utilisateur du plugin les reçoit | 0 et 1 |
 | C24 | Les hooks lancent `python` : sur un Mac ou un Linux sans cet alias, le cerveau ne tourne pas et ne le dit pas (le README donne la parade à la main). Aucune commande portable documentée : `python` gardé, essai sur un Windows sans Git Bash à faire avant tout changement (17/11) | 3 |
-| C25 | 33 skills sans aucune mesure de qualité ; certaines automatisent des sites tiers (aspiration, rétro-ingénierie d'API) : conditions d'utilisation à vérifier (R15). Revue R14/R15 faite le 17/11 ; restent les tests des scripts de 5 skills | 3 |
+| C25 | 33 skills sans aucune mesure de qualité ; certaines automatisent des sites tiers (aspiration, rétro-ingénierie d'API) : conditions d'utilisation à vérifier (R15). Revue R14/R15 et tests des scripts de 5 skills faits le 17/11 (`tests/test_scripts_skills.py`) ; quatre défauts trouvés, corrigés dans cerveau 8.23.0 | 3 |
 | C26 | Hors finance, aucun critère pour passer de N1 à N3, et l'autonomie maximale écrite est N1 ou N2 : « agir après ton accord » est impossible aujourd'hui | 7 |
 | C27 | Le recoupement du backtest par NautilusTrader signalait un écart d'un titre (999 499 contre 999 498) sur un marché trouvé par Hypothesis ; la CI, qui tire d'autres marchés au hasard, ne le voyait pas. Cause : sous Linux, NautilusTrader garde 16 décimales et l'adaptateur lisait ses quantités par `int(as_double())`, qui tronque. Le moteur maison était juste. Corrigé à l'étape 1 : lecture exacte des quantités, prix et montants, deux tests qui figent le cas (B359) | 1 (fait) |
 
@@ -174,8 +174,10 @@ compte rendu, arrêt jusqu'à ton GO. « Toi » dit ce qui ne peut venir que de 
   ajoutes le code Rust de `brain.exe`, ou tu choisis de l'abandonner (D2) ; la plateforme suit D3.
 - Fin : une correction faite dans le cloud et une faite sur ton PC arrivent toutes les deux dans la
   version publiée (test).
-- D'ici là, pas de `brain publish` : il effacerait les dossiers Fortnite de `main`, même avec la
-  liste de dossiers gardés de la PR #18.
+- Le `brain publish` de cerveau 8.23.0 (17/11) ne touche qu'aux fichiers du plugin, et l'ancien
+  mode, avec un dossier, refuse de tourner si ce dossier suit d'autres fichiers. Celui de la 8.22.0
+  effacerait les dossiers Fortnite de `main` : ne le lance pas avant que ton plugin soit passé en
+  8.23.0.
 
 **Étape 1 — Finir la fusion du travail en attente** (C20, C22, C23, C27) : faite le 17/11, sauf le
 point 5
@@ -209,13 +211,22 @@ PR de ce plan :
   version 5.1. On garde donc `python` (sûr sur ton PC) tant qu'un essai sur un Windows sans Git
   Bash n'a pas montré mieux.
 - Tests pour les modules jamais testés : recherche, index, rêve, serveur MCP, confidentialité.
+  **Faits le 17/11** (`tests/test_noyau.py`, 62 vérifications). Ils ont trouvé deux défauts,
+  corrigés dans cerveau 8.23.0 : un nom de clé ou de mot de passe collé à un préfixe (par exemple
+  `MY_API_KEY`) échappait au filtre de confidentialité, et une recherche limitée à un projet
+  pouvait y ajouter des souvenirs voisins venus d'autres projets.
 - `cli.py` et `mapper.py` découpés sans changer leur comportement, tests d'abord.
 - Revue des 33 skills : conditions d'utilisation (R15), licences (R14), un test minimal pour chaque
   skill qui a des scripts. **Faite le 17/11 pour R14 et R15** : les skills qui pilotent un navigateur
   ou des sites tiers interdisent déjà les mots de passe tapés par Claude, les données personnelles
   de tiers et le contournement d'un captcha ; agent-browser et scrapegraph exigent désormais aussi les
-  conditions d'utilisation et le `robots.txt` des sites. Les tests minimaux des scripts de
-  public-apis, replica, scrapegraph, uiverse et youtube restent à écrire.
+  conditions d'utilisation et le `robots.txt` des sites. Les tests des scripts de public-apis,
+  replica, scrapegraph, uiverse et youtube sont écrits (`tests/test_scripts_skills.py`, 59
+  vérifications, sans réseau). Ils ont trouvé quatre défauts, corrigés dans cerveau 8.23.0 : une
+  transcription JSON en simple liste faisait planter `deadair.py`, `chapters.py` et
+  `retention.py` ; `retention.py` prenait la valeur de `--duration` placée avant le fichier pour un
+  nom de fichier ; `hookscore.py` répondait « succès » sur un fichier absent ; `sgai.py` s'arrêtait
+  sur une erreur brute quand la bibliothèque manquait.
 - Fin : CI du plugin verte sur les trois systèmes, 0 alerte de lint, chaque module a ses tests.
 
 ### Bloc B — Unifier
@@ -418,7 +429,8 @@ PR de ce plan :
 1. D1, D2, D3 et D11 sont tranchés (17/11) ; D4 reste ouvert. Tu crées les dépôts privés
    `cerveau-plateforme` et `mes-projets`, et tu pousses ton dépôt local de la plateforme dans le
    premier.
-   **D'ici là, ne lance pas `brain publish`** : d'après `brainkit/publish.py` de `main`, il
-   effacerait les dossiers Fortnite que tu viens de fusionner.
+   Ton plugin passe en 8.23.0 au prochain démarrage de Claude Code, une fois la PR #21 dans
+   `main`. **Avant cela, ne lance pas `brain publish`** : celui de la 8.22.0 effacerait les
+   dossiers Fortnite que tu viens de fusionner.
 2. L'étape 1 est faite (§7), sauf le sort des dossiers Fortnite et des branches fusionnées.
 3. L'étape 0 demande une action sur ton PC ; son complément de plan te donnera les commandes.
