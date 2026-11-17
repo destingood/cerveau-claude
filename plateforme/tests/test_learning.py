@@ -217,7 +217,7 @@ def test_a_bare_verdict_is_journaled_without_a_pseudonymiser(
         raise AssertionError("no note: Presidio must not load")
 
     entry = give_feedback(journal, store, "req-1", "bon", pseudonymiser=no_presidio, now=NOW)
-    assert (entry["actor"], entry["event"], entry["request_id"]) == ("lucas", "FEEDBACK", "req-1")
+    assert (entry["actor"], entry["event"], entry["request_id"]) == ("owner", "FEEDBACK", "req-1")
     assert journal.read_payload(entry["payload_ref"]) == {
         "feedback_schema": 1,
         "verdict": "bon",

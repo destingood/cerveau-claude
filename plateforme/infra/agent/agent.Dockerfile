@@ -1,5 +1,5 @@
 # Image cerveau-agent (phase 6, P3b ; ADR-054) : Claude Code (Agent SDK et son CLI embarqué), ruff
-# et pytest, sur une copie jetable d'un dépôt, sans accès à Internet. Construite par Lucas, jamais
+# et pytest, sur une copie jetable d'un dépôt, sans accès à Internet. Construite par l'utilisateur, jamais
 # par CERVEAU (commandes dans infra/agent/README.md) :
 #   docker build -f infra/agent/agent.Dockerfile --build-context runner=core/code \
 #     -t cerveau-agent infra/agent
@@ -9,7 +9,7 @@
 # la construction échoue (R7).
 FROM python:3.12-slim@sha256:A_DEFINIR
 
-# requirements.txt : produit par Lucas depuis requirements.in, chaque paquet figé par version et
+# requirements.txt : produit par l'utilisateur depuis requirements.in, chaque paquet figé par version et
 # par empreinte. --require-hashes refuse tout paquet sans empreinte ; --only-binary refuse toute
 # construction depuis les sources (aucun setup.py exécuté) ; --no-deps : la liste est complète.
 COPY --chown=0:0 --chmod=0444 requirements.txt /tmp/requirements.txt

@@ -31,10 +31,11 @@ from typing import Any
 GENESIS_HASH = "sha256:" + "0" * 64
 HASH_RE = re.compile(r"^sha256:[0-9a-f]{64}$")
 
-ACTORS = frozenset({"orchestrator", "risk_gate", "policy", "lucas", "scheduler", "interface"})
+ACTORS = frozenset({"orchestrator", "risk_gate", "policy", "owner", "scheduler", "interface"})
 EVENTS = frozenset(
     {"TOOL_CALL", "DECISION", "POLICY", "ORDER_STATE", "APPROVAL", "KILL", "CONFIG_CHANGE"}
-    | {"ERROR", "FEEDBACK"}  # ADR-011: what CERVEAU learns from
+    | {"ERROR", "FEEDBACK", "FORECAST"}  # ADR-011, ADR-064: what CERVEAU learns from
+    | {"LEARNING"}  # ADR-065: the gate's verdicts, promotions and rollbacks
 )
 VERSION_KEYS = frozenset({"prompt", "model", "plugin", "config"})
 ENTRY_KEYS = frozenset(

@@ -12,8 +12,7 @@ from pathlib import Path
 from . import __version__
 from . import index as idx
 from . import journal, search
-from .common import (BRAIN_DIR, CLAUDE_HOME, CMD, CONFIG_FILE, EXPORT_FILE, GRAPH_FILE, INDEX_FILE, JOURNAL_FILE,
-                     LOG_FILE, PROJECTS_DIR, REPORT_FILE, VIZ2D_FILE, VIZ_FILE, budget_chars, days_since, est_tokens, fmt_date,
+from .common import (BRAIN_DIR, CLAUDE_HOME, CMD, CONFIG_FILE, EXPORT_FILE, GRAPH_FILE, INDEX_FILE, LOG_FILE, PROJECTS_DIR, REPORT_FILE, VIZ2D_FILE, VIZ_FILE, budget_chars, days_since, est_tokens, fmt_date,
                      fold, load_config, log, now_iso, set_config, setup_io, short, slugify, update_config,
                      write_text)
 from .store import GLOBAL_REFS, TYPES, Brain, bump_hits, clean_tags, normalize_type, priority
@@ -227,7 +226,7 @@ def cmd_obs(a):
         return
     items = observations.recent(a.n, pid if explicit else None, a.days)
     if not items:
-        print(f"(aucune observation — en noter : `obs \"🔴 …\" \"🟡 …\"`)")
+        print("(aucune observation — en noter : `obs \"🔴 …\" \"🟡 …\"`)")
         return
     print(f"🗒️ Observations ({len(items)}, les plus récentes d'abord) :")
     for o in items:
@@ -1042,7 +1041,7 @@ def cmd_doctor(a):
     missing = [e for e in exes if not os.path.exists(e)]
     if not PLUGIN:
         ok(not missing, "interpréteur des hooks : " + (", ".join(sorted(exes)) or "py -3")
-           + (f" — INTROUVABLE (Python a changé de version ?) → brain install" if missing else ""))
+           + (" — INTROUVABLE (Python a changé de version ?) → brain install" if missing else ""))
         ok(len(present) == len(wanted), "hooks : " + (", ".join(present) or "aucun")
            + ("" if len(present) == len(wanted) else f" — manquants : {', '.join(e for e in wanted if e not in present)} (→ brain install)"))
         claude_md = CLAUDE_HOME / "CLAUDE.md"
@@ -1609,16 +1608,20 @@ def cmd_restore(a):
     refresh_views()
     d = history.describe(path)
     print(f"✓ cerveau restauré depuis {path.name} ({d['active']} souvenirs actifs, {d['edges']} liens)"
-          + (f" — l'état précédent est sauvegardé : `brain restore 1` pour annuler" if before else ""))
+          + (" — l'état précédent est sauvegardé : `brain restore 1` pour annuler" if before else ""))
 
 
 def _doctor_plugin(ok):
     """Contrôles propres au mode plugin : version, fichiers du plugin, lanceur stable, cerveau classique en double."""
     from . import plugin
-    from .common import CODE_DIR
+    from .common import CODE_DIR, read_json
     ok(True, f"plugin « cerveau » {__version__} : {CODE_DIR}")
-    need = [CODE_DIR / "hooks" / "hooks.json", CODE_DIR / ".mcp.json", CODE_DIR / "skills" / "brain" / "SKILL.md"]
+    need = [CODE_DIR / "hooks" / "hooks.json", CODE_DIR / "skills" / "brain" / "SKILL.md"]
     gone = [str(p.relative_to(CODE_DIR)) for p in need if not p.exists()]
+    manifest = read_json(CODE_DIR / ".claude-plugin" / "plugin.json", {}) or {}
+    servers = manifest.get("mcpServers") if isinstance(manifest, dict) else None
+    if not (isinstance(servers, dict) and "cerveau" in servers) and not (CODE_DIR / ".mcp.json").exists():
+        gone.append("serveur MCP (.claude-plugin/plugin.json › mcpServers)")
     ok(not gone, "hooks, serveur MCP et skill du plugin" + (f" — manquants : {', '.join(gone)}" if gone else ""))
     from . import delegation
     agents = delegation.available()
@@ -1833,13 +1836,16 @@ def cmd_boutique(a):
                                    pages=pages, vitesse=a.vitesse or a.complet, rapport=a.rapport)
         elif act in ("bilan", "revue", "point"):
             lines = boutique.bilan(args[0] if args else None, semaines=a.semaines, md=a.md)
+        elif act in ("panel", "panels", "simulation", "simuler"):
+            lines = boutique.panel(args[0] if args else None, importer=a.importer, applique=a.applique,
+                                   variante=a.variante, le=a.le)
         elif act in ("regler", "reglage", "set"):
             if len(args) < 2:
                 die("brain boutique regler <boutique> cle=valeur … (url, plateforme, nom, chemin, type, marge, "
                     "seuil.sessions|ajout|paiement|panier_commande)")
             lines = boutique.regler(args[0], args[1:])
         else:
-            die(f"action inconnue : {a.action} (liste, ajouter, plan, kpi, audit, bilan, regler)")
+            die(f"action inconnue : {a.action} (liste, ajouter, plan, kpi, audit, bilan, panel, regler)")
     except (LookupError, ValueError, RuntimeError) as exc:
         die(str(exc))
     for line in lines:
@@ -2265,8 +2271,8 @@ def build_parser():
                    help="reposer la tâche si elle a disparu ou pointe vers un Python absent (jamais après --retirer)")
     s.add_argument("--dry-run", action="store_true", help="avec --installer : montrer la tâche sans la poser")
     s = cmd("boutique", cmd_boutique, "boutiques en ligne suivies (données privées) : liste · ajouter \"Nom\" · plan · "
-            "kpi (semaine) · audit · bilan · regler", ["boutiques", "shop"])
-    s.add_argument("action", nargs="?", help="liste (défaut), ajouter, plan, kpi, audit, bilan, regler")
+            "kpi (semaine) · audit · bilan · panel (clients simulés) · regler", ["boutiques", "shop"])
+    s.add_argument("action", nargs="?", help="liste (défaut), ajouter, plan, kpi, audit, bilan, panel, regler")
     s.add_argument("args", nargs="*", help="la boutique (slug ou nom) ; ajouter : son nom ; regler : cle=valeur …")
     s.add_argument("--url", help="ajouter : adresse de la boutique")
     s.add_argument("--plateforme", help="ajouter : shopify, woocommerce, prestashop, site statique, marketplace…")
@@ -2294,6 +2300,10 @@ def build_parser():
     s.add_argument("--vitesse", action="store_true", help="audit : Core Web Vitals (PageSpeed Insights, mobile)")
     s.add_argument("--complet", action="store_true", help="audit : conformité + 10 pages + vitesse")
     s.add_argument("--rapport", help="audit : écrire aussi le rapport dans ce fichier Markdown")
+    s.add_argument("--importer", help="panel : dossier d'un panel simulé (ou son synthese.json) à garder dans le suivi")
+    s.add_argument("--applique", help="panel : le panel (S1…) dont une variante vient d'être mise en ligne")
+    s.add_argument("--variante", help="panel : la variante mise en ligne (défaut : celle que le panel préférait)")
+    s.add_argument("--le", help="panel : date de la mise en ligne (défaut aujourd'hui ; 02/11, hier…)")
     s = cmd("commun", cmd_commun, "cerveau commun avec les amis (jamais rien de privé) : etat · apercu · rejoindre --oui · "
             "non · quitter · projet <id> · sync · liste", ["partage"])
     s.add_argument("action", nargs="?", help="etat (défaut), apercu, rejoindre, non, quitter, projet, sync, liste")

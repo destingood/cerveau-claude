@@ -8,7 +8,7 @@
 L'ADR-012 date chaque valeur de la base finance par son heure de publication (`published_at`).
 Une lecture « connue à » une date ne voit que ce qui était publié à cette date. L'ADR-013 retient
 trois fournisseurs légaux derrière une interface `MarketDataProvider` : des fixtures hors ligne,
-les fichiers CSV exportés par Lucas et la BCE. Il reste trois questions.
+les fichiers CSV exportés par l'utilisateur et la BCE. Il reste trois questions.
 - **L'heure de publication.** Aucun de ces fournisseurs ne donne l'heure exacte de publication
   d'une valeur. Une heure trop tôt ferait voir un cours avant sa publication, ce qui fausse tout
   backtest (R10).
@@ -72,12 +72,12 @@ Les valeurs ne sont jamais journalisées.
 
 **Accès.** La BCE passe par `config.require("data.ecb")` : une source désactivée dans
 `data_sources.yaml` bloque la commande (code 2). Les fichiers CSV n'ont pas d'interrupteur : ce
-sont les fichiers de Lucas, lus sur son disque, sans réseau. `cerveau finance sync` est le seul
-écrivain de la base. Lucas la lance à la main ; les outils MCP ne font que lire.
+sont les fichiers de l'utilisateur, lus sur son disque, sans réseau. `cerveau finance sync` est le seul
+écrivain de la base. L'utilisateur la lance à la main ; les outils MCP ne font que lire.
 
 **Catégories BCE.** Seuls `fx_reference_rates` et `estr` sont pris en charge. La courbe des taux
 (`yield_curve`) est retirée de `data_sources.yaml`, qui devient ainsi plus prudent. Ses
-conditions d'utilisation sont propres à cette série et plus restrictives ; Lucas doit les lire
+conditions d'utilisation sont propres à cette série et plus restrictives ; l'utilisateur doit les lire
 avant de l'ajouter (D22).
 
 ## À vérifier

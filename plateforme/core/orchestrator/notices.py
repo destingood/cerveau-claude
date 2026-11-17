@@ -10,6 +10,11 @@ The legal pack (H7, ADR-059) adds dated notices: each Légifrance article read b
 dates and reading day, taken from the tool output and checked by strict patterns; a
 service-public page brings the update date found on it, if any. Any legal source, or a question
 routed to ``juridique_fr``, adds the R16 warning.
+
+The business pack (I5, I8) does the same: a company search is dated by its reading day, a
+statistic of INSEE by its dataset, update date and reading day; a question routed to
+``business`` adds its R16 warning, and the draft marker when the question asks for a text to
+send or the answer holds one (D22): nothing is ever sent, the code says so.
 """
 
 from __future__ import annotations
@@ -56,6 +61,15 @@ NOTICES: dict[str, str] = {
         "n'est pas un conseil juridique. Pour une situation précise, consulter un avocat, un "
         "notaire ou l'administration concernée (R16)."
     ),
+    "entreprises": "Source : API Recherche d'entreprises (DINUM, données INSEE et INPI).",
+    "insee": "Source : Insee, API Melodi, Licence Ouverte 2.0.",
+    "business": (
+        "Aide à la décision personnelle : ni conseil en gestion, ni conseil juridique, fiscal ou "
+        "comptable. Les chiffres viennent des outils cités et des hypothèses fournies (R1, R16)."
+    ),
+    "brouillon": (
+        "Brouillon — non envoyé : CERVEAU n'a aucun outil d'envoi ; relire avant tout usage (D22)."
+    ),
 }
 OWASP_HOST = "owasp.org"
 LEGIFRANCE_HOST = "legifrance.gouv.fr"
@@ -71,8 +85,26 @@ SERVICE_PUBLIC_DATED = (
     "du {days} (date lue sur la fiche)."
 )
 _DAY = r"\d{4}-\d{2}-\d{2}"
+COMPANY_NOTICE = (
+    "Source : API Recherche d'entreprises (DINUM, données INSEE et INPI), lue le {days}."
+)
+STATS_NOTICE = (
+    "Source : Insee, API Melodi, Licence Ouverte 2.0 ; jeu {id}, mis à jour le {updated}, lu le "
+    "{read}."
+)
+BUSINESS_DOMAIN = "business"
+MAX_SERIES = 10  # dated INSEE notices shown
 _ARTICLE_KEY = re.compile(rf"legifrance:(LEGIARTI\d{{12}}):({_DAY}):({_DAY}|-):({_DAY})", re.ASCII)
 _SERVICE_PUBLIC_KEY = re.compile(rf"service_public:({_DAY})", re.ASCII)
+_COMPANY_KEY = re.compile(rf"entreprises:({_DAY})", re.ASCII)
+_STATS_KEY = re.compile(rf"insee:(DS_[A-Z0-9_]{{1,60}}):({_DAY}|-):({_DAY})", re.ASCII)
+# A question asking for a text meant for someone else (D22): checked on the pseudonymised text.
+_DRAFT_ASK = re.compile(
+    r"\b(r[ée]dige\w*|[ée]cri[st]\w*|courriel|e-?mail|mail|newsletter|fiche produit|"
+    r"publication|post|annonce|message|relance|devis|r[ée]ponse [àa] (un|une|mon|ma|ce|cette) "
+    r"client\w*|pitch|slogan)\b",
+    re.IGNORECASE,
+)
 _LEADING_DAY = re.compile(rf"({_DAY})", re.ASCII)
 
 
@@ -106,6 +138,13 @@ def _article_key(result: dict[str, object]) -> str | None:
     return key if None not in parts and _ARTICLE_KEY.fullmatch(key) else None
 
 
+def _stats_key(result: dict[str, object]) -> str | None:
+    updated = "-" if result.get("mise_a_jour") is None else _day(result.get("mise_a_jour"))
+    parts = (result.get("jeu"), updated, _day(result.get("lu_le")))
+    key = "insee:" + ":".join(str(part) for part in parts)
+    return key if None not in parts and _STATS_KEY.fullmatch(key) else None
+
+
 def tool_sources(name: str, result: object) -> tuple[str, ...]:
     """The sources whose data a kept tool result holds, read from its structured output."""
     if not isinstance(result, dict):
@@ -125,6 +164,11 @@ def tool_sources(name: str, result: object) -> tuple[str, ...]:
         return ("legifrance", "juridique")
     if name == "legi_article":  # dated by the version read; undated if its fields are odd
         return (_article_key(result) or "legifrance", "juridique")
+    if name == "company_search":  # dated by the reading day; undated if it is odd
+        day = _day(result.get("lu_le"))
+        return ("entreprises", *([f"entreprises:{day}"] if day else []))
+    if name == "stats_series":
+        return (_stats_key(result) or "insee",)
     return ()
 
 
@@ -144,8 +188,17 @@ def page_sources(pages: Iterable[Page]) -> tuple[str, ...]:
 
 
 def domain_sources(domain: str) -> tuple[str, ...]:
-    """A question routed to the legal pack always carries the R16 warning."""
-    return ("juridique",) if domain == LEGAL_DOMAIN else ()
+    """A question routed to the legal or business pack always carries its R16 warning."""
+    return {LEGAL_DOMAIN: ("juridique",), BUSINESS_DOMAIN: ("business",)}.get(domain, ())
+
+
+def draft_sources(domain: str, question: str, texts: Iterable[str]) -> tuple[str, ...]:
+    """The draft marker of a business answer (D22, I5): the question asks for a text to send, or
+    the answer calls itself a draft. Marking too often is harmless; missing one is not."""
+    if domain != BUSINESS_DOMAIN:
+        return ()
+    asked = _DRAFT_ASK.search(question) is not None
+    return ("brouillon",) if asked or any("brouillon" in t.lower() for t in texts) else ()
 
 
 def _articles(wanted: Iterable[str]) -> list[str]:
@@ -159,11 +212,22 @@ def _articles(wanted: Iterable[str]) -> list[str]:
     return texts[:MAX_ARTICLES]
 
 
+def _series(wanted: Iterable[str]) -> list[str]:
+    texts: list[str] = []
+    for key in wanted:
+        found = _STATS_KEY.fullmatch(key)
+        if found is not None:
+            identifier, updated, read = found.groups()
+            shown = "(date non publiée)" if updated == "-" else updated
+            texts.append(STATS_NOTICE.format(id=identifier, updated=shown, read=read))
+    return texts[:MAX_SERIES]
+
+
 def notices(keys: Iterable[str]) -> tuple[str, ...]:
     """The notices of ``keys``, each once, in the order of ``NOTICES``; unknown keys add none.
 
-    Dated Légifrance notices replace the undated one; the update dates of service-public pages
-    are gathered in one notice.
+    Dated Légifrance and INSEE notices replace the undated one; the update dates of
+    service-public pages, and the reading days of company searches, are gathered in one notice.
     """
     wanted = list(dict.fromkeys(keys))
     texts: list[str] = []
@@ -176,6 +240,14 @@ def notices(keys: Iterable[str]) -> tuple[str, ...]:
                 texts.append(SERVICE_PUBLIC_DATED.format(days=", du ".join(days)))
             elif key in wanted:
                 texts.append(text)
+        elif key == "entreprises":
+            days = sorted({m.group(1) for k in wanted if (m := _COMPANY_KEY.fullmatch(k))})
+            if days:
+                texts.append(COMPANY_NOTICE.format(days=", le ".join(days)))
+            elif key in wanted:
+                texts.append(text)
+        elif key == "insee":
+            texts += _series(wanted) or ([text] if key in wanted else [])
         elif key in wanted:
             texts.append(text)
     return tuple(texts)

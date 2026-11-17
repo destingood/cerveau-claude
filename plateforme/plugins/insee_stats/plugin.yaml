@@ -1,0 +1,51 @@
+# Manifeste du plugin insee_stats (Annexe C.1, plan P6 I3). Un outil de LECTURE sur l'API Melodi de
+# l'Insee, en accès anonyme : trois jeux de statistiques publiques dans une liste fermée
+# (plugins/insee_stats/catalog.py). Aucun outil d'action, aucune entrée d'hôte ou d'URL ; tout code
+# renvoyé est une donnée externe non fiable (R5).
+id: insee_stats
+version: 0.1.0
+domain: business
+kind: tool
+transport: mcp-stdio
+# Valeurs de l'Insee recopiées telles quelles, mais sélection, filtrage et chiffres en Figure propres
+# au plugin.
+parity_label: "[Approximation]"
+environments: [dev]
+max_autonomy_level: N1
+tools:
+  - name: stats_series
+    description: >-
+      Lit une statistique publique de l'Insee (API Melodi) dans une liste fermée de trois jeux :
+      populations de référence (DS_POPULATIONS_REFERENCE), créations d'entreprises et
+      d'établissements (DS_SIDE_CREA_DEP_REG_NAT), revenus et niveau de vie Filosofi
+      (DS_FILOSOFI_CC). Pour une commune (COM-44109), un département (DEP-44), une région (REG-52)
+      ou la France (FRANCE), une année facultative et 3 filtres au plus sur les dimensions du jeu.
+      50 observations au plus, chacune avec ses codes et sa valeur, et la date de mise à jour du
+      jeu.
+    action_class: LECTURE
+    annotations:
+      readOnlyHint: true
+      idempotentHint: true
+      destructiveHint: false
+      openWorldHint: true
+    input_schema: schemas/stats_series.in.json
+    output_schema: schemas/stats_series.out.json
+tests: tests/
+evals:
+  questions: evals/questions.xml
+  golden: evals/golden.jsonl
+slo:
+  # Provisoire, à confirmer par l'utilisateur après les premières mesures.
+  success_rate_min: 0.9
+  p95_latency_ms: A_DEFINIR
+# mcp (MIT), Pydantic (MIT), httpx (BSD-3-Clause) : docs/licences.md.
+dependencies_licences: [MIT, BSD-3-Clause]
+# Démarrage (ADR-015). Aucune clé : accès anonyme. CERVEAU_HOME désigne le projet servi
+# (configuration, kill switch). 20 requêtes par minute partagées dans var/net/ (I9), cache 7 jours
+# de la seule sortie filtrée sous var/business/. Délai : un appel fait deux requêtes (données, puis
+# catalogue) ; deux essais de 10 s chacune et une attente de 5 s au plus tiennent dans 60 s.
+runtime:
+  module: plugins.insee_stats
+  env: [CERVEAU_HOME]
+  priced_tools: {}
+  tool_timeout_s: 60

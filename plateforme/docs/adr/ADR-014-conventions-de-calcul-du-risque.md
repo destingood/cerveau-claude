@@ -1,6 +1,6 @@
 # ADR-014 — Conventions de calcul du risque et de la performance
 
-- Statut : **accepté par Lucas le 18/10/2026** (plan de phase 2, D7, D8, D11)
+- Statut : **accepté par l'utilisateur le 18/10/2026** (plan de phase 2, D7, D8, D11)
 - Date : 2026-10-18
 - Phase : 2
 

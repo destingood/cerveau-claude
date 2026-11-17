@@ -46,5 +46,5 @@ Option 3.
 - Plus difficile : les prix se tiennent à jour à la main (date et URL obligatoires) ; relire le
   journal coûte O(n) par requête (acceptable au volume personnel ; index au backlog si besoin).
 - Le gain du cache de prompt est `A_VERIFIER` : il sera mesuré, pas supposé.
-- `cerveau ask` réel reste bloqué tant que les budgets jour et mois ne sont pas fixés par Lucas.
+- `cerveau ask` réel reste bloqué tant que les budgets jour et mois ne sont pas fixés par l'utilisateur.
 - Réversible : oui ; le schéma des coûts dans le journal est versionné.

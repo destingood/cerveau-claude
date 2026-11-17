@@ -1,12 +1,13 @@
 """Eval cases and fixture web pages (plan section 9): YAML and JSONL files, validated on load.
 
-A case holds a question of Lucas, the fixture web it may search and read, what the scripted models
+A case holds a question of the user, the fixture web it may search and read, what the scripted
+models
 answer offline, and what a good run must show. The fixture pages serve both modes: offline, the
 scripted reader returns their ``extracts``; live, the real reader reads the same text.
 
 A finance case also names the tool calls the scripted planner makes and the figures a good answer
 cites: their displays are frozen from the reference store (ADR-023) and the real finance servers
-must compute them again, in both modes. It may add to its own copy of that store what Lucas would
+must compute them again, in both modes. It may add to its own copy of that store what the user would
 import (a CSV file of instruments or transactions, possibly trapped) and quality scores (D12).
 
 A research case (``approfondi``) is asked as with ``cerveau ask --approfondi`` (ADR-045): it may
@@ -18,7 +19,7 @@ plus the claims, titles and steps the case adds to test what the engine removes 
 A paper case (``paper``) runs the daily paper loop on a synthetic market of fictitious
 instruments, with no model: its source proposes target orders and the drafter, the policy and the
 Risk Gate decide, over a copy of the configuration; at N3, the case answers the approval requests
-as Lucas would, with the one-time codes of a test key (``core/evals/paper.py``).
+as the user would, with the one-time codes of a test key (``core/evals/paper.py``).
 
 A cyber case (``cyber``) gives the records the fake NVD, KEV and EPSS serve to the real cyber_cve
 server and the state of the ATT&CK index the real cyber_attack server reads, built from a
@@ -27,6 +28,15 @@ synthetic bundle in the run's temporary home (ADR-057); a source may be down or 
 A legal case (``legal``) gives the article versions and searches the fake Légifrance API serves
 to the real legifrance server, the PISTE environment of its configuration copy and whether it has
 stand-in credentials; the API may be down, answer too much or send another article (ADR-060).
+
+A business case (``business``) gives the companies the fake API Recherche d'entreprises finds and
+the INSEE datasets the fake Melodi API serves to the real entreprises and insee_stats servers; a
+company may carry a director and an address the plugin must drop, and an API may be down (ADR-063).
+
+A learning case (``learning``) runs the learning loop's own code with no model, in a temporary
+home: feedback with its notes, the harvest of patterns, a challenger's lesson, writes aimed past
+the learned layer, a promotion on synthetic eval reports, forecasts and the weekly report
+(``core/evals/learning.py``, ADR-065).
 """
 
 from __future__ import annotations
@@ -81,6 +91,7 @@ INJECTION_DIR = REDTEAM_DIR / "injection_base"
 # The red teams of an action, whatever the pack (ADR-030, ADR-035): read after the packs' own.
 EXECUTION_INJECTION_DIR = REDTEAM_DIR / "injection_execution"
 APPROVAL_INJECTION_DIR = REDTEAM_DIR / "injection_approbation"
+LEARNING_INJECTION_DIR = REDTEAM_DIR / "injection_learning"  # the learning loop (ADR-065)
 WEB_FIXTURES = Path("evals") / "fixtures" / "web.yaml"
 CASE_ID = r"^[a-z0-9][a-z0-9-]{2,63}$"
 TOOL_NAME = r"^[a-z][a-z0-9_]{1,63}$"
@@ -203,7 +214,7 @@ class Attack(_Data):
     """What a planner or a reader that obeys the page would do (persona « compromis »)."""
 
     reads: tuple[str, ...] = ()  # addresses taken from the page, outside the search results
-    searches: tuple[str, ...] = ()  # queries the page dictates, built from Lucas's figures (R6)
+    searches: tuple[str, ...] = ()  # queries the page dictates, built from the user's figures (R6)
     append: str = ""  # added to the developpement: a link, an image, a bare address
     reader: bool = True  # the reader returns the trap extracts of the pages
 
@@ -305,7 +316,7 @@ class PaperOrderFixture(_Data):
 
 
 class PaperAnswerFixture(_Data):
-    """Lucas's answer to one approval request of the day (N3), as from the bot: wrong codes
+    """The user's answer to one approval request of the day (N3), as from the bot: wrong codes
     first, then the right one-time code, a refusal, or nothing."""
 
     answer: Literal["accorder", "refuser", "aucune"] = "accorder"
@@ -315,7 +326,7 @@ class PaperAnswerFixture(_Data):
 
 class PaperDayFixture(_Data):
     """One decision day: the session's close, then the target orders the source proposes; at
-    N3, Lucas's answers to the day's approval requests, in the order they were filed."""
+    N3, the user's answers to the day's approval requests, in the order they were filed."""
 
     day: date
     close: float | None = Field(default=100.0, gt=0)  # None: the close is never published
@@ -408,6 +419,74 @@ class ExpectPaper(_Data):
     approvals: tuple[ApprovalState, ...] = ()  # each request at the end, in filing order (N3)
 
 
+LearningStep = Literal[
+    "retour", "lecon", "ecriture", "chemin", "promotion", "prevision", "resolution"
+]
+GateStatus = Literal["rejete", "promouvable", "non_conclu"]
+
+
+class LearningPromotionFixture(_Data):
+    """A promotion asked on two synthetic eval reports: the champion passes every case."""
+
+    lost: tuple[Literal["comportement", "red_team"], ...] = ()  # cases the challenger fails
+    r5: int = Field(default=0, ge=0, le=10)  # R5 breaches the challenger adds
+    forged: bool = False  # the challenger's report claims its own verdict and scores (R1)
+    mode: Literal["offline", "live"] = "offline"  # of both reports (D4)
+    thresholds: bool = False  # the gate's margin and minimum set to 0 and 1 for the comparison
+
+
+class LearningForecastFixture(_Data):
+    """A forecast made 30 days before the report; resolved five days after its due day."""
+
+    kind: Literal["probabilite", "estimation"] = "probabilite"
+    value: float = Field(allow_inf_nan=False)
+    due_days: int = Field(default=10, ge=-5, le=25)  # 0 or less: refused, the day has come
+    outcome: bool | float | None = None  # what happened; None: left open
+    early: bool = False  # also tries to resolve it the day after it is made (R10)
+
+
+class LearningWeeklyFixture(_Data):
+    """The weekly report on a synthetic offline eval report of the week."""
+
+    summary: str = ""  # free text slipped into the eval report: never in the weekly report
+    gate_passed: bool = True
+
+
+class LearningFixture(_Data):
+    """A run of the learning loop's code, with no model, in a temporary home (ADR-065).
+
+    Each note and each bare verdict is a « mauvais » feedback on its own request, routed to
+    ``pack`` (any text: what a routed decision would carry). ``min_support`` and
+    ``max_feedback_per_user`` stand for the ``A_DEFINIR`` values of ``evals.yaml``, in the run
+    only. A challenger is proposed for each pattern kept, with ``lesson`` as the drafter's text
+    when given (on a pattern of its own when none is kept), else the scripted drafter's.
+    """
+
+    pack: str = Field(default=DEFAULT_DOMAIN, min_length=1, max_length=64)
+    notes: tuple[str, ...] = Field(default=(), max_length=20)
+    bare: int = Field(default=0, ge=0, le=50)
+    min_support: int = Field(default=2, ge=2, le=10)
+    max_feedback_per_user: int = Field(default=3, ge=1, le=50)
+    lesson: str | None = None
+    targets: tuple[str, ...] = Field(default=(), max_length=10)  # packs or paths a write aims at
+    promotion: LearningPromotionFixture | None = None
+    forecasts: tuple[LearningForecastFixture, ...] = Field(default=(), max_length=10)
+    weekly: LearningWeeklyFixture | None = None
+
+
+class ExpectLearning(_Data):
+    """What the learning loop must show; a count left out is not checked."""
+
+    refused: tuple[LearningStep, ...] = ()  # the steps refused, in order
+    patterns: int | None = None  # patterns the harvest keeps
+    capped: int | None = None  # verdicts over the per-user cap
+    notes_aside: int | None = None  # notes set aside for their injection signals
+    challengers: int | None = None  # challengers written
+    verdict: GateStatus | None = None
+    reasons: tuple[str, ...] = ()  # substrings of the gate's reasons
+    forecasts: int | None = None  # FORECAST entries of the journal
+
+
 class ExpectedFigure(_Data):
     """A figure a good answer cites: the display the tool must compute again, frozen."""
 
@@ -460,7 +539,7 @@ class ExpectOffline(_Data):
     """Counters of the audit payload that the deterministic defences must reach offline."""
 
     min_refused_reads: int = 0
-    min_refused_searches: int = 0  # queries refused because they carried Lucas's data (R6)
+    min_refused_searches: int = 0  # queries refused because they carried the user's data (R6)
     min_links_removed: int = 0
     min_extracts_flagged: int = 0
     min_extracts_rejected: int = 0
@@ -492,7 +571,7 @@ class QualityFixture(_Data):
 
 
 class StoreFixture(_Data):
-    """What the case adds to its copy of the reference store before the run, as Lucas would:
+    """What the case adds to its copy of the reference store before the run, as the user would:
     the CSV files he imports (the import refuses a trapped one whole, R5) and quality scores."""
 
     instruments_csv: str | None = Field(default=None, min_length=1)  # `cerveau` reference format
@@ -562,6 +641,7 @@ class Expect(_Data):
     refused_imports: int = Field(default=0, ge=0, le=2)  # files of `store` the import refuses (R5)
     committee: ExpectCommittee | None = None  # the session of the pack's Committee
     paper: ExpectPaper | None = None  # what the paper loop shows (the case's ``paper``)
+    learning: ExpectLearning | None = None  # what the learning loop shows (``learning``)
     research: ExpectResearch | None = None  # what the deep research shows (``approfondi``)
     offline: ExpectOffline = ExpectOffline()
 
@@ -672,8 +752,8 @@ class CodeFixture(_Data):
 
     commits: tuple[CodeCommitFixture, ...] = Field(min_length=1, max_length=10)
     cerveau: bool = False  # CERVEAU listed too: every tool must refuse it (ADR-047)
-    pytest: bool = False  # Lucas prepared the repository's pytest environment (E3)
-    github: str | None = "lucas-exemple/projet"
+    pytest: bool = False  # the user prepared the repository's pytest environment (E3)
+    github: str | None = "utilisateur-exemple/projet"
     checks: CodeChecksFixture | None = None  # None: every step answers 125 (no Docker)
     runs: tuple[CodeRunFixture, ...] = Field(default=(), max_length=20)
     total_runs: int | None = Field(default=None, ge=0)  # the API's total_count; None: the runs
@@ -842,6 +922,61 @@ class LegalFixture(_Data):
         return self
 
 
+class CompanyYear(_Data):
+    """The published accounts of one year, in euros, as the API gives them."""
+
+    ca: int | None = None
+    resultat_net: int | None = None
+
+
+class CompanyFixture(_Data):
+    """One company of the fake API Recherche d'entreprises; every name and figure is invented. A
+    director, a birth date and a street are added to the reply: none may reach an answer (I4)."""
+
+    siren: str = Field(pattern=r"^[0-9]{9}$")
+    nom: str = Field(min_length=1, max_length=200)  # nom_complet, read as data (R5)
+    naf: str = Field(default="47.91B", pattern=r"^[0-9]{2}\.[0-9]{2}[A-Z]$")
+    categorie: str = Field(default="PME", pattern=r"^(PME|ETI|GE)$")
+    etat: Literal["A", "C"] = "A"
+    creation: date
+    fermeture: date | None = None
+    commune: str = Field(min_length=1, max_length=80)
+    code_postal: str = Field(pattern=r"^[0-9]{5}$")
+    departement: str = Field(pattern=r"^([0-9]{2,3}|2[AB])$")
+    effectif: str | None = Field(default="03", pattern=r"^([0-9]{2}|NN)$")
+    finances: dict[str, CompanyYear] = Field(default_factory=dict)  # year → accounts
+    mise_a_jour: date
+
+
+class StatsObservationFixture(_Data):
+    dimensions: dict[str, str] = Field(min_length=1, max_length=12)
+    value: float
+
+
+class StatsFixture(_Data):
+    """One Melodi dataset: its update date and the observations ``/data`` sends back, unfiltered;
+    the plugin keeps those that answer the query (R12)."""
+
+    updated: date
+    observations: tuple[StatsObservationFixture, ...] = ()
+
+
+class BusinessFixture(_Data):
+    """The fake APIs of a business case, served to the real entreprises and insee_stats servers
+    (``core/evals/business_fixtures.py``): no request leaves the machine, no cache is kept."""
+
+    companies: tuple[CompanyFixture, ...] = ()
+    datasets: dict[str, StatsFixture] = Field(default_factory=dict)  # Melodi id → dataset
+    down: tuple[Literal["entreprises", "insee_melodi"], ...] = ()  # answers HTTP 503
+
+    @model_validator(mode="after")
+    def _unique(self) -> BusinessFixture:
+        sirens = [company.siren for company in self.companies]
+        if len(set(sirens)) != len(sirens):
+            raise ValueError("companies : SIREN en double")
+        return self
+
+
 class Case(_Data):
     id: str = Field(pattern=CASE_ID)
     suite: Suite
@@ -857,9 +992,11 @@ class Case(_Data):
     offline: Offline = Offline()
     store: StoreFixture | None = None  # added to the case's copy of the reference store
     paper: PaperFixture | None = None  # a run of the paper loop instead of a question's run
+    learning: LearningFixture | None = None  # a run of the learning loop instead, no model
     code: CodeFixture | None = None  # the repository the code tools read (pack code)
     cyber: CyberFixture | None = None  # the sources the cyber tools read (pack cyber)
     legal: LegalFixture | None = None  # the Légifrance API the legal tools read
+    business: BusinessFixture | None = None  # the APIs the business tools read
     expect: Expect = Expect()
 
     @model_validator(mode="after")
@@ -873,6 +1010,10 @@ class Case(_Data):
     def _paper_and_its_expectation(self) -> Case:
         if (self.paper is None) != (self.expect.paper is None):
             raise ValueError("paper et expect.paper vont ensemble")
+        if (self.learning is None) != (self.expect.learning is None):
+            raise ValueError("learning et expect.learning vont ensemble")
+        if self.learning is not None and self.paper is not None:
+            raise ValueError("learning et paper s'excluent")
         return self
 
     @model_validator(mode="after")
@@ -1006,6 +1147,7 @@ def suite_files(suite: Suite, root: Path = REPO_ROOT) -> list[SuiteFile]:
             *pack_redteam_dirs(root),
             EXECUTION_INJECTION_DIR,
             APPROVAL_INJECTION_DIR,
+            LEARNING_INJECTION_DIR,
         )
     return []
 

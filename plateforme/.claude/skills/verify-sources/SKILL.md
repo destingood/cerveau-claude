@@ -12,7 +12,7 @@ argument-hint: "[fichier ou dépendance]"
 3. Pour chaque écart :
    - licence restrictive (Commons Clause, Elastic License 2.0, CC BY-NC, GPL) → usage personnel
      uniquement, isolée, listée dans `docs/licences.md` (R14) ;
-   - nom suspect ou dépôt imitateur → ne pas installer, le signaler à Lucas ;
+   - nom suspect ou dépôt imitateur → ne pas installer, le signaler à l'utilisateur ;
    - version ou URL périmée → proposer la correction, sans toucher à `config/live.yaml` ni à
      `governance/approvals/**`.
 4. Ne remplace jamais un `A_VERIFIER` par une valeur sans citer la source et la date.

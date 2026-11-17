@@ -3,7 +3,8 @@
 from __future__ import annotations
 
 import re
-from datetime import time
+from collections.abc import Callable
+from datetime import date, time
 from decimal import Decimal
 from pathlib import Path
 from typing import Any
@@ -132,7 +133,7 @@ def test_paper_trading_waits_for_the_fees_and_the_execution_parameters(config_di
 
 
 def test_the_kill_switch_target_is_set_and_the_data_loss_timeout_is_not() -> None:
-    """ADR-034: 5 s set by Lucas; a continuous data connection does not exist yet (D11)."""
+    """ADR-034: 5 s set by the user; a continuous data connection does not exist yet (D11)."""
     config = load_config(REPO_ROOT / "config")
     config.require("kill_switch")
     assert config.risk.kill_switch.target_seconds == 5
@@ -275,6 +276,7 @@ def test_the_domain_caps_are_those_of_section_9_2() -> None:
     assert (domains["code"].level, domains["code"].max_level) == ("N0", "N2")  # D3
     assert (domains["cyber"].level, domains["cyber"].max_level) == ("N0", "N1")  # D3
     assert (domains["juridique_fr"].level, domains["juridique_fr"].max_level) == ("N0", "N1")
+    assert (domains["business"].level, domains["business"].max_level) == ("N0", "N1")
 
 
 @pytest.mark.parametrize(
@@ -286,6 +288,7 @@ def test_the_domain_caps_are_those_of_section_9_2() -> None:
         ("code", "N3"),
         ("cyber", "N2"),
         ("juridique_fr", "N2"),
+        ("business", "N2"),
     ],
 )
 def test_a_max_level_above_section_9_2_is_refused(
@@ -356,6 +359,7 @@ def test_every_golden_gate_has_its_floor() -> None:
         "code_golden_min_score": 0.80,
         "cyber_golden_min_score": 0.80,
         "juridique_fr_golden_min_score": 0.80,
+        "business_golden_min_score": 0.80,
     }
 
 
@@ -551,7 +555,7 @@ def test_the_finance_n0_to_n1_promotion_is_recorded_but_never_applied() -> None:
     assert rule.golden_min_score == config.evals.thresholds.finance_golden_min_score  # D16, D17
     assert (rule.r1_to_r5_violations_max, rule.measured_in) == (0, "live")
     assert rule.manual_signature == "required"
-    assert config.autonomy.domains["finance"].level == "N0"  # Lucas promotes, by hand
+    assert config.autonomy.domains["finance"].level == "N0"  # the user promotes, by hand
 
 
 def test_the_promotion_score_cannot_go_below_the_golden_gate(config_dir: Path) -> None:
@@ -618,7 +622,7 @@ def test_the_finance_n1_to_n2_promotion_adds_the_execution_red_team() -> None:
     assert (rule.r1_to_r5_violations_max, rule.measured_in) == (0, "live")
     assert (rule.redteam_group, rule.redteam_violations_max) == ("injection_execution", 0)
     assert rule.manual_signature == "required"
-    assert config.autonomy.domains["finance"].level == "N0"  # Lucas promotes, by hand
+    assert config.autonomy.domains["finance"].level == "N0"  # the user promotes, by hand
 
 
 @pytest.mark.parametrize(
@@ -725,6 +729,7 @@ def test_a_missing_golden_gate_blocks_the_promotion(config_dir: Path) -> None:
         "code_golden_min_score",
         "cyber_golden_min_score",
         "juridique_fr_golden_min_score",
+        "business_golden_min_score",
     ],
 )
 def test_a_golden_gate_is_a_score_in_0_1(config_dir: Path, field: str, value: object) -> None:
@@ -742,6 +747,7 @@ def test_a_golden_gate_is_a_score_in_0_1(config_dir: Path, field: str, value: ob
         ("code_golden_min_score", 0.79),
         ("cyber_golden_min_score", 0.79),
         ("juridique_fr_golden_min_score", 0.79),
+        ("business_golden_min_score", 0.79),
     ],
 )
 def test_the_golden_gates_cannot_go_below_their_floor(
@@ -811,7 +817,7 @@ def test_an_attack_digest_is_64_lowercase_hex_digits(config_dir: Path, value: ob
 
 def test_the_quality_gate_waits_for_the_two_check_cut_offs() -> None:
     blockers = load_config(REPO_ROOT / "config").blockers("data.quality_gate")
-    assert len(blockers) == 2  # ADR-016: proposed, not decided by Lucas
+    assert len(blockers) == 2  # ADR-016: proposed, not decided by the user
     assert all("outlier_robust_z" in b or "max_unexplained_move" in b for b in blockers)
 
 
@@ -921,7 +927,7 @@ def test_phase_3_decisions_are_recorded() -> None:
     tiers = config.committee.finance.tiers
     assert tiers["gestionnaire"] == "deep"  # D17
     assert {tier for role, tier in tiers.items() if role != "gestionnaire"} == {"standard"}
-    # D18: proposed to Lucas, not decided; no real committee session before his answer.
+    # D18: proposed to the user, not decided; no real committee session before his answer.
     assert set(config.budgets.per_committee.model_dump().values()) == {"A_DEFINIR"}
 
 
@@ -1065,8 +1071,8 @@ def test_committee_budget_limits_are_positive(config_dir: Path, field: str) -> N
         load_config(config_dir)
 
 
-def test_approval_and_promotion_values_validated_by_lucas() -> None:
-    """D3 and D17 of the phase 5 plan, set by Lucas on 21/10/2026."""
+def test_approval_and_promotion_values_validated_by_owner() -> None:
+    """D3 and D17 of the phase 5 plan, set by the user on 21/10/2026."""
     autonomy = load_config(REPO_ROOT / "config").autonomy
     approval = autonomy.approval
     assert (approval.expiry_minutes, approval.max_code_attempts) == (10, 3)
@@ -1079,7 +1085,7 @@ def test_approval_and_promotion_values_validated_by_lucas() -> None:
 @pytest.mark.parametrize(
     "feature", ["approvals", "interfaces.api", "interfaces.discord", "notify.ntfy"]
 )
-def test_interfaces_stay_blocked_until_lucas_sets_them(feature: str) -> None:
+def test_interfaces_stay_blocked_until_owner_sets_them(feature: str) -> None:
     reasons = load_config(REPO_ROOT / "config").blockers(feature)
     assert reasons
     assert all(reason.startswith("interfaces.yaml") for reason in reasons)
@@ -1149,7 +1155,7 @@ def test_valid_interfaces_unblock_the_api_and_the_bot(config_dir: Path) -> None:
         ("api", "port", "8765"),
         ("discord", "owner_user_id", 123456789012345678),  # unquoted: lost in JavaScript
         ("discord", "owner_user_id", "12345"),
-        ("discord", "owner_user_id", "lucas"),
+        ("discord", "owner_user_id", "owner"),
         ("ntfy", "server", "http://ntfy.sh"),
         ("ntfy", "server", "https://ntfy.sh/"),
         ("ntfy", "server", "https://ntfy.sh/sujet"),
@@ -1214,7 +1220,7 @@ def test_a_malformed_list_stops_the_configuration(
 
 
 def test_the_legal_domain_reads_its_verified_sites_and_waits_for_its_piste_host() -> None:
-    """P5 (H1, H4, H5): five sites with a verified licence; the PISTE host is Lucas's choice."""
+    """P5 (H1, H4, H5): five sites with a verified licence; the PISTE host is the user's choice."""
     sources = load_config(REPO_ROOT / "config").data_sources
     assert sources.web_allowlist("juridique_fr") == {
         "legifrance.gouv.fr",
@@ -1229,7 +1235,7 @@ def test_the_legal_domain_reads_its_verified_sites_and_waits_for_its_piste_host(
     assert sources.web_allowlist("recherche") is None  # every other domain is unchanged
 
 
-def test_the_legifrance_source_waits_for_lucas_to_choose_the_piste_host(config_dir: Path) -> None:
+def test_the_legifrance_source_waits_for_owner_to_choose_the_piste_host(config_dir: Path) -> None:
     """H4: until ``url`` names sandbox or production, the reader stays blocked (R7)."""
     assert load_config(REPO_ROOT / "config").blockers("data.legifrance") == [
         "data_sources.yaml › sources.legifrance.url = A_DEFINIR"
@@ -1245,3 +1251,49 @@ def test_the_legifrance_source_waits_for_lucas_to_choose_the_piste_host(config_d
     )
     with pytest.raises(BlockedFeatureError):
         load_config(config_dir).require("data.legifrance")
+
+
+def test_the_business_domain_reads_two_open_sources() -> None:
+    """P6 (I3, I8): the company registry and INSEE Melodi, both open and without a key."""
+    config = load_config(REPO_ROOT / "config")
+    sources = config.data_sources.sources
+    assert sources["entreprises"].url == "https://recherche-entreprises.api.gouv.fr"
+    assert sources["insee_melodi"].url == "https://api.insee.fr/melodi"
+    assert config.blockers("data.entreprises") == []
+    assert config.blockers("data.insee_melodi") == []
+    assert config.data_sources.web_allowlist("business") is None  # open web (I6)
+
+
+def test_only_the_vat_rate_read_in_the_cgi_is_set() -> None:
+    """I7: 20 % read in article 278; the other rates wait for their article (R7)."""
+    vat = load_config(REPO_ROOT / "config").business.vat
+    assert vat.rates["normal"].rate == Decimal("0.20")
+    assert "278" in vat.rates["normal"].source
+    for key in ("intermediaire", "reduit", "particulier"):
+        assert vat.rates[key].rate == "A_VERIFIER"
+    assert vat.valid_until == date(2026, 12, 31)  # CIBS on 2027-01-01
+
+
+def test_a_missing_vat_validity_blocks_the_vat(config_dir: Path) -> None:
+    edit_yaml(config_dir / "business.yaml", lambda d: d["vat"].update(valid_until="A_DEFINIR"))
+    assert load_config(config_dir).blockers("business.vat") == [
+        "business.yaml › vat.valid_until = A_DEFINIR"
+    ]
+
+
+@pytest.mark.parametrize(
+    ("change", "message"),
+    [
+        (lambda d: d["vat"]["rates"].pop("reduit"), "taux absents : reduit"),
+        (lambda d: d["vat"]["rates"]["normal"].update(rate="1.2"), "rates.normal.rate"),
+        (lambda d: d["vat"]["rates"]["normal"].update(rate="0"), "rates.normal.rate"),
+        (lambda d: d["vat"]["rates"].update(super={"rate": "0.3", "source": "x"}), "rates.super"),
+        (lambda d: d["vat"]["rates"]["normal"].update(source=""), "rates.normal.source"),
+    ],
+)
+def test_a_malformed_vat_table_stops_the_configuration(
+    config_dir: Path, change: Callable[[dict[str, Any]], object], message: str
+) -> None:
+    edit_yaml(config_dir / "business.yaml", change)
+    with pytest.raises(ConfigError, match=message):
+        load_config(config_dir)

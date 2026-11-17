@@ -79,7 +79,10 @@ def _pilot(case: Case) -> Pilot:
 
 
 def _plan_task(question: str = "Que dit la littérature ?", most: int = 5) -> list[Any]:
-    task = f"Question de Lucas :\n{question}\n\nDate du jour : 2026-10-18\n\nPropose au plus {most}"
+    task = (
+        f"Question de l'utilisateur :\n{question}\n\nDate du jour : 2026-10-18\n\n"
+        f"Propose au plus {most}"
+    )
     return [SystemMessage("planificateur"), HumanMessage(f"{task} sous-questions.")]
 
 
@@ -88,7 +91,7 @@ def _write_task(*extracts: tuple[str, str, str]) -> list[Any]:
         f"- [{ref}] {claim}\n  Citation : « {quote} »" for ref, claim, quote in extracts
     )
     task = (
-        "Question de Lucas :\nQue dit la littérature ?\n\nDate du jour : 2026-10-18"
+        "Question de l'utilisateur :\nQue dit la littérature ?\n\nDate du jour : 2026-10-18"
         "\n\nSous-questions étudiées :\n1. Première\n\nExtraits vérifiés des sources lues :\n\n"
         f"Source [1] : Une méthode\nExtraits vérifiés (citation retrouvée mot pour mot) :\n{views}"
     )
@@ -287,7 +290,9 @@ def test_the_scripted_reports_come_first() -> None:
 
 def test_a_question_that_is_not_a_research_reaches_the_usual_planner() -> None:
     pilot = _pilot(_case(pages=[{"url": "https://a.example/", "text": "Texte."}]))
-    reply = pilot.reply("planner", [SystemMessage("s"), HumanMessage("Question de Lucas : x")])
+    reply = pilot.reply(
+        "planner", [SystemMessage("s"), HumanMessage("Question de l'utilisateur : x")]
+    )
     assert [call["name"] for call in reply.tool_calls] == ["web_search"]  # not a plan
 
 

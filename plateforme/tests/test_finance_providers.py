@@ -1,4 +1,4 @@
-"""Market data providers: Lucas's CSV files and the ECB, offline (ADR-017, R5, R10)."""
+"""Market data providers: the user's CSV files and the ECB, offline (ADR-017, R5, R10)."""
 
 from __future__ import annotations
 

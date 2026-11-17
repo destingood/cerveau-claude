@@ -2,7 +2,7 @@
 
 Titles, names and abstracts that APIs and feeds return become one line of plain text: control and
 invisible format characters (Cf: zero width, bidirectional overrides) are dropped, so a text
-cannot hide words from Lucas while the model still reads them (R5).
+cannot hide words from the user while the model still reads them (R5).
 """
 
 from __future__ import annotations

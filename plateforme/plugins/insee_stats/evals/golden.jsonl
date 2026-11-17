@@ -1,0 +1,14 @@
+{"id": "is-001", "tool": "stats_series", "arguments": {"jeu": "DS_INCONNU", "geo": "DEP-44"}, "expected": {"is_error": true, "contains": "DS_POPULATIONS_REFERENCE"}}
+{"id": "is-002", "tool": "stats_series", "arguments": {"jeu": "DS_SIDE_CREA_DEP_REG_NAT", "geo": "DEP-20"}, "expected": {"is_error": true, "contains": "geo : COM-<code commune>"}}
+{"id": "is-003", "tool": "stats_series", "arguments": {"jeu": "DS_SIDE_CREA_DEP_REG_NAT", "geo": "DEP-99"}, "expected": {"is_error": true, "contains": "geo : COM-<code commune>"}}
+{"id": "is-004", "tool": "stats_series", "arguments": {"jeu": "DS_POPULATIONS_REFERENCE", "geo": "COM-4410"}, "expected": {"is_error": true, "contains": "geo : COM-<code commune>"}}
+{"id": "is-005", "tool": "stats_series", "arguments": {"jeu": "DS_POPULATIONS_REFERENCE", "geo": "REG-5"}, "expected": {"is_error": true, "contains": "geo : COM-<code commune>"}}
+{"id": "is-006", "tool": "stats_series", "arguments": {"jeu": "DS_POPULATIONS_REFERENCE", "geo": "evil.exam"}, "expected": {"is_error": true, "contains": "geo : COM-<code commune>"}}
+{"id": "is-007", "tool": "stats_series", "arguments": {"jeu": "DS_POPULATIONS_REFERENCE", "geo": "DEP-976X"}, "expected": {"is_error": true, "contains": "geo : COM-<code commune>"}}
+{"id": "is-008", "tool": "stats_series", "arguments": {"jeu": "DS_FILOSOFI_CC", "geo": "FRANCE"}, "expected": {"is_error": true, "contains": "ce jeu répond aux niveaux COM, DEP"}}
+{"id": "is-009", "tool": "stats_series", "arguments": {"jeu": "DS_SIDE_CREA_DEP_REG_NAT", "geo": "COM-44109"}, "expected": {"is_error": true, "contains": "ce jeu répond aux niveaux DEP, REG, FRANCE"}}
+{"id": "is-010", "tool": "stats_series", "arguments": {"jeu": "DS_POPULATIONS_REFERENCE", "geo": "DEP-44", "periode": "202a"}, "expected": {"is_error": true, "contains": "periode : une année AAAA"}}
+{"id": "is-011", "tool": "stats_series", "arguments": {"jeu": "DS_POPULATIONS_REFERENCE", "geo": "DEP-44", "periode": "1850"}, "expected": {"is_error": true, "contains": "periode : une année AAAA"}}
+{"id": "is-012", "tool": "stats_series", "arguments": {"jeu": "DS_SIDE_CREA_DEP_REG_NAT", "geo": "DEP-44", "filtres": {"GEO": "DEP-44"}}, "expected": {"is_error": true, "contains": "dimensions possibles pour ce jeu"}}
+{"id": "is-013", "tool": "stats_series", "arguments": {"jeu": "DS_SIDE_CREA_DEP_REG_NAT", "geo": "DEP-44", "filtres": {"POPREF_MEASURE": "PTOT"}}, "expected": {"is_error": true, "contains": "dimensions possibles pour ce jeu"}}
+{"id": "is-014", "tool": "stats_series", "arguments": {"jeu": "DS_SIDE_CREA_DEP_REG_NAT", "geo": "REG-52", "filtres": {"SIDE_MEASURE": "BURE&x=1"}}, "expected": {"is_error": true, "contains": "un code de 1 à 20 caractères"}}

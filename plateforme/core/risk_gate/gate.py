@@ -359,7 +359,7 @@ def _compliance(inputs: _Inputs) -> _Verdict:
     names = {given.symbol, facts.sector, *([facts.isin] if facts.isin else [])}
     excluded = {entry.casefold() for entry in exclusions} & {name.casefold() for name in names}
     reason = (
-        f"exclu par Lucas : {', '.join(sorted(excluded))}"
+        f"exclu par l'utilisateur : {', '.join(sorted(excluded))}"
         if excluded
         else "aucune exclusion ; aucun actif crypto dans la base Finance"
     )

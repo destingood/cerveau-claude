@@ -1,4 +1,4 @@
-"""Node 5: checks of the draft before it reaches Lucas (sections 7.1 and 7.3, R1, R12).
+"""Node 5: checks of the draft before it reaches the user (sections 7.1 and 7.3, R1, R12).
 
 Deterministic checks first: every [n] points to a read source, every quote followed by [n] is
 found word for word in source n, every number and date comes from a tool output, the question,

@@ -1,6 +1,6 @@
 # ADR-054 — Agent de code : Claude Code dans un conteneur Linux, patch calculé par CERVEAU
 
-- Statut : **proposé** (F1, F4, F5, F6, F8 et F9 du complément de plan P3b, validés par Lucas le
+- Statut : **proposé** (F1, F4, F5, F6, F8 et F9 du complément de plan P3b, validés par l'utilisateur le
   22/10/2026)
 - Date : 2026-10-22
 - Phase : 6 (P3b)
@@ -8,7 +8,7 @@
 ## Contexte
 Le pack Code (P3a) lit les dépôts et lance des contrôles ; P3b lui ajoute `code_agent`, qui confie
 une tâche de code à Claude Code. L'agent lit et modifie des fichiers et lance des commandes : il
-lui faut une frontière (R2, R5, R6), des bornes (F5) et un résultat que Lucas relit (N0, F9).
+lui faut une frontière (R2, R5, R6), des bornes (F5) et un résultat que l'utilisateur relit (N0, F9).
 Faits vérifiés le 22/10/2026 sur code.claude.com/docs/en/agent-sdk/python :
 - `permission_mode` : `default`, `acceptEdits`, `plan`, `dontAsk`, `bypassPermissions`, `auto` ;
   `dontAsk` refuse tout ce qui n'est pas pré-approuvé, sans rien demander ;
@@ -25,8 +25,8 @@ Faits vérifiés le 22/10/2026 sur code.claude.com/docs/en/agent-sdk/python :
 
 ## Options
 1. **SDK sous Windows, sur l'hôte** : rien à construire, mais Bash tourne avec les droits de
-   Lucas, voit ses fichiers et Internet ; aucune frontière que CERVEAU contrôle (F1).
-2. **SDK dans un conteneur Linux** : une image de plus à construire (Lucas), Docker requis ; la
+   l'utilisateur, voit ses fichiers et Internet ; aucune frontière que CERVEAU contrôle (F1).
+2. **SDK dans un conteneur Linux** : une image de plus à construire (l'utilisateur), Docker requis ; la
    frontière est le conteneur, testée commande par commande.
 3. **Boucle de CERVEAU sans shell** : le modèle propose des patchs avec des outils de lecture ;
    pas de Claude Code ni de tests lancés par l'agent, écart au §P3 du méga-prompt.
@@ -68,7 +68,7 @@ Option 2 (`core/code/agent.py`, `core/code/agent_runner.py`, `core/code/patch.py
   confirmé, le plafond de la tâche est imputé (R7). Ses jetons comptés entrent dans `max_tokens`
   (`per_code_agent`) ; un plafond imputé n'en compte aucun : une requête confie donc une tâche au
   plus (`MAX_TASKS_PER_REQUEST`, revue `risk-gate-auditor`), la deuxième est refusée avant tout
-  conteneur et journalisée. N0 : Lucas applique le patch lui-même (`git apply`) ; rien n'est écrit
+  conteneur et journalisée. N0 : l'utilisateur applique le patch lui-même (`git apply`) ; rien n'est écrit
   dans ses dépôts.
 
 ## Conséquences

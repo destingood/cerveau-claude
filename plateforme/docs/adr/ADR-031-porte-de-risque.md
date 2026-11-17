@@ -1,6 +1,6 @@
 # ADR-031 — Porte de risque : fonction pure, échec fermé, réduction en titres entiers
 
-- Statut : accepté (D3 à D6 et D23 du plan de phase 4, validées par Lucas le 20/10/2026 ; valeurs
+- Statut : accepté (D3 à D6 et D23 du plan de phase 4, validées par l'utilisateur le 20/10/2026 ; valeurs
   des limites écrites à sa demande le 20/10/2026 ; l'univers reste `A_DEFINIR` jusqu'à sa liste)
 - Date : 2026-10-20
 - Phase : 4
@@ -36,7 +36,7 @@ Option 2.
 - **Limites (D4, D5)** : pourcentages (5 = 5 %), bornés `gt=0, le=100` ; capital strictement
   positif ; nouvelles clés `max_country_pct`, `max_currency_pct`, `max_orders_per_day`,
   `max_rolling_loss_pct`, `rolling_loss_sessions`, `avg_volume_sessions`, `universe`.
-- **Valeurs (D3)**, écrites à la demande de Lucas le 20/10/2026 : capital 10 000 € ; ordre 5 % ;
+- **Valeurs (D3)**, écrites à la demande de l'utilisateur le 20/10/2026 : capital 10 000 € ; ordre 5 % ;
   position 10 % ; secteur 30 % ; pays 60 % ; devise 50 % ; perte du jour 2 % ; perte glissante 5 %
   sur 20 séances ; drawdown 10 % ; 10 ordres par heure, 20 par jour ; bande de prix 2 % ; volume
   moyen 100 000 titres sur 20 séances. L'univers reste `A_DEFINIR` : la Porte refuse donc tout en
@@ -53,7 +53,7 @@ Option 2.
   phase 2.
 
 ## Amendement (phase 5, 21/10/2026)
-- **Cash d'une vente (B188, D24, décision de Lucas)** : une vente paie ses frais sur ce qu'elle
+- **Cash d'une vente (B188, D24, décision de l'utilisateur)** : une vente paie ses frais sur ce qu'elle
   rapporte ; elle n'exige que `max(0, frais − brut)`. Ce besoin décroît quand la quantité croît :
   la réduction cherche la plus grande quantité sur les autres contrôles de taille, puis vérifie le
   cash à cette quantité, et refuse s'il manque. Des frais d'au moins 100 % du montant sont une

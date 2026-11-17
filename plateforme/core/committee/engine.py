@@ -414,7 +414,7 @@ class _Committee:
     # --- material shown to the roles --------------------------------------------------------
 
     def _head(self) -> str:
-        return f"Question de Lucas : {self.question}\nDate du jour : {self.now}\n"
+        return f"Question de l'utilisateur : {self.question}\nDate du jour : {self.now}\n"
 
     def _constats_view(self) -> str:
         lines = [
@@ -554,7 +554,7 @@ class _Committee:
             f"Traite chaque argument une fois, retenu ou écarté avec sa raison : {', '.join(ids)}."
             "\nUn seuil chiffré d'une condition d'invalidation doit venir d'une sortie d'outil."
             "\nSi tu décides d'agir, chaque nombre de la proposition vient d'une sortie d'outil "
-            "ou de la question de Lucas, jamais d'une page."
+            "ou de la question de l'utilisateur, jamais d'une page."
             "\nSi tu décides d'agir, nomme le catalyseur : ce qui rend l'action opportune "
             "maintenant, relié à ses constats ; une décision d'agir sans catalyseur est bloquée "
             "par le code."

@@ -20,6 +20,6 @@ argument-hint: "[chemin ou suite]"
 4. Compare chaque score à son seuil et à la dernière référence. Une régression au-delà du seuil
    bloque le commit.
 5. Interdit (R9) : baisser un seuil, modifier ou supprimer un cas pour faire passer l'éval. Un cas
-   douteux est signalé à Lucas.
+   douteux est signalé à l'utilisateur.
 
 Réponds par un tableau : suite, score, seuil, référence, écart, statut (OK / RÉGRESSION / ÉCHEC).

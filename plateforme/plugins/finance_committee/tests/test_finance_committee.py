@@ -180,7 +180,7 @@ def test_a_committee_file_that_breaks_annex_e_is_refused(
 
 @pytest.mark.parametrize("choice", ["agir", "ne_pas_agir", "attendre"])
 def test_every_session_blocks_while_a_paper_limit_is_undefined(config: Any, choice: str) -> None:
-    """R7: Lucas set every limit but the universe (D3), so no proposal can be cleared today."""
+    """R7: the user set every limit but the universe (D3), so no proposal can be cleared today."""
     limits = config.risk_limits_paper
     undefined = [name for name in CHECKED if isinstance(getattr(limits, name), str)]
     assert undefined == ["universe"]

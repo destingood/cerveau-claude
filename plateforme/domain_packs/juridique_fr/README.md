@@ -1,13 +1,13 @@
 # Pack Juridique et administratif FR
 
 Pack P5 de CERVEAU (section 9.2, complément de plan P5) : comprendre le droit français et les
-démarches administratives qui concernent Lucas. Lecture d'un article de code ou de loi sur
+démarches administratives qui concernent l'utilisateur. Lecture d'un article de code ou de loi sur
 Légifrance, avec son identifiant LEGIARTI, son état, ses dates de vigueur et la version qui
 s'applique à une date (`legifrance` : `legi_search`, `legi_article`, ADR-059) ; démarches et
 questions fiscales ou sociales lues sur les seuls sites d'une liste fermée
 (`service-public.gouv.fr`, `legifrance.gouv.fr`, `impots.gouv.fr`, `cnil.fr`, `conseil-etat.fr`)
 par `web_research` (ADR-058). Autonomie courante N0 (`config/autonomy.yaml`, `domains.juridique_fr`,
-D3) : le pack informe, Lucas agit lui-même. Statut : **expérimental** jusqu'à ce que Lucas le passe
+D3) : le pack informe, l'utilisateur agit lui-même. Statut : **expérimental** jusqu'à ce que l'utilisateur le passe
 en « actif » au vu d'une mesure réelle du golden set (section 9.3, D2).
 
 Chaque identifiant, état, date, délai ou montant vient de l'outil ou de la page qui l'a lu, jamais
@@ -19,9 +19,9 @@ d'un acte, le calcul appliqué au cas réel et tout contournement de la loi, et 
 un tiers (R15, R16). Les mentions de Légifrance et de Service Public, avec leurs dates, et
 l'avertissement « pas un conseil juridique » sont ajoutés par le code (H7, `docs/licences.md`).
 
-L'API n'est appelée qu'avec `PISTE_CLIENT_ID` et `PISTE_CLIENT_SECRET`, posés par Lucas comme
+L'API n'est appelée qu'avec `PISTE_CLIENT_ID` et `PISTE_CLIENT_SECRET`, posés par l'utilisateur comme
 variables d'environnement et passés par `runtime.env` ; l'environnement PISTE (`sandbox` ou
-`production`) reste `A_DEFINIR` dans `config/data_sources.yaml` tant que Lucas ne l'a pas choisi.
+`production`) reste `A_DEFINIR` dans `config/data_sources.yaml` tant que l'utilisateur ne l'a pas choisi.
 Sans eux, `legi_search` et `legi_article` répondent que la source est indisponible.
 
 ## Contenu

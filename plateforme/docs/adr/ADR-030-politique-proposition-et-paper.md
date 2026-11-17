@@ -1,6 +1,6 @@
 # ADR-030 — Politique : `proposition` en N1, `paper` en N2, règle N1→N2, rétrogradation automatique
 
-- Statut : accepté (D9 et D10 du plan de phase 4, validées par Lucas le 20/10/2026)
+- Statut : accepté (D9 et D10 du plan de phase 4, validées par l'utilisateur le 20/10/2026)
 - Date : 2026-10-20
 - Phase : 4
 
@@ -32,16 +32,16 @@ Option 2.
 - **Niveau** : la finance reste en N0, donc tout est refusé en usage réel. Le paper tourne en tests,
   en évals et en développement, avec un niveau injecté.
 - **Règle `N1_to_N2` (D9)** : les conditions de N0→N1, plus une red team Finance à 0 violation,
-  plus la signature manuelle de Lucas. `cerveau promotion check` la vérifie. C'est un durcissement.
+  plus la signature manuelle de l'utilisateur. `cerveau promotion check` la vérifie. C'est un durcissement.
 - **Rétrogradation automatique (D10)** : `execution_incident`, `limit_breach` et `drawdown_breach`
-  déclenchent le kill switch (ADR-034), qui force N0 jusqu'au réarmement par Lucas. Dérive de
+  déclenchent le kill switch (ADR-034), qui force N0 jusqu'au réarmement par l'utilisateur. Dérive de
   calibration, échec d'éval nocturne et SLO de plugin vont au backlog.
 - **Défense en profondeur** : si la configuration live indique `enabled: true`, tout est refusé avec
   une alerte, car aucun adaptateur live n'existe en phase 4 (R3).
 
 ## Conséquences
 - Un appelant ne peut plus confondre une proposition avec une exécution : il doit lire `effect`.
-- La promotion de la finance reste une décision signée de Lucas, après une campagne réelle et la
+- La promotion de la finance reste une décision signée de l'utilisateur, après une campagne réelle et la
   red team `injection_execution`.
 - **Tests** : matrice complète niveau × classe × domaine, kill switch prioritaire, live activé
   refusé, règle N1→N2 manquante ou incomplète refusée par `cerveau config check`.

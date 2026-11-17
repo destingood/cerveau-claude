@@ -10,7 +10,7 @@ import sys
 import time
 
 from .common import (BRAIN_DIR, GRAPH_FILE, FileLock, clean_label, days_since, fold, jaccard, log, norm_path, now_iso,
-                     path_within, read_json, slugify, tokenize, write_json)
+                     path_within, slugify, tokenize, write_json)
 
 TYPES = {
     "user": "Profil",

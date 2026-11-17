@@ -1,6 +1,6 @@
 # ADR-056 — Copie figée d'ATT&CK Enterprise : commande `attack-fetch`, index local, plugin `cyber_attack`
 
-- Statut : **proposé** (G5 du complément de plan P4, validé par Lucas le 27/10/2026)
+- Statut : **proposé** (G5 du complément de plan P4, validé par l'utilisateur le 27/10/2026)
 - Date : 2026-10-27
 - Phase : 6 (P4)
 
@@ -18,7 +18,7 @@ n'a pas été téléchargé) :
 - Version de la spécification ATT&CK du bundle réel (3.3.0, celle de la fixture) : `A_VERIFIER`
   au premier téléchargement.
 
-Contraintes : G5 (Lucas lance le téléchargement), R4 (kill switch), R5 (texte externe = donnée),
+Contraintes : G5 (l'utilisateur lance le téléchargement), R4 (kill switch), R5 (texte externe = donnée),
 R7 (l'inconnu bloque), R11 (journal), R13 (un seul outil).
 
 ## Options
@@ -30,7 +30,7 @@ R7 (l'inconnu bloque), R11 (journal), R13 (un seul outil).
 
 ## Décision
 Option 3.
-- **Commande**, lancée par Lucas seulement : `cerveau cyber attack-fetch --version 20.0`.
+- **Commande**, lancée par l'utilisateur seulement : `cerveau cyber attack-fetch --version 20.0`.
   - Refus avant l'ouverture du journal, non journalisés : version malformée, kill switch engagé,
     configuration invalide, `--journal` hors de `var/`. Refus journalisés (`ERROR`) : source
     `attack` absente ou désactivée (R7), version différente de `config/data_sources.yaml`, version
@@ -71,16 +71,16 @@ Option 3.
     des conditions.
 
 ## Conséquences
-- Rien ne télécharge ATT&CK sans Lucas ; d'ici là, `cyber_attack` répond « index absent » (R7).
+- Rien ne télécharge ATT&CK sans l'utilisateur ; d'ici là, `cyber_attack` répond « index absent » (R7).
 - Confiance au premier usage : la taille et le blob SHA-1 limitent le risque d'un premier corps
   falsifié (une seconde préimage SHA-1 reste théorique) ; le SHA-256 protège ensuite. Un accès en
   écriture à `var/` suffit à remplacer l'index : la relecture refuse un texte non nettoyé, une
   citation ou un doublon, mais pas un index forgé de façon cohérente avec l'empreinte inscrite. La
-  limite est le compte de Lucas ; le SHA-256 de l'index écrit, journalisé, permet de le contrôler.
+  limite est le compte de l'utilisateur ; le SHA-256 de l'index écrit, journalisé, permet de le contrôler.
 - La lecture du bundle (`json.loads`, 55 Mo) demande plusieurs centaines de Mo de RAM, une fois.
-- Le signal « exfiltration » des garde-fous (M1, décision de Lucas) refuse toute sortie d'outil qui
+- Le signal « exfiltration » des garde-fous (M1, décision de l'utilisateur) refuse toute sortie d'outil qui
   nomme l'exfiltration : la tactique TA0010 et ses techniques restent illisibles par le pack.
-  L'assouplir demanderait un ADR et l'accord de Lucas (backlog).
+  L'assouplir demanderait un ADR et l'accord de l'utilisateur (backlog).
 - Nouvelle version d'ATT&CK : épinglage ajouté dans le code après lecture des métadonnées, puis
-  `version` et `sha256: A_VERIFIER` remis par Lucas, puis nouvelle commande.
+  `version` et `sha256: A_VERIFIER` remis par l'utilisateur, puis nouvelle commande.
 - Réversible : supprimer `var/cyber/attack/` et retirer le plugin du pack.

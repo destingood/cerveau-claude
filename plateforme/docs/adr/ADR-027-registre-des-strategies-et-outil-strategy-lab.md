@@ -1,6 +1,6 @@
 # ADR-027 — Registre des stratégies, promotion manuelle, rapport standard et outil `strategy_lab`
 
-- Statut : accepté (D13 et D14 du plan de phase 3, validées par Lucas le 19/10/2026 ; l'approbation
+- Statut : accepté (D13 et D14 du plan de phase 3, validées par l'utilisateur le 19/10/2026 ; l'approbation
   dans `governance/approvals/` et le comptage des essais du Copilot ci-dessous sont soumis à sa
   relecture au compte rendu de phase 3)
 - Date : 2026-10-19
@@ -17,12 +17,12 @@ Faits relevés dans le code :
 - Le registre (`core/registry/manifest.py`) exige `readOnlyHint` et `idempotentHint` pour la classe
   `CALCUL`. Un outil de calcul ne peut donc pas écrire dans le journal des essais.
 - L'adaptateur MCP journalise chaque appel (`TOOL_CALL`) avec ses arguments, dans le journal chaîné.
-- `governance/approvals/**` est réservé à Lucas, et les hooks en refusent l'écriture à Claude Code.
+- `governance/approvals/**` est réservé à l'utilisateur, et les hooks en refusent l'écriture à Claude Code.
 
 ## Options
 1. Pas de registre : la stratégie est un module, et rien ne contrôle sa promotion.
 2. Statut dans le seul YAML du registre : Claude Code pourrait l'écrire lui-même.
-3. **Registre déclaratif**, avec une promotion approuvée par Lucas dans `governance/approvals/`, et
+3. **Registre déclaratif**, avec une promotion approuvée par l'utilisateur dans `governance/approvals/`, et
    contrôlée par `config check`.
 
 ## Décision
@@ -37,7 +37,7 @@ Option 3.
 - **Empreintes** : SHA-256 du source du module (`code_sha256`) et de la grille canonique
   (`grille_sha256`). Toute modification de l'un ou de l'autre fait une nouvelle version, qui
   invalide le verdict.
-- **Promotion (D14)** : seul Lucas l'accorde, en écrivant à la main
+- **Promotion (D14)** : seul l'utilisateur l'accorde, en écrivant à la main
   `governance/approvals/strategies/<id>.yaml`, avec l'empreinte du rapport, les deux empreintes
   ci-dessus et la date. `cerveau strategy show <id>` affiche le texte à recopier ; aucune commande ne
   l'écrit. `cerveau config check` refuse le statut `candidate` dans les cas suivants :
@@ -77,13 +77,13 @@ Option 3.
   - Le routage, c'est-à-dire la part des cas golden où le planificateur choisit le bon outil, est
     mesuré avant et après l'ajout.
   - Hors ligne, la mesure couvre la sélection déterministe des outils. En réel, elle attend la
-    première campagne autorisée par Lucas.
+    première campagne autorisée par l'utilisateur.
   - Si le routage baisse sur les 60 cas existants, l'outil sort du pack, et le rapport le dit.
 
 ## Conséquences
 - **Phase 4** : le paper n'acceptera que des stratégies `candidate`, ce qui suppose un protocole
   réussi sur données et frais réels.
-- **Mise à jour** : une approbation périmée (code modifié) fait échouer `config check`. Lucas
+- **Mise à jour** : une approbation périmée (code modifié) fait échouer `config check`. L'utilisateur
   relance alors le protocole, ou repasse la stratégie en `recherche`.
 - **Tests** :
   - promotion refusée sans approbation, avec une empreinte périmée, et sur un verdict synthétique ;

@@ -24,7 +24,7 @@ from core.guardrails.secrets import mask_secrets
 
 FEEDBACK_EVENT = "FEEDBACK"
 FEEDBACK_SCHEMA = 1
-FEEDBACK_ACTOR = "lucas"  # the only user in phase 1; public users come in phase 8
+FEEDBACK_ACTOR = "owner"  # the only user in phase 1; public users come in phase 8
 NOTE_SOURCE = "retour utilisateur"
 MAX_NOTE_CHARS = MAX_QUESTION_CHARS
 REQUEST_ID = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._:-]{0,127}$")
@@ -33,7 +33,7 @@ VERDICTS: tuple[Verdict, ...] = ("bon", "mauvais")
 
 
 class FeedbackError(Exception):
-    """The feedback is refused before anything is written; the message is shown to Lucas."""
+    """The feedback is refused before anything is written; the message is shown to the user."""
 
 
 class NotePseudonymiser(Protocol):

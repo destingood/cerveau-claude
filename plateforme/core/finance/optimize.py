@@ -39,6 +39,11 @@ TURNOVER_METHODS: frozenset[Method] = frozenset(
 SECTOR_METHODS: frozenset[Method] = TURNOVER_METHODS | {"parite_de_risque"}
 TOLERANCE = 1e-6  # on a weight, a sector sum or the turnover; above it, the solution is refused
 RESIDUE = 1e-9  # a weight below it is a solver residue and set to zero
+# Risk budgeting (ADR-061): with Clarabel's default tolerances (1e-8) a weight was off by about
+# 4e-6 and its rounded display changed between Linux and Windows (4,09 % / 4,10 %). At 1e-12
+# it settles within about 1e-7 on both; tighter, Clarabel reports an inaccurate solution.
+RISK_BUDGETING_SOLVER = "CLARABEL"
+RISK_BUDGETING_TOLERANCE = 1e-12
 
 
 @dataclass(frozen=True)
@@ -116,7 +121,14 @@ def _model(
         return HierarchicalRiskParity(prior_estimator=_prior(), **bounds)
     inequalities = _inequalities(constraints.groups, len(previous))
     if method == "parite_de_risque":
-        return RiskBudgeting(prior_estimator=_prior(), **bounds, **inequalities)
+        tight = dict.fromkeys(("tol_gap_abs", "tol_gap_rel", "tol_feas"), RISK_BUDGETING_TOLERANCE)
+        return RiskBudgeting(
+            prior_estimator=_prior(),
+            solver=RISK_BUDGETING_SOLVER,
+            solver_params=tight,
+            **bounds,
+            **inequalities,
+        )
     cap = constraints.max_turnover
     extra = {} if cap is None else {"add_constraints": lambda w: [cp.norm1(w - previous) <= cap]}
     if method == "moyenne_variance":

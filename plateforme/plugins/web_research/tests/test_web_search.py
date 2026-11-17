@@ -26,15 +26,15 @@ def brave(*results: dict[str, Any]) -> dict[str, Any]:
 def test_parse_strips_markup_and_keeps_order() -> None:
     data = brave(
         {
-            "title": "<strong>Matcha</strong> &amp; thé",
+            "title": "<strong>Boulangerie</strong> &amp; thé",
             "url": "https://a.example/1",
-            "description": "Le <strong>matcha</strong>\n est   vert.",
+            "description": "Le <strong>boulangerie</strong>\n est   vert.",
             "age": "2 jours",
         },
         {"title": "Second", "url": "http://b.example/2", "description": "Texte"},
     )
     assert parse_brave(data, 10) == [
-        Hit("Matcha & thé", "https://a.example/1", "Le matcha est vert.", "2 jours"),
+        Hit("Boulangerie & thé", "https://a.example/1", "Le boulangerie est vert.", "2 jours"),
         Hit("Second", "http://b.example/2", "Texte", None),
     ]
 
@@ -63,7 +63,7 @@ def test_parse_refuses_unexpected_shapes(data: Any) -> None:
         parse_brave(data, 5)
 
 
-def search(handler: Any, query: str = "matcha", count: int = 3) -> list[Hit]:
+def search(handler: Any, query: str = "boulangerie", count: int = 3) -> list[Hit]:
     provider = BraveSearchProvider(FAKE_KEY, transport=httpx.MockTransport(handler))
     return asyncio.run(provider.search(query, count))
 
@@ -75,10 +75,10 @@ def test_the_request_follows_the_brave_api() -> None:
         seen.append(request)
         return httpx.Response(200, json=brave({"title": "T", "url": "https://t.example/"}))
 
-    assert search(handler, "thé matcha", 3) == [Hit("T", "https://t.example/", "", None)]
+    assert search(handler, "thé boulangerie", 3) == [Hit("T", "https://t.example/", "", None)]
     (request,) = seen
     assert str(request.url.copy_with(query=None)) == BRAVE_ENDPOINT
-    assert dict(request.url.params) == {"q": "thé matcha", "count": "3"}
+    assert dict(request.url.params) == {"q": "thé boulangerie", "count": "3"}
     assert request.headers["x-subscription-token"] == FAKE_KEY
     assert request.headers["accept"] == "application/json"
 

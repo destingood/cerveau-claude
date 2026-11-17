@@ -391,7 +391,7 @@ def export(brain, me):
 commun.export = export
 print("\n".join(commun.sync(pull=True, push=False, auto=True)))
 """
-r = subprocess.run([sys.executable, "-I", "-S", "-c", EN_ROUTE, str(CODE), str(lock)], capture_output=True,
+r = subprocess.run([sys.executable, "-I", "-S", "-X", "utf8", "-c", EN_ROUTE, str(CODE), str(lock)], capture_output=True,
                    cwd=str(TMP / A / "work"), env=env(A), timeout=180)
 out = r.stdout.decode("utf-8", "replace") + r.stderr.decode("utf-8", "replace")
 check(page in bare_files() and not lock.exists() and "envoyé" in out,
@@ -413,7 +413,7 @@ commun.FileLock = lock
 print("\n".join(commun.sync()))
 """
 quiet(B)
-r = subprocess.run([sys.executable, "-I", "-S", "-c", QUITTE_EN_ROUTE, str(CODE)], capture_output=True,
+r = subprocess.run([sys.executable, "-I", "-S", "-X", "utf8", "-c", QUITTE_EN_ROUTE, str(CODE)], capture_output=True,
                    cwd=str(TMP / B / "work"), env=env(B), timeout=180)
 out = r.stdout.decode("utf-8", "replace") + r.stderr.decode("utf-8", "replace")
 check(r.returncode == 0 and "pages sont retirées" in out and not any(f.startswith("membres/bob/") for f in bare_files()),

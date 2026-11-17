@@ -1,7 +1,7 @@
 # ADR-045 — Agent `deep_research` : recherche approfondie à citations vérifiées
 
 - Statut : proposé (déclenchement, bornes et retrait des affirmations validés par D13 à D15 le
-  21/10/2026 ; détails d'implémentation ci-dessous à valider par Lucas)
+  21/10/2026 ; détails d'implémentation ci-dessous à valider par l'utilisateur)
 - Date : 2026-10-22
 - Phase : 6
 
@@ -62,7 +62,7 @@ renvoi `[n]` se place avant la ponctuation finale.
 - Plus simple : réponses longues dont chaque chiffre est retrouvé dans une source lue ; même
   gouvernance que le planificateur (politique, R5, budget, journal).
 - Plus difficile : réponses courtes quand les résumés sont pauvres (D12) ; aucune recherche réelle
-  tant que Lucas n'a pas fixé `per_deep_research` et les budgets en euros (R7) ; qualité mesurée
+  tant que l'utilisateur n'a pas fixé `per_deep_research` et les budgets en euros (R7) ; qualité mesurée
   hors ligne seulement (D5).
 - Réversible : agent retirable du manifeste du pack sans toucher au graphe.
 - Backlog : flux dans la recherche avec la veille planifiée (phase 7) ; sens de `updated-by` à

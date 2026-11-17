@@ -9,7 +9,7 @@ file read whole or refused whole. Amounts stay exact decimals from the file's te
   the type has nothing to put in them;
 - statement: ``date, compte, nature, identifiant, quantite``, one date per file.
 
-Only the ``cerveau`` format exists: each broker gets its adapter once Lucas names it (D4) and
+Only the ``cerveau`` format exists: each broker gets its adapter once the user names it (D4) and
 it is tested on a real, anonymised export.
 """
 

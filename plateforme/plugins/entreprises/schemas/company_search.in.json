@@ -1,0 +1,99 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "type": "object",
+  "properties": {
+    "recherche": {
+      "anyOf": [
+        {
+          "maxLength": 100,
+          "minLength": 1,
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "description": "Nom ou sigle d'entreprise (3 à 100 caractères), jamais une personne",
+      "title": "Recherche"
+    },
+    "siren": {
+      "anyOf": [
+        {
+          "maxLength": 11,
+          "minLength": 9,
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "description": "SIREN à 9 chiffres",
+      "title": "Siren"
+    },
+    "code_postal": {
+      "anyOf": [
+        {
+          "maxLength": 5,
+          "minLength": 5,
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "description": "Code postal du siège",
+      "title": "Code Postal"
+    },
+    "departement": {
+      "anyOf": [
+        {
+          "maxLength": 3,
+          "minLength": 2,
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "description": "Département : 75, 2A, 971",
+      "title": "Departement"
+    },
+    "activite_principale": {
+      "anyOf": [
+        {
+          "maxLength": 6,
+          "minLength": 6,
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "description": "Code NAF, ex. 47.91B",
+      "title": "Activite Principale"
+    },
+    "etat_administratif": {
+      "anyOf": [
+        {
+          "enum": [
+            "A",
+            "C"
+          ],
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "description": "A : active ; C : cessée",
+      "title": "Etat Administratif"
+    }
+  },
+  "title": "company_searchArguments"
+}

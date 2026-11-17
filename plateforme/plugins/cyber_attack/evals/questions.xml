@@ -1,7 +1,7 @@
 <?xml version="1.0" encoding="utf-8"?>
 <!--
   Questions d'évaluation du plugin cyber_attack (R8). Elles servent aux évals live, avec le
-  consentement de Lucas pour chaque campagne, une fois l'index construit par
+  consentement de l'utilisateur pour chaque campagne, une fois l'index construit par
   `cerveau cyber attack-fetch` (version 20.0) ; aucun résultat n'est stocké ici.
   Les faits sur ATT&CK ont été relevés le 27/10/2026 sur attack.mitre.org (pied de page
   « ATT&CK content v20.0 ») : pages T1059.001, T1003.001, TA0006, M1038, G0007 et S0002. Les

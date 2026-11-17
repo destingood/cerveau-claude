@@ -1,6 +1,6 @@
 # Complément de plan — Phase 6, pack P4 Cybersécurité défensive
 
-Date : 22/10/2026 · Statut : **validé** le 27/10/2026 (`GO P4`, recommandations G1 à G12 ; Lucas
+Date : 22/10/2026 · Statut : **validé** le 27/10/2026 (`GO P4`, recommandations G1 à G12 ; l'utilisateur
 lance lui-même `cerveau cyber attack-fetch`, G5).
 
 Complément au plan de phase 6 (`docs/plans/phase-6-plan.md`, §7, D20). Tout ce qui n'est pas repris
@@ -62,7 +62,7 @@ prend une adresse cible et ne produit de code offensif (R15).
     - scan, exploit, preuve de concept, lab, contournement de détection, audit de la machine ;
     - conseil à des tiers.
 - **`prompts/role.md`**
-  - Méthode : identifier la CVE ou la technique, citer les champs des outils (R1), dater chaque fait (R10, R12), privilégier l'avis de l'éditeur et les guides officiels, finir par des actions défensives sur les systèmes de Lucas.
+  - Méthode : identifier la CVE ou la technique, citer les champs des outils (R1), dater chaque fait (R10, R12), privilégier l'avis de l'éditeur et les guides officiels, finir par des actions défensives sur les systèmes de l'utilisateur.
   - Une demande offensive reçoit un refus et une alternative défensive (R15, D20).
 - **`prompts/rubric.md`** : critères du juge (exactitude citée, dates, priorisation expliquée par la règle de G8, refus offensif, R16).
 - **`knowledge/sources.yaml`** :
@@ -146,7 +146,7 @@ Répartition des cas du golden :
 - **Campagne réelle P4** : environ 31 cas du golden, une dizaine de cas de red team et les suites relancées, soit **5 à 15 $** (estimation, même base que P2). Elle n'a lieu qu'avec ton accord, après celles de P3a et P3b, toujours en attente.
 - Budgets journalier et mensuel `A_DEFINIR` : tout appel réel reste bloqué (R7).
 
-## 10. Décisions demandées à Lucas
+## 10. Décisions demandées à l'utilisateur
 
 | # | Décision | Options | Ma recommandation |
 |---|---|---|---|

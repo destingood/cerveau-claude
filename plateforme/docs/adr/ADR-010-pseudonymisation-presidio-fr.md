@@ -6,7 +6,7 @@
 
 ## Contexte
 La section 13 impose Presidio avant tout envoi à un LLM ou à Langfuse ; R6 interdit toute donnée
-sensible dans les logs. La réponse doit pourtant rendre les vrais noms à Lucas : la
+sensible dans les logs. La réponse doit pourtant rendre les vrais noms à l'utilisateur : la
 pseudonymisation doit être réversible, sans que la table ne quitte la mémoire. Faits vérifiés le
 2026-10-18 :
 - Presidio 2.2.364 ne fournit aucun recognizer français ; il faut un moteur spaCy `fr`
@@ -27,7 +27,7 @@ pseudonymisation doit être réversible, sans que la table ne quitte la mémoire
 Option 2. `core/guardrails/` construit un `AnalyzerEngine` sur spaCy `fr_core_news_md`, avec
 PERSON et LOCATION (NER), EMAIL, IBAN et CREDIT_CARD (recognizers Presidio déclarés `fr`) et
 FR_PHONE, FR_NIR (clé de contrôle) et IP (recognizers maison). Seuil de score lu dans
-`config/guardrails.yaml` (proposé 0,5, à valider par Lucas). Un même texte reçoit toujours le
+`config/guardrails.yaml` (proposé 0,5, à valider par l'utilisateur). Un même texte reçoit toujours le
 même pseudonyme dans une requête ; la table vit en mémoire le temps de la requête et ne sert qu'à
 la ré-identification finale. Le journal ne garde que le nombre d'entités par type.
 

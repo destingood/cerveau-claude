@@ -8,7 +8,15 @@ from pathlib import Path
 
 import pytest
 
-from core.code.git import GLOBAL_OPTIONS, MAX_STDERR_BYTES, GitError, GitRunner, git_environment
+from core.code.git import (
+    GIT_TOO_OLD,
+    GLOBAL_OPTIONS,
+    MAX_STDERR_BYTES,
+    GitError,
+    GitRunner,
+    GitTooOldError,
+    git_environment,
+)
 from tests.code_support import make_repo
 
 PYTHON = (sys.executable, "-c")
@@ -96,3 +104,24 @@ def test_the_arguments_follow_the_options_and_the_repository(tmp_path: Path) -> 
     runner = GitRunner((*PYTHON, "import sys; print(sys.argv[1:])"))
     out = runner.run(tmp_path, ["log", "-z"], max_bytes=10_000).stdout.decode()
     assert out.strip() == str([*GLOBAL_OPTIONS, "-C", str(tmp_path), "log", "-z"])
+
+
+# git older than 2.45 answers 129 to --no-lazy-fetch: the runner says so, never retries without it.
+OLD_GIT = (
+    *PYTHON,
+    "import sys; sys.stderr.write('unknown option: --no-lazy-fetch\\n'); sys.exit(129)",
+)
+
+
+def test_a_git_without_no_lazy_fetch_is_refused_as_too_old(tmp_path: Path) -> None:
+    with pytest.raises(GitTooOldError) as caught:
+        GitRunner(OLD_GIT).run(tmp_path, ["rev-parse", "--show-toplevel"], max_bytes=1000)
+    assert str(caught.value) == GIT_TOO_OLD
+    assert "2.45" in GIT_TOO_OLD
+
+
+def test_another_usage_error_is_returned_as_a_failure(tmp_path: Path) -> None:
+    other = (*PYTHON, "import sys; sys.stderr.write('unknown option: --bogus\\n'); sys.exit(129)")
+    out = GitRunner(other).run(tmp_path, ["status"], max_bytes=1000)
+    assert out.returncode == 129
+    assert "--bogus" in out.stderr

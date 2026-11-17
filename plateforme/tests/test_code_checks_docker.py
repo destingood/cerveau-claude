@@ -1,4 +1,4 @@
-"""The real container of the code checks (ADR-048), on the image Lucas built (E4).
+"""The real container of the code checks (ADR-048), on the image the user built (E4).
 
 Skipped unless ``CERVEAU_CHECKS_IMAGE`` names that image (``sha256:<64 hex>``) and Docker runs:
 it starts containers, so it stays out of ``make test`` and of the CI. Run it after building or

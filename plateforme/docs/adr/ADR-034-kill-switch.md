@@ -1,6 +1,6 @@
-# ADR-034 — Kill switch : déclencheurs, effets mesurés sous 5 s, réarmement par Lucas seul
+# ADR-034 — Kill switch : déclencheurs, effets mesurés sous 5 s, réarmement par l'utilisateur seul
 
-- Statut : accepté (D10 à D13 et D15 du plan de phase 4, validées par Lucas le 20/10/2026 ; cible
+- Statut : accepté (D10 à D13 et D15 du plan de phase 4, validées par l'utilisateur le 20/10/2026 ; cible
   de 5 s écrite à sa demande le 20/10/2026)
 - Date : 2026-10-20
 - Phase : 4
@@ -33,17 +33,17 @@ Option 2.
   `KILL` au journal, rapport d'incident en français dans `var/incidents/`, alerte locale (journal et
   console ; ntfy au backlog, D13). Une annulation non confirmée est marquée comme telle et lève une
   alerte, dans un nombre d'essais borné par la cible.
-- **Cible (D11)** : `kill_switch.target_seconds` = 5 s, fixée par Lucas le 20/10/2026. La durée va
+- **Cible (D11)** : `kill_switch.target_seconds` = 5 s, fixée par l'utilisateur le 20/10/2026. La durée va
   du déclenchement à l'état écrit, tous ordres annulés. `data_loss_timeout_seconds` reste
   `A_DEFINIR` jusqu'à une connexion continue.
 - **Réarmement (D12)** : `cerveau rearm` refuse sans terminal interactif et sans phrase de
-  confirmation, puis journalise `KILL` (« réarmement », acteur `lucas`). Une suppression manuelle
+  confirmation, puis journalise `KILL` (« réarmement », acteur `owner`). Une suppression manuelle
   du fichier est détectée et journalisée au lancement suivant.
 - **Hooks** : ils refusent à Claude Code `cerveau rearm`, la suppression, le déplacement et la
   modification de `KILL`. La création reste permise, car elle arrête.
 
 ## Conséquences
-- Seul Lucas sort d'un arrêt. Les hooks sont un confort ; la protection effective reste l'ACL
+- Seul l'utilisateur sort d'un arrêt. Les hooks sont un confort ; la protection effective reste l'ACL
   Windows (ADR-003).
 - **Tests** : durée sous la cible avec 1 000 ordres ouverts et un adaptateur lent ; réarmement
   refusé hors terminal interactif ; suppression manuelle détectée ; hooks.

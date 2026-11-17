@@ -3,7 +3,7 @@
 Pack P2 de CERVEAU (section 9.2, plan de phase 6) : synthèse d'un sujet à partir de pages web
 publiques, de métadonnées et de résumés de publications (arXiv, Crossref) et de flux de veille
 datés. Autonomie courante N0 (`config/autonomy.yaml`, `domains.recherche`, D3) : le pack lit et
-synthétise, il n'agit pas. Statut : **expérimental** jusqu'à ce que Lucas le passe en « actif » au
+synthétise, il n'agit pas. Statut : **expérimental** jusqu'à ce que l'utilisateur le passe en « actif » au
 vu d'une mesure réelle du golden set (section 9.3, D2).
 
 Chaque affirmation renvoie à un extrait retrouvé mot pour mot dans une source lue (R1, R12) ; un
@@ -18,7 +18,7 @@ correction publiée est signalée ; ni PDF ni texte intégral ne sont lus (D12).
 | `manifest.yaml` | Périmètre, plugins (`web_research`, `scholarly`, `feeds`), agent `deep_research` (`cerveau ask --approfondi` seulement, D14), renvoi à l'autonomie et aux seuils, sources autorisées |
 | `prompts/role.md` | Rôle et méthode du domaine, insérés dans le prompt système (Annexe D) |
 | `prompts/rubric.md` | Grille du juge des évals : 5 critères notés 0, 1 ou 2 ; le score est calculé par le code (R1) |
-| `knowledge/sources.yaml` | Liste blanche des flux RSS et Atom et corpus RAG : vides en phase 6 ; seul Lucas les remplit (D16, D18) |
+| `knowledge/sources.yaml` | Liste blanche des flux RSS et Atom et corpus RAG : vides en phase 6 ; seul l'utilisateur les remplit (D16, D18) |
 | `evals/golden.jsonl` | Golden set : 34 cas (minimum 30), seuil 0,80 (`config/evals.yaml`, D4) : synthèse, contradiction entre sources, veille datée, préprint, rétractation, correction, « je ne sais pas », injection, texte payant, chiffre inventé, R16, recherche approfondie |
 | `evals/behaviors.yaml` | 8 cas : renvoi par affirmation, préprint signalé, rétractation jamais lue, chiffre hors extrait retiré (R1), « je ne sais pas » (R12), PDF refusé (D12), synthèse pour des tiers refusée (R16), revue systématique routée vers le pack (ADR-046) |
 
@@ -46,7 +46,7 @@ make eval
 
 Hors ligne et gratuit : chaque cas rejoue le vrai graphe avec un modèle scripté ; les contrôles
 déterministes (statut, sources, renvois, affirmations retirées, notes, canaris, R5) s'appliquent.
-Le score du juge n'existe qu'en mesure réelle, payante, lancée seulement avec l'accord de Lucas
+Le score du juge n'existe qu'en mesure réelle, payante, lancée seulement avec l'accord de l'utilisateur
 pour chaque campagne (D5) :
 
 ```bash
@@ -59,4 +59,4 @@ Le prompt système porte la version `system@<version Annexe D>+sha256:<empreinte
 du pack) et la grille du juge `rubric_recherche@<version>+sha256:<empreinte>` ; les deux sont
 écrites dans le journal d'audit à chaque appel (R11). Toute modification d'un prompt relance les
 évals (R9) ; un seuil ne baisse jamais et un cas du golden set ne se retouche pas sans l'accord de
-Lucas.
+l'utilisateur.

@@ -13,7 +13,7 @@ adapter's statement: positions exactly, cash to the cent. Every paper amount is 
 
 A gap blocks new intents: the Risk Gate's ``reconciliation`` check reads
 :meth:`ReconciliationLog.open_gaps`. The block lifts only once a reconciliation is clean again
-**and** Lucas has acknowledged it in an interactive terminal (D14). The log is append-only, in
+**and** the user has acknowledged it in an interactive terminal (D14). The log is append-only, in
 ``var/paper/reconciliation.db``: the gaps and their amounts stay there, as fills stay in the order
 book, while each reconciliation and each acknowledgement writes an audit entry with counts,
 assets and fingerprints, never an amount (R11). A book the portfolio cannot replay, or a statement
@@ -336,7 +336,7 @@ def default_log_path(project_root: Path) -> Path:
 
 
 def interactive_terminal() -> bool:
-    """Lucas at a console: standard input and output both on a terminal, as a piped or scripted
+    """The user at a console: standard input and output both on a terminal, as a piped or scripted
     run, and an agent's shell, are not."""
     return bool(sys.stdin and sys.stdin.isatty() and sys.stdout and sys.stdout.isatty())
 
@@ -414,12 +414,12 @@ class ReconciliationLog:
 
     def open_gaps(self) -> int:
         """The Risk Gate's ``open_reconciliation_gaps``: the gaps of the last reconciliation that
-        found any since Lucas's last acknowledgement; 0 lets intents through."""
+        found any since the user's last acknowledgement; 0 lets intents through."""
         row = self._conn.execute(_OPEN_GAPS).fetchone()
         return 0 if row is None else int(row[0])
 
     def awaiting_acknowledgement(self) -> bool:
-        """Clean again, but blocked until Lucas acknowledges the gap (D14)."""
+        """Clean again, but blocked until the user acknowledges the gap (D14)."""
         last = self._conn.execute(
             "SELECT gaps FROM entries WHERE kind = 'reconciliation' ORDER BY seq DESC LIMIT 1"
         ).fetchone()
@@ -480,11 +480,12 @@ class ReconciliationLog:
     def acknowledge(
         self, *, now: datetime | None = None, interactive: Callable[[], bool] = interactive_terminal
     ) -> int:
-        """Lucas lifts the block after a clean reconciliation (D14); returns the gaps lifted.
+        """The user lifts the block after a clean reconciliation (D14); returns the gaps lifted.
         Refused outside an interactive terminal, without a gap, or while a gap is still there."""
         if not interactive():
             raise ReconciliationError(
-                "acquittement refusé : il se fait par Lucas, dans un terminal interactif (D14)"
+                "acquittement refusé : il se fait par l'utilisateur, dans un terminal interactif "
+                "(D14)"
             )
         gaps = self.open_gaps()
         if not gaps:
@@ -498,9 +499,9 @@ class ReconciliationLog:
             self._conn.execute(
                 "INSERT INTO entries (kind, at, gaps, detail, recorded_at) "
                 "VALUES ('acknowledgement', ?, ?, ?, ?)",
-                (utc_text(when), gaps, canonical_json({"by": "lucas"}), utc_text(when)),
+                (utc_text(when), gaps, canonical_json({"by": "owner"}), utc_text(when)),
             )
-            self._journal("lucas", "APPROVAL", {"reconciliation": "acquittee", "gaps": gaps}, when)
+            self._journal("owner", "APPROVAL", {"reconciliation": "acquittee", "gaps": gaps}, when)
         return gaps
 
 

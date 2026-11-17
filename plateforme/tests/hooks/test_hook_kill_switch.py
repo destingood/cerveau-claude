@@ -184,7 +184,7 @@ def test_reading_and_stopping_stay_allowed(
 
 def test_rearm_refusal_names_the_rule() -> None:
     reason = guard.analyse("uv run cerveau rearm", False, CWD)
-    assert reason and "R4" in reason and "Lucas" in reason
+    assert reason and "R4" in reason and "utilisateur" in reason
 
 
 @pytest.mark.parametrize("state", ["engaged", "armed"])

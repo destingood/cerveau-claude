@@ -42,7 +42,7 @@ def journal(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Path:
 
 @pytest.fixture
 def budgeted(config_dir: Path) -> Path:
-    """A copy of config/ whose € budgets are set, as Lucas will set them."""
+    """A copy of config/ whose € budgets are set, as the user will set them."""
     path = config_dir / "budgets.yaml"
     data = yaml.safe_load(path.read_text(encoding="utf-8"))
     data["llm_budget_eur"] = {"daily": "1.00", "monthly": "10.00"}

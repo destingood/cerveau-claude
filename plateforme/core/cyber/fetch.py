@@ -1,6 +1,6 @@
 """Download of one pinned ATT&CK STIX bundle, for `cerveau cyber attack-fetch` only (ADR-056).
 
-Lucas runs the command; nothing else downloads the bundle (G5). Each version has a pin read on
+The user runs the command; nothing else downloads the bundle (G5). Each version has a pin read on
 GitHub on 2026-10-27: the commit of its release tag, the size of the file and its git blob
 SHA-1. A body must match both before anything is built from it. Its SHA-256 is then written in
 ``config/data_sources.yaml`` once (trust on first use) and checked at every later fetch and by

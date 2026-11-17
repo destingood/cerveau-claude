@@ -1,6 +1,6 @@
 # Stratégie de DÉMONSTRATION (D5 du plan de phase 3, ADR-027) : elle tourne sur le jeu de
 # recherche synthétique et ses frais fictifs. Aucune conclusion d'investissement n'en sort.
-# Seul Lucas passe une stratégie en « candidate », avec une approbation écrite à la main dans
+# Seul l'utilisateur passe une stratégie en « candidate », avec une approbation écrite à la main dans
 # governance/approvals/strategies/ ; `cerveau config check` refuse tout autre chemin.
 id: croisement_mm
 nom: "Croisement de moyennes mobiles (démonstration)"

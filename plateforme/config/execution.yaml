@@ -1,4 +1,4 @@
-# Rédaction et exécution des ordres paper (ADR-029, ADR-033), fixées par Lucas le 20/10/2026.
+# Rédaction et exécution des ordres paper (ADR-029, ADR-033), fixées par l'utilisateur le 20/10/2026.
 # Pourcentages (5 = 5 %). Les changer relance les évals d'exécution (R9).
 limit_offset_pct: 0.5        # D17 : prix limite = dernier cours ± 0,5 %, dans la bande de prix
 max_participation_pct: 5     # D2 : part maximale du volume d'une séance (hypothèse de simulation)

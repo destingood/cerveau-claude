@@ -1,7 +1,7 @@
 # ADR-043 — Socle commun des packs de domaine
 
-- Statut : proposé (principes validés par Lucas le 21/10/2026 : plan de phase 6 §3, D1 à D4 ;
-  détails d'implémentation ci-dessous à valider par Lucas)
+- Statut : proposé (principes validés par l'utilisateur le 21/10/2026 : plan de phase 6 §3, D1 à D4 ;
+  détails d'implémentation ci-dessous à valider par l'utilisateur)
 - Date : 2026-10-21
 - Phase : 6
 
@@ -27,8 +27,8 @@ Aucun pack n'a été mesuré en campagne réelle (budgets `A_DEFINIR`, R7) ; §9
   `DOMAINS`, dans l'ordre du §9.2. Un dossier sans manifeste est ignoré ; un manifeste invalide
   bloque le démarrage. `generaliste` reste obligatoire (repli).
 - **Statut** : `statut` est obligatoire (`experimental` | `actif`). Claude Code n'écrit que
-  `experimental` ; seul Lucas passe un pack à `actif`, après une campagne réelle (D2). Un test
-  exige `experimental` pour chaque pack du dépôt : le passage de Lucas le modifie aussi.
+  `experimental` ; seul l'utilisateur passe un pack à `actif`, après une campagne réelle (D2). Un test
+  exige `experimental` pour chaque pack du dépôt : le passage de l'utilisateur le modifie aussi.
 - **Dossier unique** : l'orchestrateur, les prompts et `cerveau config check` lisent le même
   dossier de packs (`PACKS_DIR`, ou celui passé en paramètre).
 - **Marquage** : la réponse d'un pack expérimental porte le signalement « Pack « <id> »
@@ -67,5 +67,5 @@ Aucun pack n'a été mesuré en campagne réelle (budgets `A_DEFINIR`, R7) ; §9
 - Chaque réponse porte une ligne de plus, y compris en généraliste et en finance, jusqu'au
   passage à `actif`.
 - Le passage reste manuel ; la mesure est la campagne réelle (`cerveau eval --live`), lancée
-  seulement avec l'accord de Lucas.
+  seulement avec l'accord de l'utilisateur.
 - Réversible : retirer un manifeste retire le pack.

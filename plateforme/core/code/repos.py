@@ -19,7 +19,7 @@ from collections.abc import Sequence
 from dataclasses import dataclass
 from pathlib import Path
 
-from core.code.git import GitError, GitRunner
+from core.code.git import GitError, GitRunner, GitTooOldError
 from core.config.loader import (
     CERVEAU_ROOT,
     BlockedFeatureError,
@@ -91,6 +91,10 @@ MODES = {
 
 class RepoError(Exception):
     """A refused or failed read. The message is French and safe to show to the planner."""
+
+
+class GitVersionError(RepoError):
+    """git is too old for the reader: said as such, never as an unreadable repository."""
 
 
 @dataclass(frozen=True)
@@ -198,6 +202,8 @@ class RepoReader:
             out = self.git.run(
                 repo, args, max_bytes=max_bytes, literal_paths=literal_paths, stdin=stdin
             )
+        except GitTooOldError as exc:
+            raise GitVersionError(str(exc)) from None
         except GitError as exc:
             raise RepoError(str(exc)) from None
         if out.returncode != 0 and not out.truncated:
@@ -241,6 +247,8 @@ class RepoReader:
                     "--git-common-dir",
                 ],
             )
+        except GitVersionError:
+            raise
         except RepoError:
             raise RepoError(f"dépôt « {repo_id} » : pas un dépôt git lisible") from None
         top, *stores = (Path(line).resolve() for line in raw.decode("utf-8").splitlines())
