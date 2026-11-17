@@ -23,7 +23,11 @@ from .common import CODE_DIR, load_config, read_json, remove_tree, set_config
 
 NAME = MARKET = "cerveau"
 AUTRES = {"plateforme"}  # dossiers d'autres projets du même dépôt (PR #8) : ni effacés, ni contrôlés, ni commités ici
-KEEP = {".git", "CONTRIBUTORS.md"} | AUTRES  # tenus dans le dépôt lui-même, jamais effacés par la construction
+KEEP = {".git", ".github", "CONTRIBUTORS.md"} | AUTRES  # tenus dans le dépôt lui-même (CI comprise), jamais effacés
+# Serveur MCP du plugin, déclaré dans plugin.json et non dans un .mcp.json à la racine : ce fichier est aussi lu comme
+# configuration du projet quand le dépôt est ouvert dans Claude Code, où ${CLAUDE_PLUGIN_ROOT} n'existe pas (le
+# serveur échouait : « python: can't open file '…/${CLAUDE_PLUGIN_ROOT}/brain.py' »).
+MCP_SERVERS = {"cerveau": {"command": "python", "args": ["-I", "-S", "${CLAUDE_PLUGIN_ROOT}/brain.py", "mcp"]}}
 DESC = ("Cerveau persistant pour Claude Code : souvenirs en graphe, rappel automatique à chaque message, wiki Markdown "
         "tenu par Claude (sources ingérées, coffre Obsidian, dépôt git), cartes de projets, à-faire datés, serveur MCP, "
         "et un cerveau e-commerce qui suit chaque boutique (clients sans pub, SEO, GEO, tunnel de vente, chiffres de "
@@ -403,8 +407,6 @@ def build(dest: Path, owner: str = "", repo: str = "") -> list:
     _json(dest / "hooks" / "hooks.json", {"description": "Cerveau : injection au démarrage, rappel à chaque message, "
                                                          "sorties de commandes compactes, mémorisation en fin de tâche",
                                           "hooks": hooks})
-    _json(dest / ".mcp.json", {"mcpServers": {"cerveau": {
-        "command": "python", "args": ["-I", "-S", "${CLAUDE_PLUGIN_ROOT}/brain.py", "mcp"]}}})
     _lf(dest / "skills" / "brain" / "SKILL.md", SKILL)
     for name, src in skills.items():  # skills métier (cerveau e-commerce…) : Claude Code les lit dans le plugin
         shutil.copytree(src, dest / "skills" / name, ignore=shutil.ignore_patterns("__pycache__", "*.pyc", SKILL_MARK))
@@ -413,7 +415,7 @@ def build(dest: Path, owner: str = "", repo: str = "") -> list:
     if (CODE_DIR / "agents").is_dir():  # agents de délégation (cerveau:eclaireur…) : Claude Code les lit dans le plugin
         shutil.copytree(CODE_DIR / "agents", dest / "agents", ignore=shutil.ignore_patterns("__pycache__", "*.pyc"))
     plugin = {"name": NAME, "version": __version__, "description": DESC, "author": {"name": owner},
-              "keywords": KEYWORDS}
+              "keywords": KEYWORDS, "mcpServers": MCP_SERVERS}
     if repo:
         plugin["homepage"] = plugin["repository"] = f"https://github.com/{repo}"
     _json(dest / ".claude-plugin" / "plugin.json", plugin)

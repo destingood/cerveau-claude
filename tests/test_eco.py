@@ -14,6 +14,10 @@ from pathlib import Path
 
 TMP = Path(tempfile.mkdtemp(prefix="cerveau-eco-test-"))
 CODE = Path(__file__).resolve().parent.parent
+# Code testé = plugin publié (.claude-plugin + style livré) : le style concis est posé avec le mode éco ; dans le dossier
+# de développement (cerveau classique), il ne l'est pas. Les attentes « réglages posés » en tiennent compte.
+STYLE = ({"outputStyle": "cerveau:concis"} if (CODE / ".claude-plugin" / "plugin.json").exists()
+         and (CODE / "output-styles" / "concis.md").exists() else {})
 OK, FAIL = [], []
 for k in ("BRAIN_WIKI", "CLAUDE_CODE_REMOTE", "CERVEAU_CLOUD", "BASH_MAX_OUTPUT_LENGTH", "CLAUDE_CODE_AUTO_COMPACT_WINDOW",
           "CLAUDE_CODE_SUBAGENT_MODEL", "CLAUDE_CODE_FILE_READ_MAX_OUTPUT_TOKENS", "CLAUDE_CODE_DISABLE_AUTO_MEMORY",
@@ -200,13 +204,14 @@ check(c == 0 and "⚡ Mode éco activé" in eco_line and "liste des skills plafo
       and "mises en fichier" not in eco_line and "résumée vers" not in eco_line,
       "valeurs de l'utilisateur déjà là : gardées, seuls les autres leviers sont posés et annoncés", out[-400:])
 check(W.settings() == {"bashOutputMaxChars": 20000, "autoCompactWindow": 300000, "skillListingBudgetFraction": 0.005,
-                       "autoMemoryEnabled": False} and W.config("eco.applique_le"),
+                       "autoMemoryEnabled": False, **STYLE} and W.config("eco.applique_le"),
       "valeurs de l'utilisateur gardées ; liste des skills et mémoire auto posées (rien à importer)", W.settings())
 c, msg, out = W.hook("session-start", "e2")
 check(c == 0 and "⚡ Mode éco" not in context_of(msg) and W.settings()["bashOutputMaxChars"] == 20000,
       "démarrage suivant : rien de plus (pas d'essai à chaque démarrage)", out[-300:])
 W = World("tout-regle")
-mine = {"bashOutputMaxChars": 20000, "autoCompactWindow": 300000, "skillListingBudgetFraction": 0.02, "autoMemoryEnabled": True}
+mine = {"bashOutputMaxChars": 20000, "autoCompactWindow": 300000, "skillListingBudgetFraction": 0.02, "autoMemoryEnabled": True,
+        **({"outputStyle": "Explanatory"} if STYLE else {})}  # style livré : l'utilisateur a aussi le sien
 W.write_settings(mine)
 c, msg, out = W.hook("session-start", "t1")
 check(c == 0 and "⚡ Mode éco" not in context_of(msg) and W.settings() == mine and W.config("eco.applique_le"),
@@ -221,7 +226,7 @@ check(c == 0 and "⚡ Mode éco — nouveaux réglages" in eco_line and "liste d
       and "mémoire auto de Claude Code coupée" in eco_line and "mises en fichier" not in eco_line,
       "nouveaux leviers d'une version plus récente : posés une fois, annonce « nouveaux réglages »", out[-400:])
 check(W.settings() == {"bashOutputMaxChars": 10000, "autoCompactWindow": 200000, "skillListingBudgetFraction": 0.005,
-                       "autoMemoryEnabled": False} and W.config("eco.leviers") == 3
+                       "autoMemoryEnabled": False, **STYLE} and W.config("eco.leviers") == 3
       and W.config("eco.applique_le") == "2026-10-01T00:00:00",
       "nouveaux leviers : posés, eco.leviers à 3, date d'application d'origine gardée", (W.settings(), W.config("eco")))
 c, msg, out = W.hook("session-start", "l2")
@@ -560,6 +565,8 @@ check("mode éco" in publish.readme("Moi", "moi/depot"), "README : le mode éco 
 dest = Path(tempfile.mkdtemp(prefix="cerveau-publish-"))
 (dest / "CONTRIBUTORS.md").write_text("# Contributeurs", encoding="utf-8")
 (dest / "ancien.txt").write_text("x", encoding="utf-8")
+(dest / ".github" / "workflows").mkdir(parents=True)
+(dest / ".github" / "workflows" / "ci.yml").write_text("name: CI\n", encoding="utf-8")
 (dest / "plateforme").mkdir()
 (dest / "plateforme" / "README.md").write_text("# Plateforme\ncontact : equipe" + "@" + "plateforme.fr", encoding="utf-8")  # adresse en morceaux : pas d'e-mail dans le dépôt public
 files = publish.build(dest, "Moi", "moi/depot")
@@ -567,6 +574,8 @@ check((dest / "CONTRIBUTORS.md").is_file() and not (dest / "ancien.txt").exists(
       "publish : CONTRIBUTORS.md du dépôt gardé, le reste reconstruit")
 check((dest / "plateforme" / "README.md").is_file() and not any(f.startswith("plateforme/") for f in files)
       and not publish.secrets_in(dest), "publish : plateforme/ (autre projet du dépôt) gardé, hors liste et hors contrôle")
+check((dest / ".github" / "workflows" / "ci.yml").is_file(),
+      "publish : .github/ (CI du dépôt) gardé, jamais effacé par la reconstruction")
 shutil.rmtree(dest, ignore_errors=True)
 c, out = World("aide").run("econome")
 check(c == 0 and "Mode éco" in out, "alias « econome »", out)

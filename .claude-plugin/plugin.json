@@ -18,6 +18,17 @@
     "seo",
     "geo"
   ],
+  "mcpServers": {
+    "cerveau": {
+      "command": "python",
+      "args": [
+        "-I",
+        "-S",
+        "${CLAUDE_PLUGIN_ROOT}/brain.py",
+        "mcp"
+      ]
+    }
+  },
   "homepage": "https://github.com/destingood/cerveau-claude",
   "repository": "https://github.com/destingood/cerveau-claude"
 }

@@ -1615,10 +1615,14 @@ def cmd_restore(a):
 def _doctor_plugin(ok):
     """Contrôles propres au mode plugin : version, fichiers du plugin, lanceur stable, cerveau classique en double."""
     from . import plugin
-    from .common import CODE_DIR
+    from .common import CODE_DIR, read_json
     ok(True, f"plugin « cerveau » {__version__} : {CODE_DIR}")
-    need = [CODE_DIR / "hooks" / "hooks.json", CODE_DIR / ".mcp.json", CODE_DIR / "skills" / "brain" / "SKILL.md"]
+    need = [CODE_DIR / "hooks" / "hooks.json", CODE_DIR / "skills" / "brain" / "SKILL.md"]
     gone = [str(p.relative_to(CODE_DIR)) for p in need if not p.exists()]
+    manifest = read_json(CODE_DIR / ".claude-plugin" / "plugin.json", {}) or {}
+    servers = manifest.get("mcpServers") if isinstance(manifest, dict) else None
+    if not (isinstance(servers, dict) and "cerveau" in servers) and not (CODE_DIR / ".mcp.json").exists():
+        gone.append("serveur MCP (.claude-plugin/plugin.json › mcpServers)")
     ok(not gone, "hooks, serveur MCP et skill du plugin" + (f" — manquants : {', '.join(gone)}" if gone else ""))
     from . import delegation
     agents = delegation.available()

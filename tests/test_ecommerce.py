@@ -70,7 +70,19 @@ for ref in refs:
 PERSO_MIN = {'484ebb0894eed8b9', '3e696b474f1fad2e', '6b6a8aca6ed7c6fd', 'a30636d43f7d683f'}
 PERSO_EXACT = {'ad3700db8e231084'}
 empreinte = lambda mot: hashlib.sha256(mot.encode("utf-8")).hexdigest()[:16]  # noqa: E731
-public = [p for p in CODE.rglob("*") if p.is_file() and not ({".git", "tests", "__pycache__"} & set(p.relative_to(CODE).parts))]
+def _publies():
+    """Ce que le dépôt publie : les fichiers suivis par git (un .venv ou un cache local n'est jamais publié). Hors dépôt
+    git (dossier de développement), tout le dossier."""
+    try:
+        out = subprocess.run(["git", "-C", str(CODE), "ls-files", "-z"], capture_output=True, timeout=60)
+    except (OSError, subprocess.SubprocessError):
+        out = None
+    if out is not None and out.returncode == 0:
+        return [CODE / rel for rel in out.stdout.decode("utf-8").split("\0") if rel]
+    return list(CODE.rglob("*"))
+
+
+public = [p for p in _publies() if p.is_file() and not ({".git", "tests", "__pycache__"} & set(p.relative_to(CODE).parts))]
 for p in public:
     mots = set(re.findall(r"\w+", p.read_text(encoding="utf-8", errors="replace")))
     perso = sorted(m for m in mots if empreinte(m.lower()) in PERSO_MIN or empreinte(m) in PERSO_EXACT)
@@ -681,16 +693,21 @@ check(not any("__pycache__" in f or f.endswith(".cerveau") for f in files), "bra
 plugin_json = json.loads((dest / ".claude-plugin" / "plugin.json").read_text(encoding="utf-8"))
 check("e-commerce" in plugin_json["keywords"] and "e-commerce" in plugin_json["description"],
       "plugin.json : le cerveau e-commerce est annoncé")
+serveur = (plugin_json.get("mcpServers") or {}).get("cerveau") or {}
+check(serveur.get("args") == ["-I", "-S", "${CLAUDE_PLUGIN_ROOT}/brain.py", "mcp"] and ".mcp.json" not in files,
+      "serveur MCP déclaré dans plugin.json, pas dans un .mcp.json lu aussi comme configuration du projet", serveur)
 check("/cerveau:ecommerce" in (dest / "README.md").read_text(encoding="utf-8"), "README du plugin : skill présentée")
 if DEPOT:
     repo_plugin = json.loads((CODE / ".claude-plugin" / "plugin.json").read_text(encoding="utf-8"))
-    for key in ("version", "description", "keywords"):
+    for key in ("version", "description", "keywords", "mcpServers"):
         check(plugin_json[key] == repo_plugin[key], f"plugin.json du dépôt à jour ({key})")
     gen = json.loads((dest / ".claude-plugin" / "marketplace.json").read_text(encoding="utf-8"))
     repo_market = json.loads((CODE / ".claude-plugin" / "marketplace.json").read_text(encoding="utf-8"))
     check(gen["metadata"]["version"] == repo_market["metadata"]["version"] and gen["plugins"] == repo_market["plugins"],
           "marketplace.json du dépôt à jour (version, description)")
-    readme = (dest / "README.md").read_text(encoding="utf-8").replace("proprietaire/depot", "destingood/cerveau-claude")
+    check(not (CODE / ".mcp.json").exists(), "dépôt : pas de .mcp.json à la racine (le serveur MCP du projet échouerait)")
+    # Même auteur et même dépôt que la publication réelle : « Auteur » (nom du plugin de test) n'est pas celui du dépôt.
+    readme = publish.readme(repo_plugin["author"]["name"], "destingood/cerveau-claude")
     check(readme == (CODE / "README.md").read_text(encoding="utf-8"), "README.md du dépôt identique à celui de publish")
 try:
     publish.build(CODE)
