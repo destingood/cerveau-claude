@@ -1,7 +1,9 @@
-# ADR-061 — Tolérance du solveur de la parité de risque et correction d'une référence du golden
+# ADR-068 — Tolérance du solveur de la parité de risque et correction d'une référence du golden
 
 - Statut : **proposé** (R9 : une valeur attendue du golden Finance change ; à valider par l'utilisateur)
 - Date : 2026-11-17
+- Numéro : ADR-061 à l'origine, renuméroté ADR-068 le 17/11/2026 ; ADR-061 était déjà pris par le
+  calculateur business, arrivé avec la phase 7
 - Phase : plan de remise au vert, étape 0 (`docs/plans/plan-parite-aladdin.md`, C18)
 
 ## Contexte
