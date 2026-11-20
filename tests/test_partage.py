@@ -198,6 +198,117 @@ check(logged.count("c--bob--facture-fleurs") == 1 and "consigne qui annule" in l
 c, out = brain(A, "commun")
 check("écartée" in out, "S-3 : `brain commun` dit que des pages d'amis ont été écartées", out)
 
+# ------------------------------------------------------------------ S-2. ce qui part ne dit rien de privé
+# Adresses e-mail, dépôts git et mot de passe en morceaux : le contrôle de `brain publish` lit ce fichier.
+AT = "@"
+GIT_SSH = "git" + AT + "github.com:jdupont/boutique-durand.git"
+SSH_URL = "ssh://deploy" + AT + "vps.boutique-durand.fr/srv/site"
+WIFI = "Le mot de " + "passe du wifi est " + "Fleurs" + "2024!"
+LOCAL = TMP / "ici"  # le cerveau de ce processus (contrôles en direct) : jamais le vrai PC
+(LOCAL / "brain").mkdir(parents=True)
+(LOCAL / "brain" / "config.json").write_text(json.dumps({"publish": {"owner": "Garance"}}), encoding="utf-8")
+os.environ.update(BRAIN_HOME=str(LOCAL / "brain"), CLAUDE_CONFIG_DIR=str(LOCAL / "claude"), HOME=str(LOCAL / "maison"),
+                  USERPROFILE=str(LOCAL / "maison"))
+sys.path.insert(0, str(CODE))
+from brainkit import commun, echange  # noqa: E402
+
+LEAKY = [  # (texte, ce qui ne doit plus y être, ce qui le remplace)
+    ("Fichier C:\\Users\\Jean Dupont\\Documents\\clients.xlsx à relancer", ["Jean", "Dupont", "clients.xlsx"], "[chemin]"),
+    ("Modèle : ~/Documents/ClientDurand/devis.pdf à reprendre", ["ClientDurand", "devis.pdf"], "[chemin]"),
+    ("Projet dans /mnt/c/Users/jdupont/projets/boutique-durand", ["jdupont", "boutique-durand"], "[chemin]"),
+    ("Copie sur /Volumes/Disque Client/photos/mariage le soir", ["Disque", "Client", "mariage"], "[chemin]"),
+    ("Scripts dans /home/jdupont/caisse et /Users/jdupont/caisse", ["jdupont"], "[chemin]"),
+    ("Sous Git Bash : /c/Users/jdupont/boutique", ["jdupont"], "[chemin]"),
+    ("Transcript : ~/.claude/projects/-home-jdupont-boutique/s1.jsonl", ["jdupont"], "[chemin]"),
+    ("Partage réseau \\\\serveur\\compta\\Jean Dupont\\notes.txt ici", ["Jean", "Dupont"], "[chemin]"),
+    ("Bilan : %USERPROFILE%\\Documents\\Compta Durand\\bilan.xlsx en mars", ["USERPROFILE", "Compta", "Durand", "bilan.xlsx"],
+     "[chemin]"),
+    ("Appeler le +32 470 12 34 56 avant dix heures", ["470 12 34 56"], "«téléphone»"),
+    ("Contact : tel +41 79 123 45 67", ["79 123 45 67"], "«téléphone»"),
+    ("Standard : +33 (0)4 78 12 34 56", ["78 12 34 56"], "«téléphone»"),
+    ("US office: +1 (415) 555-0123", ["555-0123"], "«téléphone»"),
+    ("Le livreur répond au 079 123 45 67 le matin", ["079 123 45 67"], "«téléphone»"),
+    ("Bureau belge : 0470 12 34 56", ["0470 12 34 56"], "«téléphone»"),
+    ("Écrire à marc [at] fleurs-geneve.ch demain", ["marc", "fleurs-geneve"], "«e-mail»"),
+    ("Écrire à marc(at)fleurs-geneve(dot)ch demain", ["fleurs-geneve"], "«e-mail»"),
+    ("Écrire à marc arobase fleurs-geneve point ch demain", ["fleurs-geneve"], "«e-mail»"),
+    ("Livrer au 12 rue des Lilas, 69003 Lyon, porte de gauche", ["Lilas", "69003", "Lyon"], "«adresse»"),
+    ("Siège : 5 bis avenue de la République 75011 Paris", ["République", "75011"], "«adresse»"),
+    ("Dépôt des colis au 3 place du Marché le lundi", ["Marché"], "«adresse»"),
+    ("Boutique Rue du Rhône 42, 1204 Genève", ["Rhône", "1204", "Genève"], "«adresse»"),
+    ("Office at 221B Baker Street, London", ["Baker"], "«adresse»"),
+    (f"Remote : {GIT_SSH}", ["jdupont", "boutique-durand", "github.com:"], "[lien privé]"),
+    (f"Déployer avec {SSH_URL} puis vider le cache", ["vps.", "deploy"], "[lien privé]"),
+    ("Garance valide chaque devis", ["Garance"], "l'utilisateur"),
+]
+for text, gone, placeholder in LEAKY:
+    out = commun.clean(text)
+    check(all(g not in out for g in gone) and placeholder in out, f"S-2 : retiré avant tout partage — « {text[:44]} »", out)
+KEEP = ["Voir https://fr.wikipedia.org/wiki/Photographie pour la lumière.",
+        "Le 12 mars 2026, livraison de 50 bottes à 1 200 € (+15 % sur un an).",
+        "Le chiffre a progressé de +12 500 000 € en 2025 ; version 8.24.0 du plugin.",
+        "Lancer `npm run dev` puis ouvrir le site.com/home/accueil.",
+        "Lire `~/.claude/skills/relance/SKILL.md` puis `python \"$HOME/.claude/brain/brain.py\" q facture`.",
+        "Prévoir 3 cours de cuisine et 2 rues commerçantes à visiter.",
+        "Les dates 01 02 2024 et 03.04.2025 restent lisibles.",
+        "Ratio 3:1, fichier src/app.py et dossier ./docs/notes."]
+changed = [(t, commun.clean(t)) for t in KEEP if commun.clean(t) != t]
+check(not changed, "S-2 : le texte ordinaire (liens publics, dates, montants, chemins relatifs, chemins du plugin) reste intact",
+      changed)
+
+# l'échange de skills passe par le même nettoyage
+skill = ("# Relance\n\n1. Ouvrir C:\\Users\\Jean Dupont\\Documents\\relances.xlsx.\n2. Appeler le +32 470 12 34 56.\n"
+         "3. Écrire à marc [at] fleurs-geneve.ch.\n4. Garance relit.\n5. Pousser sur " + GIT_SSH + ".\n"
+         "6. Livrer au 12 rue des Lilas, 69003 Lyon.\n7. Méthode complète : `~/.claude/skills/relance/SKILL.md`.\n")
+pub, why = echange.public_files({"SKILL.md": skill.encode("utf-8")}, [], strict=False)
+text = pub.get("SKILL.md", b"").decode("utf-8")
+check(not why and all(x not in text for x in ("Jean", "470 12", "fleurs-geneve", "Garance", "jdupont", "Lilas", "69003"))
+      and "~/.claude/skills/relance/SKILL.md" in text and "l'utilisateur relit" in text,
+      "S-2 : skill partagée (échange) : chemins, téléphone, e-mail déguisé, dépôt, adresse et prénom retirés", text)
+pub, why = echange.public_files({"SKILL.md": b"# Export\n", "scripts/export.py": b"open('/mnt/c/Users/jdupont/ventes.csv')\n"},
+                                ["scripts/export.py"], strict=False)
+check("scripts/export.py" not in pub and any("script" in w for w in why),
+      "S-2 : un script qui contient un chemin du PC garde la skill privée (on ne réécrit pas du code)", (sorted(pub), why))
+
+# de bout en bout : neuf apprentissages (et quelques autres) avec des données personnelles, puis l'adhésion
+C = "claire"
+setup(C, publish={"owner": "Garance"})
+MEMS = [
+    ("Export des clients", "Le fichier C:\\Users\\Jean Dupont\\Documents\\clients.xlsx sert chaque lundi à relancer les impayés."),
+    ("Modèle de devis", "Reprendre ~/Documents/ClientDurand/devis.pdf : sa mise en page rassure les clients."),
+    ("Site de la boutique sous WSL", "Le projet est dans /mnt/c/Users/jdupont/projets/boutique-durand : lancer npm run dev "
+                                     "depuis ce dossier."),
+    ("Fournisseur de tulipes", "Commander les tulipes au +32 470 12 34 56 avant dix heures : livraison le lendemain matin."),
+    ("Grossiste suisse", "Contact : marc [at] fleurs-geneve.ch, tel +41 79 123 45 67 — tarifs dégressifs dès cinquante bottes."),
+    ("Point de livraison", "Livrer les commandes au 12 rue des Lilas, 69003 Lyon, porte de gauche, avant midi."),
+    ("Dépôt du site", f"Le code est sur {GIT_SSH} ; toujours relire le diff avant de pousser."),
+    ("Virement des acomptes", "IBAN FR76 3000 6000 0112 3456 7890 189 pour les acomptes des mariages."),
+    ("Wifi de la boutique", WIFI),
+    ("Compta annuelle", "Le bilan est dans %USERPROFILE%\\Documents\\Compta Durand\\bilan.xlsx, à envoyer en mars."),
+    ("Sauvegarde des photos", "Copier les photos sur /Volumes/Disque Client/photos puis vérifier la copie le soir même."),
+    ("Validation des devis", "Garance valide chaque devis avant l'envoi au client."),
+    ("Joindre Paul", "paul (at) ateliers-durand.fr, +33 (0)4 78 12 34 56"),
+    ("Serveur de test", f"Déployer avec {SSH_URL} puis vider le cache du site."),
+]
+for title, body in MEMS:
+    c, out = brain(C, "add", "-t", "learning", "-T", title, "-b", body, "-p", "none")
+    check(c == 0, f"claire : {title}", out)
+brain(C, "config", "commun.repo", BARE)
+c, out = brain(C, "commun", "rejoindre", "--oui", "--nom", C)
+check(c == 0 and f"membre « {C} »" in out, "claire rejoint le cerveau commun", out)
+hist = bare_history()
+for word in ("Jean Dupont", "Users\\Jean", "Dupont", "clients.xlsx", "ClientDurand", "jdupont", "/mnt/c", "boutique-durand",
+             "470 12 34 56", "fleurs-geneve", "79 123 45 67", "rue des Lilas", "69003", "github.com:", "FR76", "Fleurs2024",
+             "USERPROFILE", "Compta Durand", "Disque Client", "Garance", "ateliers-durand", "78 12 34 56", "vps.", "Joindre Paul"):
+    check(word not in hist, f"S-2 : « {word} » n'est jamais entré dans le dépôt commun")
+mine = [f for f in bare_files() if f.startswith(f"membres/{C}/wiki/")]
+check(any(f.endswith("/Export des clients.md") for f in mine) and all(x in hist for x in (
+    "relancer les impayés", "tarifs dégressifs", "porte de gauche", "relire le diff", "l'utilisateur valide chaque devis")),
+      "S-2 : le savoir utile part quand même, nettoyé", mine)
+c, out = brain(C, "commun", "apercu")
+check("Joindre Paul" not in out.split("Reste privé")[0] and "presque rien sans" in out,
+      "S-2 : un souvenir qui ne serait plus que des retraits reste privé, et l'aperçu dit pourquoi", out)
+
 # ------------------------------------------------------------------ bilan
 print(f"\n{len(OK)} vérifications OK, {len(FAIL)} échec(s)")
 if FAIL or os.environ.get("KEEP"):
