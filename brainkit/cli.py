@@ -2414,3 +2414,9 @@ def main(argv=None):
         die(str(exc))
     except ReadOnly as exc:  # page d'un ami (cerveau commun)
         die(str(exc))
+    except RuntimeError as exc:  # graph.json illisible et rien pour le réparer… : un message, pas une trace Python
+        die(f"{exc} — `brain doctor` pour le diagnostic, `brain history` pour revenir à un instantané.")
+    except OSError as exc:  # dossier en lecture seule, disque plein, fichier ouvert ailleurs
+        where = exc.filename or "un fichier du cerveau"
+        die(f"accès impossible à {where} ({exc.strerror or exc}) — vérifie que le dossier du cerveau n'est ni en "
+            "lecture seule ni plein, puis réessaie ; `brain doctor` pour le diagnostic.")

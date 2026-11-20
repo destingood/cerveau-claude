@@ -148,7 +148,11 @@ def load_graph():
         try:
             with open(GRAPH_FILE, encoding="utf-8") as fh:
                 data = json.load(fh)
-            if isinstance(data, dict) and data.pop("wiki", None) is not None:
+            if not (isinstance(data, dict) and isinstance(data.get("nodes"), dict)):
+                # JSON valide mais pas un cerveau ({"nodes": []}, null, []…) : réparé comme un fichier abîmé. Avant,
+                # le cerveau repartait vide et la première écriture remplaçait le fichier, sans aucune copie.
+                raise ValueError("graph.json n'a pas la forme d'un cerveau")
+            if data.pop("wiki", None) is not None:
                 log("wiki débranché (config wiki.path vide) : le cerveau repart en classique depuis son dernier cache")
             return data
         except ValueError:  # JSON abîmé : réparation depuis un instantané ou une sauvegarde

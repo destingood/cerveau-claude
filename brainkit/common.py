@@ -247,7 +247,12 @@ def log(msg: str) -> None:
 
 
 class FileLock:
-    """Verrou inter-processus minimal (création exclusive d'un fichier), reprise des verrous périmés."""
+    """Verrou inter-processus minimal (création exclusive d'un fichier), reprise des verrous périmés.
+
+    Tant qu'il tient le verrou, le détenteur en rafraîchit la date (un fil en arrière-plan, toutes les `stale`/3 s) :
+    seul le verrou d'un processus mort devient périmé. Avant, un travail plus long que `stale` (consolidation, import,
+    carte d'un gros projet) se faisait reprendre le verrou par un autre processus, et l'un des deux écrasait l'écriture
+    de l'autre : un souvenir annoncé « mémorisé » disparaissait."""
 
     def __init__(self, path, timeout=5.0, stale=30.0, strict=True):
         self.path = str(path)
@@ -255,6 +260,22 @@ class FileLock:
         self.stale = stale
         self.strict = strict  # False : passé le délai, on continue sans le verrou au lieu d'échouer
         self.held = False
+        self._stop = None
+
+    def _keep_fresh(self):
+        import threading
+        stop = threading.Event()
+        period = max(0.1, self.stale / 3)
+
+        def beat():
+            while not stop.wait(period):
+                try:
+                    os.utime(self.path)
+                except OSError:
+                    return
+
+        threading.Thread(target=beat, name="brain-lock", daemon=True).start()
+        self._stop = stop
 
     def __enter__(self):
         Path(self.path).parent.mkdir(parents=True, exist_ok=True)
@@ -265,6 +286,7 @@ class FileLock:
                 os.write(fd, str(os.getpid()).encode())
                 os.close(fd)
                 self.held = True
+                self._keep_fresh()
                 return self
             except (FileExistsError, PermissionError):
                 try:
@@ -281,6 +303,9 @@ class FileLock:
                 time.sleep(0.05)
 
     def __exit__(self, *exc):
+        if self._stop is not None:
+            self._stop.set()
+            self._stop = None
         if self.held:
             try:
                 os.remove(self.path)

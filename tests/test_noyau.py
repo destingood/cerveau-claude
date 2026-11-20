@@ -338,6 +338,63 @@ check(line.startswith(f"🌙 Entretien du cerveau : {items} point(s) en attente"
 dream.done()
 check((read_json(dream.STATE_FILE, {}) or {}).get("pending") == 0 and dream.notice() == "", "dream --done : plus rien en attente")
 
+# ------------------------------------------------------------------ 6. sûreté des écritures (common.py, store.py, hooks.py)
+from brainkit.common import FileLock  # noqa: E402
+
+# Un verrou tenu par un processus vivant ne se reprend pas, même au-delà de `stale` : son détenteur le rafraîchit.
+# Avant, il était repris au bout de 30 s, et l'écriture d'un autre processus était écrasée (souvenir perdu).
+LOCK = TMP / "verrou.lock"
+holder = subprocess.Popen([sys.executable, "-c", "import sys, time; sys.path.insert(0, sys.argv[1]);"
+                           "from brainkit.common import FileLock\n"
+                           "with FileLock(sys.argv[2], stale=1.0):\n print('pris', flush=True); time.sleep(4)",
+                           str(CODE), str(LOCK)], stdout=subprocess.PIPE, text=True)
+started = holder.stdout.readline().strip() == "pris"
+t0 = time.time()
+try:
+    with FileLock(LOCK, timeout=2.5, stale=1.0):
+        stolen = True
+except TimeoutError:
+    stolen = False
+holder.wait(timeout=30)
+check(started and not stolen and time.time() - t0 >= 2.4,
+      "verrou : tenu par un processus vivant plus longtemps que `stale`, il n'est pas repris", (started, stolen))
+LOCK.write_text("12345", encoding="utf-8")
+os.utime(LOCK, (time.time() - 60, time.time() - 60))  # verrou d'un processus mort, vieux d'une minute
+try:
+    with FileLock(LOCK, timeout=1.0, stale=1.0):
+        reclaimed = True
+except TimeoutError:
+    reclaimed = False
+check(reclaimed and not LOCK.exists(), "verrou : celui d'un processus mort est repris, puis libéré")
+
+# graph.json en JSON valide mais pas un cerveau : réparé depuis un instantané comme un fichier abîmé, jamais remplacé
+# par un cerveau vide à la première écriture.
+GRAPH_FILE.write_text(json.dumps({"version": 1, "nodes": {"chat-felix": node("chat-felix", "fact", "Mon chat Félix")},
+                                  "edges": []}), encoding="utf-8")
+history.snapshot("test", force=True)
+GRAPH_FILE.write_text('{"nodes": []}', encoding="utf-8")
+data = store.load_graph()
+corrupt = list(GRAPH_FILE.parent.glob("graph.corrupt-*.json"))
+check(isinstance(data, dict) and "chat-felix" in data.get("nodes", {}) and "chat-felix" in GRAPH_FILE.read_text("utf-8")
+      and corrupt and corrupt[0].read_text("utf-8") == '{"nodes": []}',
+      "graph.json de mauvaise forme : réparé depuis l'instantané, l'original gardé à côté", (data, corrupt))
+NEUF = TMP / "neuf"
+(NEUF / "brain").mkdir(parents=True)
+(NEUF / "brain" / "graph.json").write_text("[]", encoding="utf-8")
+env = dict(os.environ, BRAIN_HOME=str(NEUF / "brain"), CLAUDE_CONFIG_DIR=str(NEUF / "claude"), HOME=str(NEUF / "maison"),
+           USERPROFILE=str(NEUF / "maison"), PYTHONIOENCODING="utf-8")
+r = subprocess.run([sys.executable, str(CODE / "brain.py"), "add", "-T", "Forme invalide", "-b", "rien"],
+                   capture_output=True, env=env, cwd=str(WORK), timeout=120)
+err = r.stderr.decode("utf-8", "replace")
+check(r.returncode != 0 and (NEUF / "brain" / "graph.json").read_text("utf-8") == "[]" and "graph.json" in err
+      and "Traceback" not in err, "sans instantané : refus clair, graph.json laissé tel quel", (r.returncode, err))
+r = subprocess.run([sys.executable, "-I", "-S", str(CODE / "brain.py"), "hook", "session-start"], input=b"{}",
+                   capture_output=True, env=env, cwd=str(WORK), timeout=120)
+out, err = r.stdout.decode("utf-8", "replace"), r.stderr.decode("utf-8", "replace")
+check(r.returncode == 0 and "mémoire hors service" in out and "Traceback" not in out + err,
+      "démarrage d'une session sur un cerveau illisible : l'utilisateur est prévenu, sans trace Python",
+      (r.returncode, out, err))
+
 if not remove_tree(TMP, wait=60):
     print(f"(dossier pas effacé : {TMP})")
 print(f"\n{len(OK)} vérifications OK, {len(FAIL)} échec(s)")
