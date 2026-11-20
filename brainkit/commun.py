@@ -49,6 +49,7 @@ EXPORT_PAGES = STATE_DIR / "commun-export-pages.json"
 CHECK_FILE = STATE_DIR / "commun-controle.json"  # verdict du contrôle de chaque page d'ami, par empreinte du contenu
 ANGLES = str.maketrans({"<": "‹", ">": "›"})  # texte d'un ami : aucune balise possible (voir defang)
 GIT_LOCK = STATE_DIR / "commun-git.lock"
+UNREACHABLE = "dépôt commun injoignable (réseau, accès ou adresse du dépôt)"  # pull raté sans conflit : voir _pull
 STATE_LOCK = STATE_DIR / "commun-state.lock"
 PULL_EVERY = 60  # s : récupération des pages des amis au plus une fois par minute (messages, fins de tour)
 FRESH = 60  # s : dernière récupération plus vieille → le message attend la nouvelle (≤ 2,5 s) : chaque message voit ce
@@ -505,15 +506,26 @@ def check_access(url) -> bool:
     return bool(url) and git(None, "ls-remote", "--heads", url, timeout=30)[0] == 0
 
 
+def _unreachable(out) -> str:
+    """git a échoué sans conflit à régler (réseau, accès, adresse du dépôt) : dit en clair, jamais pris pour une
+    récupération réussie."""
+    lines = [x.strip() for x in str(out or "").splitlines() if x.strip()]
+    first = next((x for x in lines if x.lower().startswith(("fatal:", "error:"))), lines[0] if lines else "?")
+    return f"{UNREACHABLE} — git : {short(first, 160)}"
+
+
 def _pull(path, me) -> str:
     """pull --rebase ; un conflit se règle seul : dans mon dossier ma version gagne, ailleurs celle du dépôt
-    (personne d'autre n'écrit dans mon dossier, je n'écris jamais ailleurs). → "" si tout va bien, sinon l'erreur."""
+    (personne d'autre n'écrit dans mon dossier, je n'écris jamais ailleurs). → "" si tout va bien, sinon l'erreur
+    (qui commence par UNREACHABLE quand rien n'a pu être récupéré sans qu'il y ait de conflit)."""
     code, branch = git(path, "rev-parse", "--abbrev-ref", "HEAD", timeout=10)
     if code or branch in ("", "HEAD"):
         return ""
     if git(path, "rev-parse", "--abbrev-ref", "--symbolic-full-name", "@{upstream}", timeout=10)[0] != 0:
         code, heads = git(path, "ls-remote", "--heads", "origin", branch, timeout=60)
-        if code or not heads.strip():
+        if code:
+            return _unreachable(heads)
+        if not heads.strip():
             return ""  # dépôt commun encore vide : rien à récupérer
         args = ["pull", "--rebase", "--autostash", "origin", branch]
     else:
@@ -523,12 +535,13 @@ def _pull(path, me) -> str:
         code, out = git(path, *args, timeout=120)
     if code == 0:
         return ""
-    mine = f"{MEMBERS}/{me}/"
+    mine, failed, resolved = f"{MEMBERS}/{me}/", out, False
     for _ in range(20):
         code, files = git(path, "diff", "--name-only", "--diff-filter=U", timeout=20)
         names = [f for f in files.splitlines() if f.strip()]
         if not names:
             break
+        resolved = True
         for f in names:
             side = "--theirs" if f.startswith(mine) else "--ours"  # rebase : « theirs » = mon commit rejoué
             if git(path, "checkout", side, "--", f)[0] == 0:
@@ -541,7 +554,7 @@ def _pull(path, me) -> str:
     if (Path(path) / ".git" / "rebase-merge").exists() or (Path(path) / ".git" / "rebase-apply").exists():
         git(path, "rebase", "--abort", timeout=30)
         return short(out, 300)
-    return ""
+    return "" if resolved else _unreachable(failed)  # aucun conflit : le pull lui-même a échoué (réseau, accès…)
 
 
 def _unstick(path) -> None:
@@ -793,11 +806,11 @@ def sync(pull=True, push=True, auto=False) -> list:
                 quiet = auto and push and not committed and days_since(state().get("pulled")) * 86400 < PULL_EVERY
                 if (pull or push) and not quiet:
                     err = _pull(path, me)
-                    if err:
-                        save_state(conflict=now_iso())
+                    if err:  # injoignable : rien de récupéré (aucune heure notée), mais pas un conflit à régler
+                        save_state(**({"pull_failed": now_iso()} if err.startswith(UNREACHABLE) else {"conflict": now_iso()}))
                         out.append(f"✗ récupération : {err}")
                         break
-                    save_state(pulled=now_iso(), conflict=None)
+                    save_state(pulled=now_iso(), conflict=None, pull_failed=None)
                     merge_foreign({})  # pages reçues contrôlées ici, en tâche de fond : les hooks trouvent leur verdict prêt
                 if push and not quiet:
                     tracked = git(path, "rev-parse", "--abbrev-ref", "--symbolic-full-name", "@{upstream}",
@@ -901,7 +914,8 @@ def maybe_pull(wait=0.0) -> None:
     st = state()
     if days_since(st.get("pull_asked")) * 86400 < PULL_EVERY:
         return
-    stale = days_since(st.get("pulled")) * 86400 > FRESH
+    # (dépôt injoignable au dernier essai, il y a moins de 10 min : le message ne l'attend pas, hors ligne par exemple)
+    stale = days_since(st.get("pulled")) * 86400 > FRESH and days_since(st.get("pull_failed")) * 86400 > 600
     save_state(pull_asked=now_iso())
     waits = bool(wait and stale)
     proc = spawn(["commun", "sync", "--auto", "--no-push"], low=not waits)  # un message l'attend : priorité normale
@@ -1139,7 +1153,8 @@ def status(brain=None) -> str:
             + (f" · {held} page(s) d'amis écartée(s) au contrôle (raisons dans le journal)" if held else ""),
             f"Synchro : récupéré {fmt_date(st.get('pulled'))} {str(st.get('pulled') or '')[11:16]} · envoyé "
             f"{fmt_date(st.get('pushed'))} {str(st.get('pushed') or '')[11:16]}"
-            + (" · ⚠ conflit non réglé (`brain commun sync`)" if st.get("conflict") else "")]
+            + (" · ⚠ conflit non réglé (`brain commun sync`)" if st.get("conflict") else "")
+            + (" · ⚠ dernière récupération ratée : dépôt commun injoignable" if st.get("pull_failed") else "")]
     return "\n".join(rows)
 
 

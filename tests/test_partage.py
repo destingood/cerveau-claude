@@ -313,6 +313,34 @@ c, out = brain(C, "commun", "apercu")
 check("Joindre Paul" not in out.split("Reste privé")[0] and "presque rien sans" in out,
       "S-2 : un souvenir qui ne serait plus que des retraits reste privé, et l'aperçu dit pourquoi", out)
 
+# ------------------------------------------------------------------ S-8. dépôt commun injoignable : jamais « à jour »
+def commun_state(who, **change):
+    p = TMP / who / "brain" / "state" / "commun.json"
+    st = json.loads(p.read_text(encoding="utf-8")) if p.exists() else {}
+    if change:
+        st.update(change)
+        p.write_text(json.dumps(st), encoding="utf-8")
+    return st
+
+
+clone = TMP / A / "brain" / "commun"
+origin = git(clone, "remote", "get-url", "origin")[1].strip()
+git(clone, "remote", "set-url", "origin", TMP / "absent.git")
+OLD = "2020-01-01T00:00:00"
+commun_state(A, pulled=OLD)
+c, out = brain(A, "commun", "sync")
+st = commun_state(A)
+check("✓ à jour" not in out and "✗ récupération" in out and "injoignable" in out,
+      "S-8 : dépôt commun injoignable : dit en clair, jamais « à jour »", out)
+check(st.get("pulled") == OLD and not st.get("conflict"), "S-8 : aucune heure de récupération notée, et ce n'est pas un conflit", st)
+c, out = brain(A, "commun")
+check("dernière récupération ratée" in out, "S-8 : `brain commun` le dit aussi", out)
+git(clone, "remote", "set-url", "origin", origin)
+c, out = brain(A, "commun", "sync")
+st = commun_state(A)
+check("✗" not in out and st.get("pulled") != OLD and not st.get("pull_failed"),
+      "S-8 : dépôt de nouveau joignable : la récupération repart", (out, st))
+
 # ------------------------------------------------------------------ bilan
 print(f"\n{len(OK)} vérifications OK, {len(FAIL)} échec(s)")
 if FAIL or os.environ.get("KEEP"):
