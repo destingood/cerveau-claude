@@ -51,8 +51,9 @@ RECALL_RX = re.compile(r"\b(tu te souviens|te rappelles|rappelle[- ]moi|on avait
 
 def recall_query(raw) -> str:
     """Message → requête de rappel : blocs collés et balises retirés, nombres sans valeur (« 12 fois 8 », « le 15/10 »,
-    « 2026 ») effacés. Partagé avec `brain bench` pour mesurer exactement ce que fait le hook."""
-    return NUM_NOISE.sub(" ", journal.clean_prompt(raw, 600))
+    « 2026 ») et mots de remplissage (« était », « déjà », search.FILLER) effacés. Partagé avec `brain bench` pour
+    mesurer exactement ce que fait le hook."""
+    return search.drop_filler(NUM_NOISE.sub(" ", journal.clean_prompt(raw, 600)))
 
 
 def context_query(raw, query) -> str:

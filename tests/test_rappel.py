@@ -26,8 +26,10 @@ CODE = Path(__file__).resolve().parent.parent
 NOW = (2026, 11, 20, 10, 0, 0)  # a Friday: « la semaine dernière » is 09/11-15/11, « le mois dernier » is October
 
 # Floors of the benchmark (measured values: the test fails if recall gets worse). Hit counts are out of the 62
-# questions, false recalls out of the 38 negatives.
-FLOOR_HIT1, FLOOR_HIT3, MAX_FALSE = 33, 33, 2
+# questions, false recalls out of the 38 negatives; then the long messages added after the audit (8 questions, 16
+# negatives).
+FLOOR_HIT1, FLOOR_HIT3, MAX_FALSE = 41, 43, 2
+FLOOR_LONG_HIT3, MAX_LONG_FALSE = 8, 1
 
 PROJECTS = [  # (key, title, description): the project folders are created under the test folder
     ("boutique", "Boutique Maison Yuzu", "Boutique en ligne Shopify de thé japonais (matcha, hojicha) et d'accessoires "
@@ -744,6 +746,62 @@ NEGATIVES = [
     ("X23", None, "quel transporteur pour une lettre recommandée ?"),
 ]
 
+# Long messages added after the audit, to measure the rule for long messages (search._long_refusal) on both sides: the
+# audit's 38 negatives are all short. Three sentences each, like the audit's F questions; the negatives share words with
+# the brain (job interview, series of episodes, a plan to propose, a price) but are about something else.
+LONG_QUESTIONS = [
+    ("K1", "long", "boutique", "Un client m'écrit que son colis est arrivé abîmé. Il veut être remboursé. On fait comment "
+     "d'habitude pour les retours ?", ["b13", "b35"], ""),
+    ("K2", "long", "youtube", "Je viens de finir le montage de la vidéo sur l'étagère. Je dois l'exporter ce soir. Quels "
+     "réglages j'utilise d'habitude ?", ["y06"], ""),
+    ("K3", "long", "pc", "Mon PC fait des petits grésillements dans le casque quand je joue. Ça m'était déjà arrivé l'année "
+     "dernière. Comment j'avais réglé ça ?", ["p20"], ""),
+    ("K4", "long", "trading", "Je veux acheter des actions Air Liquide demain. Le prix d'entrée serait 180 € avec un stop à "
+     "172 €. Combien d'actions je peux prendre avec ma règle ?", ["t20", "t01", "t22"], ""),
+    ("K5", "long", "emploi", "Une recruteuse m'a appelé pour un poste à Paris. Il faudrait être au bureau quatre jours par "
+     "semaine. Qu'est-ce que j'avais décidé pour ce genre de poste ?", ["e13"], ""),
+    ("K6", "long", None, "Je dois envoyer mes papiers à la comptable pour le bilan. Je ne me souviens plus de son nom. C'est "
+     "quel cabinet déjà ?", ["g14", "g31"], ""),
+    ("K7", "long", "boutique", "Je veux relancer les gens qui ont laissé un panier sans payer. J'hésite à leur offrir une "
+     "réduction tout de suite. Qu'est-ce qui marchait le mieux dans nos tests ?", ["b14"], ""),
+    ("K8", "long", "pc", "Après la dernière mise à jour, mon Wi-Fi se coupe tout le temps. Je crois que ça m'est déjà "
+     "arrivé. Tu te souviens de ce qu'on avait fait ?", ["p10"], ""),
+]
+LONG_NEGATIVES = [
+    ("L1", "boutique", "Ma sœur veut ouvrir un salon de thé à Annecy. Elle me demande combien coûte un local commercial "
+     "en centre-ville. Tu peux lui faire une estimation rapide ?"),
+    ("L2", "pc", "Mon père a un vieux portable qui rame beaucoup. Il l'utilise seulement pour ses mails et la météo. Est-ce "
+     "que ça vaut le coup de lui en acheter un neuf ?"),
+    ("L3", "youtube", "Je regarde une série sur Netflix en ce moment. Les épisodes durent presque une heure. Tu connais "
+     "d'autres séries policières du même genre ?"),
+    ("L4", None, "Je voudrais apprendre à faire du pain maison. Il me faut quelle farine et combien de temps de levée ? "
+     "J'ai un four classique, pas de machine à pain."),
+    ("L5", "trading", "Mon beau-frère me parle d'un placement immobilier en SCPI. Il dit que ça rapporte 5 % par an sans "
+     "rien faire. C'est sérieux ou c'est une arnaque ?"),
+    ("L6", "emploi", "Ma cousine passe un entretien d'embauche pour un poste d'infirmière lundi. Elle stresse beaucoup. "
+     "Tu as des conseils pour qu'elle se détende avant ?"),
+    ("L7", None, "On part en week-end à la montagne avec les enfants. Il va faire froid là-haut. Qu'est-ce qu'il faut "
+     "absolument mettre dans la valise ?"),
+    ("L8", "boutique", "Je dois écrire un discours pour le mariage de mon meilleur ami. Je veux quelque chose de drôle mais "
+     "touchant. Tu peux me proposer un début ?"),
+    ("L9", None, "Mon fils a un exposé sur les volcans à préparer pour lundi. Il doit faire un plan en trois parties. Tu "
+     "peux lui proposer des idées simples ?"),
+    ("L10", "pc", "Ma femme voudrait changer de forfait téléphone. Elle paie 25 € par mois chez Orange. Tu connais des "
+     "offres moins chères avec autant de données ?"),
+    ("L11", "youtube", "J'ai vu un documentaire sur les pyramides hier soir. Ils expliquaient comment les blocs étaient "
+     "taillés. C'est vrai qu'on ne sait toujours pas comment ils faisaient ?"),
+    ("L12", None, "Je cherche une recette de soupe pour ce soir. J'ai des poireaux, des pommes de terre et des carottes. "
+     "Tu peux me donner les étapes ?"),
+    ("L13", "trading", "Mon collègue me demande comment fonctionne une assurance vie. Il hésite avec un livret A. Tu peux "
+     "m'expliquer simplement la différence ?"),
+    ("L14", "emploi", "Mon neveu cherche un stage de troisième dans une entreprise. Il aimerait découvrir le métier de "
+     "cuisinier. Comment il peut faire sa demande ?"),
+    ("L15", "boutique", "Je voudrais offrir des fleurs à ma mère pour son anniversaire. Elle habite à Marseille. Tu "
+     "connais un site qui livre le jour même ?"),
+    ("L16", None, "Le chauffage de mon appartement fait un bruit bizarre la nuit. Le propriétaire ne répond pas. "
+     "Qu'est-ce que je peux faire légalement ?"),
+]
+
 
 # ------------------------------------------------------------------------------------------ frozen clock
 class _Date(_dtm.date):
@@ -870,23 +928,21 @@ def ask(world, text, proj, sid):
     return [world["rev"].get(i, i) for i in shown(ctx)], ctx, code
 
 
-def run_all(world):
-    """→ ({id: keys shown}, {id: context}, exit codes that were not 0)."""
+def run_all(world, tag="rappel"):
+    """Every message in its own new session (`tag`-<id>). → ({id: keys shown}, {id: context}, ids whose exit code was
+    not 0)."""
     res, ctxs, bad = {}, {}, []
-    for pid, _, proj, text, _, _ in QUESTIONS:
-        res[pid], ctxs[pid], code = ask(world, text, proj, f"rappel-{pid}")
-        bad += [pid] if code else []
-    for pid, proj, text in NEGATIVES:
-        res[pid], ctxs[pid], code = ask(world, text, proj, f"rappel-{pid}")
+    for pid, proj, text in [(q[0], q[2], q[3]) for q in QUESTIONS + LONG_QUESTIONS] + NEGATIVES + LONG_NEGATIVES:
+        res[pid], ctxs[pid], code = ask(world, text, proj, f"{tag}-{pid}")
         bad += [pid] if code else []
     return res, ctxs, bad
 
 
-def scores(res):
+def scores(res, questions=QUESTIONS, negatives=NEGATIVES):
     """→ (hit@1, hit@3, negatives that recalled something)."""
-    h1 = sum(1 for q in QUESTIONS if res[q[0]][:1] and res[q[0]][0] in q[4])
-    h3 = sum(1 for q in QUESTIONS if any(k in q[4] for k in res[q[0]][:3]))
-    return h1, h3, [n[0] for n in NEGATIVES if res[n[0]]]
+    h1 = sum(1 for q in questions if res[q[0]][:1] and res[q[0]][0] in q[4])
+    h3 = sum(1 for q in questions if any(k in q[4] for k in res[q[0]][:3]))
+    return h1, h3, [n[0] for n in negatives if res[n[0]]]
 
 
 def main():
@@ -906,9 +962,11 @@ def main():
     world = build_world(tmp)
     res, ctxs, bad = run_all(world)
     h1, h3, false = scores(res)
-    n, nn = len(QUESTIONS), len(NEGATIVES)
+    _, lh3, lfalse = scores(res, LONG_QUESTIONS, LONG_NEGATIVES)
+    n, nn, ln, lnn = len(QUESTIONS), len(NEGATIVES), len(LONG_QUESTIONS), len(LONG_NEGATIVES)
     if mesure:  # read by `brain bench`
-        print(f"MESURE hit1={h1} hit3={h3} n={n} faux={len(false)} neg={nn}")
+        print(f"MESURE hit1={h1} hit3={h3} n={n} faux={len(false)} neg={nn} long={lh3} nlong={ln} faux_long={len(lfalse)} "
+              f"neg_long={lnn}")
         remove_tree(tmp, wait=30)
         return 0
     pct = lambda a, b: f"{100 * a / b:.0f} %"  # noqa: E731
@@ -920,13 +978,17 @@ def main():
         c[0] += any(k in exp for k in res[pid][:3])
         c[1] += 1
     print("  hit@3 par catégorie : " + " · ".join(f"{c} {a}/{b}" for c, (a, b) in cats.items()))
+    print(f"Messages longs ajoutés (trois phrases) : hit@3 {lh3}/{ln} · faux rappels {len(lfalse)}/{lnn}"
+          + (f" ({', '.join(lfalse)})" if lfalse else ""))
     missed = [(pid, res[pid]) for pid, _, _, _, exp, _ in QUESTIONS if not any(k in exp for k in res[pid][:3])]
+    lmissed = [(pid, res[pid]) for pid, _, _, _, exp, _ in LONG_QUESTIONS if not any(k in exp for k in res[pid][:3])]
     if detail:
-        for pid, got in missed:
-            q = next(x for x in QUESTIONS if x[0] == pid)
+        for pid, got in missed + lmissed:
+            q = next(x for x in QUESTIONS + LONG_QUESTIONS if x[0] == pid)
             print(f"  ✗ {pid} « {q[3][:90]} » attendu {q[4]} · montré {got or 'rien'}")
-        for pid in false:
-            print(f"  ✗ {pid} (hors sujet) « {next(x[2] for x in NEGATIVES if x[0] == pid)} » · montré {res[pid]}")
+        for pid in false + lfalse:
+            text = next(x[2] for x in NEGATIVES + LONG_NEGATIVES if x[0] == pid)
+            print(f"  ✗ {pid} (hors sujet) « {text[:90]} » · montré {res[pid]}")
 
     # The world itself: the clock brainkit reads is the frozen one, the expected answers exist and are recallable.
     from brainkit import common, dates
@@ -936,7 +998,8 @@ def main():
     active = [x for x in nodes.values() if x.get("status", "active") == "active"]
     check(len(nodes) == 213 and len(active) == 207, "cerveau d'essai : 213 nœuds, 207 actifs (6 archivés)",
           (len(nodes), len(active)))
-    lost = [k for q in QUESTIONS for k in q[4] if nodes[world["ids"][k]].get("status", "active") != "active"]
+    lost = [k for q in QUESTIONS + LONG_QUESTIONS for k in q[4]
+            if nodes[world["ids"][k]].get("status", "active") != "active"]
     check(not lost, "chaque souvenir attendu est actif", lost)
     check(not bad, "hook : code de sortie 0 à chaque message", bad)
     from brainkit import publish
@@ -948,6 +1011,9 @@ def main():
     check(len(false) <= MAX_FALSE, f"faux rappels ≤ {MAX_FALSE}/{nn}", [(p, res[p]) for p in false])
     check(not [p for p in false if not p.startswith("X")], "les 14 messages hors sujet de l'audit ne rappellent rien",
           [(p, res[p]) for p in false])
+    check(lh3 >= FLOOR_LONG_HIT3, f"messages longs : hit@3 ≥ {FLOOR_LONG_HIT3}/{ln}", lmissed)
+    check(len(lfalse) <= MAX_LONG_FALSE, f"messages longs hors sujet : faux rappels ≤ {MAX_LONG_FALSE}/{lnn}",
+          [(p, res[p]) for p in lfalse])
     # Same answer from the real process (`python -I -S brain.py hook prompt`, Python implementation), on two questions
     # and a negative whose answer does not depend on the day.
     env = dict(os.environ, BRAIN_IMPL="python")

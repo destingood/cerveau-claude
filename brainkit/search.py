@@ -133,6 +133,11 @@ class Index:
     def expand(self, q):
         """→ [(variante, poids, idf retenu, synonyme ?)] : le mot, ses préfixes, ses troncatures, ses synonymes métier
         et, mot inconnu, ses rapprochements phonétiques ou fautes de frappe."""
+        return [x[:4] for x in self.variants(q)]
+
+    def variants(self, q):
+        """expand(), et pour chaque variante : approchée ? (prononciation, faute de frappe, même famille, sous-mots :
+        le mot n'est pas dans l'index tel quel)."""
         out = [(q, 1.0)] if q in self.df else []
         if len(q) >= 4:
             # Préfixe : mot de l'index qui commence par le mot tapé (« dropship » → « dropshipping »). Troncature : mot de
@@ -155,6 +160,7 @@ class Index:
         out += [(s, 0.8) for s in syn]
         seen.update(syn)
         strong = q in self.df or any(w >= 0.75 for _, w in out)
+        approx = []
         if not strong and self.fuzzy and len(q) >= 4:  # mot inconnu : prononciation, faute de frappe ou même famille
             ph, dl, rt = self._fuzzy_maps()  # (mots courts exclus : « mer » ≈ « met » ferait du bruit)
             cands = {v: 0.6 for v in ph.get(phon(q), ()) if v != q and v not in seen and len(v) >= 4}
@@ -167,26 +173,30 @@ class Index:
                 for v in rt.get(root(q), ()):
                     if v != q and v not in seen:
                         cands.setdefault(v, 0.55)
-            out += sorted(cands.items(), key=lambda kv: (-kv[1], -self.df.get(kv[0], 0)))[:6]
+            approx = sorted(cands.items(), key=lambda kv: (-kv[1], -self.df.get(kv[0], 0)))[:6]
+            out += approx
         if not out and self.subword and len(q) >= 5 and not q.isdigit():  # dernier recours : les sous-mots, poids faible
-            out = [(v, SUBWORD_W) for v, _ in self.subwords(q)]
+            out = approx = [(v, SUBWORD_W) for v, _ in self.subwords(q)]
         # Un synonyme ne compte jamais plus que le mot demandé : sans plafond, le plus rare l'emporte (« boutique », dans
         # 7 souvenirs, cédait la tête à son synonyme « store », dans 3). Référence : le mot lui-même s'il est dans l'index ;
         # sinon les synonymes valent un seul terme, le plus courant d'entre eux (comme les synonymes de Lucene). Les formes
         # du mot (« commandées » pour « commande ») gardent leur poids : elles disent le même mot.
-        syn = set(syn)
+        syn, approx = set(syn), {v for v, _ in approx}
         ref = self.idf(q) if q in self.df else min(map(self.idf, syn)) if syn else 0.0
-        return [(v, w, min(self.idf(v), ref) if v in syn else self.idf(v), v in syn) for v, w in out]
+        return [(v, w, min(self.idf(v), ref) if v in syn else self.idf(v), v in syn, v in approx) for v, w in out]
 
     def search(self, query, limit=10):
-        """→ [{key, score, matched (nb de termes trouvés), midf (poids des termes trouvés), nq}]"""
+        """→ [{key, score, matched (nb de termes trouvés), strong (dont trouvés tels quels : mot, préfixe, forme,
+        synonyme ; pas une forme approchée), midf (poids des termes trouvés), cov, nq, unknown (termes qu'aucun document
+        ne contient tels quels), vars}]"""
         qterms = list(dict.fromkeys(tokenize(query)))
         if not qterms or not self.N:
             return []
-        exp = {q: self.expand(q) for q in qterms}
+        exp = {q: self.variants(q) for q in qterms}
         unseen = math.log(1 + (self.N + 0.5) / 0.5)
-        qidf = {q: (max(e for _, _, e, _ in exp[q]) if exp[q] else unseen) for q in qterms}
+        qidf = {q: (max(x[2] for x in exp[q]) if exp[q] else unseen) for q in qterms}
         total = sum(qidf.values()) or 1.0
+        unknown = sum(1 for q in qterms if all(x[4] for x in exp[q]))
         cand = set()
         for q in qterms:
             for v, *_ in exp[q]:
@@ -198,24 +208,25 @@ class Index:
             tf, dl, nm = self.tfs[i], self.lens[i], nms.get(i)
             norm = K1 * (1 - B + B * dl / self.avgdl)
             score = midf = 0.0
-            matched = 0
+            matched = strong = 0
             for q in qterms:
-                best = 0.0
-                for v, w, e, syn in exp[q]:
+                best, near = 0.0, False
+                for v, w, e, syn, fz in exp[q]:
                     f = tf.get(v)
                     if f and syn and nm and v in nm:
                         f = f - nm[v] if f - nm[v] > 1e-6 else 0  # faux ami (« Microsoft Store ») : pas un synonyme
                     if f:
                         s = e * f * (K1 + 1) / (f + norm) * w
                         if s > best:
-                            best = s
+                            best, near = s, fz
                 if best > 0:
                     score += best
                     matched += 1
+                    strong += not near
                     midf += qidf[q]
             if score > 0:
-                results.append({"key": self.keys[i], "score": score, "matched": matched,
-                                "midf": midf, "cov": midf / total, "nq": len(qterms), "vars": vs})
+                results.append({"key": self.keys[i], "score": score, "matched": matched, "strong": strong,
+                                "midf": midf, "cov": midf / total, "nq": len(qterms), "unknown": unknown, "vars": vs})
         results.sort(key=lambda r: -r["score"])
         return results[:limit]
 
@@ -543,9 +554,9 @@ LONG_BODY, LONG_COV = 400, 0.62
 NEAR = 12  # mots : au-delà, deux termes du message ne parlent plus de la même chose dans le souvenir
 
 
-def _near(node, vs, window=NEAR) -> bool:
+def _near(node, vs, window=NEAR, strict=False) -> bool:
     """Deux termes différents du message à moins de `window` mots l'un de l'autre dans le souvenir ? Vrai aussi quand
-    on ne retrouve pas deux termes (forme approchée hors texte) : dans le doute, la règle d'avant décide.
+    on ne retrouve pas deux termes (forme approchée hors texte) : dans le doute, la règle d'avant décide (`strict` : non).
     « qui a gagné la coupe du monde » ↛ « tout le monde » … 60 mots … « connecteurs coupés »."""
     last, found = {}, set()
     for i, t in enumerate(tokenize(f"{node['title']} {node.get('body') or ''}")):
@@ -555,7 +566,30 @@ def _near(node, vs, window=NEAR) -> bool:
                 if any(q2 != q and i - j <= window for q2, j in last.items()):
                     return True
                 last[q] = i
-    return len(found) < 2
+    return len(found) < 2 and not strict
+
+
+WORD = re.compile(r"[^\W\d_]+")
+
+# Mots d'un message qui ne disent rien de son sujet, retirés de la requête du rappel (pas de l'index) : avant, ils
+# comptaient comme des mots du message que le souvenir ne contenait pas (« mon ordi plante avec un écran bleu, c'était
+# quoi la solution déjà ? » : « était », « déjà »). Formes écrites, sans accents ; jamais une date (« hier », « mois »).
+FILLER = frozenset("""
+deja presque mieux pendant apres avant depuis ensuite puis enfin souvent parfois vraiment absolument habitude
+actuellement moment suite cas genre dessus dessous quelque quelques plusieurs
+etait etaient etais serait seraient sera seront soit sois avaient aurait auraient aura
+peuvent pourrait pourrais pouvais pouvait voudrais voudrait voulais voulait sais sait savais savait savoir faudrait
+fallait vais va vas allait aller viens vient venais venait crois croit croyais pense pensais connais connait
+souviens souvient souvenais rappeler rappelle rappelles trouve trouves trouvait trouvais marchait marchaient
+marchent hesite hesites hesitais cherche cherches cherchais
+koi kel kelle pr pk pq bcp tjs dc ds ki jsp
+""".split())
+
+
+def drop_filler(text) -> str:
+    """Le message sans ses mots de remplissage (FILLER) : la requête du rappel automatique."""
+    from .common import fold
+    return WORD.sub(lambda m: " " if fold(m.group()) in FILLER else m.group(), str(text or ""))
 
 
 def _head_hit(node, qterms) -> bool:
@@ -572,7 +606,48 @@ def accept_recall(r, min_cov, min_score=0.0, query=None) -> bool:
 
 def recall_refusal(r, min_cov, min_score=0.0, query=None) -> str:
     """Pourquoi le filtre du rappel écarte ce résultat ('' : accepté) : la règle d'`accept_recall` elle-même, donc
-    le diagnostic (`brain recall --pourquoi`) ne peut pas s'en écarter."""
+    le diagnostic (`brain recall --pourquoi`) ne peut pas s'en écarter. Un message long qui échoue à la règle
+    ordinaire passe encore par celle des messages longs (`_long_refusal`)."""
+    why = _short_refusal(r, min_cov, min_score, query)
+    if not why or query is None or r.get("node") is None or r["nq"] < LONG_NQ:
+        return why
+    other = _long_refusal(r, query)
+    return f"{why} ; message long : {other}" if other else ""
+
+
+# Règle des messages longs (LONG_NQ mots porteurs de sens ou plus). Un tel message décrit la situation avant de poser
+# sa question : la couverture d'un message court lui est hors de portée (avant, aucun des 6 messages de trois phrases du
+# banc d'essai ne rappelait rien, même quand le bon souvenir était classé premier). Le souvenir passe quand la preuve est
+# forte et ramassée : 2 mots du message trouvés tels quels (pas une forme approchée), proches l'un de l'autre, dont un
+# dans le titre ou les mots-clés, un score d'au moins LONG_SCORE, et un message qui parle surtout du monde du cerveau :
+# au plus 1 mot sur 3 qu'aucun souvenir ne contient tel quel (« Ma cousine passe un entretien d'embauche pour un poste
+# d'infirmière » n'est pas l'entretien de l'utilisateur, « une série sur Netflix » n'est pas sa série de vidéos).
+# Jamais une règle ni le profil : l'index du démarrage les montre déjà, et leurs mots de consigne (« proposer un plan »,
+# « expliquer simplement ») se retrouvent dans bien des demandes.
+LONG_NQ, LONG_SCORE = 5, 10.0
+AT_START = ("feedback", "user")
+
+
+def _long_refusal(r, query) -> str:
+    """Pourquoi la règle des messages longs écarte ce résultat ('' : accepté)."""
+    node, vs = r["node"], r.get("vars") or {}
+    if node["type"] in AT_START:
+        return "règle ou profil, déjà dans l'index du démarrage"
+    if r.get("strong", r["matched"]) < 2:
+        return "moins de 2 mots retrouvés tels quels"
+    if r["score"] < LONG_SCORE:
+        return f"score {r['score']} < {LONG_SCORE}"
+    if 3 * r.get("unknown", 0) > r["nq"]:
+        return f"{r['unknown']} mots sur {r['nq']} inconnus du cerveau : le message parle d'autre chose"
+    if not _head_hit(node, set(tokenize(query))):
+        return "ni le titre ni les mots-clés ne parlent du sujet"
+    if not _near(node, vs, strict=True):
+        return f"mots retrouvés à plus de {NEAR} mots l'un de l'autre"
+    return ""
+
+
+def _short_refusal(r, min_cov, min_score=0.0, query=None) -> str:
+    """La règle ordinaire : assez de mots du message, une bonne part de leur poids, un score suffisant."""
     nq = r["nq"]
     need = 1 if nq == 1 else 2 if nq <= 4 else 3
     if r["matched"] < need:
