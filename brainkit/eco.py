@@ -252,7 +252,27 @@ def _section(cfg, name) -> dict:
     return data
 
 
+_RETRY = object()  # settings.json a changé entre la lecture et l'écriture : on recommence sur le contenu frais
+
+
+def _changed_since(settings):
+    """(vrai si settings.json n'est plus ce qui a été lu, raison d'illisibilité) : relecture juste avant d'écrire, pour ne
+    jamais écraser un changement fait entre-temps par Claude Code ou l'utilisateur."""
+    again, err = read_settings()
+    return (err is None and again != settings), err
+
+
 def commit(wants, force=False) -> tuple:
+    """Écrit dans settings.json (relu juste avant l'écriture ; s'il a changé entre-temps, le calcul est refait sur le
+    contenu frais : seules les clés du cerveau sont posées, le reste est gardé tel que l'autre l'a écrit)."""
+    for _ in range(5):
+        res = _commit_once(wants, force)
+        if res is not _RETRY:
+            return res
+    return False, {}, ["⚠ settings.json change sans cesse pendant l'écriture : rien n'a été modifié, réessaie"]
+
+
+def _commit_once(wants, force=False):
     """Écrit dans settings.json : wants = [("cle", nom, valeur) | ("plugin", « nom@marketplace », False)
     | ("refus", règle, True)] ; une clé peut être imbriquée (« env.X »), une règle de refus s'ajoute à permissions.deny
     sans toucher aux autres. Copie de sécurité la 1re fois ; l'état d'avant est retenu (eco.avant) pour `--annuler`. Une
@@ -312,6 +332,11 @@ def commit(wants, force=False) -> tuple:
         lignes.append(f"✓ {label} = {show(value)} (avant : {before})")
     if not posees:
         return True, {}, lignes
+    moved, err2 = _changed_since(settings)
+    if err2:
+        return False, {}, [f"⚠ {err2}"]
+    if moved:
+        return _RETRY
     created = not path.exists()
     if created:
         avant.setdefault("fichier_absent", True)
@@ -496,6 +521,15 @@ def apply_report(cfg=None) -> tuple:
 
 
 def _restore(only=None) -> tuple:
+    """Comme _restore_once, en refaisant le calcul si settings.json a changé entre la lecture et l'écriture."""
+    for _ in range(5):
+        res = _restore_once(only)
+        if res is not _RETRY:
+            return res
+    return False, ["⚠ settings.json change sans cesse pendant l'écriture : rien n'a été modifié, réessaie"]
+
+
+def _restore_once(only=None):
     """Remet l'état d'avant des réglages posés par le cerveau : tous, ou seulement `only` (noms de clés et règles de
     refus). Une valeur changée depuis par l'utilisateur reste telle quelle ; les objets et listes que le cerveau avait
     créés (« env », « permissions.deny »…) disparaissent s'ils sont redevenus vides. → (ok, lignes)."""
@@ -549,6 +583,11 @@ def _restore(only=None) -> tuple:
     avant["crees"] = _prune(new, avant["crees"])
     path = settings_path()
     if new != settings:
+        moved, err2 = _changed_since(settings)
+        if err2:
+            return False, [f"⚠ {err2}"]
+        if moved:
+            return _RETRY
         try:
             if only is None and not new and avant.get("fichier_absent"):
                 path.unlink()  # le fichier n'existait pas avant le mode éco

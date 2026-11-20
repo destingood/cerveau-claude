@@ -413,6 +413,21 @@ def merged_claude_md(text: str, remove_only=False) -> str:
     return (CLAUDE_BLOCK + ("\n" + text + "\n" if text else "")).rstrip() + "\n"
 
 
+def read_settings_file(path) -> dict:
+    """Réglages de Claude Code ({} s'il n'existe pas ou s'il est vide). Lu en utf-8-sig : un BOM laissé par un éditeur
+    Windows ne le rend pas illisible. Illisible ou pas un objet JSON → on s'arrête sans rien toucher."""
+    if not Path(path).exists():
+        return {}
+    try:
+        text = Path(path).read_text(encoding="utf-8-sig")
+        data = json.loads(text) if text.strip() else {}
+    except Exception as exc:
+        sys.exit(f"✗ {path} n'est pas un JSON valide ({exc}) : corrige-le avant d'installer.")
+    if not isinstance(data, dict):
+        sys.exit(f"✗ {path} n'est pas un objet JSON : corrige-le avant d'installer.")
+    return data
+
+
 def run(dry=False, uninstall=False):
     from .common import PLUGIN
     if PLUGIN:
@@ -427,12 +442,7 @@ def run(dry=False, uninstall=False):
     claude_md = CLAUDE_HOME / "CLAUDE.md"
     skill_path = CLAUDE_HOME / "skills" / "brain" / "SKILL.md"
 
-    settings = {}
-    if settings_path.exists():
-        try:
-            settings = json.loads(settings_path.read_text(encoding="utf-8"))
-        except Exception as exc:
-            sys.exit(f"✗ {settings_path} n'est pas un JSON valide ({exc}) : corrige-le avant d'installer.")
+    settings = read_settings_file(settings_path)
     new_settings = merged_settings(settings, remove_only=uninstall)
     old_md = claude_md.read_text(encoding="utf-8") if claude_md.exists() else ""
     new_md = merged_claude_md(old_md, remove_only=uninstall)
@@ -449,6 +459,9 @@ def run(dry=False, uninstall=False):
             print(f"- {CLAUDE_HOME / 'agents' / f.name} → agent de délégation {'retiré' if uninstall else 'posé'}")
         return
 
+    fresh = read_settings_file(settings_path)  # relu juste avant d'écrire : un changement fait entre-temps est gardé
+    if fresh != settings:
+        settings, new_settings = fresh, merged_settings(fresh, remove_only=uninstall)
     if new_settings != settings:
         if settings_path.exists():
             shutil.copy2(settings_path, settings_path.with_name("settings.json.bak-brain"))
