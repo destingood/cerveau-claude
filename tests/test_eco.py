@@ -602,22 +602,22 @@ check("veille quotidienne des plugins inutilisés : non" in out and "--plugins-a
 c, out = W.run("eco", "--plugins-auto")
 now = W.settings()
 saved = (GAMMA_CHARS + AI_CHARS) / 2.2
-check(c == 0 and "⚡ Mode éco : 1 plugin(s) inutilisé(s) depuis 30 jours désactivé(s) (gamma@marche)" in out
-      and "skills claude.ai non chargées" in out and f"≈{saved / 1000:.1f} k tokens de moins par session" in out
-      and "eco --annuler" in out, "--plugins-auto : annonce (plugin désactivé, skills claude.ai coupées, tokens gagnés)", out)
-check(now["enabledPlugins"] == {"delta@marche": False, "alpha@marche": True, "gamma@marche": False}
-      and now.get("syncClaudeAiSkills") is False and now["theme"] == "dark",
-      "--plugins-auto : le plugin inutilisé désactivé, syncClaudeAiSkills false ; omega (sans skill listée), alpha, beta, zeta, "
-      "epsilon et le cerveau intacts", now)
-check(W.config("eco.plugins_auto") is True and W.config("eco.plugins_vus_le") and W.config("eco.annonce") == out.splitlines()[0]
-      and (W.home / "settings.json.bak-cerveau-eco").exists(),
-      "--plugins-auto : veille activée, jour noté, annonce gardée, copie de sécurité faite", W.config("eco"))
+check(c == 0 and "je te propose de désactiver 1 plugin(s) sans usage depuis 30 jours (gamma@marche)" in out
+      and "les skills claude.ai" in out and f"≈{saved / 1000:.1f} k tokens de moins par session" in out
+      and "eco --plugins`" in out and "eco --annuler" in out, "--plugins-auto : PROPOSE (plugin, skills claude.ai, tokens, commande)", out)
+check(now == original and not (W.home / "settings.json.bak-cerveau-eco").exists(),
+      "--plugins-auto : rien n'est désactivé, réglages et copie de sécurité inchangés", now)
+check(W.config("eco.plugins_auto") is True and W.config("eco.plugins_vus_le") and W.config("eco.annonce") == out.splitlines()[0],
+      "--plugins-auto : veille activée, jour noté, annonce gardée", W.config("eco"))
 c, msg, out = W.hook("session-start", "v1")
 ctx = context_of(msg)
-check("⚡ Mode éco : 1 plugin(s) inutilisé(s)" in ctx and "skills claude.ai non chargées" in ctx and not W.config("eco.annonce"),
-      "démarrage suivant : l'annonce est montrée (et effacée)", out[-500:])
+check("⚡ Mode éco : je te propose de désactiver 1 plugin(s)" in ctx and "eco --plugins`" in ctx and not W.config("eco.annonce"),
+      "démarrage suivant : la proposition est montrée (et effacée)", out[-500:])
 c, msg, out = W.hook("session-start", "v2")
-check(c == 0 and "skills claude.ai non chargées" not in context_of(msg), "l'annonce n'est montrée qu'une fois", out[-300:])
+check(c == 0 and "je te propose de désactiver" not in context_of(msg), "la proposition n'est montrée qu'une fois", out[-300:])
+c, out = W.run("eco", "--plugins-auto")
+check(c == 0 and not W.config("eco.annonce") and W.settings()["enabledPlugins"] == original["enabledPlugins"],
+      "la même proposition n'est pas refaite le lendemain", out)
 # une annonce arrivée pendant une session ouverte : dite au message suivant, sans attendre un démarrage
 W.run("config", "eco.annonce", "🧹 Filtre appris pour monoutil sync")
 c, msg, out = W.hook("prompt", "v2", prompt="Bonjour, on continue le travail")
@@ -627,6 +627,15 @@ c, msg, out = W.hook("prompt", "v2", prompt="Bonjour, on continue le travail")
 check(c == 0 and "🧹" not in context_of(msg), "annonce au message : une seule fois", out[-300:])
 c, out = W.run("eco")
 check("veille quotidienne des plugins inutilisés : oui" in out and "plugins-auto off" in out, "eco : la veille est dite active", out)
+c, out = W.run("eco", "--plugins")
+now = W.settings()
+check(c == 0 and "1 plugin(s) inutilisé(s) depuis 30 jours désactivé(s) (gamma@marche)" in out
+      and "skills claude.ai non chargées" in out and "eco --annuler" in out,
+      "`eco --plugins` : la commande explicite désactive le plugin et coupe les skills claude.ai", out)
+check(now["enabledPlugins"] == {"delta@marche": False, "alpha@marche": True, "gamma@marche": False}
+      and now.get("syncClaudeAiSkills") is False and now["theme"] == "dark" and (W.home / "settings.json.bak-cerveau-eco").exists(),
+      "`eco --plugins` : plugin inutilisé désactivé, syncClaudeAiSkills false ; omega, alpha, beta, zeta, epsilon et le cerveau "
+      "intacts ; copie de sécurité faite", now)
 c, out = W.run("eco", "--annuler")
 check(c == 0 and W.settings() == original and "réactivé" in out and "syncClaudeAiSkills retiré" in out,
       "--annuler remet tout : plugin réactivé, syncClaudeAiSkills retiré, réglages comme avant", W.settings())
@@ -635,16 +644,19 @@ check(W.config("eco.plugins_auto") is False and not W.config("eco.annonce"), "--
 # une skill de claude.ai a servi → on n'y touche pas ; une valeur de l'utilisateur est respectée
 W = plugin_world("veille-usage", ai="utilisee")
 c, out = W.run("eco", "--plugins-auto")
-check(c == 0 and "syncClaudeAiSkills" not in W.settings() and "skills claude.ai" not in out and "gamma@marche" in out
-      and W.settings()["enabledPlugins"].get("gamma@marche") is False,
-      "skills claude.ai utilisée : syncClaudeAiSkills n'est pas touché, le plugin inutilisé est quand même désactivé", out)
+check(c == 0 and "skills claude.ai" not in out and "gamma@marche" in out
+      and W.settings()["enabledPlugins"].get("gamma@marche") is not False,
+      "skills claude.ai utilisée : seul le plugin inutilisé est proposé, rien n'est désactivé", out)
+c, out = W.run("eco", "--plugins")
+check(c == 0 and "syncClaudeAiSkills" not in W.settings() and W.settings()["enabledPlugins"].get("gamma@marche") is False,
+      "skills claude.ai utilisée : `--plugins` ne touche pas syncClaudeAiSkills, désactive le plugin inutilisé", out)
 W = plugin_world("veille-valeur", ai="inutilisees", syncClaudeAiSkills=True)
 c, out = W.run("eco", "--plugins-auto", "on")
 check(c == 0 and W.settings()["syncClaudeAiSkills"] is True and "skills claude.ai" not in out,
       "syncClaudeAiSkills réglé par l'utilisateur : respecté", W.settings())
 W = World("veille-vide")
 c, out = W.run("eco", "--plugins-auto")
-check(c == 0 and "rien à retirer" in out and W.config("eco.plugins_auto") is True and not W.config("eco.annonce")
+check(c == 0 and "rien à proposer" in out and W.config("eco.plugins_auto") is True and not W.config("eco.annonce")
       and not W.settings_file.exists(), "rien à retirer : dit tel quel, aucun réglage écrit", out)
 W.settings_file.write_text("{ cassé", encoding="utf-8")
 c, out = W.run("eco", "--plugins-auto")
@@ -659,12 +671,11 @@ before = W.settings()
 c, msg, out = W.hook("session-start", "f1")
 claimed = W.config("eco.plugins_vus_le")
 check(c == 0 and claimed != "2000-01-01T00:00:00", "démarrage : veille due → jour réservé et tâche lancée en arrière-plan", out[-300:])
-check(wait_for(lambda: W.config("eco.annonce")) and W.settings()["enabledPlugins"].get("gamma@marche") is False
-      and "syncClaudeAiSkills" not in W.settings(), "la tâche de fond désactive le plugin inutilisé (pas de skills claude.ai listées)",
-      W.settings())
+check(wait_for(lambda: W.config("eco.annonce")) and W.settings()["enabledPlugins"] == before["enabledPlugins"],
+      "la tâche de fond propose le plugin inutilisé, sans rien désactiver", W.settings())
 time.sleep(1)
 c, msg, out = W.hook("session-start", "f2")
-check("⚡ Mode éco : 1 plugin(s) inutilisé(s)" in context_of(msg), "démarrage suivant : l'annonce de la tâche de fond", out[-400:])
+check("je te propose de désactiver 1 plugin(s)" in context_of(msg), "démarrage suivant : l'annonce de la tâche de fond", out[-400:])
 half_day = time.strftime("%Y-%m-%dT%H:%M:%S", time.localtime(time.time() - 12 * 3600))
 W.run("config", "eco.plugins_vus_le", json.dumps(half_day))
 c, msg, out = W.hook("session-start", "f3")

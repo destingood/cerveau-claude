@@ -74,8 +74,9 @@ DEFAULT_CONFIG = {
     # (tokens), ou quand il reprend après une pause qui a vidé le cache (`alerte_pause`) : chaque message la relit en
     # entier. `eco.auto` false = ne rien poser tout seul. `cache` : durée du cache de prompt — "auto" (simulée une fois par
     # jour sur les pauses réelles, posée seulement au-delà de 5 % de gain), "5m", "1h" ou "off" (ne jamais y toucher).
-    # `plugins_auto` (à activer : `brain eco --plugins-auto`) : veille quotidienne, en arrière-plan, qui désactive les plugins
-    # sans usage depuis 30 jours et coupe les skills claude.ai si aucune n'a servi.
+    # `plugins_auto` (à activer : `brain eco --plugins-auto`) : veille quotidienne, en arrière-plan, qui PROPOSE (une
+    # annonce, une fois) de désactiver les plugins sans usage depuis 30 jours et les skills claude.ai si aucune n'a servi ;
+    # rien n'est désactivé sans `brain eco --plugins`.
     "eco": {"auto": True, "bash_output_max_chars": 10000, "auto_compact_window": 200000,
             "alerte_contexte": [150000, 300000], "alerte_pause": True, "cache": "auto", "plugins_auto": False},
     # Style de réponse par défaut (outputStyle de Claude Code, terminal et app de bureau), posé une fois avec le mode éco

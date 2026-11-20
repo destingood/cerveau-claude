@@ -101,7 +101,8 @@ garde sa propre mémoire.
   cerveau conseille sans rien changer) ou `off` pour reprendre la main.
 - **Le mode éco**, posé une fois au démarrage : les sorties de commandes très longues vont dans un fichier (aperçu
   seul dans la conversation), la conversation est résumée plus tôt, et `brain eco` liste les plugins jamais utilisés.
-  `brain eco --annuler` pour revenir.
+  Désactiver les plugins et skills inutilisés, c'est toi qui décides : le cerveau te les propose une fois, et
+  `brain eco --plugins` les désactive. `brain eco --annuler` pour revenir.
 - **La veille du PC** (Windows) : elle repère les serveurs MCP restés ouverts sans session et te le dit en une ligne ;
   elle ne ferme jamais rien seule. `brain pc --clean` les liste, `brain pc --clean --oui` les ferme.
 - **Sorties compactées** avant d'arriver à Claude : une liste JSON arrive en tableau, une sortie déjà lue dans la
