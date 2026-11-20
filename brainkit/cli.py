@@ -1245,7 +1245,7 @@ def cmd_optimize(a):
 def cmd_eco(a):
     from . import eco
     code, text = eco.run(a.appliquer, a.annuler, a.forcer, a.sortie, a.fenetre, a.desactiver, a.plugins_auto,
-                         a.poser, a.retirer, a.cache, a.refuser, a.rendre)
+                         a.poser, a.retirer, a.cache, a.refuser, a.rendre, a.plugins)
     print(text)
     return code
 
@@ -1612,8 +1612,8 @@ def cmd_pc(a):
               "reste lisible).")
         return 0
     from . import pc
-    if a.clean:
-        print(pc.clean())
+    if a.clean or a.oui:
+        print(pc.clean(oui=a.oui))
     elif a.history is not None:
         print(pc.history(a.history))
     else:
@@ -2198,8 +2198,10 @@ def build_parser():
     s.add_argument("--desactiver", nargs="+", metavar="nom@marketplace",
                    help="désactiver ces plugins inutilisés (après accord de l'utilisateur ; --annuler les réactive)")
     s.add_argument("--plugins-auto", nargs="?", const="on", choices=["on", "off"],
-                   help="veille quotidienne : désactive tout seul les plugins sans usage depuis 30 j et coupe les skills "
-                        "claude.ai si aucune n'a servi (on : active et lance tout de suite ; off : coupe)")
+                   help="veille quotidienne : PROPOSE de désactiver les plugins sans usage depuis 30 j et les skills "
+                        "claude.ai si aucune n'a servi, sans rien désactiver (on : active et lance tout de suite ; off : coupe)")
+    s.add_argument("--plugins", action="store_true",
+                   help="désactiver maintenant ces plugins et skills claude.ai proposés (après accord de l'utilisateur)")
     s.add_argument("--poser", nargs="+", metavar="ID",
                    help="poser ces propositions (outils, connecteurs, git, effort, lecture, sous-agents) — seulement après accord de l'utilisateur")
     s.add_argument("--retirer", nargs="+", metavar="ID", help="retirer ces propositions (état d'avant rétabli)")
@@ -2266,9 +2268,10 @@ def build_parser():
     s.add_argument("action", nargs="?", choices=["ls", "list", "test", "trig", "scan"])
     s.add_argument("args", nargs="*")
     s.add_argument("--force", action="store_true", help="trig : remplacer la liste (seul : la vider)")
-    s = cmd("pc", cmd_pc, "RAM/CPU/GPU + ce qu'on peut libérer (sessions, serveurs MCP) — --clean, --history, --all", ["ram"])
+    s = cmd("pc", cmd_pc, "RAM/CPU/GPU + ce qu'on peut libérer (sessions, serveurs MCP) — --clean [--oui], --history, --all", ["ram"])
     s.add_argument("--all", action="store_true", help="tout détailler, sans troncature")
-    s.add_argument("--clean", action="store_true", help="fermer maintenant les serveurs MCP orphelins (parent mort)")
+    s.add_argument("--clean", action="store_true", help="lister les serveurs MCP orphelins (parent mort) ; --oui pour les fermer")
+    s.add_argument("--oui", action="store_true", help="avec --clean : fermer vraiment les orphelins listés")
     s.add_argument("--history", nargs="?", type=float, const=24, metavar="H",
                    help="historique des mesures de la veille sur H heures (défaut 24)")
     s.add_argument("--seconds", type=float, default=2.0, help="durée de mesure du CPU/GPU (défaut 2 s)")

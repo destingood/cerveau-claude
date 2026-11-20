@@ -66,16 +66,17 @@ DEFAULT_CONFIG = {
     # connecteur ; `triggers` : {« id » ou clé de serveur : [phrases]} (`brain outils trig`) ; `fresh_days` : au-delà,
     # un serveur pas revu n'est plus proposé ; `veille` : nouveaux serveurs et skills sans déclencheur signalés au démarrage.
     "outils": {"enabled": True, "max_items": 2, "session_cap": 6, "fresh_days": 21, "veille": True, "triggers": {}},
-    # Rappel en fin de tâche : « mémorise ce qui est durable » (une fois, seulement si la session a travaillé).
-    "stop_reminder": {"enabled": True, "min_tool_calls": 15, "min_edits": 3, "repeat_after": 150},
+    # Rappel en fin de tâche : « mémorise ce qui est durable », seulement si l'utilisateur a dit une phrase durable pas encore enregistrée.
+    "stop_reminder": {"enabled": True},
     # Mode éco (`brain eco`) : réglages officiels de Claude Code posés une fois dans ~/.claude/settings.json (sorties de
     # commandes longues mises en fichier, conversation résumée plus tôt, liste des skills réduite, mémoire auto de Claude
     # Code coupée une fois importée dans le cerveau) ; alerte à l'utilisateur quand la conversation passe ces tailles
     # (tokens), ou quand il reprend après une pause qui a vidé le cache (`alerte_pause`) : chaque message la relit en
     # entier. `eco.auto` false = ne rien poser tout seul. `cache` : durée du cache de prompt — "auto" (simulée une fois par
     # jour sur les pauses réelles, posée seulement au-delà de 5 % de gain), "5m", "1h" ou "off" (ne jamais y toucher).
-    # `plugins_auto` (à activer : `brain eco --plugins-auto`) : veille quotidienne, en arrière-plan, qui désactive les plugins
-    # sans usage depuis 30 jours et coupe les skills claude.ai si aucune n'a servi.
+    # `plugins_auto` (à activer : `brain eco --plugins-auto`) : veille quotidienne, en arrière-plan, qui PROPOSE (une
+    # annonce, une fois) de désactiver les plugins sans usage depuis 30 jours et les skills claude.ai si aucune n'a servi ;
+    # rien n'est désactivé sans `brain eco --plugins`.
     "eco": {"auto": True, "bash_output_max_chars": 10000, "auto_compact_window": 200000,
             "alerte_contexte": [150000, 300000], "alerte_pause": True, "cache": "auto", "plugins_auto": False},
     # Style de réponse par défaut (outputStyle de Claude Code, terminal et app de bureau), posé une fois avec le mode éco
@@ -108,11 +109,12 @@ DEFAULT_CONFIG = {
     # une source du wiki à ingérer. `auto` : Claude le traite lui-même (sources ingérées, partie sûre appliquée, doutes
     # laissés et cités) ; false : la ligne le propose seulement.
     "dream": {"notice": True, "min_items": 3, "auto": True},
-    # PC (`brain pc`) : veille légère pendant les hooks (au plus toutes les check_minutes), fermeture seule des orphelins
-    # sûrs (serveurs MCP et sessions Claude dont le parent est mort depuis orphan_min_minutes), une ligne pour Claude
-    # seulement si la RAM est critique ou si une session tourne à vide (au plus toutes les alert_repeat_minutes).
+    # PC (`brain pc`) : veille légère pendant les hooks (au plus toutes les check_minutes). Elle ne ferme jamais rien :
+    # `auto_clean` = lister seul les serveurs MCP orphelins (parent mort depuis orphan_min_minutes) et les proposer en une
+    # ligne ; les fermer exige `brain pc --clean --oui`. Une ligne pour Claude aussi si la RAM est critique ou si une
+    # session tourne à vide (au plus toutes les alert_repeat_minutes).
     "pc": {"enabled": True, "check_minutes": 10, "auto_clean": True, "orphan_min_minutes": 10,
-           "orphan_patterns": ["mcp", "\\claude\\", "\\.claude\\plugins", "claude_pzs8sxrjxfjjc", "npm-cache\\_npx"],
+           "orphan_patterns": ["\\claude\\", "\\.claude\\plugins", "claude_pzs8sxrjxfjjc", "npm-cache\\_npx"],
            "idle_hours": 3, "spin_cores": 0.5, "ram_alert_gb": 2.5, "ram_alert_pct": 92, "alert_repeat_minutes": 60,
            "history_days": 14},
     # Délégation (`brain delegation`, brainkit/delegation.py) : chaque tâche au modèle le moins cher qui suffit, dans un

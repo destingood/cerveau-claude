@@ -147,7 +147,8 @@ outils, et tes boutiques suivies).
 - **À chaque message** : les souvenirs et fichiers vraiment liés remontent tout seuls (fautes de frappe, écriture
   phonétique et synonymes compris). Un souvenir rappelé montre les phrases qui répondent à ton message, pas seulement
   son début ; `brain recall --pourquoi` dit pourquoi un souvenir n'est pas remonté.
-- **En fin de tâche** : Claude note ce qui mérite d'être retenu (décisions, pièges, préférences).
+- **En fin de tâche** : si tu as dit une décision ou une préférence pas encore enregistrée, Claude la note ; sinon
+  le cerveau ne dit rien (pas de rappel inutile).
 - **Cartes de tes projets** (fichiers clés, où est défini quoi), à-faire datés, vue 3D, serveur MCP.
 - **Le rêve** : l'entretien de ta mémoire se fait hors conversation, chaque jour — dates relatives rendues réelles,
   observations anciennes condensées — et ce qui demande du jugement (corrections entendues, doublons, conflits,
@@ -175,7 +176,10 @@ garde sa propre mémoire.
   cerveau conseille sans rien changer) ou `off` pour reprendre la main.
 - **Le mode éco**, posé une fois au démarrage : les sorties de commandes très longues vont dans un fichier (aperçu
   seul dans la conversation), la conversation est résumée plus tôt, et `brain eco` liste les plugins jamais utilisés.
-  `brain eco --annuler` pour revenir.
+  Désactiver les plugins et skills inutilisés, c'est toi qui décides : le cerveau te les propose une fois, et
+  `brain eco --plugins` les désactive. `brain eco --annuler` pour revenir.
+- **La veille du PC** (Windows) : elle repère les serveurs MCP restés ouverts sans session et te le dit en une ligne ;
+  elle ne ferme jamais rien seule. `brain pc --clean` les liste, `brain pc --clean --oui` les ferme.
 - **Sorties compactées** avant d'arriver à Claude : une liste JSON arrive en tableau, une sortie déjà lue dans la
   session renvoie vers la première, les erreurs sont toujours gardées.
 - **Filtres appris** : `brain compact --decouvrir` repère le bruit qui revient dans les sorties de tes commandes et

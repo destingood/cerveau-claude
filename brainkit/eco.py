@@ -15,8 +15,9 @@ réversibles (`brain eco --annuler`) :
 - `promptCacheTtl` (cache adaptatif, chaque jour en arrière-plan) : 5 min ou 1 h d'après une simulation sur les pauses
   réelles des 7 derniers jours ; posé seulement si le gain est net (≥ 5 % du poids total) ;
 - les plugins installés mais jamais utilisés : leurs descriptions sont relues à chaque session. Le cerveau les liste ; il
-  ne les désactive que sur demande (`--desactiver`), après accord de l'utilisateur — ou chaque jour tout seul, en arrière-plan,
-  si l'utilisateur active la veille (`--plugins-auto`) : avec les skills claude.ai (`syncClaudeAiSkills`) si aucune n'a servi.
+  ne les désactive que sur demande (`--desactiver`, ou `--plugins` pour tout le lot proposé), après accord de l'utilisateur.
+  La veille quotidienne (`--plugins-auto`) ne fait que PROPOSER, une fois, avec les skills claude.ai (`syncClaudeAiSkills`)
+  si aucune n'a servi : rien n'est désactivé sans la commande explicite.
 
 Sur accord de l'utilisateur seulement (`--poser ID…`, gains estimés dans `brain eco`, retour : `--retirer ID…`) : outils
 intégrés et serveurs MCP jamais utilisés en 30 jours (règles `permissions.deny` : l'outil sort du contexte), consignes git,
@@ -251,7 +252,27 @@ def _section(cfg, name) -> dict:
     return data
 
 
+_RETRY = object()  # settings.json a changé entre la lecture et l'écriture : on recommence sur le contenu frais
+
+
+def _changed_since(settings):
+    """(vrai si settings.json n'est plus ce qui a été lu, raison d'illisibilité) : relecture juste avant d'écrire, pour ne
+    jamais écraser un changement fait entre-temps par Claude Code ou l'utilisateur."""
+    again, err = read_settings()
+    return (err is None and again != settings), err
+
+
 def commit(wants, force=False) -> tuple:
+    """Écrit dans settings.json (relu juste avant l'écriture ; s'il a changé entre-temps, le calcul est refait sur le
+    contenu frais : seules les clés du cerveau sont posées, le reste est gardé tel que l'autre l'a écrit)."""
+    for _ in range(5):
+        res = _commit_once(wants, force)
+        if res is not _RETRY:
+            return res
+    return False, {}, ["⚠ settings.json change sans cesse pendant l'écriture : rien n'a été modifié, réessaie"]
+
+
+def _commit_once(wants, force=False):
     """Écrit dans settings.json : wants = [("cle", nom, valeur) | ("plugin", « nom@marketplace », False)
     | ("refus", règle, True)] ; une clé peut être imbriquée (« env.X »), une règle de refus s'ajoute à permissions.deny
     sans toucher aux autres. Copie de sécurité la 1re fois ; l'état d'avant est retenu (eco.avant) pour `--annuler`. Une
@@ -311,6 +332,11 @@ def commit(wants, force=False) -> tuple:
         lignes.append(f"✓ {label} = {show(value)} (avant : {before})")
     if not posees:
         return True, {}, lignes
+    moved, err2 = _changed_since(settings)
+    if err2:
+        return False, {}, [f"⚠ {err2}"]
+    if moved:
+        return _RETRY
     created = not path.exists()
     if created:
         avant.setdefault("fichier_absent", True)
@@ -495,6 +521,15 @@ def apply_report(cfg=None) -> tuple:
 
 
 def _restore(only=None) -> tuple:
+    """Comme _restore_once, en refaisant le calcul si settings.json a changé entre la lecture et l'écriture."""
+    for _ in range(5):
+        res = _restore_once(only)
+        if res is not _RETRY:
+            return res
+    return False, ["⚠ settings.json change sans cesse pendant l'écriture : rien n'a été modifié, réessaie"]
+
+
+def _restore_once(only=None):
     """Remet l'état d'avant des réglages posés par le cerveau : tous, ou seulement `only` (noms de clés et règles de
     refus). Une valeur changée depuis par l'utilisateur reste telle quelle ; les objets et listes que le cerveau avait
     créés (« env », « permissions.deny »…) disparaissent s'ils sont redevenus vides. → (ok, lignes)."""
@@ -548,6 +583,11 @@ def _restore(only=None) -> tuple:
     avant["crees"] = _prune(new, avant["crees"])
     path = settings_path()
     if new != settings:
+        moved, err2 = _changed_since(settings)
+        if err2:
+            return False, [f"⚠ {err2}"]
+        if moved:
+            return _RETRY
         try:
             if only is None and not new and avant.get("fichier_absent"):
                 path.unlink()  # le fichier n'existait pas avant le mode éco
@@ -572,7 +612,7 @@ def undo() -> tuple:
     if not ok:
         return 1, "\n".join(lignes)
     _unset("eco.avant", "eco.pose", "eco.applique_le", "eco.annonce", "eco.plugins_vus_le", "eco.leviers", "eco.cache",
-           "eco.cache_vu_le", "eco.bilan", "eco.propositions")
+           "eco.cache_vu_le", "eco.bilan", "eco.propositions", "eco.propose")
     set_config("eco.auto", False)
     set_config("eco.plugins_auto", False)  # sinon la veille referait demain ce qui vient d'être défait
     if not lignes:
@@ -897,12 +937,13 @@ def disable(keys) -> tuple:
     return (0 if ok else 1), "\n".join(lignes)
 
 
-def auto_plugins(force=False) -> str:
-    """Veille des plugins inutilisés (`eco.plugins_auto`), au plus une fois par jour sauf `force` : désactive ceux dont
-    aucune skill n'a servi depuis 30 jours (comme `--desactiver`) et coupe les skills claude.ai (`syncClaudeAiSkills` false)
-    si la liste en montre et qu'aucune n'a servi. Seuls les plugins qui listent des skills sont touchés : sans skill, ils
-    agissent peut-être par hooks. Copie de sécurité et retour par `--annuler` ; la valeur de l'utilisateur est respectée.
-    → l'annonce (gardée dans eco.annonce pour le prochain démarrage), ou ''."""
+def auto_plugins(force=False, apply=False) -> str:
+    """Veille des plugins inutilisés (`eco.plugins_auto`), au plus une fois par jour sauf `force`. Elle PROPOSE seulement
+    (décision de l'utilisateur) : une annonce, dite une fois, liste les plugins dont aucune skill n'a servi depuis 30 jours
+    et les skills claude.ai (`syncClaudeAiSkills`) si aucune n'a servi, avec la commande qui les coupe. `apply` (commande
+    `--plugins`) les désactive pour de bon, comme `--desactiver`. Seuls les plugins qui listent des skills sont concernés :
+    sans skill, ils agissent peut-être par hooks. Copie de sécurité et retour par `--annuler` ; la valeur de l'utilisateur
+    est respectée. → l'annonce (gardée dans eco.annonce pour le prochain démarrage), ou ''."""
     if not force and days_since((load_config().get("eco") or {}).get("plugins_vus_le")) < 1:
         return ""
     settings, err = read_settings()
@@ -911,6 +952,8 @@ def auto_plugins(force=False) -> str:
         return ""
     rows, ai = _audit(settings, ai=True)
     rows = [r for r in rows if r[1] > 0]
+    if not apply:
+        return _propose_plugins(rows, ai if SYNC_KEY not in settings else None)  # valeur de l'utilisateur : respectée
     gone, saved = [], 0.0
     if rows:
         _, posees, _ = _disable([k for k, _ in rows])
@@ -929,6 +972,26 @@ def auto_plugins(force=False) -> str:
     if saved:
         parts.append(f"≈{_tok(saved)} tokens de moins par session")
     line = f"⚡ Mode éco : {' · '.join(parts)} · retour : `{CMD} eco --annuler`"
+    set_config("eco.propose", "")  # fait : une nouvelle proposition pourra venir
+    return line
+
+
+def _propose_plugins(rows, ai) -> str:
+    """La proposition (rien n'est désactivé) : une annonce courte, gardée une seule fois pour ce même lot."""
+    set_config("eco.plugins_vus_le", now_iso())
+    keys = [k for k, _ in rows] + ([SYNC_KEY] if ai else [])
+    sig = ",".join(sorted(keys))
+    if not keys or sig == (load_config().get("eco") or {}).get("propose"):
+        set_config("eco.propose", sig)
+        return ""
+    saved = sum(t for _, t in rows) + (ai or 0)
+    parts = ([f"{len(rows)} plugin(s) sans usage depuis {UNUSED_DAYS} jours ({', '.join(k for k, _ in rows)})"] if rows else []) \
+        + (["les skills claude.ai (aucune n'a servi)"] if ai else [])
+    line = f"⚡ Mode éco : je te propose de désactiver {' et '.join(parts)}"
+    if saved:
+        line += f" · ≈{_tok(saved)} tokens de moins par session"
+    line += f" · pour le faire : `{CMD} eco --plugins` (retour : `{CMD} eco --annuler`)"
+    set_config("eco.propose", sig)
     _announce(line)
     return line
 
@@ -973,8 +1036,19 @@ def watch_plugins(mode) -> tuple:
         return 1, f"⚠ {err}"
     set_config("eco.plugins_auto", True)
     note = auto_plugins(force=True)
-    return 0, f"{note}\n→ pris en compte au prochain démarrage de Claude Code" if note else \
-        "✓ veille quotidienne des plugins activée : rien à retirer pour l'instant"
+    return 0, f"{note}\n→ rien n'est désactivé tant que tu ne lances pas `{CMD} eco --plugins`" if note else \
+        "✓ veille quotidienne des plugins activée : rien à proposer pour l'instant"
+
+
+def apply_plugins() -> tuple:
+    """`--plugins` → (code, texte) : désactive maintenant les plugins et skills claude.ai proposés par la veille."""
+    settings, err = read_settings()
+    if err:
+        return 1, f"⚠ {err}"
+    note = auto_plugins(force=True, apply=True)
+    if not note:
+        return 0, "✓ rien à désactiver : tous les plugins ont servi ces 30 derniers jours"
+    return 0, f"{note}\n→ pris en compte au prochain démarrage de Claude Code"
 
 
 # ------------------------------------------------------------------------------------------ sur accord : propositions
@@ -1235,8 +1309,9 @@ def status(cfg=None) -> str:
     done = f"appliqué le {str(eco['applique_le'])[:10]}" if eco.get("applique_le") else "pas encore appliqué"
     L.append(f"  {done} · automatique au démarrage : {'oui' if eco.get('auto', True) else 'non'}")
     L.append("  veille quotidienne des plugins inutilisés : " + (
-        f"oui · `{CMD} eco --plugins-auto off` pour la couper" if eco.get("plugins_auto") else
-        f"non · `{CMD} eco --plugins-auto` pour l'activer (désactive tout seul plugins et skills claude.ai jamais utilisés)"))
+        f"oui (propose seulement ; `{CMD} eco --plugins` désactive ; `{CMD} eco --plugins-auto off` pour la couper)"
+        if eco.get("plugins_auto") else
+        f"non · `{CMD} eco --plugins-auto` pour l'activer (propose, sans rien désactiver ; `{CMD} eco --plugins` les désactive)"))
     L += [f"  {w}" for w in warnings(settings)]
     rows = unused_plugins(settings)
     if rows:
@@ -1280,7 +1355,7 @@ def status(cfg=None) -> str:
 
 
 def run(appliquer=False, annuler=False, forcer=False, sortie=None, fenetre=None, desactiver=None, plugins_auto=None,
-        poser=None, retirer=None, cache=None, refuser=None, rendre=None) -> tuple:
+        poser=None, retirer=None, cache=None, refuser=None, rendre=None, plugins=False) -> tuple:
     """Point d'entrée de `brain eco` → (code de sortie, texte)."""
     if appliquer and annuler:
         return 1, "✗ --appliquer et --annuler ensemble : choisis l'un des deux"
@@ -1300,6 +1375,10 @@ def run(appliquer=False, annuler=False, forcer=False, sortie=None, fenetre=None,
             L += warnings(settings or {})
             if posees:
                 L.append(f"→ pris en compte au plus tard au prochain démarrage de Claude Code · retour : `{CMD} eco --annuler`")
+    if plugins:
+        c, text = apply_plugins()
+        L.append(text)
+        code = code or c
     for given, fn in ((desactiver, disable), (plugins_auto, watch_plugins), (poser, pose_proposals),
                       (retirer, withdraw), (cache, set_cache), (refuser, refuse), (rendre, give_back)):
         if given:
