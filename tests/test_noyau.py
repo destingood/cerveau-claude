@@ -396,13 +396,17 @@ check(r.returncode == 0 and "mémoire hors service" in out and "Traceback" not i
       (r.returncode, out, err))
 
 # Mot de passe dit en phrase (« retiens que le mot de passe du compte Boxtal est … ») : il était enregistré en clair.
-phrases = {"Le mot de passe du compte Boxtal est Yuzu-2026-matcha!": True, "Mon mot de passe Wi-Fi est Maison2024!": True,
-           "the password for gmail is Hunter2!x": True, "Le mot de passe, c'est Rome-1999": True,
+# Valeurs posées à part : le contrôle d'avant publication lit aussi ce fichier (aucun mot de passe en phrase ici).
+VALEURS = ["Yuzu-2026-matcha!", "Maison2024!", "Hunter2!x", "Rome-1999"]
+phrases = {"Le mot de passe du compte Boxtal est {}".format(VALEURS[0]): True,
+           "Mon mot de passe Wi-Fi est {}".format(VALEURS[1]): True,
+           "the password for gmail is {}".format(VALEURS[2]): True,
+           "Le mot de passe, c'est {}".format(VALEURS[3]): True,
            "Le mot de passe est dans le gestionnaire de mots de passe.": False,
            "Ne jamais écrire le mot de passe dans un fichier, il est secret.": False,
            "mot de passe oublié ? Clique sur Réinitialiser": False}
 wrong = [t for t, want in phrases.items() if bool(privacy.find(t)) != want]
-check(not wrong and "Yuzu" not in privacy.mask("Le mot de passe du compte Boxtal est Yuzu-2026-matcha!")[0],
+check(not wrong and "Yuzu" not in privacy.mask("Le mot de passe du compte Boxtal est {}".format(VALEURS[0]))[0],
       "confidentialité : mot de passe dit en phrase masqué, phrases sans mot de passe laissées", wrong)
 
 # prompts.chat (texte d'un site public, mis dans le contexte de Claude) : un identifiant piégé est écarté, la
@@ -467,6 +471,33 @@ except RuntimeError:
 check(slow == "refus" and time.time() - t0 < 3, "prompts.chat : serveur goutte à goutte coupé au délai total",
       round(time.time() - t0, 1))
 site.shutdown()
+
+# `brain done` n'archive qu'un à-faire ; `brain pc` hors de Windows répond sans trace Python.
+DN = TMP / "done"
+(DN / "brain").mkdir(parents=True)
+(DN / "brain" / "graph.json").write_text(json.dumps({"version": 1, "edges": [], "nodes": {
+    "regle-prix": node("regle-prix", "feedback", "Prix toujours TTC"),
+    "appeler-boxtal": node("appeler-boxtal", "todo", "Appeler Boxtal")}}), encoding="utf-8")
+env = dict(os.environ, BRAIN_HOME=str(DN / "brain"), CLAUDE_CONFIG_DIR=str(DN / "claude"), HOME=str(DN / "maison"),
+           USERPROFILE=str(DN / "maison"), PYTHONIOENCODING="utf-8")
+
+
+def brain_cmd(*args):
+    r = subprocess.run([sys.executable, str(CODE / "brain.py"), *args], capture_output=True, env=env, cwd=str(WORK),
+                       timeout=120)
+    return r.returncode, (r.stdout + r.stderr).decode("utf-8", "replace")
+
+
+code_rule, _ = brain_cmd("done", "regle-prix")
+code_todo, _ = brain_cmd("done", "appeler-boxtal")
+after = json.loads((DN / "brain" / "graph.json").read_text("utf-8"))["nodes"]
+check(code_rule != 0 and after["regle-prix"].get("status", "active") == "active" and code_todo == 0
+      and after["appeler-boxtal"]["status"] == "archived", "done : un à-faire est fait, une règle n'est pas archivée",
+      (code_rule, code_todo, after["regle-prix"].get("status")))
+if os.name != "nt":
+    code_pc, out_pc = brain_cmd("pc", "--seconds", "0.2")
+    check(code_pc == 0 and "Traceback" not in out_pc and "Windows" in out_pc,
+          "pc hors de Windows : un message, pas de trace Python", out_pc[-300:])
 
 # Consolidation automatique : un doublon, c'est le même projet ET le même contenu. Deux « Objectif du mois » de deux
 # projets restent deux souvenirs ; un vrai doublon reste fusionné.

@@ -1196,6 +1196,9 @@ def cmd_done(a):
         n = b.get(a.id)
         if not n:
             die(f"introuvable : {a.id}")
+        if n["type"] != "todo":  # `done` sur un fait ou une règle l'archivait sans rien dire
+            die(f"`{n['id']}` n'est pas un à-faire ({n['type']}) : rien n'est archivé. Pour l'archiver quand même : "
+                f"`brain rm {n['id']}`")
         meta = dict(n.get("meta") or {})
         meta["done"] = now_iso()[:10]
         b.update(n["id"], status="archived", meta=meta)
@@ -1604,6 +1607,10 @@ def cmd_outils(a):
 
 
 def cmd_pc(a):
+    if os.name != "nt" and a.history is None:  # mesure et nettoyage passent par l'API de Windows (ctypes.WinDLL)
+        print("· `brain pc` mesure et nettoie un PC Windows : rien à faire sur ce système (`brain pc --history` "
+              "reste lisible).")
+        return 0
     from . import pc
     if a.clean:
         print(pc.clean())

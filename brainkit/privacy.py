@@ -25,7 +25,7 @@ _RULES = [
     # (« mot de passe : jamais dans le cerveau » n'est pas un secret)
     ("mot de passe", r"(?<![A-Za-z0-9])(?i:mot de passe|mdp|password|passwd|pwd)(?:[:=]['\"]?[^\s'\"]{4,}"
                      r"|\s*[:=]\s*['\"]?(?=\S*(?:[\dA-Z_]|[^\w\s]))[^\s'\"]{6,}"
-                     # en phrase : « le mot de passe du compte Boxtal est Yuzu-2026-matcha! », « …, c'est X »
+                     # en phrase : « le mot de passe du compte X est … », « …, c'est … »
                      # (un chiffre, une majuscule ou un symbole autre que la ponctuation de fin de phrase)
                      r"|[^\n.:=]{0,40}?[\s,]+(?i:c['’])?(?i:est|is)\s+['\"«]?\s*(?=\S*[\dA-Z_@#$%&*+=/\\-])"
                      r"[^\s'\"»]{6,})"),
