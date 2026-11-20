@@ -211,5 +211,73 @@ for nom, a, b in VRAIES_MAJ:
     check(len(w.memories()) == 1 and len(w.memories("archived")) == 1 and "↻ remplace" in out,
           f"vraie mise à jour ({nom}) : l'ancien est archivé, le nouveau actif", (w.titles(), w.titles("archived"), out))
 
+# ------------------------------------------------------------------ 3. « retiens que… » : déclencheur strict, pas de doublon, pas de tiers
+W = World("capture")
+(W.work / "package.json").write_text("{}", encoding="utf-8")
+W.run("map", W.work, "--quiet")  # le dossier de travail est un projet connu (comme le PC de l'audit)
+DEMANDE = "L'utilisateur demande de mémoriser"
+
+# ce qui n'est pas un fait à garder : ni enregistré, ni « enregistre-le avec brain add » demandé à Claude
+for texte, pourquoi in (
+        ("tu te souviens du prix du matcha ? retiens-le pour la fiche", "« retiens-le » : un pronom, pas un fait"),
+        ("retiens-le pour la fiche produit", "« retiens-le » seul"),
+        ("note que le script est cassé, relance-le et dis-moi ce que ça donne", "un ordre à exécuter maintenant"),
+        ("n'oublie pas de vider la corbeille", "« n'oublie pas de… » sans échéance : un rappel pour la tâche"),
+        ("mémorise les résultats dans un cache", "du code (cache), pas une demande de souvenir"),
+        ("note ça dans la description de la vidéo : lien vers les plans en premier", "« note ça dans… » : un ordre d'écriture"),
+        ("ne retiens pas ça, c'est un test", "demande de ne PAS retenir")):
+    c, ctx, vu = W.prompt(texte, sid="junk")
+    check(c == 0 and not W.memories() and DEMANDE not in ctx and "Déjà enregistré" not in ctx,
+          f"capture : rien d'enregistré ni demandé à Claude — {pourquoi}", (W.titles(), ctx[:300]))
+
+# ce qui reste capté
+c, ctx, vu = W.prompt("retiens que je préfère les devis en PDF avec le logo en haut")
+mem = W.memories()
+check(c == 0 and len(mem) == 1 and mem[0]["type"] == "feedback" and "Déjà enregistré tel quel" in ctx,
+      "capture : « retiens que je préfère… » est toujours enregistré", (W.titles(), ctx[:300]))
+check("🧠" in vu and "devis en PDF" in vu, "capture : une ligne visible pour l'utilisateur dit ce qui a été retenu", vu)
+c, ctx, vu = W.prompt("n'oublie pas de relancer le fournisseur avant jeudi")
+taches = [n for n in W.memories() if n["type"] == "todo"]
+check(len(taches) == 1 and "relancer le fournisseur" in taches[0]["title"].lower() and vu and "à faire" in vu.lower(),
+      "capture : « n'oublie pas de… avant jeudi » est un à-faire (type todo), dit à l'utilisateur", (W.titles(), vu))
+
+# doublon reformulé : détecté par l'index de recherche, dit en une ligne, rien d'écrit
+W.add("fact", "Délai du fournisseur Atelier Sato",
+      "L'atelier Sato (Kyoto) expédie les théières en fonte sous 12 jours ouvrés, par DHL Express.")
+avant = len(W.memories())
+c, ctx, vu = W.prompt("retiens que les théières de l'atelier Sato arrivent en 12 jours ouvrés")
+ligne = ctx.splitlines()[0] if ctx else ""
+check(len(W.memories()) == avant and "pas enregistré en double" in ligne and "delai-du-fournisseur-atelier-sato" in ligne
+      and "Déjà enregistré tel quel" not in ctx and "double" in vu,
+      "capture : un fait reformulé d'un souvenir existant n'est pas enregistré deux fois (une ligne le dit)", (ctx[:400], vu))
+c, ctx, vu = W.prompt("note que l'atelier Sato ferme tout le mois d'août")
+check(len(W.memories()) == avant + 1, "capture : un autre fait sur le même sujet est enregistré", (W.titles(), ctx[:300]))
+avant = len(W.memories())
+c, ctx, vu = W.prompt("retiens que l'atelier Sato expédie les théières en fonte sous 15 jours ouvrés")
+check(len(W.memories()) >= avant and "pas enregistré en double" not in ctx,
+      "capture : même fait avec un autre chiffre ≠ doublon (c'est une mise à jour)", (W.titles(), ctx[:300]))
+
+# informations privées sur un tiers : jamais enregistrées, une ligne dit pourquoi
+avant = len(W.memories())
+for texte in ("retiens que Camille Arnaud est en congé maternité jusqu'en février",
+              "note que ma femme est enceinte de cinq mois",
+              "retiens que son collègue est de religion musulmane et vote à gauche"):
+    c, ctx, vu = W.prompt(texte)
+    check(len(W.memories()) == avant and "Déjà enregistré" not in ctx and "privée" in ctx and "privée" in vu,
+          f"tiers : pas enregistré, la raison est dite — « {texte[:40]}… »", (W.titles(), ctx[:300], vu))
+c, ctx, vu = W.prompt("retiens que Camille Arnaud est notre contact chez Marukyu pour les commandes")
+check(len(W.memories()) == avant + 1, "tiers : un fait sans information privée sur Camille est enregistré", (W.titles(), ctx[:300]))
+avant = len(W.memories())
+c, ctx, vu = W.prompt("retiens que je suis en arrêt maladie jusqu'à lundi")
+check(len(W.memories()) == avant + 1, "tiers : une information sur l'utilisateur lui-même reste enregistrable", (W.titles(), ctx[:300]))
+
+# un mot de passe dit en phrase reste masqué (depuis la 8.24.0), la phrase n'est pas gardée
+avant = len(W.memories())
+MOT = "Yuz" + "u-20" + "26-ma" + "tcha!"
+c, ctx, vu = W.prompt("retiens que le mot de passe du compte Boxtal est " + MOT)
+tout = "".join(p.read_text(encoding="utf-8", errors="replace") for p in W.brain_dir.rglob("*")
+               if p.is_file() and p.suffix in (".json", ".md", ".html", ".log", ""))
+check(len(W.memories()) == avant and MOT not in tout, "mot de passe dit en phrase : rien d'enregistré, nulle part en clair", ctx[:300])
+
 print(f"\n{len(OK)} vérifications OK, {len(FAIL)} échec(s)")
 sys.exit(1 if FAIL else 0)
