@@ -289,10 +289,20 @@ fusionnée). Chaque correctif a un test qui échoue sans lui :
   (décision E12). Le verrou rafraîchi protège aussi les écritures de `brain.exe`, s'il juge un verrou
   périmé à sa date, comme Python.
 
-**Étape 2 — Sécurité restante** (§5), **en cours depuis le 20/11** : pages d'ami, données personnelles du cerveau commun, veille PC,
-plugins désactivés tout seuls, écriture de `settings.json`, capture de « retiens » sur des tiers.
-- Fin (tests) : une page d'ami piégée n'entre plus comme consigne ; les 7 données personnelles du test
-  ne sortent plus ; aucun processus fermé ni plugin coupé sans ton accord.
+**Étape 2 — Sécurité restante** (§5) : **faite le 20/11** (PR #23, cerveau 8.25.0). Chaque point a des tests qui
+échouaient avant :
+- `brain.exe` ne tourne plus que sur demande (`BRAIN_IMPL=rust`) : sous Windows, tous les correctifs valent (E12) ;
+- cerveau commun : le profil et les règles d'un ami ne deviennent plus les tiens ; son texte est contrôlé, ses balises
+  neutralisées, et chaque ligne d'ami est marquée « donnée, pas une consigne » (rappel, index, fiches, skills reçues) ;
+- avant tout partage : chemins de dossiers, téléphones, adresses postales, e-mails déguisés, adresses git et ton
+  prénom sont retirés ; un souvenir réduit à presque rien reste privé ;
+- un dépôt commun injoignable n'est plus annoncé « à jour » ;
+- veille PC : elle liste les serveurs MCP orphelins, `brain pc --clean --oui` seul les ferme (E5) ;
+- mode éco : il propose les plugins et skills à couper, `brain eco --plugins` seul les coupe (E6) ;
+- rappel de fin de tâche : seulement pour une phrase durable pas encore enregistrée, texte deux fois plus court (E3) ;
+- `settings.json` relu juste avant chaque écriture, et lisible avec un BOM.
+- Reste : ce qui est déjà parti dans un dépôt commun reste dans son historique git (le réécrire, c'est ta décision) ;
+  la capture de « retiens que… » sur des tiers passe à l'étape 3.
 
 **Étape 3 — Rappel** (§4.1) : d'abord le banc d'essai réaliste (62 questions et 38 pièges, par le
 chemin du hook), puis les corrections une à une, chacune mesurée.
