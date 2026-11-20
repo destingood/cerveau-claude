@@ -63,6 +63,7 @@ def pairs(brain, limit=8):
     """Conflits (même sujet, valeur différente) et doublons probables, dans le même projet."""
     from . import reconcile
     dups, conflicts, seen = [], [], set()
+    brain.cache_similar()  # chaque souvenir découpé une fois pour toute la série de comparaisons
     for n in [x for x in brain.active(own=True) if x["type"] != "project"]:
         for s, m in brain.similar(n["title"], n.get("body", ""), None, limit=4, threshold=0.5, exclude=n["id"]):
             key = tuple(sorted((n["id"], m["id"])))
@@ -125,6 +126,7 @@ def overdue(brain):
 def repeated_rules(brain, limit=4):
     """Règles proches entre elles : à fusionner en une seule règle forte (mémoire procédurale)."""
     groups, seen = [], set()
+    brain.cache_similar()
     for n in brain.active(("feedback",), own=True):
         if n["id"] in seen:
             continue

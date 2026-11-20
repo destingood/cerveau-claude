@@ -462,7 +462,8 @@ def tokenize(text, keep_stop=False) -> list:
 def jaccard(a: set, b: set) -> float:
     if not a or not b:
         return 0.0
-    return len(a & b) / len(a | b)
+    inter = len(a & b)  # |a ∪ b| = |a| + |b| - |a ∩ b| : même valeur, sans construire l'union
+    return inter / (len(a) + len(b) - inter)
 
 
 def slugify(text, maxlen=48) -> str:

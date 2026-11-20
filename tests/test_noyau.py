@@ -395,6 +395,62 @@ check(r.returncode == 0 and "mémoire hors service" in out and "Traceback" not i
       "démarrage d'une session sur un cerveau illisible : l'utilisateur est prévenu, sans trace Python",
       (r.returncode, out, err))
 
+# Consolidation automatique : un doublon, c'est le même projet ET le même contenu. Deux « Objectif du mois » de deux
+# projets restent deux souvenirs ; un vrai doublon reste fusionné.
+FUS = TMP / "fusion"
+(FUS / "brain").mkdir(parents=True)
+RECENT = dt.datetime.now().replace(microsecond=0).isoformat()  # écrits aujourd'hui : vus par le passage automatique
+nodes = {
+    "boutique": node("boutique", "project", "Boutique en ligne", path=str(TMP / "boutique")),
+    "chaine": node("chaine", "project", "Chaîne YouTube", path=str(TMP / "chaine")),
+    "objectif-du-mois": node("objectif-du-mois", "fact", "Objectif du mois",
+                             "Atteindre 7 000 € de ventes sur la boutique.", project="boutique", created=RECENT),
+    "objectif-du-mois-2": node("objectif-du-mois-2", "fact", "Objectif du mois",
+                               "Publier quatre vidéos et deux Shorts par semaine.", project="chaine", created=RECENT),
+    "retours-30-jours": node("retours-30-jours", "fact", "Retours acceptés sous 30 jours",
+                             "Les clients peuvent retourner un article sous 30 jours, frais de port à leur charge.",
+                             project="boutique", created=RECENT),
+    "retours-30-jours-2": node("retours-30-jours-2", "fact", "Retours acceptés sous 30 jours",
+                               "Les clients peuvent retourner un article sous 30 jours, frais de port à leur charge.",
+                               project="boutique", created=RECENT),
+}
+(FUS / "brain" / "graph.json").write_text(json.dumps({"version": 1, "nodes": nodes, "edges": []}), encoding="utf-8")
+env = dict(os.environ, BRAIN_HOME=str(FUS / "brain"), CLAUDE_CONFIG_DIR=str(FUS / "claude"), HOME=str(FUS / "maison"),
+           USERPROFILE=str(FUS / "maison"), PYTHONIOENCODING="utf-8")
+r = subprocess.run([sys.executable, str(CODE / "brain.py"), "consolidate", "--auto"], capture_output=True, env=env,
+                   cwd=str(WORK), timeout=120)
+after = json.loads((FUS / "brain" / "graph.json").read_text("utf-8"))["nodes"]
+status = {k: v.get("status", "active") for k, v in after.items()}
+check(r.returncode == 0 and status["objectif-du-mois"] == status["objectif-du-mois-2"] == "active"
+      and "quatre vidéos" not in after["objectif-du-mois"]["body"],
+      "consolidation : même titre dans deux projets, deux souvenirs gardés intacts", (r.returncode, status))
+check(sorted(status[k] for k in ("retours-30-jours", "retours-30-jours-2")) == ["active", "archived"],
+      "consolidation : un vrai doublon (même projet, même contenu) reste fusionné", status)
+mark = FUS / "brain" / "state" / "consolidation_auto_vue"
+nodes2 = json.loads((FUS / "brain" / "graph.json").read_text("utf-8"))
+nodes2["nodes"]["vieux-doublon"] = node("vieux-doublon", "fact", "Livraison offerte dès 60 €", "Frais de port offerts.")
+nodes2["nodes"]["vieux-doublon-2"] = node("vieux-doublon-2", "fact", "Livraison offerte dès 60 €", "Frais de port offerts.")
+(FUS / "brain" / "graph.json").write_text(json.dumps(nodes2), encoding="utf-8")
+r = subprocess.run([sys.executable, str(CODE / "brain.py"), "consolidate", "--auto"], capture_output=True, env=env,
+                   cwd=str(WORK), timeout=120)
+after = json.loads((FUS / "brain" / "graph.json").read_text("utf-8"))["nodes"]
+check(mark.is_file() and after["vieux-doublon"].get("status", "active") == after["vieux-doublon-2"].get("status", "active")
+      == "active", "consolidation automatique : seulement les souvenirs écrits depuis son dernier passage", mark.is_file())
+r = subprocess.run([sys.executable, str(CODE / "brain.py"), "consolidate"], capture_output=True, env=env,
+                   cwd=str(WORK), timeout=120)
+after = json.loads((FUS / "brain" / "graph.json").read_text("utf-8"))["nodes"]
+check(sorted(after[k].get("status", "active") for k in ("vieux-doublon", "vieux-doublon-2")) == ["active", "archived"],
+      "consolidation lancée à la main : tous les souvenirs, anciens compris", r.stdout.decode("utf-8", "replace")[-300:])
+big = Brain({"version": 1, "nodes": {f"m{i}": node(f"m{i}", "fact", f"Note {i} sur le sujet {i % 7}",
+                                                    f"Contenu {i} : {' '.join(f'mot{(i * j) % 97}' for j in range(12))}")
+                                     for i in range(120)}, "edges": []})
+plain = [[(s, m["id"]) for s, m in big.similar(n["title"], n["body"], "fact", limit=5, threshold=0.3, exclude=n["id"])]
+         for n in big.nodes.values()]
+big.cache_similar()
+cached = [[(s, m["id"]) for s, m in big.similar(n["title"], n["body"], "fact", limit=5, threshold=0.3, exclude=n["id"])]
+          for n in big.nodes.values()]
+check(plain == cached and any(plain), "similar() : mêmes résultats avec la mise en cache des mots")
+
 if not remove_tree(TMP, wait=60):
     print(f"(dossier pas effacé : {TMP})")
 print(f"\n{len(OK)} vérifications OK, {len(FAIL)} échec(s)")
