@@ -429,7 +429,8 @@ te tes toi ton tous tout toute toutes très tres tu un une vers via voici voila 
 non alors aussi bien bon juste veux veut vouloir merci dis donne donner mets mettre pouvoir dois doit
 maintenant aujourd hui demain hier toujours jamais rien chose choses truc trucs ok okay vsy bonjour salut
 parfait parfaite super genial top nickel cool excellent impeccable continue continuer go bravo réessayer réessaie
-combien fois font quel quels lequel laquelle lesquels lesquelles autre autres beaucoup trop tant"""
+combien fois font quel quels lequel laquelle lesquels lesquelles autre autres beaucoup trop tant
+entre contre selon parmi malgré durant"""
 _STOP_EN = """about above after again all also am an and any are as at be because been before being below
 between both but by can could did do does doing done down during each few for from further had has have
 having he her here hers him his how i if in into is it its itself just me more most my no nor not now of
@@ -443,7 +444,10 @@ _TOKEN = re.compile(r"[a-z0-9]+")
 
 
 def stem(tok: str) -> str:
-    if len(tok) > 4 and tok.endswith("s") and not tok.endswith("ss"):
+    """Pluriel neutralisé : un « s » final retiré (« commandes » → « commande »), sauf après u, i, a, où il fait
+    souvent partie du mot (« refus », « préavis », « Paris », « frais », « colis ») : « refu » ne retrouvait plus
+    « refusé ». Le pluriel de ces mots-là (« envois », « bleus ») retrouve son singulier par le préfixe."""
+    if len(tok) > 4 and tok.endswith("s") and not tok.endswith(("ss", "us", "is", "as")):
         return tok[:-1]
     return tok
 

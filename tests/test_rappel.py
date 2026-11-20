@@ -28,7 +28,7 @@ NOW = (2026, 11, 20, 10, 0, 0)  # a Friday: « la semaine dernière » is 09/11-
 # Floors of the benchmark (measured values: the test fails if recall gets worse). Hit counts are out of the 62
 # questions, false recalls out of the 38 negatives; then the long messages added after the audit (8 questions, 16
 # negatives).
-FLOOR_HIT1, FLOOR_HIT3, MAX_FALSE = 41, 43, 2
+FLOOR_HIT1, FLOOR_HIT3, MAX_FALSE = 43, 45, 2
 FLOOR_LONG_HIT3, MAX_LONG_FALSE = 8, 1
 
 PROJECTS = [  # (key, title, description): the project folders are created under the test folder

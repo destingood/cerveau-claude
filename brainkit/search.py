@@ -160,6 +160,13 @@ class Index:
         out += [(s, 0.8) for s in syn]
         seen.update(syn)
         strong = q in self.df or any(w >= 0.75 for _, w in out)
+        if strong and self.fuzzy and not self.code and len(q) >= 6:
+            # Mot connu : les autres mots de sa famille aussi (« surveille » → « surveillance », « publie » →
+            # « publication ») ; avant, la famille ne servait qu'aux mots absents de l'index.
+            fam = sorted((v for v in self._fuzzy_maps()[2].get(root(q), ()) if v != q and v not in seen),
+                         key=lambda v: (-self.df.get(v, 0), v))[:4]
+            out += [(v, 0.55) for v in fam]
+            seen.update(fam)
         approx = []
         if not strong and self.fuzzy and len(q) >= 4:  # mot inconnu : prononciation, faute de frappe ou même famille
             ph, dl, rt = self._fuzzy_maps()  # (mots courts exclus : « mer » ≈ « met » ferait du bruit)
@@ -231,7 +238,7 @@ class Index:
         return results[:limit]
 
 
-MEMIDX_TAG = f"m5:{sys.version_info[0]}.{sys.version_info[1]}"
+MEMIDX_TAG = f"m6:{sys.version_info[0]}.{sys.version_info[1]}"  # m6 : stem() garde « refus »
 _LOADED = {}  # index des souvenirs déjà chargé dans ce processus : {fichier: (empreinte, index)}
 
 
