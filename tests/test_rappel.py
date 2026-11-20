@@ -28,7 +28,7 @@ NOW = (2026, 11, 20, 10, 0, 0)  # a Friday: « la semaine dernière » is 09/11-
 # Floors of the benchmark (measured values: the test fails if recall gets worse). Hit counts are out of the 62
 # questions, false recalls out of the 38 negatives; then the long messages added after the audit (8 questions, 16
 # negatives).
-FLOOR_HIT1, FLOOR_HIT3, MAX_FALSE = 43, 45, 2
+FLOOR_HIT1, FLOOR_HIT3, MAX_FALSE = 52, 54, 2
 FLOOR_LONG_HIT3, MAX_LONG_FALSE = 8, 1
 
 PROJECTS = [  # (key, title, description): the project folders are created under the test folder
@@ -1014,6 +1014,19 @@ def main():
     check(lh3 >= FLOOR_LONG_HIT3, f"messages longs : hit@3 ≥ {FLOOR_LONG_HIT3}/{ln}", lmissed)
     check(len(lfalse) <= MAX_LONG_FALSE, f"messages longs hors sujet : faux rappels ≤ {MAX_LONG_FALSE}/{lnn}",
           [(p, res[p]) for p in lfalse])
+    # Keywords: the end-of-task instruction asks for them, and a memory given the words of a future question is recalled
+    # by it (A3: « logiciel » and « vidéos » appear nowhere in « Montage sur DaVinci Resolve »).
+    from brainkit import hooks
+    from brainkit.store import Brain
+    check("--keys" in hooks.STOP_REASON, "consigne de fin de tâche : demande des mots-clés (--keys) à l'enregistrement",
+          hooks.STOP_REASON)
+    a3 = next(q for q in QUESTIONS if q[0] == "A3")
+    with Brain.edit() as b:
+        b.nodes[world["ids"]["y03"]].setdefault("meta", {})["keys"] = "logiciel de montage vidéo"
+        b.dirty = True
+    keyed, _, _ = ask(world, a3[3], a3[2], "rappel-cles-A3")  # (ask puts the graph back as it was)
+    check(res["A3"] == [] and keyed[:1] == ["y03"], "mots-clés écrits sur le souvenir : la question qui le ratait le trouve",
+          (res["A3"], keyed))
     # Same answer from the real process (`python -I -S brain.py hook prompt`, Python implementation), on two questions
     # and a negative whose answer does not depend on the day.
     env = dict(os.environ, BRAIN_IMPL="python")

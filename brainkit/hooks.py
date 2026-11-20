@@ -24,7 +24,8 @@ STOP_REASON = (
     "🧠 Cerveau — avant de conclure, en UN SEUL appel Bash (chaîné avec &&) : "
     f"`{CMD} obs \"🔴 …\" \"🟡 …\"` (3 à 5 observations datées), puis le durable dit par l'utilisateur (0 à 3 : "
     f"feedback, user, decision, fact, learning, reference, todo) : `{CMD} add -t <type> -T \"titre\" -b \"fait + pourquoi "
-    "+ comment l'appliquer\"` (`-p none` hors projet ; `edit <id>` corrige). Jamais de secret."
+    "+ comment l'appliquer\" --keys \"synonymes, mots d'une question qui le chercherait\"` (`-p none` hors projet ; "
+    "`edit <id>` corrige). Jamais de secret."
 )
 WIKI_REASON = (" Wiki : une réponse qui vaut d'être gardée (synthèse, comparaison, analyse) → page Analyses "
                f"(`{CMD} add -t analyse -T … -b - --resume …`) puis `{CMD} wiki log query \"…\"` ; une source lue ou "

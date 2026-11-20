@@ -19,7 +19,7 @@ produit produits product products
 client clients customer customers acheteur buyer
 panier cart checkout
 paiement payment payer
-livraison livraisons shipping expedition delivery colis transporteur
+livraison livraisons shipping expedition delivery colis transporteur port envoi envoie envoyer expedier expedie
 prix price tarif tarifs cout cost
 facture factures invoice invoices facturation
 remboursement refund retour retours return
@@ -53,6 +53,14 @@ traduction translate traduire
 video videos
 article articles blog guide guides
 theme themes template
+entreprise entreprises societe societes employeur employeurs groupe
+salaire salaires remuneration salarial salariale salary
+supprimer suppression effacer delete
+seuil threshold
+suiveur trailing
+annee annees annuel annuelle yearly year
+miniature miniatures thumbnail thumbnails vignette
+clic clics click clicks ctr
 """
 
 SYN: dict[str, set] = {}
