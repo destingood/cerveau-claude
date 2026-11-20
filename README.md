@@ -102,6 +102,8 @@ garde sa propre mémoire.
 - **Le mode éco**, posé une fois au démarrage : les sorties de commandes très longues vont dans un fichier (aperçu
   seul dans la conversation), la conversation est résumée plus tôt, et `brain eco` liste les plugins jamais utilisés.
   `brain eco --annuler` pour revenir.
+- **La veille du PC** (Windows) : elle repère les serveurs MCP restés ouverts sans session et te le dit en une ligne ;
+  elle ne ferme jamais rien seule. `brain pc --clean` les liste, `brain pc --clean --oui` les ferme.
 - **Sorties compactées** avant d'arriver à Claude : une liste JSON arrive en tableau, une sortie déjà lue dans la
   session renvoie vers la première, les erreurs sont toujours gardées.
 - **Filtres appris** : `brain compact --decouvrir` repère le bruit qui revient dans les sorties de tes commandes et

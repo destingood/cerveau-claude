@@ -108,11 +108,12 @@ DEFAULT_CONFIG = {
     # une source du wiki à ingérer. `auto` : Claude le traite lui-même (sources ingérées, partie sûre appliquée, doutes
     # laissés et cités) ; false : la ligne le propose seulement.
     "dream": {"notice": True, "min_items": 3, "auto": True},
-    # PC (`brain pc`) : veille légère pendant les hooks (au plus toutes les check_minutes), fermeture seule des orphelins
-    # sûrs (serveurs MCP et sessions Claude dont le parent est mort depuis orphan_min_minutes), une ligne pour Claude
-    # seulement si la RAM est critique ou si une session tourne à vide (au plus toutes les alert_repeat_minutes).
+    # PC (`brain pc`) : veille légère pendant les hooks (au plus toutes les check_minutes). Elle ne ferme jamais rien :
+    # `auto_clean` = lister seul les serveurs MCP orphelins (parent mort depuis orphan_min_minutes) et les proposer en une
+    # ligne ; les fermer exige `brain pc --clean --oui`. Une ligne pour Claude aussi si la RAM est critique ou si une
+    # session tourne à vide (au plus toutes les alert_repeat_minutes).
     "pc": {"enabled": True, "check_minutes": 10, "auto_clean": True, "orphan_min_minutes": 10,
-           "orphan_patterns": ["mcp", "\\claude\\", "\\.claude\\plugins", "claude_pzs8sxrjxfjjc", "npm-cache\\_npx"],
+           "orphan_patterns": ["\\claude\\", "\\.claude\\plugins", "claude_pzs8sxrjxfjjc", "npm-cache\\_npx"],
            "idle_hours": 3, "spin_cores": 0.5, "ram_alert_gb": 2.5, "ram_alert_pct": 92, "alert_repeat_minutes": 60,
            "history_days": 14},
     # Délégation (`brain delegation`, brainkit/delegation.py) : chaque tâche au modèle le moins cher qui suffit, dans un

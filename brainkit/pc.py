@@ -3,10 +3,10 @@
 `brain pc` : deux instantanés de tous les processus (NtQuerySystemInformation, aucun handle ouvert), lignes de commande
 des seuls processus utiles, compteurs GPU (PDH, noms anglais : marche sur un Windows français), métadonnées des sessions
 de l'app Claude. Chaque action proposée est chiffrée (Go, cœurs).
-Veille (hooks) : mesure légère au plus toutes les `check_minutes`. Sa seule action automatique : fermer les serveurs MCP
-dont la session est morte (parent disparu, signature de serveur connue). Les sessions Claude, ouvertes ou archivées, ne
-sont jamais ralenties ni fermées par la veille : mesure et propositions chiffrées seulement (`brain pc --clean` à la
-main). Une ligne pour Claude seulement si c'est critique ; historique dans state/pc_history.jsonl.
+Veille (hooks) : mesure légère au plus toutes les `check_minutes`. Elle ne ferme jamais rien d'elle-même (décision de
+l'utilisateur) : elle repère les serveurs MCP dont la session est morte (parent disparu, serveur MCP reconnu) et le dit
+en une ligne. `brain pc --clean` les liste ; `brain pc --clean --oui` les ferme. Les sessions Claude, ouvertes ou
+archivées, ne sont jamais ralenties ni fermées par la veille. Historique dans state/pc_history.jsonl.
 """
 import ctypes
 import glob
@@ -503,6 +503,25 @@ def server_sig(cmd):
     return re.sub(r"(?<=.)@[\w.^~<>=-]*$", "", name.replace("\\", "/")).lower()
 
 
+# Serveur MCP reconnu à sa ligne de commande (jamais le simple « mcp » d'un nom de dossier : `python C:\dev\mcp-tools\x.py`
+# est un script de l'utilisateur). Paquets officiels, `mcp-server…`, `mcp_server`, FastMCP, paquets `…-mcp` / `@scope/mcp`.
+RX_MCP = re.compile(
+    r"@modelcontextprotocol[\\/]|mcp[-_]server|fastmcp|(?<![\\/])[\w.@-]-mcp(?=$|[\s\"'@=:])|@[\w.-]+/mcp(?=$|[\s\"'@=:])"
+    r"|\bmcp-(?:remote|proxy)\b|node_modules[\\/]+(?:@[\w.-]+[\\/]+)?[\w.-]*mcp[\w.-]*|@[\w.-]+[\\/]mcp(?=[\\/])", re.I)
+RX_LAUNCHER_MCP = re.compile(r"\b(?:npx|uvx|bunx|dlx)\"?\s+(?:-\S+\s+)*\"?[\w@.-]*mcp[\w@.-]*(?=$|[\s\"'])", re.I)
+
+
+def mcp_reason(cmd, known=()) -> str:
+    """Pourquoi cette ligne de commande est celle d'un serveur MCP (texte court), ou '' si rien ne le prouve."""
+    if not cmd:
+        return ""
+    sig = server_sig(cmd)
+    if sig and sig in known:
+        return f"serveur MCP « {sig} » connu"
+    m = RX_MCP.search(cmd) or RX_LAUNCHER_MCP.search(cmd)
+    return f"ligne de commande MCP (« {short(m.group(0).strip(), 40)} »)" if m else ""
+
+
 def usage_token(sig) -> str:
     base = sig.split("/")[-1]
     return re.sub(r"^(?:mcp-server-|server-|mcp-)|(?:-mcp-server|-mcp|-server)$", "", base)
@@ -585,15 +604,15 @@ def plugin_servers() -> dict:
 
 
 def find_orphans(procs, cmds, kids, now, pcfg, sessions=(), known=()) -> list:
-    """Processus Claude qui ne servent plus à rien (parent mort, assez anciens). Seul « serveur sans session » est
-    fermable automatiquement (auto=True) : serveur MCP identifié (signature connue d'une session vivante ou d'un plugin,
-    ou « mcp » dans la commande). Les restes de sessions et les sessions archivées encore en vie ne partent qu'à la
-    main (`brain pc --clean`)."""
+    """Processus Claude qui ne servent plus à rien (parent mort, assez anciens). Chaque suspect porte son âge et la raison
+    (`why`). « serveur sans session » (auto=True) = serveur MCP identifié (signature connue d'une session vivante ou
+    d'un plugin, ou ligne de commande MCP précise : voir mcp_reason) : listé par la veille. Rien n'est fermé sans
+    `brain pc --clean --oui`."""
     min_age = pcfg.get("orphan_min_minutes", 10) * 60
-    pats = [x.lower() for x in pcfg.get("orphan_patterns") or []]
+    pats = [x.lower() for x in pcfg.get("orphan_patterns") or [] if x.strip().lower() != "mcp"]  # « mcp » nu : trop large
     known = {x for x in known if x and x not in NOT_SERVERS}
     mine = _lineage(procs)
-    roots = []
+    roots, why = [], {}
     for p in procs.values():
         pid = p.pid
         if not pid or pid in mine or p.name.lower() not in ORPHAN_IMAGES:
@@ -607,14 +626,18 @@ def find_orphans(procs, cmds, kids, now, pcfg, sessions=(), known=()) -> list:
         if p.name.lower() == "claude.exe":
             if "stream-json" in lc and "--type=" not in lc:
                 roots.append((pid, "session sans app"))
-        elif server_sig(c) in known or "mcp" in lc:
+                why[pid] = "session Claude dont l'application est fermée"
+        elif mcp_reason(c, known):
             roots.append((pid, "serveur sans session"))
+            why[pid] = mcp_reason(c, known) + ", parent disparu"
         elif any(x in lc for x in pats):
             roots.append((pid, "outil Claude sans parent"))
+            why[pid] = "outil Claude dont le parent a disparu"
     for s in sessions:
         if s.get("archived") and s.get("app") and not s.get("current") and s["pid"] not in mine \
                 and s.get("idle", 0) >= min_age:
             roots.append((s["pid"], "session archivée encore en vie"))
+            why[s["pid"]] = "session archivée dans l'application, encore ouverte"
     out, taken = [], set()
     for pid, kind in roots:
         if pid in taken or pid not in procs:
@@ -623,6 +646,7 @@ def find_orphans(procs, cmds, kids, now, pcfg, sessions=(), known=()) -> list:
         taken.update(tree)
         name = procs[pid].name
         out.append({"pid": pid, "name": name, "kind": kind, "auto": kind == "serveur sans session", "tree": tree,
+                    "age": max(0.0, now - ft_to_unix(procs[pid].create)), "since": procs[pid].create, "why": why.get(pid, kind),
                     "ram": sum(procs[x].ws for x in tree), "label": short(mask(cmds.get(pid) or name)[0], 90)})
     return out
 
@@ -867,13 +891,13 @@ def actions(a, pcfg) -> list:
     man = [o for o in a["orphans"] if not o.get("auto")]
     if auto:
         ram = sum(o["ram"] for o in auto)
-        out.append((ram, 0.0, f"{len(auto)} serveur(s) MCP sans session : −{_size(ram)} → la veille les ferme seule "
-                              "(ou `brain pc --clean` tout de suite)"))
+        out.append((ram, 0.0, f"{len(auto)} serveur(s) MCP sans session : −{_size(ram)} → `brain pc --clean` "
+                              "les liste, `brain pc --clean --oui` les ferme (jamais fait automatiquement)"))
     if man:
         ram = sum(o["ram"] for o in man)
         kinds = ", ".join(sorted({o["kind"] for o in man}))
         out.append((ram, 0.0, f"{len(man)} processus Claude sans utilité ({kinds}) : −{_size(ram)} → "
-                              "`brain pc --clean` (jamais fait automatiquement)"))
+                              "`brain pc --clean --oui` (jamais fait automatiquement)"))
     for d in a["servers"]:
         if d["copies"] >= 3 and d["uses"] is not None and d["uses"] <= 2 and d.get("plugin"):
             out.append((d["ram_active"], 0.0,
@@ -956,22 +980,42 @@ def report(seconds=2.0, show_all=False, cfg=None) -> str:
             f"{who(pid)} {_pct(gpu['util'].get(pid, 0))}, {_size(gpu['vram'].get(pid, 0))}" for pid in top)]
     last = read_json(STATE_FILE, {}) or {}
     if last.get("killed_total"):
-        L.append(f"Veille : {last['killed_total']} orphelin(s) fermé(s) automatiquement depuis l'installation "
+        L.append(f"Orphelins fermés sur ta demande depuis l'installation : {last['killed_total']} "
                  f"({_size(last.get('killed_ram_total', 0))}).")
     return "\n".join(L)
 
 
-def clean(cfg=None) -> str:
+def candidates_text(orphans) -> list:
+    """Les lignes de la liste des suspects : PID, nom, âge, mémoire, raison. Pure."""
+    rows = []
+    for o in orphans:
+        rows.append(f"  pid {o['pid']} · {o['name']} · {_dur(o.get('age', 0))} · {_size(o['ram'])} · "
+                    f"{o.get('why') or o['kind']}\n      {o['label']}")
+    return rows
+
+
+def clean(cfg=None, oui=False) -> str:
+    """Sans `oui` : liste seulement les candidats. Avec `oui` : les ferme (décision de l'utilisateur : jamais sans)."""
     cfg = cfg or load_config()
     a = measure(0.3, cfg, with_gpu=False, usage_days=0)
-    if not a["orphans"]:
-        return "Aucun orphelin : rien à fermer."
+    if not oui:
+        return clean_report(a["orphans"], None, None, None)
     before = memory()["avail"]
-    done = kill_orphans(a["orphans"], a["_procs"])
+    done = kill_orphans(a["orphans"], a["_procs"]) if a["orphans"] else []
     time.sleep(1.5)
     after = memory()["avail"]
     _remember_kills(done)
-    lines = [f"🧹 {len(done)} orphelin(s) fermé(s) sur {len(a['orphans'])} trouvé(s) :"]
+    return clean_report(a["orphans"], done, before, after)
+
+
+def clean_report(orphans, done, before, after) -> str:
+    """Texte de `brain pc --clean` ; done=None : liste seule, rien n'a été fermé. Pure."""
+    if not orphans:
+        return "Aucun orphelin : rien à fermer."
+    if done is None:
+        return "\n".join([f"{len(orphans)} orphelin(s) candidat(s) à la fermeture (rien n'est fermé sans ton accord) :",
+                          *candidates_text(orphans), "", "Pour les fermer : `brain pc --clean --oui`"])
+    lines = [f"🧹 {len(done)} orphelin(s) fermé(s) sur {len(orphans)} trouvé(s) :"]
     lines += [f"  {o['kind']} · {o['killed']} processus · {_size(o['ram'])} · {o['label']}" for o in done]
     lines.append(f"RAM libre : {_gb(before)} → {_gb(after)} ({'+' if after >= before else ''}{_size(after - before)})")
     return "\n".join(lines)
@@ -988,8 +1032,9 @@ def _remember_kills(done) -> None:
 
 # ------------------------------------------------------------------------------------------ veille (hooks)
 def watch(cfg, force=False) -> str:
-    """Mesure légère ; ferme seuls les serveurs MCP orphelins (parent mort) ; apprend leurs signatures pour
-    les reconnaître plus tard ; une ligne pour Claude seulement si le PC est saturé ou qu'une session boucle."""
+    """Mesure légère ; ne ferme RIEN : repère les serveurs MCP orphelins (parent mort) et les propose une fois (une
+    ligne) ; apprend leurs signatures pour les reconnaître plus tard ; une autre ligne seulement si le PC est saturé
+    ou qu'une session boucle."""
     pcfg = cfg["pc"]
     st = read_json(STATE_FILE, {}) or {}
     now = time.time()
@@ -1027,8 +1072,8 @@ def watch(cfg, force=False) -> str:
     a = analyze(procs, cmds, mem, None, now, pcfg, cpu_total, known=set(sigs), plugins=st.get("plugins") or {})
     for d in a["servers"]:
         sigs[d["sig"]] = now  # serveur vu attaché à une session vivante → on saura le reconnaître orphelin
-    auto = [o for o in a["orphans"] if o.get("auto")]
-    done = kill_orphans(auto, procs) if pcfg.get("auto_clean", True) and auto else []
+    suspects = suspect_line(st, [o for o in a["orphans"] if o.get("auto")], pcfg)
+    done = []  # la veille ne ferme jamais rien
     idle = idle_sessions(a, pcfg)
     spin = spinning_sessions(a, pcfg) if 300 <= window <= 6 * 3600 else []
     crit = mem["avail"] < pcfg["ram_alert_gb"] * GB or mem["load"] >= pcfg["ram_alert_pct"] \
@@ -1045,19 +1090,16 @@ def watch(cfg, force=False) -> str:
         if spin:
             bits.append(f"{len(spin)} tourne(nt) à vide ({_cores(sum(s['cpu_self'] for s in spin))}) : "
                         + ", ".join(f"« {short(_name(s), 40)} »" for s in spin[:3]))
-        if done:
-            bits.append(f"{len(done)} orphelin(s) déjà fermé(s) (−{_size(sum(o['ram'] for o in done))})")
         line = ("🖥️ PC saturé : " + " · ".join(bits) + ". En fin de réponse, propose en une phrase de libérer la RAM "
                 "(archiver les sessions inactives avec l'accord de l'utilisateur : outil archive_session) ; "
                 "détail chiffré : `brain pc`.")
         st["alerted"] = now
+    if suspects:
+        line = f"{line}\n{suspects}" if line else suspects
     st.update({"checked": now, "idle_cpu": procs[0].cpu if procs.get(0) else None, "sigs": sigs,
                "prev": {str(pid): [p.create, p.cpu] for pid, p in procs.items() if p.name.lower() == "claude.exe"},
                "last": {"avail": mem["avail"], "total": mem["total"], "load": mem["load"], "sessions": len(a["sessions"]),
                         "idle": len(idle), "idle_ram": sum(s["ram"] for s in idle), "spin": len(spin)}})
-    if done:
-        st["killed_total"] = st.get("killed_total", 0) + len(done)
-        st["killed_ram_total"] = st.get("killed_ram_total", 0) + sum(o["ram"] for o in done)
     write_json(STATE_FILE, st)
     _history_add({"ts": int(now), "avail": round(mem["avail"] / GB, 2), "total": round(mem["total"] / GB, 1),
                   "load": mem["load"], "commit": round(mem["commit"] / GB, 1),
@@ -1066,6 +1108,22 @@ def watch(cfg, force=False) -> str:
                   "idle_gb": round(sum(s["ram"] for s in idle) / GB, 2), "spin": len(spin), "killed": len(done),
                   "killed_mb": sum(o["ram"] for o in done) // MB, "alert": bool(line)}, pcfg.get("history_days", 14))
     return line
+
+
+def suspect_line(st, suspects, pcfg) -> str:
+    """La ligne qui propose de fermer les serveurs MCP orphelins : dite une fois par suspect (st["proposed"] garde les
+    suspects déjà signalés, élagué à ceux encore là). Aucune fermeture. `auto_clean` = « lister automatiquement ». Pure."""
+    if not pcfg.get("auto_clean", True):
+        st["proposed"] = []
+        return ""
+    ids = [f"{o['pid']}:{o.get('since', 0)}" for o in suspects]
+    seen = set(st.get("proposed") or [])
+    st["proposed"] = ids
+    if not suspects or not set(ids) - seen:
+        return ""
+    ram = sum(o["ram"] for o in suspects)
+    return (f"🖥️ {len(suspects)} serveur(s) MCP orphelin(s) trouvé(s) (≈ {_size(ram)}) : dis-le en une phrase, "
+            "avec la commande pour les fermer : `brain pc --clean --oui` (liste d'abord : `brain pc --clean`).")
 
 
 def _history_add(row, keep_days) -> None:
@@ -1101,7 +1159,7 @@ def history(hours=24) -> str:
          f"(sur {rows[-1]['total']:.0f})".replace(".", ","),
          f"Sessions Claude : max {max(r['sessions'] for r in rows)} · dernière {rows[-1]['sessions']} "
          f"({rows[-1]['sess_gb']:.1f} Go)".replace(".", ","),
-         f"Orphelins fermés seuls : {sum(r['killed'] for r in rows)} ({sum(r['killed_mb'] for r in rows)} Mo) · "
+         f"Orphelins fermés (sur demande) : {sum(r['killed'] for r in rows)} ({sum(r['killed_mb'] for r in rows)} Mo) · "
          f"alertes : {sum(1 for r in rows if r.get('alert'))}"]
     if cpus:
         L.append(f"CPU moyen entre deux mesures : {sum(cpus) / len(cpus):.1f} % (max {max(cpus):.1f} %)".replace(".", ","))
