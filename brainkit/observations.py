@@ -131,6 +131,34 @@ def search(query, limit=3, project=None, today=None):
 _WHEN = {"dernier", "derniere", "prochain", "prochaine", "passe", "passee", "debut", "fin", "cours"}
 
 
+def key(o) -> str:
+    """Identifiant d'une observation, ligne de résumé comprise (qui n'en a pas) : pour ne pas la montrer deux fois."""
+    return o.get("id") or "r" + hashlib.sha1(f"{o.get('at')}|{o.get('t')}".encode("utf-8")).hexdigest()[:9]
+
+
+def recall(query, raw="", project=None, limit=1, exclude=(), min_cov=0.5, today=None):
+    """Rappel à chaque message, quand aucun souvenir ne répond : les observations notées en fin de tâche que le message
+    vise, avec la règle ordinaire du rappel des souvenirs (assez de mots du message, une bonne part de leur poids ;
+    search.recall_refusal), les 🔴 d'abord, celles du projet courant devant. Question datée (`raw`, le message avec ses
+    nombres : « hier », « la semaine dernière ») : celles de la période ; sans autre mot que la date, les plus importantes
+    de la période. Avant, seul `q` les retrouvait. → [observation]"""
+    from . import dates
+    from .search import Index, recall_refusal, undated
+    items = [o for o in _items() if key(o) not in exclude]
+    rng = dates.query_range(raw or query, today)
+    pool = [o for o in items if rng[0] <= _day(o) <= rng[1]] if rng else items
+    if not pool:
+        return []
+    text = undated(query) if rng else query
+    if not tokenize(text):
+        return sorted(pool, key=lambda o: (-o.get("p", 2), o["at"]))[:limit] if rng else []
+    idx = Index((i, [(o["t"], 1.0)]) for i, o in enumerate(pool))
+    scored = [(h["score"] * (1 + 0.2 * (pool[h["key"]].get("p", 2) - 2))
+               * (1.2 if project and pool[h["key"]].get("proj") == project else 1.0), pool[h["key"]])
+              for h in idx.search(text, 30) if not recall_refusal(h, min_cov)]
+    return [o for _, o in sorted(scored, key=lambda x: (-x[0], x[1]["at"]))][:limit]
+
+
 def recent(n=15, project=None, days=None):
     items = [o for o in _items() if project is None or o.get("proj") == project]
     if days is not None:

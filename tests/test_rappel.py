@@ -30,6 +30,7 @@ NOW = (2026, 11, 20, 10, 0, 0)  # a Friday: « la semaine dernière » is 09/11-
 # negatives).
 FLOOR_HIT1, FLOOR_HIT3, MAX_FALSE = 56, 58, 2
 FLOOR_LONG_HIT3, MAX_LONG_FALSE = 8, 1
+FLOOR_OBS = 4  # observations noted at the end of a task, found by the 4 questions that only they answer
 
 PROJECTS = [  # (key, title, description): the project folders are created under the test folder
     ("boutique", "Boutique Maison Yuzu", "Boutique en ligne Shopify de thé japonais (matcha, hojicha) et d'accessoires "
@@ -802,6 +803,30 @@ LONG_NEGATIVES = [
      "Qu'est-ce que je peux faire légalement ?"),
 ]
 
+# Observations noted at the end of tasks (`brain obs`): (project key or None, days ago, hour, text). No memory says the
+# same, so the questions below can only be answered from them; the negatives must not recall them either.
+OBSERVATIONS = [
+    ("boutique", 2, 15, "🔴 Le fournisseur de sachets kraft Embalpack est écarté : délai de 6 semaines, trop long pour Noël"),
+    ("boutique", 8, 11, "🟡 Test du mousseur électrique Hario : mousse trop légère, pas retenu pour la boutique"),
+    ("boutique", 4, 18, "🔴 Les coffrets de Noël seront fermés par un ruban rouge, sans papier cadeau"),
+    ("youtube", 4, 21, "🟡 Vidéo de l'étagère murale : montage terminé, il reste l'étalonnage des couleurs"),
+    ("youtube", 9, 20, "🟢 Commentaire épinglé ajouté sous la vidéo de l'établi pliant"),
+    ("pc", 8, 22, "🔴 Le pilote audio Realtek 6.0.9 coupe le son : revenu à la version 6.0.1, ne pas le mettre à jour"),
+    ("pc", 3, 21, "🟡 Filtre à poussière du boîtier nettoyé, températures redescendues de 4 °C"),
+    ("emploi", 6, 19, "🟡 Candidature envoyée chez Rhône Digital pour le poste de responsable e-commerce"),
+    ("emploi", 11, 20, "🟢 Profil LinkedIn mis à jour avec la certification GA4"),
+    ("trading", 5, 21, "🟡 Semaine sans trade : marché sans tendance claire, rien acheté"),
+    ("trading", 12, 20, "🔴 Ordre stop oublié sur Air Liquide : placé le lendemain, à ne plus refaire"),
+    (None, 3, 9, "🟡 Rendez-vous chez le dentiste déplacé au mercredi 3 décembre"),
+]
+# (id, current folder, message, a piece of the observation that answers it)
+OBS_QUESTIONS = [
+    ("O1", "boutique", "pourquoi on a écarté le fournisseur de sachets Embalpack ?", "Embalpack"),
+    ("O2", "pc", "quelle version du pilote audio Realtek je dois garder ?", "Realtek"),
+    ("O3", "emploi", "j'ai déjà postulé chez Rhône Digital ?", "Rhône Digital"),
+    ("O4", "boutique", "le mousseur Hario, on l'a gardé finalement ?", "Hario"),
+]
+
 
 # ------------------------------------------------------------------------------------------ frozen clock
 class _Date(_dtm.date):
@@ -875,12 +900,17 @@ def build_world(tmp):
                 n["status"] = opts["status"]
             ids[key] = n["id"]
         b.dirty = True
+    from brainkit import observations
+    for proj, age, hour, text in OBSERVATIONS:
+        at = _dtm.datetime.combine(_dtm.date(*NOW[:3]) - _dtm.timedelta(days=age), _dtm.time(hour, 30))
+        observations.add([text], project=ids[proj] if proj else None, now=at)
     return {"ids": ids, "rev": {v: k for k, v in ids.items()}, "graph": GRAPH_FILE, "base": GRAPH_FILE.read_bytes(),
             "neutre": tmp / "neutre", "projets": tmp / "projets"}
 
 
 # ------------------------------------------------------------------------------------------ the hook, as Claude Code runs it
 MEM_HEADER = "🧠 Souvenirs liés"
+OBS_HEADER = "🗒️ Observation"
 MEM_ID = re.compile(r"`([a-z0-9][a-z0-9\-]*)`\s*$")
 
 
@@ -916,6 +946,19 @@ def shown(ctx):
     return out
 
 
+def noted(ctx):
+    """Observation lines injected under « 🗒️ Observation notée en fin de tâche : »."""
+    out, inside = [], False
+    for line in (ctx or "").splitlines():
+        if line.startswith(OBS_HEADER):
+            inside = True
+        elif inside and line.startswith("- "):
+            out.append(line)
+        else:
+            inside = False
+    return out
+
+
 def cwd_of(world, proj):
     return world["projets"] / proj if proj else world["neutre"]
 
@@ -932,17 +975,18 @@ def run_all(world, tag="rappel"):
     """Every message in its own new session (`tag`-<id>). → ({id: keys shown}, {id: context}, ids whose exit code was
     not 0)."""
     res, ctxs, bad = {}, {}, []
-    for pid, proj, text in [(q[0], q[2], q[3]) for q in QUESTIONS + LONG_QUESTIONS] + NEGATIVES + LONG_NEGATIVES:
+    for pid, proj, text in [(q[0], q[2], q[3]) for q in QUESTIONS + LONG_QUESTIONS] + NEGATIVES + LONG_NEGATIVES \
+            + [(o[0], o[1], o[2]) for o in OBS_QUESTIONS]:
         res[pid], ctxs[pid], code = ask(world, text, proj, f"{tag}-{pid}")
         bad += [pid] if code else []
     return res, ctxs, bad
 
 
-def scores(res, questions=QUESTIONS, negatives=NEGATIVES):
-    """→ (hit@1, hit@3, negatives that recalled something)."""
+def scores(res, questions=QUESTIONS, negatives=NEGATIVES, ctxs=None):
+    """→ (hit@1, hit@3, negatives that recalled something: a memory, or an observation when `ctxs` is given)."""
     h1 = sum(1 for q in questions if res[q[0]][:1] and res[q[0]][0] in q[4])
     h3 = sum(1 for q in questions if any(k in q[4] for k in res[q[0]][:3]))
-    return h1, h3, [n[0] for n in negatives if res[n[0]]]
+    return h1, h3, [n[0] for n in negatives if res[n[0]] or (ctxs and noted(ctxs[n[0]]))]
 
 
 def main():
@@ -961,12 +1005,14 @@ def main():
 
     world = build_world(tmp)
     res, ctxs, bad = run_all(world)
-    h1, h3, false = scores(res)
-    _, lh3, lfalse = scores(res, LONG_QUESTIONS, LONG_NEGATIVES)
+    h1, h3, false = scores(res, ctxs=ctxs)
+    _, lh3, lfalse = scores(res, LONG_QUESTIONS, LONG_NEGATIVES, ctxs)
+    found_obs = [o[0] for o in OBS_QUESTIONS if any(o[3] in x for x in noted(ctxs[o[0]]))]
+    obs_elsewhere = [q[0] for q in QUESTIONS + LONG_QUESTIONS if noted(ctxs[q[0]])]
     n, nn, ln, lnn = len(QUESTIONS), len(NEGATIVES), len(LONG_QUESTIONS), len(LONG_NEGATIVES)
     if mesure:  # read by `brain bench`
         print(f"MESURE hit1={h1} hit3={h3} n={n} faux={len(false)} neg={nn} long={lh3} nlong={ln} faux_long={len(lfalse)} "
-              f"neg_long={lnn}")
+              f"neg_long={lnn} obs={len(found_obs)} nobs={len(OBS_QUESTIONS)}")
         remove_tree(tmp, wait=30)
         return 0
     pct = lambda a, b: f"{100 * a / b:.0f} %"  # noqa: E731
@@ -980,6 +1026,8 @@ def main():
     print("  hit@3 par catégorie : " + " · ".join(f"{c} {a}/{b}" for c, (a, b) in cats.items()))
     print(f"Messages longs ajoutés (trois phrases) : hit@3 {lh3}/{ln} · faux rappels {len(lfalse)}/{lnn}"
           + (f" ({', '.join(lfalse)})" if lfalse else ""))
+    print(f"Observations de fin de tâche : {len(found_obs)}/{len(OBS_QUESTIONS)} retrouvées · montrées à côté d'une autre "
+          f"question : {len(obs_elsewhere)}" + (f" ({', '.join(obs_elsewhere)})" if obs_elsewhere else ""))
     missed = [(pid, res[pid]) for pid, _, _, _, exp, _ in QUESTIONS if not any(k in exp for k in res[pid][:3])]
     lmissed = [(pid, res[pid]) for pid, _, _, _, exp, _ in LONG_QUESTIONS if not any(k in exp for k in res[pid][:3])]
     if detail:
@@ -988,7 +1036,9 @@ def main():
             print(f"  ✗ {pid} « {q[3][:90]} » attendu {q[4]} · montré {got or 'rien'}")
         for pid in false + lfalse:
             text = next(x[2] for x in NEGATIVES + LONG_NEGATIVES if x[0] == pid)
-            print(f"  ✗ {pid} (hors sujet) « {text[:90]} » · montré {res[pid]}")
+            print(f"  ✗ {pid} (hors sujet) « {text[:90]} » · montré {res[pid] + noted(ctxs[pid])}")
+        for pid in obs_elsewhere:
+            print(f"  · {pid} : observation montrée {noted(ctxs[pid])}")
 
     # The world itself: the clock brainkit reads is the frozen one, the expected answers exist and are recallable.
     from brainkit import common, dates
@@ -1014,6 +1064,17 @@ def main():
     check(lh3 >= FLOOR_LONG_HIT3, f"messages longs : hit@3 ≥ {FLOOR_LONG_HIT3}/{ln}", lmissed)
     check(len(lfalse) <= MAX_LONG_FALSE, f"messages longs hors sujet : faux rappels ≤ {MAX_LONG_FALSE}/{lnn}",
           [(p, res[p]) for p in lfalse])
+    # Observations: found when no memory answers, never twice in a session, never on a message about something else.
+    check(len(found_obs) >= FLOOR_OBS, f"observations de fin de tâche retrouvées par le hook ≥ {FLOOR_OBS}/{len(OBS_QUESTIONS)}",
+          {o[0]: noted(ctxs[o[0]]) for o in OBS_QUESTIONS})
+    o1 = OBS_QUESTIONS[0]
+    ask(world, o1[2], o1[1], "rappel-obs-session")
+    _, again, _ = ask(world, o1[2], o1[1], "rappel-obs-session")
+    check(noted(ctxs[o1[0]]) and not noted(again), "même question deux fois dans une session : l'observation une seule fois",
+          noted(again))
+    _, ctx, _ = ask(world, "on a fait quoi avant-hier ?", "boutique", "rappel-obs-date")
+    check(any("Embalpack" in x for x in noted(ctx)), "question seulement datée (« avant-hier ») : l'observation de ce jour-là",
+          ctx)
     # Keywords: the end-of-task instruction asks for them, and a memory given the words of a future question is recalled
     # by it (A3: « logiciel » and « vidéos » appear nowhere in « Montage sur DaVinci Resolve »).
     from brainkit import hooks

@@ -136,8 +136,9 @@ class Index:
         return [x[:4] for x in self.variants(q)]
 
     def variants(self, q):
-        """expand(), et pour chaque variante : approchée ? (prononciation, faute de frappe, même famille, sous-mots :
-        le mot n'est pas dans l'index tel quel)."""
+        """expand(), et pour chaque variante son degré d'approximation : 0 telle quelle (le mot, un préfixe, une forme,
+        un synonyme), 1 approchée (prononciation, faute de frappe, même famille d'un mot absent de l'index), 2 sous-mots
+        (dernier recours : quelques trigrammes en commun)."""
         out = [(q, 1.0)] if q in self.df else []
         if len(q) >= 4:
             # Préfixe : mot de l'index qui commence par le mot tapé (« dropship » → « dropshipping »). Troncature : mot de
@@ -182,7 +183,8 @@ class Index:
                         cands.setdefault(v, 0.55)
             approx = sorted(cands.items(), key=lambda kv: (-kv[1], -self.df.get(kv[0], 0)))[:6]
             out += approx
-        if not out and self.subword and len(q) >= 5 and not q.isdigit():  # dernier recours : les sous-mots, poids faible
+        sub = not out and self.subword and len(q) >= 5 and not q.isdigit()
+        if sub:  # dernier recours : les sous-mots, poids faible
             out = approx = [(v, SUBWORD_W) for v, _ in self.subwords(q)]
         # Un synonyme ne compte jamais plus que le mot demandé : sans plafond, le plus rare l'emporte (« boutique », dans
         # 7 souvenirs, cédait la tête à son synonyme « store », dans 3). Référence : le mot lui-même s'il est dans l'index ;
@@ -190,12 +192,14 @@ class Index:
         # du mot (« commandées » pour « commande ») gardent leur poids : elles disent le même mot.
         syn, approx = set(syn), {v for v, _ in approx}
         ref = self.idf(q) if q in self.df else min(map(self.idf, syn)) if syn else 0.0
-        return [(v, w, min(self.idf(v), ref) if v in syn else self.idf(v), v in syn, v in approx) for v, w in out]
+        level = 2 if sub else 1
+        return [(v, w, min(self.idf(v), ref) if v in syn else self.idf(v), v in syn, level if v in approx else 0)
+                for v, w in out]
 
     def search(self, query, limit=10):
         """→ [{key, score, matched (nb de termes trouvés), strong (dont trouvés tels quels : mot, préfixe, forme,
-        synonyme ; pas une forme approchée), midf (poids des termes trouvés), cov, nq, unknown (termes qu'aucun document
-        ne contient tels quels), vars}]"""
+        synonyme ; pas une forme approchée), loose (dont trouvés par leurs sous-mots seulement), midf (poids des termes
+        trouvés), cov, nq, unknown (termes qu'aucun document ne contient tels quels), vars}]"""
         qterms = list(dict.fromkeys(tokenize(query)))
         if not qterms or not self.N:
             return []
@@ -215,9 +219,9 @@ class Index:
             tf, dl, nm = self.tfs[i], self.lens[i], nms.get(i)
             norm = K1 * (1 - B + B * dl / self.avgdl)
             score = midf = 0.0
-            matched = strong = 0
+            matched = strong = loose = 0
             for q in qterms:
-                best, near = 0.0, False
+                best, near = 0.0, 0
                 for v, w, e, syn, fz in exp[q]:
                     f = tf.get(v)
                     if f and syn and nm and v in nm:
@@ -230,9 +234,10 @@ class Index:
                     score += best
                     matched += 1
                     strong += not near
+                    loose += near == 2
                     midf += qidf[q]
             if score > 0:
-                results.append({"key": self.keys[i], "score": score, "matched": matched, "strong": strong,
+                results.append({"key": self.keys[i], "score": score, "matched": matched, "strong": strong, "loose": loose,
                                 "midf": midf, "cov": midf / total, "nq": len(qterms), "unknown": unknown, "vars": vs})
         results.sort(key=lambda r: -r["score"])
         return results[:limit]
@@ -678,7 +683,7 @@ WORD = re.compile(r"[^\W\d_]+")
 # comptaient comme des mots du message que le souvenir ne contenait pas (« mon ordi plante avec un écran bleu, c'était
 # quoi la solution déjà ? » : « était », « déjà »). Formes écrites, sans accents ; jamais une date (« hier », « mois »).
 FILLER = frozenset("""
-deja presque mieux pendant apres avant depuis ensuite puis enfin souvent parfois vraiment absolument habitude
+deja presque mieux pendant apres avant depuis ensuite puis enfin finalement souvent parfois vraiment absolument habitude
 actuellement moment suite cas genre dessus dessous quelque quelques plusieurs
 etait etaient etais serait seraient sera seront soit sois avaient aurait auraient aura
 peuvent pourrait pourrais pouvais pouvait voudrais voudrait voulais voulait sais sait savais savait savoir faudrait
@@ -754,6 +759,9 @@ def _short_refusal(r, min_cov, min_score=0.0, query=None) -> str:
     need = 1 if nq == 1 else 2 if nq <= 4 else 3
     if r["matched"] < need:
         return f"trop peu de mots du message retrouvés ({r['matched']}/{nq}, il en faut {need})"
+    if nq > 1 and r["matched"] - r.get("loose", 0) < need:  # « postulé » n'est pas « poste » : 3 trigrammes communs
+        return (f"trop peu de mots du message retrouvés ({r['matched'] - r.get('loose', 0)}/{nq} sans ceux qui ne "
+                f"ressemblent que par des morceaux, il en faut {need})")
     if r.get("cov", 0) < min_cov:
         return f"couverture {r.get('cov', 0):.3f} < min_cov {min_cov} : les mots retrouvés pèsent peu dans le message"
     if r["score"] < min_score:

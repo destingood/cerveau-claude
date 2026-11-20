@@ -726,6 +726,8 @@ def on_prompt(data, cfg):
 
 
 MEM_HEADER = "🧠 Souvenirs liés :"
+OBS_HEADER = "🗒️ Observation notée en fin de tâche :"
+OBS_SESSION_CAP = 6  # observations montrées au plus par session
 
 
 def memory_line(n, full=True, query=None) -> str:
@@ -892,6 +894,17 @@ def recall_context(data, cfg, raw, saved="") -> str:
     if rc["files"] and proj and named in (None, proj["id"]) and tokenize(query)             and len(st.get("files", [])) < rc["session_cap_files"]:  # autre projet nommé : pas les fichiers d'ici
         from . import filesearch
         files = filesearch.recall_files(proj["id"], query, rc, exclude=set(st.get("files", [])))
+    # Aucun souvenir ne répond : l'observation notée en fin de tâche qui en parle (une par message, jamais deux fois la
+    # même dans la session) ; « on a fait quoi hier ? » n'a que des mots vides, mais une date.
+    obs, shown_obs = [], []
+    if not picks and not saved and len(st.get("obs_shown", [])) < OBS_SESSION_CAP \
+            and (tokenize(query) or search.DATED_RX.search(own)):
+        try:
+            from . import observations
+            obs = [(o, observations.line(o)) for o in observations.recall(
+                query, journal.clean_prompt(raw, 600), proj["id"] if proj else None, exclude=set(st.get("obs_shown", [])))]
+        except Exception as exc:
+            log(f"observations (rappel) : {exc!r}")
     # Lignes entières seulement, dans le budget (jamais une ligne coupée qu'on paierait sans pouvoir s'en servir) ;
     # seuls les éléments vraiment affichés sont marqués « déjà injectés ».
     budget = rc["max_chars"]
@@ -899,6 +912,8 @@ def recall_context(data, cfg, raw, saved="") -> str:
     used = sum(len(x) + 1 for x in out)
     shown_mem, shown_files = [], []
     groups = [(MEM_HEADER, picks, shown_mem)]
+    if obs:
+        groups.append((OBS_HEADER, obs, shown_obs))
     if files:
         groups.append((f"📁 Fichiers liés (carte `{proj['id']}`) :",
                        [(f, f"- `{f['path']}` — {short(f['desc'], 100)}") for f in files], shown_files))
@@ -939,6 +954,9 @@ def recall_context(data, cfg, raw, saved="") -> str:
         st["skills_hinted"] = sorted(set(st.get("skills_hinted", [])) | set(sk_names))
     if shown_pl:
         st["prompts"] = st.get("prompts", []) + [p["id"] for p in shown_pl]
+    if shown_obs:
+        from .observations import key
+        st["obs_shown"] = st.get("obs_shown", []) + [key(o) for o in shown_obs]
     st["recalled"] = recalled + len(shown_mem)
     st["injected"] = sorted(injected | {n["id"] for n in shown_mem})
     st["files"] = sorted(set(st.get("files", [])) | {f["path"] for f in shown_files})
