@@ -38,7 +38,9 @@ _DEADLINE = (r"(?:demain|apr[èe]s-demain|d['’]ici\b|avant (?:le|la|l['’]|le
 _NOW_VERBS = (r"relance|lance|dis|fais|regarde|montre|corrige|v[ée]rifie|envoie|ouvre|cherche|r[ée]ponds|donne|essaie|teste|"
               r"supprime|mets|[ée]cris|cr[ée]e|ajoute|modifie|explique|commence|continue|finis|arr[êe]te|pr[ée]pare|"
               r"g[ée]n[èe]re|trouve|compare|calcule|traduis|reformule|r[ée]sume|liste")
-_NOT_A_ORDER = (r"(?![^.!?\n]*(?:-(?:le|la|les|moi|nous|lui|leur|y)\b|[,;]\s*(?:(?:et|puis|ensuite) )?(?:" + _NOW_VERBS + r")\b))")
+# (« …, lance toujours les tests » : une règle, pas un ordre pour maintenant)
+_NOT_A_ORDER = (r"(?![^.!?\n]*(?:-(?:le|la|les|moi|nous|lui|leur|y)\b|[,;]\s*(?:(?:et|puis|ensuite) )?(?:" + _NOW_VERBS
+                + r")\b(?!\s+(?:toujours|jamais|syst[ée]matiquement|d[ée]sormais|dor[ée]navant)\b)))")
 REMEMBER_RX = re.compile(
     r"(?<!['‘’\"`])(?<!\bne )\b(souviens[- ]toi|retiens|"
     r"m[ée]moris[a-zé]*(?=\s*(?:qu(?:e\b|['’])|[çc]a\b|cela\b|ceci\b|bien\b|:))|"
@@ -673,6 +675,10 @@ _OTHER_PERSON_RX = re.compile(
     r"\b(?:mon|ma|mes|notre|nos|le|la|un|une) (?:femme|mari|epouse|epoux|fils|fille|enfants?|bebe|frere|soeur|mere|pere|"
     r"parents?|copine|copain|compagne|compagnon|conjoint|collegue|client|cliente|patron|patronne|employe|employee|"
     r"salarie|salariee|stagiaire|voisin|voisine|ami|amie|cousin|cousine|oncle|tante|candidat|candidate)\b")
+# Mots qu'une majuscule ne change pas en prénom : « jusqu'au 3 Décembre », « Lundi, je suis malade »
+_NOT_A_NAME = {"janvier", "fevrier", "mars", "avril", "mai", "juin", "juillet", "aout", "septembre", "octobre", "novembre",
+               "decembre", "lundi", "mardi", "mercredi", "jeudi", "vendredi", "samedi", "dimanche", "noel", "paques",
+               "toussaint", "ascension", "pentecote"}
 
 
 def private_about_other(text) -> str:
@@ -682,8 +688,8 @@ def private_about_other(text) -> str:
     topic = next((label for label, rx in _PRIVATE_RX if rx.search(f)), "")
     if not topic:
         return ""
-    first = re.match(r"[A-ZÀ-Ý][a-zà-ÿ'’-]{2,}", text)
-    named = bool(re.search(r"\s[A-ZÀ-Ý][a-zà-ÿ]{2,}", text[1:])) or bool(first and fold(first.group(0)) not in STOPWORDS)
+    words = re.findall(r"(?:^|(?<=\s))([A-ZÀ-Ý][a-zà-ÿ]{2,})\b(?!['’])", text)  # « J'ai », « Aujourd'hui » : pas des noms
+    named = any(fold(w) not in STOPWORDS and fold(w) not in _NOT_A_NAME for w in words)
     return topic if named or _OTHER_PERSON_RX.search(f) else ""
 
 

@@ -240,6 +240,11 @@ c, ctx, vu = W.prompt("n'oublie pas de relancer le fournisseur avant jeudi")
 taches = [n for n in W.memories() if n["type"] == "todo"]
 check(len(taches) == 1 and "relancer le fournisseur" in taches[0]["title"].lower() and vu and "à faire" in vu.lower(),
       "capture : « n'oublie pas de… avant jeudi » est un à-faire (type todo), dit à l'utilisateur", (W.titles(), vu))
+avant = len(W.memories())
+c, ctx, vu = W.prompt("retiens que pour le projet bougies, lance toujours les tests avant de pousser")
+regles = [n for n in W.memories() if n["type"] == "feedback" and "lance toujours les tests" in n["title"].lower()]
+check(len(W.memories()) == avant + 1 and len(regles) == 1,
+      "capture : « retiens que…, lance toujours… » est une règle, pas un ordre pour maintenant", (W.titles(), ctx[:300]))
 
 # doublon reformulé : détecté par l'index de recherche, dit en une ligne, rien d'écrit
 W.add("fact", "Délai du fournisseur Atelier Sato",
@@ -270,6 +275,10 @@ check(len(W.memories()) == avant + 1, "tiers : un fait sans information privée 
 avant = len(W.memories())
 c, ctx, vu = W.prompt("retiens que je suis en arrêt maladie jusqu'à lundi")
 check(len(W.memories()) == avant + 1, "tiers : une information sur l'utilisateur lui-même reste enregistrable", (W.titles(), ctx[:300]))
+avant = len(W.memories())
+c, ctx, vu = W.prompt("retiens que je serai hospitalisé du 2 au 5 Décembre pour une opération du genou")
+check(len(W.memories()) == avant + 1 and "privée" not in ctx,
+      "tiers : un mois écrit avec une majuscule (« Décembre ») n'en fait pas une autre personne", (W.titles(), ctx[:300]))
 
 # un mot de passe dit en phrase reste masqué (depuis la 8.24.0), la phrase n'est pas gardée
 avant = len(W.memories())
