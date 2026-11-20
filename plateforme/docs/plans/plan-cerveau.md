@@ -36,8 +36,8 @@ sauf les correctifs sûrs, faits tout de suite à ta demande.
    8.18.2 du 10/11, et son code source n'est pas dans le dépôt. C'est lui qui exécute, sur ton PC, les
    hooks de session, le rappel, `done`, le verrou et le masquage des mots de passe. L'audit a mesuré
    et corrigé le code Python. Sur ton PC, ces correctifs et les améliorations Python faites depuis le
-   10/11 ne valent donc pas pour ces chemins. Ils vaudront quand le code Rust sera corrigé ou quand le
-   cerveau passera par Python (décision E12).
+   10/11 ne valaient donc pas pour ces chemins. **Décision du 20/11 (E12) : Python partout** ; `brain.exe`
+   ne tourne plus que sur demande, en attendant son code source, corrigé et optimisé.
 7. **La suite** : 9 étapes pour le plugin (Réparer, Accélérer, Alléger, Regrouper), puis les étapes de
    la plateforme reprises du plan v2. Tes décisions sont au §10, les commandes à lancer sur ton PC au
    §11.
@@ -289,7 +289,7 @@ fusionnée). Chaque correctif a un test qui échoue sans lui :
   (décision E12). Le verrou rafraîchi protège aussi les écritures de `brain.exe`, s'il juge un verrou
   périmé à sa date, comme Python.
 
-**Étape 2 — Sécurité restante** (§5) : pages d'ami, données personnelles du cerveau commun, veille PC,
+**Étape 2 — Sécurité restante** (§5), **en cours depuis le 20/11** : pages d'ami, données personnelles du cerveau commun, veille PC,
 plugins désactivés tout seuls, écriture de `settings.json`, capture de « retiens » sur des tiers.
 - Fin (tests) : une page d'ami piégée n'entre plus comme consigne ; les 7 données personnelles du test
   ne sortent plus ; aucun processus fermé ni plugin coupé sans ton accord.
@@ -370,16 +370,16 @@ Amélioration continue, puis N3 domaine par domaine. N4 reste hors du plan.
 |---|---|---|
 | E1 | `python` absent sur Mac et Linux | Un petit lanceur qui essaie python3, python puis py, essayé sur un Windows sans Git Bash avant de le livrer |
 | E2 | Place des skills dans le contexte (mode éco : 0,5 %) | Garder 0,5 % et ajouter `skillListingMaxDescChars` à 250 : plus de skills visibles pour le même coût |
-| E3 | Rappel de mémoriser en fin de tâche (hook Stop) | Seulement quand une phrase durable a été dite, et un texte deux fois plus court |
+| E3 | Rappel de mémoriser en fin de tâche (hook Stop) | **Tranché le 20/11 : seulement quand une phrase durable a été dite, texte deux fois plus court** (étape 2) |
 | E4 | Seuil du rappel (`min_cov`) | 0,4, à confirmer par le banc d'essai de l'étape 3 |
-| E5 | Veille PC qui ferme des processus | Lister et proposer, ne plus fermer tout seul |
-| E6 | Plugins et skills désactivés tout seuls | Te les proposer, ne plus les couper tout seul |
+| E5 | Veille PC qui ferme des processus | **Tranché le 20/11 : lister et proposer**, plus rien fermé sans ton accord (étape 2) |
+| E6 | Plugins et skills désactivés tout seuls | **Tranché le 20/11 : te les proposer**, plus rien coupé sans ton accord (étape 2) |
 | E7 | Sauvegarde sans second disque | Dans ton dossier personnel, avec un message une fois |
 | E8 | Retirer les skills humanizer et vercel (tes plugins les ont déjà) | Oui ; tes amis sans ces plugins perdent la route d'installation |
 | E9 | Code de la plateforme qui sert seulement avec un budget API (≈ 6 000 lignes) | Le mettre de côté dans une branche, pas le supprimer |
 | E10 | prompts.chat actif par défaut | Le garder, maintenant que son texte est filtré ; le couper si tu ne t'en sers pas |
 | E11 | Fusionner la PR des correctifs sûrs et publier 8.24.0 | Oui, dès que la CI est verte |
-| E12 | `brain.exe` (Rust 8.18.2) tant que son code source n'est pas dans le dépôt | Passer par Python partout sous Windows : tous les correctifs actifs tout de suite, chaque hook un peu plus lent. Essai sans attendre une version : ajoute `"env": {"BRAIN_IMPL": "python"}` dans `%USERPROFILE%\.claude\settings.json`, puis compare avec les commandes du §11. Ensuite, D2 : le code Rust dans le dépôt, les correctifs portés, l'exe construit en CI |
+| E12 | `brain.exe` (Rust 8.18.2) tant que son code source n'est pas dans le dépôt | **Tranché le 20/11 : Python partout, puis optimiser en Rust.** Fait : `brain.exe` ne tourne plus que sur demande (`BRAIN_IMPL=rust`), tous les correctifs valent sous Windows. Ensuite (D2) : tu ajoutes le code Rust au dépôt ; Claude y reporte les correctifs faits depuis la 8.18.2, l'optimise, et l'exe est construit en CI |
 
 Toujours ouvertes depuis le plan v2 : D4 (ton nom dans l'historique public), D5 (ordre des domaines),
 D6 (ta boutique), D7 (réseaux sociaux visés), D8 (canal des approbations), D9 (modèle local),
