@@ -32,6 +32,7 @@ FLOOR_HIT1, FLOOR_HIT3, MAX_FALSE = 56, 58, 2
 FLOOR_LONG_HIT3, MAX_LONG_FALSE = 8, 1
 FLOOR_OBS = 4  # observations noted at the end of a task, found by the 4 questions that only they answer
 FLOOR_SESSION = 33  # questions still recalled when all of them follow one another in one session
+FLOOR_START = 58  # session start then the message: the expected memory recalled, or shown whole at start
 
 PROJECTS = [  # (key, title, description): the project folders are created under the test folder
     ("boutique", "Boutique Maison Yuzu", "Boutique en ligne Shopify de thé japonais (matcha, hojicha) et d'accessoires "
@@ -855,7 +856,8 @@ def freeze_clock():
 
 # ------------------------------------------------------------------------------------------ the test brain
 CONFIG = {"auto_map": {"enabled": False}, "eco": {"auto": False}, "backup": {"enabled": False}, "pc": {"enabled": False},
-          "promptlib": {"auto": False}, "journal": {"enabled": True, "rattrapage_le": "2026-11-20T08:00:00"}}
+          "promptlib": {"auto": False}, "journal": {"enabled": True, "rattrapage_le": "2026-11-20T08:00:00"},
+          "garde": {"le": "2026-11-20T09:00:00"}}  # nothing launched in the background at session start
 
 
 def stamp(age, i):
@@ -972,6 +974,15 @@ def ask(world, text, proj, sid):
     return [world["rev"].get(i, i) for i in shown(ctx)], ctx, code
 
 
+def start_then_ask(world, text, proj, sid):
+    """A real conversation: the SessionStart hook (its index), then the message in the same session. → (keys shown,
+    start text)."""
+    _, start = hook("session-start", {"session_id": sid, "cwd": str(cwd_of(world, proj)), "source": "startup",
+                                      "hook_event_name": "SessionStart"})
+    keys, _, _ = ask(world, text, proj, sid)
+    return keys, start
+
+
 def run_all(world, tag="rappel"):
     """Every message in its own new session (`tag`-<id>). → ({id: keys shown}, {id: context}, ids whose exit code was
     not 0)."""
@@ -1076,6 +1087,31 @@ def main():
     _, ctx, _ = ask(world, "on a fait quoi avant-hier ?", "boutique", "rappel-obs-date")
     check(any("Embalpack" in x for x in noted(ctx)), "question seulement datée (« avant-hier ») : l'observation de ce jour-là",
           ctx)
+    # Session start, then the message: the start index blocks for the session only the memories it shows whole (before,
+    # every id it printed, even cut to 100-200 characters). Answered: recalled, or already whole in the start text.
+    from brainkit.concis import concis
+    from brainkit.store import Brain as _B
+    nodes_now = _B.load().nodes
+    sh3 = answered = 0
+    for q in QUESTIONS:
+        keys, start = start_then_ask(world, q[3], q[2], f"rappel-demarrage-{q[0]}")
+        whole = [k for k in q[4] if concis(nodes_now[world["ids"][k]].get("body", "")) in " ".join(start.split())]
+        sh3 += any(k in q[4] for k in keys[:3])
+        answered += any(k in q[4] for k in keys[:3]) or bool(whole)
+    print(f"Démarrage de session puis message : hit@3 {sh3}/{len(QUESTIONS)} · souvenir attendu sous les yeux de Claude "
+          f"(rappelé ou montré en entier au démarrage) {answered}/{len(QUESTIONS)}")
+    check(answered >= FLOOR_START, f"démarrage puis message : souvenir attendu sous les yeux de Claude ≥ {FLOOR_START}/"
+          f"{len(QUESTIONS)}", (sh3, answered))
+    _, start = hook("session-start", {"session_id": "rappel-bloques", "cwd": str(world["neutre"]), "source": "startup",
+                                      "hook_event_name": "SessionStart"})
+    from brainkit.hooks import load_state
+    blocked = set(load_state("rappel-bloques").get("injected", []))
+    flat = " ".join(start.split())
+    printed = {i for i in re.findall(r"`([a-z0-9][a-z0-9\-]*)`", start) if i in nodes_now}
+    cut = {i for i in printed if nodes_now[i]["type"] != "project" and concis(nodes_now[i].get("body", "")) not in flat}
+    check(cut and not cut & blocked and all(concis(nodes_now[i].get("body", "")) in flat for i in blocked),
+          "démarrage : seuls les souvenirs montrés en entier comptent comme déjà vus (les coupés restent rappelables)",
+          (sorted(cut & blocked), len(cut), len(blocked)))
     # Session cap: the questions that recall their memory in a new session, one after the other in ONE session (in the
     # audit, 12 memories after 9 messages, then nothing for the other 24, silently).
     good = [q for q in QUESTIONS if any(k in q[4] for k in res[q[0]][:3])]
