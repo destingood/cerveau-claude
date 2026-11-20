@@ -32,7 +32,13 @@ sauf les correctifs sûrs, faits tout de suite à ta demande.
    dans le journal d'audit, ce que Claude lui envoie : à corriger **avant** de le brancher.
 5. **Déjà corrigé le 20/11** (§9, étape 1) : douze défauts, dont tous ceux qui faisaient perdre un
    souvenir sans le dire, avec un test chacun.
-6. **La suite** : 9 étapes pour le plugin (Réparer, Accélérer, Alléger, Regrouper), puis les étapes de
+6. **Attention, sous Windows.** `brain.exe`, la version Rust du cerveau, n'a pas changé depuis la
+   8.18.2 du 10/11, et son code source n'est pas dans le dépôt. C'est lui qui exécute, sur ton PC, les
+   hooks de session, le rappel, `done`, le verrou et le masquage des mots de passe. L'audit a mesuré
+   et corrigé le code Python. Sur ton PC, ces correctifs et les améliorations Python faites depuis le
+   10/11 ne valent donc pas pour ces chemins. Ils vaudront quand le code Rust sera corrigé ou quand le
+   cerveau passera par Python (décision E12).
+7. **La suite** : 9 étapes pour le plugin (Réparer, Accélérer, Alléger, Regrouper), puis les étapes de
    la plateforme reprises du plan v2. Tes décisions sont au §10, les commandes à lancer sur ton PC au
    §11.
 
@@ -71,6 +77,7 @@ sauf les correctifs sûrs, faits tout de suite à ta demande.
 | Plateforme, réglages | 17 fonctions disponibles, **42 bloquées** par des réglages `A_DEFINIR` / `A_VERIFIER` (55 marqueurs dans 12 fichiers) |
 | Plateforme, documents | Backlog : 279 points ouverts sur 359. 69 ADR, dont 41 encore « proposé ». 15 plans et 16 comptes rendus. README de 3 lignes |
 | Dépôt | 15 branches en trop : toutes déjà dans `main` (vérifié ligne à ligne) |
+| `brain.exe` (Windows) | Version Rust 8.18.2 du 10/11, livrée telle quelle depuis, sans son code source (C5, D2). Ses textes montrent qu'il traite les hooks de session, le rappel (`min_cov`, `session_cap_items`), `done`, le verrou du graphe et les mots de passe ; il rend le reste à Python |
 
 ## 4. Tes quatre gênes : causes et corrections
 
@@ -278,6 +285,9 @@ fusionnée). Chaque correctif a un test qui échoue sans lui :
 - prompts.chat : identifiant propre, description hors du contexte, délai total ;
 - messages en français à la place des traces Python ; mémoire hors service signalée au démarrage ;
 - `brain done` n'archive qu'un à-faire ; `brain pc` répond hors de Windows.
+- Sous Windows, ces correctifs valent pour ce que fait Python, pas pour ce que fait `brain.exe`
+  (décision E12). Le verrou rafraîchi protège aussi les écritures de `brain.exe`, s'il juge un verrou
+  périmé à sa date, comme Python.
 
 **Étape 2 — Sécurité restante** (§5) : pages d'ami, données personnelles du cerveau commun, veille PC,
 plugins désactivés tout seuls, écriture de `settings.json`, capture de « retiens » sur des tiers.
@@ -369,6 +379,7 @@ Amélioration continue, puis N3 domaine par domaine. N4 reste hors du plan.
 | E9 | Code de la plateforme qui sert seulement avec un budget API (≈ 6 000 lignes) | Le mettre de côté dans une branche, pas le supprimer |
 | E10 | prompts.chat actif par défaut | Le garder, maintenant que son texte est filtré ; le couper si tu ne t'en sers pas |
 | E11 | Fusionner la PR des correctifs sûrs et publier 8.24.0 | Oui, dès que la CI est verte |
+| E12 | `brain.exe` (Rust 8.18.2) tant que son code source n'est pas dans le dépôt | Passer par Python partout sous Windows : tous les correctifs actifs tout de suite, chaque hook un peu plus lent. Essai sans attendre une version : ajoute `"env": {"BRAIN_IMPL": "python"}` dans `%USERPROFILE%\.claude\settings.json`, puis compare avec les commandes du §11. Ensuite, D2 : le code Rust dans le dépôt, les correctifs portés, l'exe construit en CI |
 
 Toujours ouvertes depuis le plan v2 : D4 (ton nom dans l'historique public), D5 (ordre des domaines),
 D6 (ta boutique), D7 (réseaux sociaux visés), D8 (canal des approbations), D9 (modèle local),

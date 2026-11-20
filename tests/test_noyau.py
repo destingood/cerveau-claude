@@ -381,7 +381,10 @@ check(isinstance(data, dict) and "chat-felix" in data.get("nodes", {}) and "chat
 NEUF = TMP / "neuf"
 (NEUF / "brain").mkdir(parents=True)
 (NEUF / "brain" / "graph.json").write_text("[]", encoding="utf-8")
-env = dict(os.environ, BRAIN_HOME=str(NEUF / "brain"), CLAUDE_CONFIG_DIR=str(NEUF / "claude"), HOME=str(NEUF / "maison"),
+# BRAIN_IMPL=python : sous Windows, brain.py passerait sinon par brain.exe (Rust, version 8.18.2), qui n'a pas ces
+# correctifs ; ce test vérifie le code Python.
+env = dict(os.environ, BRAIN_IMPL="python", BRAIN_HOME=str(NEUF / "brain"), CLAUDE_CONFIG_DIR=str(NEUF / "claude"),
+           HOME=str(NEUF / "maison"),
            USERPROFILE=str(NEUF / "maison"), PYTHONIOENCODING="utf-8")
 r = subprocess.run([sys.executable, str(CODE / "brain.py"), "add", "-T", "Forme invalide", "-b", "rien"],
                    capture_output=True, env=env, cwd=str(WORK), timeout=120)
@@ -478,7 +481,10 @@ DN = TMP / "done"
 (DN / "brain" / "graph.json").write_text(json.dumps({"version": 1, "edges": [], "nodes": {
     "regle-prix": node("regle-prix", "feedback", "Prix toujours TTC"),
     "appeler-boxtal": node("appeler-boxtal", "todo", "Appeler Boxtal")}}), encoding="utf-8")
-env = dict(os.environ, BRAIN_HOME=str(DN / "brain"), CLAUDE_CONFIG_DIR=str(DN / "claude"), HOME=str(DN / "maison"),
+# BRAIN_IMPL=python : sous Windows, brain.py passerait sinon par brain.exe (Rust, version 8.18.2), qui n'a pas ces
+# correctifs ; ce test vérifie le code Python.
+env = dict(os.environ, BRAIN_IMPL="python", BRAIN_HOME=str(DN / "brain"), CLAUDE_CONFIG_DIR=str(DN / "claude"),
+           HOME=str(DN / "maison"),
            USERPROFILE=str(DN / "maison"), PYTHONIOENCODING="utf-8")
 
 
@@ -519,7 +525,10 @@ nodes = {
                                project="boutique", created=RECENT),
 }
 (FUS / "brain" / "graph.json").write_text(json.dumps({"version": 1, "nodes": nodes, "edges": []}), encoding="utf-8")
-env = dict(os.environ, BRAIN_HOME=str(FUS / "brain"), CLAUDE_CONFIG_DIR=str(FUS / "claude"), HOME=str(FUS / "maison"),
+# BRAIN_IMPL=python : sous Windows, brain.py passerait sinon par brain.exe (Rust, version 8.18.2), qui n'a pas ces
+# correctifs ; ce test vérifie le code Python.
+env = dict(os.environ, BRAIN_IMPL="python", BRAIN_HOME=str(FUS / "brain"), CLAUDE_CONFIG_DIR=str(FUS / "claude"),
+           HOME=str(FUS / "maison"),
            USERPROFILE=str(FUS / "maison"), PYTHONIOENCODING="utf-8")
 r = subprocess.run([sys.executable, str(CODE / "brain.py"), "consolidate", "--auto"], capture_output=True, env=env,
                    cwd=str(WORK), timeout=120)
