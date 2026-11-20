@@ -13,7 +13,7 @@ from .common import fold, stem, tokenize
 _GROUPS = """
 boutique shop store magasin ecommerce e-commerce
 commande order commandes
-vente ventes sale sales vendre
+vente ventes sale sales vendre vendu vendus
 achat achats purchase acheter buy
 produit produits product products
 client clients customer customers acheteur buyer

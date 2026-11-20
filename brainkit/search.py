@@ -13,7 +13,7 @@ import re
 import sys
 from collections import Counter, defaultdict
 
-from .common import days_since, tokenize
+from .common import days_since, fold, tokenize
 from .lexicon import INFLEXIONS, SYN, deletes, faux_amis, phon, root, within_one
 
 K1, B = 1.3, 0.7
@@ -557,6 +557,102 @@ def _fuse(brain, query, bm25, limit, project, types, include_archived, only_proj
     return out
 
 
+_MONTHS = ("janvier", "fevrier", "mars", "avril", "mai", "juin", "juillet", "aout", "septembre", "octobre", "novembre",
+           "decembre")
+_MONTH_IN_TEXT = re.compile(r"\b(" + "|".join(_MONTHS) + r")\b(?:\s+(?:de\s+|d')?(\d{4}))?")
+DATED_TOPIC = 3  # mots du sujet, au plus, d'une question datée : au-delà, la date n'est qu'un détail du message
+
+
+def _month_spans(text, ref) -> list:
+    """Mois cités dans un texte (« Octobre 2026 : 6 480 € de ventes », « à lancer en janvier ») → [(1er, dernier jour)].
+    Sans année : l'occurrence la plus proche de `ref`, la date où le souvenir a été écrit."""
+    import datetime as _dt
+    out = []
+    for m in _MONTH_IN_TEXT.finditer(fold(text or "")):
+        mo = _MONTHS.index(m.group(1)) + 1
+        years = [int(m.group(2))] if m.group(2) else [ref.year - 1, ref.year, ref.year + 1]
+        y = min(years, key=lambda y: abs((_dt.date(y, mo, 15) - ref).days))
+        out.append((_dt.date(y, mo, 1), _dt.date(y + (mo == 12), mo % 12 + 1, 1) - _dt.timedelta(days=1)))
+    return out
+
+
+def _periods(n) -> tuple:
+    """→ (périodes dont parle le souvenir : jours et mois cités, échéance, fin de validité ; jours où il a été écrit)."""
+    import datetime as _dt
+    from . import dates
+
+    def day(raw):
+        try:
+            return _dt.date.fromisoformat(str(raw)[:10])
+        except (TypeError, ValueError):
+            return None
+
+    written = [d for d in (day(n.get("created")), day(n.get("updated"))) if d]
+    ref = written[0] if written else _dt.date.today()
+    text = f"{n.get('title', '')}\n{n.get('body', '')}"
+    about = [(d, d) for d in dates.dates_in(text, ref)] + _month_spans(text, ref)
+    meta = n.get("meta") or {}
+    about += [(d, d) for d in (day(meta.get(k)) for k in ("valid_to", "due", "done")) if d]
+    return about, written
+
+
+def undated(query) -> str:
+    """La question sans ses mots de date (« combien on a vendu le mois dernier » → « vendu »)."""
+    from .observations import _WHEN
+    return " ".join(t for t in tokenize(DATED_RX.sub(" ", query or "")) if t not in _WHEN and not t.isdigit())
+
+
+def dated_recall(brain, raw, query, project=None, today=None, limit=3, use_cache=True) -> list:
+    """Rappel d'une question datée courte (« qu'est-ce qui s'est passé la semaine dernière pour ma recherche d'emploi ? »,
+    « combien on a vendu le mois dernier ? », « qu'est-ce que j'ai noté hier sur la chaîne ? ») : le hook n'a pas le canal
+    des dates de `q`, et ses mots de date comptaient comme des mots que le souvenir ne contenait pas. → les souvenirs de
+    cette période (`raw` : le message, avec ses nombres) qui parlent du sujet (`query` sans les mots de date : un mot
+    trouvé tel quel dans le souvenir ou dans le titre de son projet) ; sans autre sujet que la date, ceux du projet
+    courant. Un souvenir parle des dates qu'il cite (jour, mois, échéance), sinon de celle où il a été écrit : ceux qui
+    citent la période passent d'abord, et un souvenir écrit pendant la période mais qui en cite une autre (le chiffre de
+    septembre noté début octobre) ne répond pas à « le mois dernier ». → [résultat (via « date »)]"""
+    from . import dates
+    rng = dates.query_range(raw, today)
+    if not rng:
+        return []
+    start, end = rng
+    topic = undated(query)
+    terms = list(dict.fromkeys(tokenize(topic)))
+    if len(terms) > DATED_TOPIC:
+        return []
+    idx = memory_index(brain, use_cache=use_cache)
+    hits = {r["key"]: r for r in idx.search(topic, limit=10 ** 6)} if terms else {}
+    forms = {t: {t} | {v for v, _, _, _, approx in idx.variants(t) if not approx} for t in terms}
+    pos = {k: i for i, k in enumerate(idx.keys)}
+    span = (end - start).days + 2  # un mois cité ne dit rien d'un jour (« en novembre » n'est pas « hier »)
+    mid = start + (end - start) / 2
+    cands = []
+    for n in brain.active():
+        if n["type"] == "project":
+            continue
+        about, written = _periods(n)
+        cited = [a + (b - a) / 2 for a, b in about if a <= end and b >= start and (b - a).days <= span]
+        when = [d for d in written if start <= d <= end]
+        if not cited and not when:
+            continue
+        if terms:  # la moitié au moins des mots du sujet, dans le souvenir ou dans le titre de son projet
+            tf = idx.tfs[pos[n["id"]]] if n["id"] in pos else {}
+            home = brain.nodes.get(n.get("project")) if n.get("project") else None
+            title = set(tokenize(home["title"])) if home else set()
+            if 2 * sum(1 for fs in forms.values() if any(f in tf or f in title for f in fs)) < len(terms):
+                continue
+        elif project and n.get("project") != project:
+            continue
+        own = hits.get(n["id"])
+        cands.append((not cited, bool(about) and not cited, -(own["score"] if own else 0.0), n.get("project") != project,
+                      min(abs((d - mid).days) for d in cited or when), n["id"], own, n))
+    if any(not c[0] for c in cands):
+        cands = [c for c in cands if not c[1]]
+    cands.sort(key=lambda c: c[:6])
+    return [dict(c[6] or {"key": c[7]["id"], "score": 0.0, "matched": 0, "nq": len(terms)}, node=c[7], via="date")
+            for c in cands[:limit]]
+
+
 LONG_BODY, LONG_COV = 400, 0.62
 NEAR = 12  # mots : au-delà, deux termes du message ne parlent plus de la même chose dans le souvenir
 
@@ -595,7 +691,6 @@ koi kel kelle pr pk pq bcp tjs dc ds ki jsp
 
 def drop_filler(text) -> str:
     """Le message sans ses mots de remplissage (FILLER) : la requête du rappel automatique."""
-    from .common import fold
     return WORD.sub(lambda m: " " if fold(m.group()) in FILLER else m.group(), str(text or ""))
 
 

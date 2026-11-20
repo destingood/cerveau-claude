@@ -750,7 +750,24 @@ def _rule_picks(found, injected, rc, accept, query=None) -> list:
 
 
 def pick_memories(brain, query, rc, project=None, injected=(), before=None, prev=(), raw=None, log_to=None) -> list:
-    """Souvenirs à injecter pour un message → [(souvenir, ligne)].
+    """Souvenirs à injecter pour un message → [(souvenir, ligne)] : ceux de la période d'une question datée d'abord
+    (search.dated_recall : « la semaine dernière », « le mois dernier », « hier »), puis ceux du texte (_text_picks)."""
+    picks = _text_picks(brain, query, rc, project, injected, before, prev, raw, log_to)
+    if before or not raw:  # rejeu du neurone : la règle du texte seule
+        return picks
+    try:
+        dated = [r["node"] for r in search.dated_recall(brain, journal.clean_prompt(raw, 600), query, project,
+                                                        limit=rc["max_items"]) if r["node"]["id"] not in injected]
+    except Exception as exc:
+        log(f"rappel daté : {exc!r}")
+        return picks
+    ids = {n["id"] for n in dated}
+    return ([(n, memory_line(n, query=query)) for n in dated] + [p for p in picks if p[0]["id"] not in ids])[:max(
+        rc["max_items"], len(picks))]
+
+
+def _text_picks(brain, query, rc, project=None, injected=(), before=None, prev=(), raw=None, log_to=None) -> list:
+    """Souvenirs du texte du message → [(souvenir, ligne)].
     Règle fixe (`recall.neurone` « off », ou neurone pas encore appris) : ceux que `accept_recall` laisse passer, en
     ligne complète. Neurone appris sur les échanges de cet utilisateur (neurone.py) : les meilleurs candidats classés
     par probabilité d'être utiles ; ligne complète si elle est forte (≥ neurone_haut), titre seul pour les autres que la
