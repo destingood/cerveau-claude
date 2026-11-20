@@ -129,13 +129,15 @@ def build_index(brain, cfg=None, focus=None, previews=None) -> str:
         return f"- {n['title']} `{n['id']}`"
 
     def core(nodes, allowance, longest=200, shortest=110):
-        """Profil et règles valent dans toutes les sessions : le corps se raccourcit pour qu'ils tiennent tous,
-        plutôt que d'en cacher (avant : 2 profils sur 4 et 3 règles sur 4 visibles dans un projet)."""
+        """Profil et règles valent dans toutes les sessions : aucun n'est jamais caché. Le corps se raccourcit pour qu'ils
+        tiennent tous ; quand la place manque même ainsi, chacun garde au moins son titre (et son id)."""
         if not nodes:
             return []
         over = sum(len(n["title"]) + len(n["id"]) + 12 for n in nodes) / len(nodes)
-        chars = int(max(shortest, min(longest, (allowance - 30) / len(nodes) - over)))
-        return [line(n, chars) for n in nodes]
+        chars = int((allowance - 30) / len(nodes) - over)
+        if chars < 40:  # un corps de moins de 40 caractères ne dit plus rien : titres seuls, tous présents
+            return [title_line(n) for n in nodes]
+        return [line(n, min(longest, chars)) for n in nodes]
 
     ahead = cfg.get("due", {}).get("days_ahead", 7)
     dues = []
@@ -157,8 +159,8 @@ def build_index(brain, cfg=None, focus=None, previews=None) -> str:
 
     sections = [
         ("⏰ Échéances", lambda a: [f"- {n['title']} — {dates.human(d)} `{n['id']}`" for _, n, d in dues][:6]),
-        ("👤 Profil", lambda a: core(nodes_of(lambda n: n["type"] == "user")[:8], a)),
-        ("📏 Règles & préférences", lambda a: core(nodes_of(lambda n: n["type"] == "feedback")[:12], a)),
+        ("👤 Profil", lambda a: core(nodes_of(lambda n: n["type"] == "user"), a)),
+        ("📏 Règles & préférences", lambda a: core(nodes_of(lambda n: n["type"] == "feedback"), a)),
         ("📂 Projets" if not focus else "📂 Autres projets", lambda a: others),
         ("💡 Savoir global (décisions, faits, apprentissages)" + (" — titres" if focus else ""),
          rest(lambda n: n["type"] in ("decision", "fact", "learning"), 130, 10)),
@@ -194,8 +196,19 @@ def build_index(brain, cfg=None, focus=None, previews=None) -> str:
 
     full = [make(10 ** 6) for _, make in sections]
     needs = [len(t) + 5 + sum(len(x) + 1 for x in items) if items else 0 for (t, _), items in zip(sections, full)]
-    for i, ((title, make), allowance) in enumerate(zip(sections, _allocate(needs, WEIGHTS_FOCUS if focus else WEIGHTS,
-                                                                            avail))):
+    alloc = _allocate(needs, WEIGHTS_FOCUS if focus else WEIGHTS, avail)
+    # Profil et règles : au moins leur titre, quoi qu'il arrive. Ce qui manque est pris aux sections moins importantes
+    # (de la dernière à la première), jamais aux règles.
+    floors = {i: len(sections[i][0]) + 5 + sum(len(title_line(n)) + 1 for n in nodes_of(lambda n, t=t: n["type"] == t))
+              for i, t in ((1, "user"), (2, "feedback")) if needs[i]}
+    deficit = sum(max(0, f - alloc[i]) for i, f in floors.items())
+    for i in range(len(alloc) - 1, 2, -1):
+        take = min(alloc[i], max(deficit, 0))
+        alloc[i] -= take
+        deficit -= take
+    for i, f in floors.items():
+        alloc[i] = max(alloc[i], f)
+    for i, ((title, make), allowance) in enumerate(zip(sections, alloc)):
         if allowance:  # savoir global, références et à-faire d'un index de projet : titres rappelables
             put(title, full[i] if needs[i] <= allowance else make(allowance), allowance, preview=bool(focus) and i > 3)
     lines.append("\n" + footer)
