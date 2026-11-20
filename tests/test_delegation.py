@@ -295,6 +295,17 @@ import importlib.util  # noqa: E402
 spec = importlib.util.spec_from_file_location("lanceur_cerveau", CODE / "brain.py")
 launcher = importlib.util.module_from_spec(spec)
 spec.loader.exec_module(launcher)
+# brain.exe (Rust, resté à la 8.18.2) seulement sur demande : par défaut, Python partout, avec ses correctifs.
+real_name, real_isfile = launcher.os.name, launcher.os.path.isfile
+try:
+    launcher.os.name, launcher.os.path.isfile = "nt", (lambda p: True)
+    choix = {v: (os.environ.pop("BRAIN_IMPL", None), os.environ.update({"BRAIN_IMPL": v}) if v else None,
+                 launcher.rust_exe())[2] for v in ("", "python", "rust")}
+finally:
+    launcher.os.name, launcher.os.path.isfile = real_name, real_isfile
+    os.environ.pop("BRAIN_IMPL", None)
+check(choix[""] is None and choix["python"] is None and str(choix["rust"]).endswith("brain.exe"),
+      "lanceur Windows : Python par défaut, brain.exe seulement avec BRAIN_IMPL=rust", choix)
 check(all(x in launcher.PYTHON_ONLY for x in ("mcp", "delegation", "apprendre", "echange"))
       and launcher.PYTHON_HOOKS == ("pre-agent",) and set(launcher.PLUS_HOOKS) == set(plus.EVENTS),
       "lanceur : nouvelles commandes et hook pre-agent jamais passés à brain.exe ; hooks complétés = ceux de la couche plus")

@@ -36,10 +36,12 @@ def newer_install():
 
 
 def rust_exe():
-    """brain.exe livré à côté (Windows) : la version Rust, qui repasse elle-même à Python (BRAIN_IMPL=python) pour ce
-    qu'elle ne fait pas encore. Absent, ou BRAIN_IMPL=python : Python seul."""
+    """brain.exe livré à côté (Windows) : la version Rust, seulement sur demande (BRAIN_IMPL=rust). Elle est restée à la
+    8.18.2 et son code source n'est pas encore dans le dépôt : aucun correctif depuis ne lui parvient. Par défaut, tout
+    passe donc par Python (décision de l'utilisateur, 20/11/2026), en attendant que le code Rust revienne dans le dépôt,
+    corrigé et optimisé. Lancée, elle repasse elle-même à Python (BRAIN_IMPL=python) pour ce qu'elle ne fait pas."""
     exe = os.path.join(HERE, "brain.exe")
-    return exe if os.name == "nt" and os.environ.get("BRAIN_IMPL") != "python" and os.path.isfile(exe) else None
+    return exe if os.name == "nt" and os.environ.get("BRAIN_IMPL") == "rust" and os.path.isfile(exe) else None
 
 
 # Python seul, jamais brain.exe : le serveur MCP (rien de porté) et ce qui est né après le portage en Rust.
