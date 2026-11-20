@@ -432,13 +432,13 @@ class Site(http.server.BaseHTTPRequestHandler):
             self.send_response(200)
             self.send_header("Content-Type", "application/json")
             self.end_headers()
-            for _ in range(20):
+            for _ in range(100):  # un octet toutes les 0,3 s pendant 30 s : jamais assez lent pour le délai par lecture
                 try:
                     self.wfile.write(b" ")
                     self.wfile.flush()
                 except OSError:
                     return
-                time.sleep(0.5)
+                time.sleep(0.3)
             return
         items = [{"id": "y2 " + PIEGE, "title": "Cold email", "description": "x"},
                  {"id": "cold-email-b2b", "title": "Cold email B2B‮", "description": PIEGE, "type": "TEXT"}]
@@ -471,7 +471,9 @@ try:
     slow = "réponse"
 except RuntimeError:
     slow = "refus"
-check(slow == "refus" and time.time() - t0 < 3, "prompts.chat : serveur goutte à goutte coupé au délai total",
+# Sans délai total, l'appel attendait les 30 s du serveur ; avec, il s'arrête vers 1 s. Marge large pour la CI Windows
+# (antivirus, nouvelles tentatives d'écriture du cache).
+check(slow == "refus" and time.time() - t0 < 10, "prompts.chat : serveur goutte à goutte coupé au délai total",
       round(time.time() - t0, 1))
 site.shutdown()
 

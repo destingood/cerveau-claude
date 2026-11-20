@@ -305,6 +305,50 @@ raison = (msg or {}).get("reason", "")
 check(c == 0 and "Candidats repérés" in raison and "pnpm" in raison and "réponses courtes" not in raison,
       "fin de tâche : candidats = ce que le hook n'a pas déjà enregistré", raison[-400:])
 
+# fin de tâche : le Stop ne bloque que pour une phrase durable pas encore enregistrée (décision de l'utilisateur)
+def stop_with(sid, events, **payload):
+    """Transcript fabriqué (« u » = message de l'utilisateur, « tool » = lecture, « bash » = commande), puis le hook
+    Stop → (code, sortie du hook)."""
+    lignes, n = [], 0
+    for kind, text in events:
+        if kind == "u":
+            lignes.append({"type": "user", "message": {"role": "user", "content": text}})
+        else:
+            n += 1
+            name, inp = ("Bash", {"command": text}) if kind == "bash" else ("Read", {"file_path": text})
+            lignes.append({"type": "assistant", "message": {"id": f"{sid}-{n}", "role": "assistant", "content": [
+                {"type": "text", "text": "ok"}, {"type": "tool_use", "id": f"{sid}-t{n}", "name": name, "input": inp}]}})
+    f = W.home / "projects" / "-projet-demo" / f"{sid}.jsonl"
+    f.parent.mkdir(parents=True, exist_ok=True)
+    f.write_text("\n".join(json.dumps(x) for x in lignes) + "\n", encoding="utf-8")
+    return W.hook("stop", sid=sid, transcript_path=str(f), **payload)
+
+
+DUR = "désormais on utilise toujours pnpm dans ce projet"
+ADD = 'python "$HOME/.claude/brain/brain.py" add -t feedback -T "pnpm" -b "toujours pnpm" -p none'
+c, out = stop_with("n1", [("u", "lance les tests et dis-moi ce qui casse")] + [("tool", f"/p/f{i}.py") for i in range(20)])
+check(c == 0 and not out, "fin de tâche : 20 appels d'outils sans phrase durable → aucun blocage", out)
+c, out = stop_with("n2", [("u", "regarde le fichier")] + [("tool", f"/p/f{i}.py") for i in range(5)] + [("u", "merci")]
+                   + [("tool", f"/p/g{i}.py") for i in range(160)])
+check(c == 0 and not out, "fin de tâche : 165 appels sans phrase durable → aucun blocage", out)
+c, out = stop_with("d1", [("u", DUR), ("tool", "/p/a.py")])
+raison = (out or {}).get("reason", "")
+check(c == 0 and (out or {}).get("decision") == "block" and "pnpm" in raison
+      and raison.startswith("🧠 Cerveau — avant de conclure"),
+      "fin de tâche : une phrase durable pas encore enregistrée → blocage, avec la phrase en candidate", out)
+c, out = stop_with("d1", [("u", DUR), ("tool", "/p/a.py")], stop_hook_active=True)
+check(c == 0 and not out, "fin de tâche : jamais deux blocages de suite (stop_hook_active)", out)
+c, out = stop_with("d1", [("u", DUR), ("tool", "/p/a.py")])
+check(c == 0 and not out, "fin de tâche : la même phrase n'est pas redemandée au tour suivant", out)
+c, out = stop_with("d2", [("u", DUR), ("tool", "/p/a.py"), ("bash", ADD)])
+check(c == 0 and not out, "fin de tâche : déjà enregistré par `brain add` pendant la session → aucun blocage", out)
+c, ctx = W.prompt("retiens que le serveur de test est à Lyon", sid="d3")
+c, out = stop_with("d3", [("u", "retiens que le serveur de test est à Lyon"), ("tool", "/p/a.py")])
+check(c == 0 and not out, "fin de tâche : déjà enregistré par la capture « retiens… » du hook → aucun blocage", (ctx[-200:], out))
+c, out = stop_with("d4", [("u", DUR), ("bash", ADD), ("u", "dorénavant on publie toujours le lundi")])
+check(c == 0 and (out or {}).get("decision") == "block" and "lundi" in (out or {}).get("reason", "")
+      and "pnpm" not in (out or {}).get("reason", ""), "fin de tâche : seule la phrase dite APRÈS la sauvegarde est demandée", out)
+
 # ------------------------------------------------------------------ 5. le README le dit
 from brainkit import publish  # noqa: E402
 

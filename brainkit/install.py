@@ -45,10 +45,10 @@ Commande : `{CMD} <commande>` (fonctionne dans Bash et PowerShell). Sortie compa
   les à-faire dont l'échéance approche (ou est dépassée) passent en tête (« ⏰ Échéances »). Dossier de projet inconnu → enregistré et cartographié en arrière-plan.
 - **Chaque message** : rappel automatique des souvenirs/fichiers vraiment liés (filtre anti-bruit, jamais deux fois) ;
   la recherche tolère fautes, écriture phonétique et synonymes FR/EN (« boutik », « shopfy », « rdv » → agenda).
-- **Fin de tâche importante** : rappel unique de noter 3 à 5 **observations datées** de la session (`obs "🔴 …" "🟡 …"`)
-  et de mémoriser l'essentiel, avec les phrases de l'utilisateur qui ressemblent à une préférence ou une décision
-  (« Candidats repérés… ») : juger, puis `add` ce qui est durable. Après une **compaction** du contexte, le Stop suivant
-  demande les observations de la session (le détail n'est plus que résumé).
+- **Fin de tâche** : rappel **seulement si l'utilisateur a dit une phrase durable** (préférence, décision, règle) pas
+  encore enregistrée depuis la dernière sauvegarde (`add`, `obs`, ou la capture « retiens… » du hook) : noter 3 à 5
+  **observations datées** (`obs "🔴 …" "🟡 …"`) et `add` ce qui est durable (« Candidats repérés… »). Sans phrase durable,
+  aucun rappel, même après de longues séances ; jamais deux rappels de suite.
 - **Usage réel** : un souvenir montré dont les termes ou les chiffres reviennent dans ta réponse ou tes commandes
   compte comme *utilisé* (montré ≠ utilisé) ; le classement de l'index en tient compte.
 - **Réflexes de skills** : quand un message colle à une skill perso (`~/.claude/skills`, ou `.claude/skills` du
@@ -235,9 +235,9 @@ variables d'env, documents, cycles, TODO, fichiers sensibles jamais lus).
 `journal [-p projet]` sessions passées · `journal -s "mots"` chercher dans leur texte · `journal --backfill` importer celles que les hooks ont manquées · `context` ce qui est injecté ici · `recall "message"` tester le rappel ·
 `consolidate [--dry-run]` fusion doublons/obsolètes · `dream` rêve (entretien : conflits, doublons, corrections entendues ; `--done`) · `stats` · `doctor` diagnostic (`doctor --fix` répare tout) ·
 `bench` banc d'essai (qualité du rappel, faux rappels, tokens par démarrage, vitesse des hooks) · `tokens [--hours 48]` où partent les tokens (contexte relu, coût fixe au démarrage, relances, habitudes coûteuses, mesuré sur les transcripts) · `report` rapport du graphe ·
-`eco` mode éco, moins de tokens sans rien perdre : état + plugins jamais utilisés · `eco --appliquer` (sorties de commandes longues mises en fichier, résumé de la conversation plus tôt, liste des skills réduite, mémoire auto coupée ; posé tout seul au 1er démarrage) · `eco --annuler` · `eco --poser ID` / `eco --retirer ID` (réglages sur accord : outils, connecteurs, git, effort, lecture, sous-agents — seulement après accord explicite de l'utilisateur) · `eco --cache auto|5m|1h|off` (durée du cache de prompt ; auto = choisie chaque jour d'après les pauses réelles) · `eco --desactiver nom@marketplace` (demande d'abord à l'utilisateur) · `eco --plugins-auto [on|off]` (veille quotidienne : désactive tout seul plugins et skills claude.ai jamais utilisés en 30 j ; seulement si l'utilisateur le demande) ·
+`eco` mode éco, moins de tokens sans rien perdre : état + plugins jamais utilisés · `eco --appliquer` (sorties de commandes longues mises en fichier, résumé de la conversation plus tôt, liste des skills réduite, mémoire auto coupée ; posé tout seul au 1er démarrage) · `eco --annuler` · `eco --poser ID` / `eco --retirer ID` (réglages sur accord : outils, connecteurs, git, effort, lecture, sous-agents — seulement après accord explicite de l'utilisateur) · `eco --cache auto|5m|1h|off` (durée du cache de prompt ; auto = choisie chaque jour d'après les pauses réelles) · `eco --desactiver nom@marketplace` (demande d'abord à l'utilisateur) · `eco --plugins-auto [on|off]` (veille quotidienne : PROPOSE, une fois, de désactiver plugins et skills claude.ai jamais utilisés en 30 j, sans rien désactiver) · `eco --plugins` (les désactive vraiment, seulement après accord de l'utilisateur) ·
 `compact` sorties de commandes compactes (installations, tests, builds, `git log`, clone : Claude ne lit que l'essentiel, sortie brute dans le fichier indiqué en pied) : statistiques · `compact sortie.txt --cmd "npm install"` essai · `config compact.enabled false` coupe ·
-`pc` état du PC (RAM/CPU/GPU) et ce qu'on peut libérer (sessions inactives, serveurs MCP) · `pc --clean` ferme les serveurs MCP orphelins (parent mort) · `pc --history [h]` mesures de la veille ·
+`pc` état du PC (RAM/CPU/GPU) et ce qu'on peut libérer (sessions inactives, serveurs MCP) · `pc --clean` liste les serveurs MCP orphelins (parent mort) : PID, âge, mémoire, raison ; `pc --clean --oui` les ferme, seulement sur accord de l'utilisateur (la veille ne ferme jamais rien, elle en parle une fois) · `pc --history [h]` mesures de la veille ·
 `skill` skills perso et des plugins actifs (+ combien de fois soufflées et chargées) · `skill test "message"` laquelle se déclencherait · `skill check` contrôle (déclencheurs, liens, longueur) · `skill new <nom> -d "À utiliser quand… « … » Ne pas utiliser pour…" --body-file f` créer · `skill trig plugin:skill "déclencheur" …` déclencheurs en français pour une skill de plugin ou du compte claude.ai ·
 `outils` connecteurs et serveurs MCP vus (état, outils, phrases) · `outils test "message"` lequel se déclencherait · `outils trig <connecteur> "phrase" …` phrases françaises pour un connecteur · `outils scan` relire tout de suite les derniers transcripts · `config outils.enabled false` coupe ·
 `viz --open` vue 3D (`~/.claude/brain/cerveau.html`, régénérée en fin de session) · `export` (MEMOIRES.md lisible) ·
@@ -413,6 +413,21 @@ def merged_claude_md(text: str, remove_only=False) -> str:
     return (CLAUDE_BLOCK + ("\n" + text + "\n" if text else "")).rstrip() + "\n"
 
 
+def read_settings_file(path) -> dict:
+    """Réglages de Claude Code ({} s'il n'existe pas ou s'il est vide). Lu en utf-8-sig : un BOM laissé par un éditeur
+    Windows ne le rend pas illisible. Illisible ou pas un objet JSON → on s'arrête sans rien toucher."""
+    if not Path(path).exists():
+        return {}
+    try:
+        text = Path(path).read_text(encoding="utf-8-sig")
+        data = json.loads(text) if text.strip() else {}
+    except Exception as exc:
+        sys.exit(f"✗ {path} n'est pas un JSON valide ({exc}) : corrige-le avant d'installer.")
+    if not isinstance(data, dict):
+        sys.exit(f"✗ {path} n'est pas un objet JSON : corrige-le avant d'installer.")
+    return data
+
+
 def run(dry=False, uninstall=False):
     from .common import PLUGIN
     if PLUGIN:
@@ -427,12 +442,7 @@ def run(dry=False, uninstall=False):
     claude_md = CLAUDE_HOME / "CLAUDE.md"
     skill_path = CLAUDE_HOME / "skills" / "brain" / "SKILL.md"
 
-    settings = {}
-    if settings_path.exists():
-        try:
-            settings = json.loads(settings_path.read_text(encoding="utf-8"))
-        except Exception as exc:
-            sys.exit(f"✗ {settings_path} n'est pas un JSON valide ({exc}) : corrige-le avant d'installer.")
+    settings = read_settings_file(settings_path)
     new_settings = merged_settings(settings, remove_only=uninstall)
     old_md = claude_md.read_text(encoding="utf-8") if claude_md.exists() else ""
     new_md = merged_claude_md(old_md, remove_only=uninstall)
@@ -449,6 +459,9 @@ def run(dry=False, uninstall=False):
             print(f"- {CLAUDE_HOME / 'agents' / f.name} → agent de délégation {'retiré' if uninstall else 'posé'}")
         return
 
+    fresh = read_settings_file(settings_path)  # relu juste avant d'écrire : un changement fait entre-temps est gardé
+    if fresh != settings:
+        settings, new_settings = fresh, merged_settings(fresh, remove_only=uninstall)
     if new_settings != settings:
         if settings_path.exists():
             shutil.copy2(settings_path, settings_path.with_name("settings.json.bak-brain"))

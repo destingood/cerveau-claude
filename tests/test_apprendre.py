@@ -119,7 +119,7 @@ check(len(pair) == 1 and "sk-ant-" not in json.dumps(pair, ensure_ascii=False) a
 
 # ------------------------------------------------------------------ 2. jointes au rappel de fin de tâche
 S = World("rappel")
-S.say("installe les dépendances et lance les tests")
+S.say("installe les dépendances et lance les tests, et on garde toujours pip avec --pre sur ce projet")
 S.bash("pip install -r requirements.txt", "ERROR: Could not find a version that satisfies the requirement foo==9", error=True)
 S.bash("pip install -r requirements.txt --pre", "Successfully installed foo-9.0rc1")
 for i in range(16):
@@ -129,6 +129,7 @@ reason = out.get("reason", "")
 check(out.get("decision") == "block" and reason.startswith(plus.STOP_MARK) and "Erreur(s) résolue(s) repérée(s)" in reason
       and "`pip install -r requirements.txt` échouait" in reason and "--pre` a marché" in reason and "add -t learning" in reason,
       "fin de tâche : l'erreur résolue est jointe au rappel du cerveau (Claude juge si c'est un piège durable)", reason[-500:])
+S.say("désormais on garde Python 3.12 pour ce projet")
 for i in range(160):
     S.tool("Read", {"file_path": f"/projet/src/g{i}.py"})
 out = S.hook("stop", "r1")

@@ -3,7 +3,7 @@
 Une mémoire persistante pour Claude Code, faite par destingood : Claude se souvient de toi, de tes projets, de tes
 décisions et de ce qu'il a appris, d'une session à l'autre. Tout reste chez toi, sur ton PC.
 
-![Version 8.24.0](https://img.shields.io/badge/version-8.24.0-2ea44f) ![Python 3.10 ou plus](https://img.shields.io/badge/python-3.10%2B-3776ab) ![Windows, macOS, Linux](https://img.shields.io/badge/Windows_%C2%B7_macOS_%C2%B7_Linux-555)
+![Version 8.25.0](https://img.shields.io/badge/version-8.25.0-2ea44f) ![Python 3.10 ou plus](https://img.shields.io/badge/python-3.10%2B-3776ab) ![Windows, macOS, Linux](https://img.shields.io/badge/Windows_%C2%B7_macOS_%C2%B7_Linux-555)
 
 **Sommaire** — [Installer](#installer-une-seule-fois) · [Au quotidien](#au-quotidien) · [Ce que fait le cerveau](#ce-que-fait-le-cerveau) ·
 [Moins de tokens](#moins-de-tokens) · [Il apprend tout seul](#le-cerveau-apprend-tout-seul) ·
@@ -73,7 +73,8 @@ outils, et tes boutiques suivies).
 - **À chaque message** : les souvenirs et fichiers vraiment liés remontent tout seuls (fautes de frappe, écriture
   phonétique et synonymes compris). Un souvenir rappelé montre les phrases qui répondent à ton message, pas seulement
   son début ; `brain recall --pourquoi` dit pourquoi un souvenir n'est pas remonté.
-- **En fin de tâche** : Claude note ce qui mérite d'être retenu (décisions, pièges, préférences).
+- **En fin de tâche** : si tu as dit une décision ou une préférence pas encore enregistrée, Claude la note ; sinon
+  le cerveau ne dit rien (pas de rappel inutile).
 - **Cartes de tes projets** (fichiers clés, où est défini quoi), à-faire datés, vue 3D, serveur MCP.
 - **Le rêve** : l'entretien de ta mémoire se fait hors conversation, chaque jour — dates relatives rendues réelles,
   observations anciennes condensées — et ce qui demande du jugement (corrections entendues, doublons, conflits,
@@ -101,7 +102,10 @@ garde sa propre mémoire.
   cerveau conseille sans rien changer) ou `off` pour reprendre la main.
 - **Le mode éco**, posé une fois au démarrage : les sorties de commandes très longues vont dans un fichier (aperçu
   seul dans la conversation), la conversation est résumée plus tôt, et `brain eco` liste les plugins jamais utilisés.
-  `brain eco --annuler` pour revenir.
+  Désactiver les plugins et skills inutilisés, c'est toi qui décides : le cerveau te les propose une fois, et
+  `brain eco --plugins` les désactive. `brain eco --annuler` pour revenir.
+- **La veille du PC** (Windows) : elle repère les serveurs MCP restés ouverts sans session et te le dit en une ligne ;
+  elle ne ferme jamais rien seule. `brain pc --clean` les liste, `brain pc --clean --oui` les ferme.
 - **Sorties compactées** avant d'arriver à Claude : une liste JSON arrive en tableau, une sortie déjà lue dans la
   session renvoie vers la première, les erreurs sont toujours gardées.
 - **Filtres appris** : `brain compact --decouvrir` repère le bruit qui revient dans les sorties de tes commandes et
@@ -306,4 +310,4 @@ invite tes amis (Settings → Collaborators → Add people), puis rejoins-le le 
 
 `/plugin uninstall cerveau@cerveau`. Tes souvenirs restent dans `~/.claude/brain` (supprime ce dossier pour tout effacer).
 
-Version 8.24.0.
+Version 8.25.0.

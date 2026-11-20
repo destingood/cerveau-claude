@@ -703,8 +703,8 @@ def feedback(days=14) -> dict:
         deleg = {}
     system = "windows" if os.name == "nt" else "macos" if sys.platform == "darwin" else "linux"
     from .common import CODE_DIR
-    engine = "rust" if os.name == "nt" and (CODE_DIR / "brain.exe").is_file() and os.environ.get("BRAIN_IMPL") != "python" \
-        else "python"
+    engine = "rust" if os.name == "nt" and (CODE_DIR / "brain.exe").is_file() and os.environ.get("BRAIN_IMPL") == "rust" \
+        else "python"  # brain.exe seulement sur demande (brain.py, rust_exe)
     return {"v": 1, "version": __version__, "systeme": system, "python": "%d.%d" % sys.version_info[:2], "moteur": engine,
             "jours": days, "le": now_iso()[:10], "pannes": dict(sorted(errors.items(), key=lambda x: -x[1])[:25]),
             "lents": slow, "reflexe": reflex, "delegation": deleg}
