@@ -521,7 +521,7 @@ check(hooks.last_context(TMP / "absent.jsonl") == 0 and hooks.last_context(None)
 
 # ------------------------------------------------------------------ 10. rappel de fin de tâche, optimize, réglages par défaut
 check("UN SEUL appel" in hooks.STOP_REASON and "&&" in hooks.STOP_REASON, "STOP_REASON : tout en UN SEUL appel Bash, chaîné avec &&")
-check("UN SEUL appel" in hooks.OBS_REASON and "&&" in hooks.OBS_REASON, "OBS_REASON : tout en UN SEUL appel Bash")
+check(len(hooks.STOP_REASON) < 600, "STOP_REASON : environ moitié moins long qu'avant (< 600 caractères)", len(hooks.STOP_REASON))
 check("doublons : `" not in hooks.STOP_REASON and "obs" in hooks.STOP_REASON and "add -t" in hooks.STOP_REASON,
       "STOP_REASON : plus d'étape « doublons » séparée, obs et add conservés")
 from brainkit import journal  # noqa: E402
@@ -535,8 +535,9 @@ tx = journal.parse_transcript(str(chain))
 check(tx["tools"] == 2 and tx["last_save_tools"] == 2 and tx["last_obs_tools"] == 2,
       "observations + souvenir chaînés en UN appel Bash : comptés comme faits (pas de nouveau rappel)", tx)
 W = World("defauts")
-c, out = W.run("config", "stop_reminder.repeat_after")
-check(out.strip() == "150", "rappel de fin de tâche : repeat_after 150 par défaut", out)
+c, out = W.run("config", "stop_reminder")
+check('"enabled": true' in out and "repeat_after" not in out and "min_tool_calls" not in out,
+      "rappel de fin de tâche : plus de seuils d'appels, seulement enabled", out)
 c, out = W.run("config", "eco")
 check('"auto": true' in out and "10000" in out and "200000" in out and "150000" in out and "300000" in out
       and '"plugins_auto": false' in out and '"cache": "auto"' in out and '"alerte_pause": true' in out,

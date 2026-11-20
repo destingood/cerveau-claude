@@ -73,7 +73,8 @@ outils, et tes boutiques suivies).
 - **À chaque message** : les souvenirs et fichiers vraiment liés remontent tout seuls (fautes de frappe, écriture
   phonétique et synonymes compris). Un souvenir rappelé montre les phrases qui répondent à ton message, pas seulement
   son début ; `brain recall --pourquoi` dit pourquoi un souvenir n'est pas remonté.
-- **En fin de tâche** : Claude note ce qui mérite d'être retenu (décisions, pièges, préférences).
+- **En fin de tâche** : si tu as dit une décision ou une préférence pas encore enregistrée, Claude la note ; sinon
+  le cerveau ne dit rien (pas de rappel inutile).
 - **Cartes de tes projets** (fichiers clés, où est défini quoi), à-faire datés, vue 3D, serveur MCP.
 - **Le rêve** : l'entretien de ta mémoire se fait hors conversation, chaque jour — dates relatives rendues réelles,
   observations anciennes condensées — et ce qui demande du jugement (corrections entendues, doublons, conflits,

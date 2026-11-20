@@ -13,10 +13,10 @@ Commande : `python "$HOME/.claude/brain/brain.py" <commande>` (fonctionne dans B
   les à-faire dont l'échéance approche (ou est dépassée) passent en tête (« ⏰ Échéances »). Dossier de projet inconnu → enregistré et cartographié en arrière-plan.
 - **Chaque message** : rappel automatique des souvenirs/fichiers vraiment liés (filtre anti-bruit, jamais deux fois) ;
   la recherche tolère fautes, écriture phonétique et synonymes FR/EN (« boutik », « shopfy », « rdv » → agenda).
-- **Fin de tâche importante** : rappel unique de noter 3 à 5 **observations datées** de la session (`obs "🔴 …" "🟡 …"`)
-  et de mémoriser l'essentiel, avec les phrases de l'utilisateur qui ressemblent à une préférence ou une décision
-  (« Candidats repérés… ») : juger, puis `add` ce qui est durable. Après une **compaction** du contexte, le Stop suivant
-  demande les observations de la session (le détail n'est plus que résumé).
+- **Fin de tâche** : rappel **seulement si l'utilisateur a dit une phrase durable** (préférence, décision, règle) pas
+  encore enregistrée depuis la dernière sauvegarde (`add`, `obs`, ou la capture « retiens… » du hook) : noter 3 à 5
+  **observations datées** (`obs "🔴 …" "🟡 …"`) et `add` ce qui est durable (« Candidats repérés… »). Sans phrase durable,
+  aucun rappel, même après de longues séances ; jamais deux rappels de suite.
 - **Usage réel** : un souvenir montré dont les termes ou les chiffres reviennent dans ta réponse ou tes commandes
   compte comme *utilisé* (montré ≠ utilisé) ; le classement de l'index en tient compte.
 - **Réflexes de skills** : quand un message colle à une skill perso (`~/.claude/skills`, ou `.claude/skills` du

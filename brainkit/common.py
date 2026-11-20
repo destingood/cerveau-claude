@@ -66,8 +66,8 @@ DEFAULT_CONFIG = {
     # connecteur ; `triggers` : {« id » ou clé de serveur : [phrases]} (`brain outils trig`) ; `fresh_days` : au-delà,
     # un serveur pas revu n'est plus proposé ; `veille` : nouveaux serveurs et skills sans déclencheur signalés au démarrage.
     "outils": {"enabled": True, "max_items": 2, "session_cap": 6, "fresh_days": 21, "veille": True, "triggers": {}},
-    # Rappel en fin de tâche : « mémorise ce qui est durable » (une fois, seulement si la session a travaillé).
-    "stop_reminder": {"enabled": True, "min_tool_calls": 15, "min_edits": 3, "repeat_after": 150},
+    # Rappel en fin de tâche : « mémorise ce qui est durable », seulement si l'utilisateur a dit une phrase durable pas encore enregistrée.
+    "stop_reminder": {"enabled": True},
     # Mode éco (`brain eco`) : réglages officiels de Claude Code posés une fois dans ~/.claude/settings.json (sorties de
     # commandes longues mises en fichier, conversation résumée plus tôt, liste des skills réduite, mémoire auto de Claude
     # Code coupée une fois importée dans le cerveau) ; alerte à l'utilisateur quand la conversation passe ces tailles
