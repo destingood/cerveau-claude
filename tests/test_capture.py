@@ -146,5 +146,70 @@ check(len(W2.memories()) == 30, "démarrage (préparation) : 30 règles distinct
 check(all(t in start2 for t in titres2), "démarrage : 30 règles, toutes présentes au moins par leur titre",
       [t for t in titres2 if t not in start2][:5])
 
+# ------------------------------------------------------------------ 2. même titre, autres chiffres : autre événement, pas une mise à jour
+def paire(nom, premier, second, ntype="fact"):
+    """Ajoute deux souvenirs l'un après l'autre dans un cerveau neuf → (monde, sortie du second ajout)."""
+    w = World("paire-" + nom)
+    w.add(ntype, *premier)
+    c, out = w.add(ntype, *second)
+    return w, out
+
+
+AUTRES_EVENEMENTS = [
+    ("note-7-9", ("Note 7", "Réunion avec le fournisseur : 3 points abordés, 12 caisses commandées."),
+     ("Note 9", "Réunion avec le fournisseur : 5 points abordés, 20 caisses commandées.")),
+    ("objectif-mois", ("Objectif de ventes de septembre", "Objectif de ventes : 5 000 € en septembre 2026."),
+     ("Objectif de ventes d'octobre", "Objectif de ventes : 6 500 € en octobre 2026.")),
+    ("semaine-titre", ("Point hebdo boutique semaine 45", "Ventes de la semaine : 12 commandes, 480 €."),
+     ("Point hebdo boutique semaine 46", "Ventes de la semaine : 15 commandes, 620 €.")),
+    ("semaine-corps", ("Point hebdo boutique", "Semaine 45 : 12 commandes, 480 €."),
+     ("Point hebdo boutique", "Semaine 46 : 15 commandes, 620 €.")),
+    ("annee", ("Chiffre d'affaires 2025", "Chiffre d'affaires de l'année : 38 000 €."),
+     ("Chiffre d'affaires 2026", "Chiffre d'affaires de l'année : 52 000 €.")),
+    ("mois-corps", ("Chiffre d'affaires", "Ventes de septembre : 4 000 € pour 80 commandes."),
+     ("Chiffre d'affaires", "Ventes d'octobre : 5 500 € pour 95 commandes.")),
+    ("trimestre", ("Coffret du premier trimestre", "Contenu : 3 sachets, prix 39 €."),
+     ("Coffret du deuxième trimestre", "Contenu : 5 sachets, prix 59 €.")),
+    ("numero-corps", ("Livraison fournisseur", "Colis numéro 3 reçu : 12 pièces, 480 €."),
+     ("Livraison fournisseur", "Colis numéro 4 reçu : 15 pièces, 620 €.")),
+]
+for nom, a, b in AUTRES_EVENEMENTS:
+    w, out = paire(nom, a, b)
+    check(len(w.memories()) == 2 and not w.memories("archived") and "↻ remplace" not in out,
+          f"autre événement ({nom}) : les deux restent actifs, aucun remplacement proposé", (w.titles(), w.titles("archived"), out))
+
+w = World("notes-0-7")
+for i in range(8):
+    w.add("fact", f"Note {i}", f"Compte rendu du jour : {3 + i} points abordés, {10 + 2 * i} caisses commandées, budget {100 + i} €.")
+check(len(w.memories()) == 8 and not w.memories("archived"), "huit ajouts « Note 0 » à « Note 7 » : huit souvenirs actifs",
+      (w.titles(), w.titles("archived")))
+c, out = w.run("dream", "--no-apply")
+check("supersede" not in out, "dream : ne propose pas qu'une note remplace la précédente", out[-500:])
+
+w = World("objectifs")
+w.add("fact", "Objectif de ventes de septembre", "Objectif de ventes : 5 000 € en septembre 2026.")
+w.add("fact", "Objectif de ventes d'octobre", "Objectif de ventes : 6 500 € en octobre 2026.")
+c, out = w.run("dream", "--no-apply")
+check("supersede" not in out, "dream : l'objectif d'octobre ne remplace pas celui de septembre", out[-500:])
+
+# les vraies mises à jour (même fait, valeur changée) continuent d'être reconnues
+VRAIES_MAJ = [
+    ("prix-passe-de", ("Prix du matcha", "Le matcha cérémonial coûte 12 € les 30 g."),
+     ("Prix du matcha", "Le prix du matcha passe de 12 € à 14 € les 30 g.")),
+    ("nouveau-numero", ("Numéro de commande fournisseur", "Le numéro de commande chez Marukyu est 4471."),
+     ("Numéro de commande fournisseur", "Nouveau numéro de commande chez Marukyu : 5120.")),
+    ("desormais", ("Seuil de livraison gratuite", "Livraison offerte dès 49 €."),
+     ("Seuil de livraison gratuite", "Désormais la livraison est offerte dès 59 €.")),
+    ("autre-nom", ("Transporteur", "On expédie avec Colissimo."),
+     ("Transporteur", "On expédie désormais avec Mondial Relay au lieu de Colissimo.")),
+    ("depuis-novembre", ("Seuil de livraison gratuite", "Livraison offerte à partir de 49 € d'achat en France métropolitaine. "
+                         "Testé à 39 € en juin : le panier moyen a baissé, on est revenu à 49 €."),
+     ("Seuil de livraison gratuite", "Livraison offerte à partir de 59 € d'achat depuis novembre 2026.")),
+]
+for nom, a, b in VRAIES_MAJ:
+    w, out = paire(nom, a, b)
+    check(len(w.memories()) == 1 and len(w.memories("archived")) == 1 and "↻ remplace" in out,
+          f"vraie mise à jour ({nom}) : l'ancien est archivé, le nouveau actif", (w.titles(), w.titles("archived"), out))
+
 print(f"\n{len(OK)} vérifications OK, {len(FAIL)} échec(s)")
 sys.exit(1 if FAIL else 0)
