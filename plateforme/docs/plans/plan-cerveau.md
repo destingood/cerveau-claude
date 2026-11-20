@@ -154,6 +154,7 @@ tes échanges) :
 | Messages de git bruts ou trompeurs (« ✓ à jour » quand le dépôt est injoignable) | Messages en français avec la marche à suivre | S | 6 |
 | Serveur MCP : erreurs en anglais ; une valeur qui commence par « - » est prise pour une option | Vérifier les arguments, message en français | M | 6 |
 | `brain tokens` plante sur une ligne de transcript sans compteur | La sauter | S | 6 |
+| `brain publish` sans dossier reprend le dernier dossier retenu au lieu de publier sur place depuis le clone (vu le 20/11) | Depuis un clone du même dépôt : sur place, le dossier retenu seulement sinon | S | 6 |
 
 ## 5. Sécurité et confidentialité
 
