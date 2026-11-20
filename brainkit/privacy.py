@@ -33,7 +33,9 @@ _RULES = [
 RULES = [(label, re.compile(rx)) for label, rx in _RULES]
 
 
-_EMAIL = re.compile(r"[\w.+-]+@[\w-]+(?:\.[\w-]+)+")
+# (?<!…) : un e-mail commence au début d'un mot ; sans ce point d'ancrage, un long mot sans espace (bloc encodé, empreinte)
+# coûtait un temps quadratique (35 s pour 100 000 caractères). Mêmes adresses trouvées.
+_EMAIL = re.compile(r"(?<![\w.+-])[\w.+-]+@[\w-]+(?:\.[\w-]+)+")
 _PHONE = re.compile(r"(?<![\w+])(?:\+33\s?[1-9]|0[1-9])(?:[\s.-]?\d{2}){4}(?!\d)")
 
 

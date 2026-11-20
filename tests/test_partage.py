@@ -11,6 +11,7 @@ import os
 import subprocess
 import sys
 import tempfile
+import time
 from pathlib import Path
 
 TMP = Path(tempfile.mkdtemp(prefix="cerveau-partage-test-"))
@@ -255,6 +256,9 @@ KEEP = ["Voir https://fr.wikipedia.org/wiki/Photographie pour la lumière.",
 changed = [(t, commun.clean(t)) for t in KEEP if commun.clean(t) != t]
 check(not changed, "S-2 : le texte ordinaire (liens publics, dates, montants, chemins relatifs, chemins du plugin) reste intact",
       changed)
+t0 = time.time()
+commun.clean("A" * 100_000 + " [at] b.fr " + "%" + "b" * 100_000)  # bloc encodé collé dans un souvenir, par exemple
+check(time.time() - t0 < 5, "S-2 : un très long mot sans espace se nettoie vite (temps linéaire)", f"{time.time() - t0:.1f} s")
 
 # l'échange de skills passe par le même nettoyage
 skill = ("# Relance\n\n1. Ouvrir C:\\Users\\Jean Dupont\\Documents\\relances.xlsx.\n2. Appeler le +32 470 12 34 56.\n"
