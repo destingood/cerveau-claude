@@ -966,9 +966,11 @@ def approved_dir(entry) -> Path:
 
 def quote(text, n) -> str:
     """Texte écrit par un ami, cité dans une ligne lue par Claude : une ligne, sans caractère de contrôle ni invisible,
-    sans accent grave ni guillemet fermant (il ne sort pas de sa citation), borné."""
+    sans accent grave ni guillemet fermant (il ne sort pas de sa citation), sans balise (« < » et « > » deviennent
+    « ‹ » et « › », comme pour les pages des amis), borné."""
     from .common import clean_label
-    return short(clean_label(text).replace("`", "'").replace("»", "'").replace("«", "'"), n)
+    return short(clean_label(text).replace("`", "'").replace("»", "'").replace("«", "'").replace("<", "‹").replace(">", "›"),
+                 n)
 
 
 def hint_line(r, entry) -> str:
