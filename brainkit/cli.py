@@ -829,12 +829,28 @@ def cmd_consolidate(a):
                     b.nodes[e["to"]].setdefault("meta", {})["superseded_by"] = e["from"]
                     b.dirty = True
         merged = set()
+        b.cache_similar()  # chaque souvenir découpé une fois par passage, et non une fois par comparaison
+        # Passage automatique (une fois par jour, verrou du cerveau tenu) : seulement les souvenirs écrits depuis le
+        # passage précédent, comparés à tous. Les paires plus anciennes ont déjà été vues. Avant, chaque passage comparait
+        # toutes les paires : plus de 8 minutes à 3 000 souvenirs, pendant lesquelles aucune écriture n'aboutissait.
+        # `brain consolidate` lancé à la main compare toujours tout.
+        mark = BRAIN_DIR / "state" / "consolidation_auto_vue"
+        started = now_iso()
+        since = None
+        if strict:
+            try:
+                since = mark.read_text(encoding="utf-8").strip()
+            except OSError:  # premier passage : la dernière semaine (le passage manuel, lui, voit tout)
+                import datetime as _dt
+                since = (_dt.datetime.now() - _dt.timedelta(days=7)).replace(microsecond=0).isoformat()
         for n in [x for x in b.active(own=True) if x["type"] != "project"]:
-            if n["id"] in merged:
+            if n["id"] in merged or (since and max(n.get("updated") or "", n.get("created") or "") < since):
                 continue
+            # Doublon = même projet ET même contenu : deux « Objectif du mois » (boutique, chaîne YouTube) ne se
+            # fusionnent plus sur leur seul titre.
             for score, m in b.similar(n["title"], n.get("body", ""), n["type"], limit=5, threshold=0.9 if strict else 0.82,
-                                      exclude=n["id"]):
-                if m["id"] in merged:
+                                      exclude=n["id"], whole=True):
+                if m["id"] in merged or (m.get("project") or None) != (n.get("project") or None):
                     continue
                 keep, drop = (n, m) if priority(n) >= priority(m) else (m, n)
                 actions.append(f"fusion : `{drop['id']}` → `{keep['id']}` (similarité {score})")
@@ -885,6 +901,12 @@ def cmd_consolidate(a):
     if not dry:
         refresh_views()
     if strict:
+        if not dry:
+            try:
+                mark.parent.mkdir(parents=True, exist_ok=True)
+                mark.write_text(started, encoding="utf-8")
+            except OSError as exc:
+                log(f"consolidation auto : repère non écrit {exc!r}")
         log("consolidation auto : " + (" | ".join(actions) if actions else "rien à faire"))
         try:  # rêve : partie sûre appliquée, dossier du reste préparé pour un sous-agent
             from . import dream
@@ -1174,6 +1196,9 @@ def cmd_done(a):
         n = b.get(a.id)
         if not n:
             die(f"introuvable : {a.id}")
+        if n["type"] != "todo":  # `done` sur un fait ou une règle l'archivait sans rien dire
+            die(f"`{n['id']}` n'est pas un à-faire ({n['type']}) : rien n'est archivé. Pour l'archiver quand même : "
+                f"`brain rm {n['id']}`")
         meta = dict(n.get("meta") or {})
         meta["done"] = now_iso()[:10]
         b.update(n["id"], status="archived", meta=meta)
@@ -1582,6 +1607,10 @@ def cmd_outils(a):
 
 
 def cmd_pc(a):
+    if os.name != "nt" and a.history is None:  # mesure et nettoyage passent par l'API de Windows (ctypes.WinDLL)
+        print("· `brain pc` mesure et nettoie un PC Windows : rien à faire sur ce système (`brain pc --history` "
+              "reste lisible).")
+        return 0
     from . import pc
     if a.clean:
         print(pc.clean())
@@ -2414,3 +2443,9 @@ def main(argv=None):
         die(str(exc))
     except ReadOnly as exc:  # page d'un ami (cerveau commun)
         die(str(exc))
+    except RuntimeError as exc:  # graph.json illisible et rien pour le réparer… : un message, pas une trace Python
+        die(f"{exc} — `brain doctor` pour le diagnostic, `brain history` pour revenir à un instantané.")
+    except OSError as exc:  # dossier en lecture seule, disque plein, fichier ouvert ailleurs
+        where = exc.filename or "un fichier du cerveau"
+        die(f"accès impossible à {where} ({exc.strerror or exc}) — vérifie que le dossier du cerveau n'est ni en "
+            "lecture seule ni plein, puis réessaie ; `brain doctor` pour le diagnostic.")

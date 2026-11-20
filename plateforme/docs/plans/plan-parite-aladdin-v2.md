@@ -1,5 +1,9 @@
 # Plan v2 — Réparer le cerveau et l'amener au niveau d'Aladdin dans tes domaines
 
+> **Archive.** Remplacé le 20/11/2026 par le plan unique `plan-cerveau.md`, qui reprend ses étapes
+> encore ouvertes. Son §7 garde le détail des étapes 9 à 15 (finance, vidéo, clients, emploi, PC,
+> code, durée).
+
 Date : 17/11/2026, mis à jour le même jour : PR #18 fusionnée dans `main`, étape 1 faite ; étapes
 0, 3 et 4 avancées dans la PR #21, publiée en cerveau 8.23.0 · Statut : **en cours** ; GO donné le
 17/11/2026 (« vsy ») ; D1, D2, D3 et D11 tranchés, D4 ouvert.

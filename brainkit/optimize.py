@@ -75,6 +75,7 @@ def measure(cfg=None) -> dict:
     # Doublons quasi identiques encore actifs. Seuil fusion auto = 0.9 (comme la consolidation auto) : seuls ces
     # tokens-là sont promis au gain « sûr ». Entre 0.82 et 0.9 : seulement signalé, fusion à confirmer.
     seen, dup_auto, dup_sugg, dup_auto_tok = set(), 0, 0, 0
+    b.cache_similar()  # chaque souvenir découpé une fois, et non une fois par comparaison
     for n in active:
         if n["id"] in seen:
             continue

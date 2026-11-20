@@ -148,7 +148,11 @@ def load_graph():
         try:
             with open(GRAPH_FILE, encoding="utf-8") as fh:
                 data = json.load(fh)
-            if isinstance(data, dict) and data.pop("wiki", None) is not None:
+            if not (isinstance(data, dict) and isinstance(data.get("nodes"), dict)):
+                # JSON valide mais pas un cerveau ({"nodes": []}, null, []…) : réparé comme un fichier abîmé. Avant,
+                # le cerveau repartait vide et la première écriture remplaçait le fichier, sans aucune copie.
+                raise ValueError("graph.json n'a pas la forme d'un cerveau")
+            if data.pop("wiki", None) is not None:
                 log("wiki débranché (config wiki.path vide) : le cerveau repart en classique depuis son dernier cache")
             return data
         except ValueError:  # JSON abîmé : réparation depuis un instantané ou une sauvegarde
@@ -170,6 +174,14 @@ def load_graph():
 
 class ReadOnly(RuntimeError):
     """Page d'un ami (cerveau commun) : lecture seule."""
+
+
+def _may_reach(a: set, b: set, threshold: float) -> bool:
+    """Faux seulement si jaccard(a, b) est sûrement sous le seuil (borne des tailles) : aucune paire ne se perd."""
+    if not a or not b:
+        return False
+    small, big = (len(a), len(b)) if len(a) <= len(b) else (len(b), len(a))
+    return small >= threshold * big
 
 
 def _foreign(nid) -> bool:
@@ -200,6 +212,7 @@ class Brain:
         data.setdefault("edges", [])
         self.data = data
         self.dirty = False
+        self._sim_cache = None
         if loaded:  # cerveau commun : les pages des amis entrent dans le graphe, en lecture seule
             from . import commun
             try:
@@ -330,22 +343,41 @@ class Brain:
                 if n.get("project") == pid and n["type"] != "project"
                 and (include_archived or n.get("status", "active") == "active")]
 
-    def similar(self, title, body="", ntype=None, limit=3, threshold=0.45, exclude=None):
-        """Souvenirs proches (anti-doublons) : similarité de Jaccard sur titre et titre+contenu."""
+    def similar(self, title, body="", ntype=None, limit=3, threshold=0.45, exclude=None, whole=False):
+        """Souvenirs proches (anti-doublons) : similarité de Jaccard sur titre et titre+contenu.
+        whole=True : titre+contenu seulement (deux souvenirs de même titre mais de contenus différents ne sont pas des
+        doublons : « Objectif du mois » de la boutique et celui de la chaîne YouTube)."""
         tt = set(tokenize(title))
         bt = set(tokenize(f"{title} {body}"))
+        cache = self._sim_cache
         out = []
         for n in self.active(own=True):  # jamais une page d'ami : rien de privé ne doit y fusionner
             if n["type"] == "project" or n["id"] == exclude:
                 continue
             if ntype and n["type"] != ntype:
                 continue
-            score = max(jaccard(tt, set(tokenize(n["title"]))),
-                        jaccard(bt, set(tokenize(f"{n['title']} {n.get('body', '')}"))))
+            text = (n["title"], n.get("body", ""))
+            hit = cache.get(n["id"]) if cache is not None else None
+            if hit is None or hit[0] != text:
+                hit = (text, set(tokenize(text[0])), set(tokenize(f"{text[0]} {text[1]}")))
+                if cache is not None:
+                    cache[n["id"]] = hit
+            nt, nb = hit[1], hit[2]
+            # Borne exacte : jaccard(a, b) <= min(|a|, |b|) / max(|a|, |b|). Rien à calculer quand les tailles seules
+            # interdisent d'atteindre le seuil (le gros du temps d'une consolidation sur un grand cerveau).
+            if (whole or not _may_reach(tt, nt, threshold)) and not _may_reach(bt, nb, threshold):
+                continue
+            score = jaccard(bt, nb) if whole else max(jaccard(tt, nt), jaccard(bt, nb))
             if score >= threshold:
                 out.append((round(score, 2), n))
         out.sort(key=lambda x: -x[0])
         return out[:limit]
+
+    def cache_similar(self):
+        """Garde les mots de chaque souvenir pour une série d'appels à similar() (consolidation, rêve, optimisation) :
+        chaque souvenir n'est découpé qu'une fois au lieu d'une fois par comparaison."""
+        if self._sim_cache is None:
+            self._sim_cache = {}
 
     # ------------------------------------------------------------------------------ projets
     def projects(self):

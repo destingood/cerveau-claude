@@ -85,14 +85,19 @@ def label(n) -> str:
 def emit(event, context, message=None):
     """Sortie du hook : un seul objet JSON — `additionalContext` (lu par Claude) et/ou `systemMessage` (vu par
     l'utilisateur seulement : aucun token de contexte)."""
+    global _EMITTED
     out = {}
     if message:
         out["systemMessage"] = message
     if context:
         out["hookSpecificOutput"] = {"hookEventName": event, "additionalContext": context}
     if out:
+        _EMITTED = True  # une seule sortie JSON par hook
         sys.stdout.write(json.dumps(out, ensure_ascii=False))
         sys.stdout.flush()
+
+
+_EMITTED = False
 
 
 def _state_file(sid):
@@ -1300,17 +1305,21 @@ def run(event) -> int:
 def _run(event, data) -> int:
     from .common import PLUGIN
     if PLUGIN:
-        from . import plugin
-        if plugin.classic_install():
-            if event != "session-start" or not plugin.migration_wanted():
-                return 0  # cerveau classique aux commandes (gardé exprès, ou bascule au prochain démarrage)
-            try:  # premier démarrage du plugin chez un cerveau classique : il prend le relais, souvenirs intacts
-                plugin.migrate_classic()
-            except Exception as exc:
-                log(f"passage au plugin impossible, le cerveau classique reste aux commandes : {exc!r}")
-                return 0
+        try:  # dossier illisible, droits : jamais une trace Python ni un « hook error » à chaque message
+            from . import plugin
             if plugin.classic_install():
-                return 0
+                if event != "session-start" or not plugin.migration_wanted():
+                    return 0  # cerveau classique aux commandes (gardé exprès, ou bascule au prochain démarrage)
+                try:  # premier démarrage du plugin chez un cerveau classique : il prend le relais, souvenirs intacts
+                    plugin.migrate_classic()
+                except Exception as exc:
+                    log(f"passage au plugin impossible, le cerveau classique reste aux commandes : {exc!r}")
+                    return 0
+                if plugin.classic_install():
+                    return 0
+        except Exception as exc:
+            log(f"hook {event} : installation illisible {exc!r}")
+            return 0
     t0 = time.time()
     try:
         handler = HANDLERS.get(event)
@@ -1321,6 +1330,14 @@ def _run(event, data) -> int:
     except Exception as exc:
         import traceback  # seulement en cas d'erreur : ~7 ms épargnées à chaque hook
         log(f"hook {event} ERREUR {exc!r}\n{traceback.format_exc()}")
+        if event == "session-start" and isinstance(exc, (RuntimeError, OSError)) and not _EMITTED:
+            # Mémoire hors service (graph.json illisible et rien pour le réparer, dossier en lecture seule…) : on le
+            # dit une fois, à l'utilisateur seulement (aucun token), au lieu de se taire toute la session.
+            try:
+                emit("SessionStart", None, f"⚠ Cerveau : mémoire hors service pour cette session ({exc}). "
+                                           "`brain doctor` pour le diagnostic.")
+            except Exception:
+                pass
     finally:
         elapsed = time.time() - t0
         if elapsed > 2:
