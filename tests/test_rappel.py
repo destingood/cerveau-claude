@@ -31,6 +31,7 @@ NOW = (2026, 11, 20, 10, 0, 0)  # a Friday: « la semaine dernière » is 09/11-
 FLOOR_HIT1, FLOOR_HIT3, MAX_FALSE = 56, 58, 2
 FLOOR_LONG_HIT3, MAX_LONG_FALSE = 8, 1
 FLOOR_OBS = 4  # observations noted at the end of a task, found by the 4 questions that only they answer
+FLOOR_SESSION = 33  # questions still recalled when all of them follow one another in one session
 
 PROJECTS = [  # (key, title, description): the project folders are created under the test folder
     ("boutique", "Boutique Maison Yuzu", "Boutique en ligne Shopify de thé japonais (matcha, hojicha) et d'accessoires "
@@ -1075,6 +1076,28 @@ def main():
     _, ctx, _ = ask(world, "on a fait quoi avant-hier ?", "boutique", "rappel-obs-date")
     check(any("Embalpack" in x for x in noted(ctx)), "question seulement datée (« avant-hier ») : l'observation de ce jour-là",
           ctx)
+    # Session cap: the questions that recall their memory in a new session, one after the other in ONE session (in the
+    # audit, 12 memories after 9 messages, then nothing for the other 24, silently).
+    good = [q for q in QUESTIONS if any(k in q[4] for k in res[q[0]][:3])]
+    kept, said = [], []
+    for q in good:
+        keys, ctx, _ = ask(world, q[3], q[2], "rappel-session-longue")
+        kept.append(any(k in q[4] for k in keys[:3]))
+        said.append("Rappel automatique en pause" in ctx)
+    print(f"Une seule session pour les {len(good)} questions rappelées : {sum(kept)} le sont encore · ligne « en pause » "
+          f"{sum(said)} fois")
+    check(sum(kept) >= FLOOR_SESSION, f"session longue : ≥ {FLOOR_SESSION}/{len(good)} questions rappelées", kept)
+    check(any(said) and not any(a and b for a, b in zip(said, said[1:])),
+          "plafond atteint : une ligne le dit, une fois par pause (pas à chaque message)", said)
+    paused = False
+    for q in good:  # au plafond, une demande explicite passe quand même
+        _, ctx, _ = ask(world, q[3], q[2], "rappel-plafond")
+        if "Rappel automatique en pause" in ctx:
+            paused = True
+            break
+    keys, ctx, _ = ask(world, "tu te souviens de ce que j'avais réglé pour la mémoire virtuelle ?", "pc", "rappel-plafond")
+    check(paused and "p16" in keys, "plafond atteint : « tu te souviens… » rappelle quand même le souvenir",
+          (paused, keys, ctx[:300]))
     # Keywords: the end-of-task instruction asks for them, and a memory given the words of a future question is recalled
     # by it (A3: « logiciel » and « vidéos » appear nowhere in « Montage sur DaVinci Resolve »).
     from brainkit import hooks

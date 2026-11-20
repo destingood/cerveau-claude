@@ -44,8 +44,11 @@ DEFAULT_CONFIG = {
                "digest_tokens": 330, "compact_recall_tokens": 450, "resume_items": 5},
     # Rappel automatique à chaque message : souvenirs + fichiers pertinents, seulement si vraiment liés.
     # min_score 5 : sur 27 vrais messages (72 h), les faux rappels notaient 2,4–4,8 et le plus faible vrai 9,3.
+    # Plafond glissant : au plus session_cap_items souvenirs sur les session_cap_window derniers messages, puis une ligne
+    # le dit et le rappel reprend quand les plus anciens sortent de la fenêtre (« tu te souviens… » passe toujours).
     "recall": {"enabled": True, "max_items": 3, "min_cov": 0.5, "min_score": 5.0, "files": True, "max_files": 4,
-               "min_cov_files": 0.4, "max_chars": 1200, "session_cap_items": 12, "session_cap_files": 20,
+               "min_cov_files": 0.4, "max_chars": 1200, "session_cap_items": 12, "session_cap_window": 20,
+               "session_cap_files": 20,
                # Neurone du rappel (neurone.py), appris sur les échanges de cet utilisateur : « auto » (il prend la
                # main une fois assez d'exemples et s'il fait mieux que la règle), « off » (la règle seule). Ligne
                # complète si sa probabilité d'être utile atteint neurone_haut ; sinon titre seul pour ce que la règle
