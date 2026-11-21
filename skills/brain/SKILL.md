@@ -1,6 +1,6 @@
 ---
 name: brain
-description: Mémoire persistante de Claude — retrouver ou mémoriser un souvenir, trouver un fichier sans explorer, ingérer une source dans le wiki, reprendre une session. Quand l'utilisateur dit « souviens-toi », « retiens », « cerveau », « wiki », « /brain ».
+description: "Mémoire persistante de Claude : souvenirs datés, wiki Markdown, cartes de projets, à-faire, historique. Retrouver ou retenir un souvenir, ingérer une source dans le wiki, trouver un fichier, reprendre une session ; « souviens-toi », « /brain »."
 ---
 
 # 🧠 Cerveau — référence

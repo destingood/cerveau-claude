@@ -1,9 +1,19 @@
 ---
 name: logo-design
-description: "Créer, refaire ou critiquer un logo avec la skill Logo Design de kaankiziltug (github.com/kaankiziltug/logo-design-skill, licence MIT) : brief, trois concepts montrés en gris avant tout le reste, logo construit en SVG propre, testé à 16 px, en une couleur et en négatif, puis, si la direction est validée, le kit (couleurs, versions horizontale et empilée, favicon et icônes d'appli, planche de présentation, mini-charte). Vérifie qu'elle est là, sinon l'installe sur ce PC avec l'accord de l'utilisateur. À utiliser quand l'utilisateur dit « crée un logo », « refais mon logo », « critique mon logo », « idées de logo », « logo pour ma boutique », « identité visuelle », « charte graphique », « crée un favicon », « icône de mon appli ». Ne pas utiliser pour animer un logo (cerveau:motion-design)."
+description: "Créer, refaire ou critiquer un logo : brief, trois concepts en gris, logo SVG testé à 16 px, puis kit (couleurs, versions, favicon, icônes d'appli, mini-charte). Pas pour animer un logo (cerveau:animation)."
+metadata:
+  triggers: >-
+    « fais-moi un logo » « fais un logo » « faire un logo » « crée un logo » « créer un logo » « crée-moi un logo »
+    « dessine un logo » « dessine-moi un logo » « refais mon logo » « critique mon logo » « idées de logo »
+    « besoin d'un logo » « logo design » « logo-design » « identité visuelle » « crée un favicon »
+    « icône de mon appli » Ne pas utiliser pour « anime le logo » « animer le logo » « animation du logo »
+    (cerveau:animation).
 ---
 
 # Logo — un signe simple, distinctif, qui marche à 16 px
+
+Source : skill Logo Design de kaankiziltug (github.com/kaankiziltug/logo-design-skill, licence MIT), installée sur le PC
+à la demande (§ 2).
 
 ## 1. Déjà là ?
 `~/.claude/skills/logo-design/SKILL.md` existe → charger la skill `logo-design` et la suivre ; elle renvoie à
@@ -24,7 +34,7 @@ mais sans scripts ni bibliothèque, donc ni audit, ni rendu, ni planches : le di
 4. Déclencheurs en français : `brain skill trig logo-design "crée un logo" "refais mon logo" "critique mon logo"
    "idées de logo" "besoin d'un logo" "identité visuelle" "crée un favicon"`, puis nouvelle conversation. Jamais
    « logo pour mon site / ma boutique » ni « nouveau logo » : « anime le logo de mon site » partirait ici au lieu de
-   cerveau:motion-design.
+   cerveau:animation (fiche motion-design).
 
 Mise à jour : `npx -y skills update -g` (les déclencheurs ajoutés par `brain skill trig` restent). Retrait :
 `npx -y skills remove logo-design -g -a claude-code -y`, puis `brain skill --force trig logo-design`.

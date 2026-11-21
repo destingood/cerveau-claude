@@ -167,10 +167,10 @@ class _Sources:
         from . import wikistore
         maps = [[p["id"], _stamp(PROJECTS_DIR / p["id"] / "map.json")] for p in self.b.projects()]
         skills = []
-        for name, src in sorted(skill_sources().items()):
-            files = [src / "SKILL.md", *sorted((src / "references").glob("*.md")),
-                     *sorted((src / "scripts").glob("*.py"))]
-            skills.append([name, [[f.name, _stamp(f)] for f in files]])
+        for name, src in sorted(skill_sources().items()):  # (ce que viz lit : fiches et scripts, regroupées comprises)
+            files = [src / "SKILL.md"] + sorted(f for pat in ("references/*.md", "*/fiche.md", "*/references/*.md",
+                                                              "scripts/*.py", "*/scripts/*.py") for f in src.glob(pat))
+            skills.append([name, [[f.relative_to(src).as_posix(), _stamp(f)] for f in files]])
         shops = [[f.name, _stamp(f)] for f in sorted((BRAIN_DIR / "boutiques").glob("*.json"))]
         return [maps, skills, shops, str(wikistore.root() or ""), PLUGIN]
 

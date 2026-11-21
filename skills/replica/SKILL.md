@@ -1,6 +1,11 @@
 ---
 name: replica
-description: "Replica pour le cerveau : refaire sa propre version d'une app existante, en 11 étapes — analyse (écrans, parcours, modèle de données), architecture, design, construction, backend, tests, score de parité, avis des utilisateurs (ce qu'ils détestent → corrections et angle de vente), nouvelle marque, lancement (page, prix, fiche App Store / Google Play), mise en ligne. Fonctions et parcours seulement, jamais le code, le logo, les textes ni le contenu de l'original. À utiliser quand l'utilisateur dit « replica », « clone cette app », « refais cette app », « ma version de X », « copie cette app », « reverse engineer X », « qu'est-ce que les utilisateurs de X détestent », « score de parité », « rebrande mon clone », ou colle le lien d'une app ou d'une fiche App Store pour la refaire. Ne pas utiliser pour une boutique en ligne (cerveau e-commerce) ni pour une app créée de zéro sans modèle."
+description: "Refaire sa propre version d'une app existante en 11 étapes : analyse, architecture, design, code, tests, score de parité, avis des utilisateurs, marque, lancement. Fonctions seulement, jamais le code ni la marque."
+metadata:
+  triggers: >-
+    « replica » « clone cette app » « refais cette app » « ma version de X » « copie cette app » « reverse engineer X »
+    « qu'est-ce que les utilisateurs de X détestent » « score de parité » « rebrande mon clone » Ne pas utiliser pour
+    une boutique en ligne (cerveau e-commerce) ni pour une app créée de zéro sans modèle.
 ---
 
 # Replica — refaire une app, à sa façon
@@ -56,7 +61,7 @@ depuis le projet par ce chemin complet, `python` sous Windows, `python3` ailleur
   fait foi pour l'avancement.
 - À chaque étape finie : mémoriser ce qui sert plus tard (pile choisie et pourquoi, nom retenu, score de parité,
   angle de vente) — `brain add -t decision …` ou `-t fact …` dans le projet, après un `q` anti-doublon.
-- Étape 8 : avis Reddit, X ou YouTube que WebFetch ne lit pas → skill `cerveau:agent-reach` si l'outil est installé.
+- Étape 8 : avis Reddit, X ou YouTube que WebFetch ne lit pas → skill `cerveau:web` (fiche agent-reach) si l'outil est installé.
 - Code exposé (connexion, paiements, API, étape 5) → skill `cerveau:securite` avant de livrer.
 - Mise en ligne en France : mentions légales (LCEN), information RGPD (art. 13), consentement aux cookies (loi
   Informatique et Libertés art. 82, recommandations CNIL), CGV et droit de rétractation de 14 jours pour une vente à

@@ -1,9 +1,18 @@
 ---
 name: spec-kit
-description: "Construire un projet ou une grosse fonction à partir d'une spec écrite, avec Spec Kit de GitHub (github.com/github/spec-kit, licence MIT, CLI specify) : principes du projet (constitution), spec, plan, tâches, code, puis contrôle que le code colle à la spec ; extensions pour réparer un bug pas à pas ou évaluer une idée avant de la construire. Vérifie qu'il est là, sinon l'installe sur ce PC avec l'accord de l'utilisateur, puis le pose dans le projet. À utiliser quand l'utilisateur dit « spec kit », « spec-kit », « speckit », « specify init », « spec-driven », « développement piloté par la spec », « installe spec kit dans ce projet », « /speckit-specify ». Ne pas utiliser pour un plan ou une tâche en plusieurs étapes dans la conversation (superpowers:writing-plans), un bug ordinaire (superpowers:systematic-debugging) ni une idée de business sans code (validate-idea)."
+description: "Construire un projet ou une grosse fonction à partir d'une spec écrite avec Spec Kit de GitHub (specify) : constitution, spec, plan, tâches, code, contrôle. Sur demande : /cerveau:spec-kit."
+disable-model-invocation: true
+metadata:
+  triggers: >-
+    « spec kit » « spec-kit » « speckit » « specify init » « spec-driven » « développement piloté par la spec »
+    « installe spec kit dans ce projet » « /speckit-specify » Ne pas utiliser pour un plan ou une tâche en plusieurs
+    étapes dans la conversation (superpowers:writing-plans), un bug ordinaire (superpowers:systematic-debugging) ni une
+    idée de business sans code (validate-idea).
 ---
 
 # Spec Kit — la spec d'abord, le code ensuite
+
+Source : Spec Kit de GitHub (github.com/github/spec-kit, licence MIT, CLI specify).
 
 ## 1. Déjà là ?
 - CLI : `specify version` répond, en 1.x (une 0.x ne connaît pas `--integration`). Sinon installer (2).

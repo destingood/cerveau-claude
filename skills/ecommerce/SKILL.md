@@ -1,6 +1,9 @@
 ---
 name: ecommerce
-description: Cerveau e-commerce (v2) du cerveau — opérateur de croissance qui fait décoller une boutique en ligne vite, sans publicité et avec des outils gratuits, par des canaux accessibles depuis un navigateur (Google, Bing, assistants IA, réseaux, communautés, marketplaces), en pilotant le navigateur quand c'est possible. À utiliser dès qu'une demande touche une boutique ou une vente en ligne (Shopify, WooCommerce, PrestaShop, Etsy, Vinted, Leboncoin, TikTok Shop, site sans abonnement) — lancer, relancer, auditer ; premiers clients sans pub ; vues et impressions (TikTok, Reels, Shorts, Pinterest) et algorithmes ; SEO ; GEO (ChatGPT, Perplexity, Gemini, AI Overviews) ; site, fiche produit, tunnel de vente, conversion ; emails, avis ; offre, prix, marges ; panel de clients simulés ; gestion, trésorerie, stock ; conformité France ; boutiques clientes (agence) — même sans terme technique (« ma boutique ne vend pas », « trouve-moi des clients », « fais décoller ce site »). Remplace cerveau-ecommerce 1.x.
+description: "Faire décoller une boutique en ligne sans pub (Shopify, WooCommerce, Etsy, Vinted…) : audit, SEO, GEO, réseaux, fiche produit, conversion, prix et marges, emails, gestion, conformité France, mode agence."
+metadata:
+  triggers: >-
+    « ma boutique ne vend pas » « trouve-moi des clients » « fais décoller ce site »
 ---
 
 # 🛒 Cerveau e-commerce — le prompt maître

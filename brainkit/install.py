@@ -31,7 +31,7 @@ groupés dans un message ; ToolSearch : un seul `select:a,b,c` ; chercher dans p
 
 SKILL = f"""---
 name: brain
-description: Mémoire persistante de Claude — retrouver ou mémoriser un souvenir, trouver un fichier sans explorer, ingérer une source dans le wiki, reprendre une session. Quand l'utilisateur dit « souviens-toi », « retiens », « cerveau », « wiki », « /brain ».
+description: "Mémoire persistante de Claude : souvenirs datés, wiki Markdown, cartes de projets, à-faire, historique. Retrouver ou retenir un souvenir, ingérer une source dans le wiki, trouver un fichier, reprendre une session ; « souviens-toi », « /brain »."
 ---
 
 # 🧠 Cerveau — référence
@@ -442,7 +442,12 @@ def sync_skills(uninstall=False, quick=False) -> list:
             shutil.rmtree(mark.parent, ignore_errors=True)
             done.append(f"✓ skill /{mark.parent.name} retirée")
         return done
-    for name, src in skill_sources().items():
+    sources = skill_sources()
+    for mark in sorted(base.glob(f"*/{SKILL_MARK}")) if sources else ():
+        if mark.parent.name not in sources:  # posée par le cerveau, qui ne la livre plus (regroupée ou retirée)
+            shutil.rmtree(mark.parent, ignore_errors=True)
+            done.append(f"✓ skill /{mark.parent.name} retirée : le cerveau ne la livre plus")
+    for name, src in sources.items():
         dst = base / name
         mark = dst / SKILL_MARK
         if dst.exists() and not mark.exists():

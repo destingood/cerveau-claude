@@ -1,6 +1,12 @@
 ---
 name: carriere-commerciale
-description: "Carrière de vendeur et de commercial dans la tech pour le cerveau : décrocher un premier poste sans diplôme ni expérience, d'abord en magasin (informatique, téléphonie, multimédia, boutiques d'opérateurs), puis monter les échelons un par un (vendeur expert, chef de rayon, directeur de magasin, directeur régional, ou vente aux entreprises) et gagner plus à chaque marche. Salaires sourcés, alternance et titres professionnels, aides de France Travail, dyslexie et orthographe au travail (outils, RQTH), CV et LinkedIn, entretiens et jeux de rôle de vente, négociation du salaire et du variable, preuves chiffrées pour la promotion. À utiliser quand l'utilisateur dit « devenir vendeur », « devenir commercial », « travailler dans la vente », « vendeur en magasin », « conseiller de vente », « monter les échelons », « mon CV de vendeur », « préparer un entretien », « négocier mon salaire », « je suis dyslexique ». Ne pas utiliser pour vendre un produit à un client précis (skills sales:*)."
+description: "Carrière de vendeur ou de commercial dans la tech : premier poste sans diplôme, monter les échelons, salaires sourcés, CV et LinkedIn, entretiens, négociation, dyslexie au travail. Pas pour vendre à un client."
+metadata:
+  triggers: >-
+    « devenir vendeur » « devenir commercial » « travailler dans la vente » « vendeur en magasin »
+    « conseiller de vente » « monter les échelons » « mon CV de vendeur » « préparer un entretien »
+    « négocier mon salaire » « je suis dyslexique » Ne pas utiliser pour vendre un produit à un client précis (skills
+    sales:*).
 ---
 
 # Carrière commerciale — du premier poste aux gros salaires, un échelon à la fois
@@ -72,4 +78,4 @@ son mode d'emploi.
   candidature et sa relance (`-t todo --due <date>`), les leçons d'entretien (`-t learning`), les décisions d'offre
   (`-t decision`). Ne jamais y écrire de diagnostic médical détaillé : « préfère la dictée vocale » suffit.
 - Préparer un rendez-vous client ou un appel une fois en poste : skills `sales:call-prep`, `sales:draft-outreach`,
-  `sales:handle-objection`. Texte qui sonne IA : `cerveau:humanizer`.
+  `sales:handle-objection`. Texte qui sonne IA : `humanizer:humanizer` (plugin Humanizer, s'il est installé).
