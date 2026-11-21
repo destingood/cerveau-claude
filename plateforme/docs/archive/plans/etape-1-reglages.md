@@ -1,7 +1,7 @@
 # Étape 1 — Propositions pour les réglages non fixés
 
 Date : 17/11/2026 · Statut : **proposé**, à valider ligne par ligne par l'utilisateur.
-Plan : `docs/plans/plan-parite-aladdin.md`, étape 1. Sources lues le 17/11/2026 (certaines par le
+Plan : `docs/archive/plans/plan-parite-aladdin.md`, étape 1. Sources lues le 17/11/2026 (certaines par le
 cache de Firecrawl, daté du 15 ou du 16/11/2026).
 
 `cerveau config check` compte 57 marqueurs (39 `A_DEFINIR`, 18 `A_VERIFIER`) qui bloquent 38

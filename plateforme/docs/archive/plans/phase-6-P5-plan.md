@@ -2,7 +2,7 @@
 
 Date : 27/10/2026 · Statut : **validé** le 27/10/2026 (`GO P5`, recommandations H1 à H12).
 
-Complément au plan de phase 6 (`docs/plans/phase-6-plan.md`, §7, D21). Tout ce qui n'est pas repris
+Complément au plan de phase 6 (`docs/archive/plans/phase-6-plan.md`, §7, D21). Tout ce qui n'est pas repris
 ici suit ce plan : domaine `juridique_fr` en N0 et `max_level` N1 (D3, plafond déjà inscrit dans
 `core/config/loader.py:394`), seuil du golden 0,80 (D4), aucune mesure réelle sans ton accord et
 sans budgets (D5), revues dans la session (D9), avertissement R16 vérifié par les comportements

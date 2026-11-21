@@ -1,7 +1,8 @@
 # CERVEAU — consignes pour Claude Code
 
 Spécification complète : `docs/MEGA-PROMPT-CERVEAU.md` (ne pas l'importer avec `@` ; lire la section
-utile à la demande). Phase en cours : voir le dernier compte rendu de `docs/rapports/`.
+utile à la demande). Plan en cours : `docs/plans/plan-cerveau.md`, le seul à jour (anciens plans et
+comptes rendus : `docs/archive/`).
 
 ## Mission
 

@@ -3,7 +3,7 @@
 Date : 22/10/2026 · Statut : **validé par l'utilisateur le 22/10/2026** (`GO P3`), avec les
 recommandations E1 à E6 du §10.
 
-Complément court au plan de phase 6 (`docs/plans/phase-6-plan.md`, §7 et D19). Tout ce qui n'est
+Complément court au plan de phase 6 (`docs/archive/plans/phase-6-plan.md`, §7 et D19). Tout ce qui n'est
 pas repris ici suit le plan de phase 6 : socle des packs (ADR-043),
 domaine en N0 (D3), seuil du golden à 0,80 (D4), aucune mesure réelle sans ton accord (D5), revues
 dans la session (D9).

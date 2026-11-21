@@ -8,7 +8,7 @@ Date : 17/11/2026, mis à jour le même jour : PR #18 fusionnée dans `main`, é
 0, 3 et 4 avancées dans la PR #21, publiée en cerveau 8.23.0 · Statut : **en cours** ; GO donné le
 17/11/2026 (« vsy ») ; D1, D2, D3 et D11 tranchés, D4 ouvert.
 
-Cette version remplace la v1 du même jour (`docs/plans/plan-parite-aladdin.md`, dans la
+Cette version remplace la v1 du même jour (`docs/archive/plans/plan-parite-aladdin.md`, dans la
 [PR #18](https://github.com/destingood/cerveau-claude/pull/18)). Elle garde l'étape 0 de la v1, déjà
 faite dans cette PR, et ajoute ce que la v1 ne voyait pas : la
 [PR #12](https://github.com/destingood/cerveau-claude/pull/12), le budget API nul, tes domaines hors
@@ -262,7 +262,7 @@ PR de ce plan :
 **Étape 6 — Réglages et décisions** (C12) ; peut commencer dès l'étape 1, c'est surtout ton travail
 - Marqueurs recomptés après la PR #12 ; budget API écrit à 0 € (aucun appel payant possible).
 - Claude propose une valeur prudente et sourcée par marqueur (la PR #18 a commencé :
-  `docs/plans/etape-1-reglages.md`).
+  `docs/archive/plans/etape-1-reglages.md`).
 - Toi : tu écris toi-même les valeurs de gouvernance (live, limites, autonomie).
 - Fin : `cerveau config check` ne bloque plus que le live, N4 et ce qui attend un compte pas encore
   créé.
