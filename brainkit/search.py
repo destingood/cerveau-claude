@@ -14,7 +14,7 @@ import sys
 from collections import Counter, defaultdict
 
 from .common import days_since, fold, tokenize
-from .lexicon import INFLEXIONS, SYN, deletes, faux_amis, phon, root, within_one
+from .lexicon import INFLEXIONS, SYN, deletes, faux_amis, other_sense, phon, root, within_one
 
 K1, B = 1.3, 0.7
 SUBWORD_W, SUBWORD_DICE, SUBWORD_TOP = 0.5, 0.6, 3
@@ -135,10 +135,11 @@ class Index:
         et, mot inconnu, ses rapprochements phonétiques ou fautes de frappe."""
         return [x[:4] for x in self.variants(q)]
 
-    def variants(self, q):
+    def variants(self, q, synonyms=True):
         """expand(), et pour chaque variante son degré d'approximation : 0 telle quelle (le mot, un préfixe, une forme,
         un synonyme), 1 approchée (prononciation, faute de frappe, même famille d'un mot absent de l'index), 2 sous-mots
-        (dernier recours : quelques trigrammes en commun)."""
+        (dernier recours : quelques trigrammes en commun). `synonyms` faux : sans les synonymes métier (mot employé dans
+        son autre sens, lexicon.other_sense)."""
         out = [(q, 1.0)] if q in self.df else []
         if len(q) >= 4:
             # Préfixe : mot de l'index qui commence par le mot tapé (« dropship » → « dropshipping »). Troncature : mot de
@@ -157,7 +158,7 @@ class Index:
             extra.sort(key=lambda x: (-x[1], len(x[0])))
             out += extra[:15]
         seen = {v for v, _ in out}
-        syn = [s for s in SYN.get(q, ()) if s in self.df and s not in seen]  # synonymes métier : toujours
+        syn = [s for s in SYN.get(q, ()) if s in self.df and s not in seen] if synonyms else []  # synonymes métier
         out += [(s, 0.8) for s in syn]
         seen.update(syn)
         strong = q in self.df or any(w >= 0.75 for _, w in out)
@@ -203,7 +204,8 @@ class Index:
         qterms = list(dict.fromkeys(tokenize(query)))
         if not qterms or not self.N:
             return []
-        exp = {q: self.variants(q) for q in qterms}
+        plain = other_sense(qterms)  # « le port 8080 » : pas les synonymes de la livraison
+        exp = {q: self.variants(q, synonyms=q not in plain) for q in qterms}
         unseen = math.log(1 + (self.N + 0.5) / 0.5)
         qidf = {q: (max(x[2] for x in exp[q]) if exp[q] else unseen) for q in qterms}
         total = sum(qidf.values()) or 1.0
@@ -243,7 +245,7 @@ class Index:
         return results[:limit]
 
 
-MEMIDX_TAG = f"m6:{sys.version_info[0]}.{sys.version_info[1]}"  # m6 : stem() garde « refus »
+MEMIDX_TAG = f"m6:{sys.version_info[0]}.{sys.version_info[1]}"  # m6 : stem() garde « refus », faux amis du port
 _LOADED = {}  # index des souvenirs déjà chargé dans ce processus : {fichier: (empreinte, index)}
 
 
@@ -566,6 +568,10 @@ _MONTHS = ("janvier", "fevrier", "mars", "avril", "mai", "juin", "juillet", "aou
            "decembre")
 _MONTH_IN_TEXT = re.compile(r"\b(" + "|".join(_MONTHS) + r")\b(?:\s+(?:de\s+|d')?(\d{4}))?")
 DATED_TOPIC = 3  # mots du sujet, au plus, d'une question datée : au-delà, la date n'est qu'un détail du message
+# Sans date chiffrée ni nom de mois, un texte ne cite aucune période : ni fold() ni analyse (dates_in, _month_spans).
+# Toujours plus large que ces deux-là, jamais plus étroit (abréviations « oct. », tirets longs que fold() redresse).
+_MAYBE_DATED = re.compile(r"\d[/\-–−]\d|\b(?:janv(?:ier)?|f[ée]v(?:r(?:ier)?)?|mars|avr(?:il)?|mai|juin|juil(?:let)?|"
+                          r"ao[uû]t|sept(?:embre)?|oct(?:obre)?|nov(?:embre)?|d[ée]c(?:embre)?)\b", re.I)
 
 
 def _month_spans(text, ref) -> list:
@@ -595,7 +601,7 @@ def _periods(n) -> tuple:
     written = [d for d in (day(n.get("created")), day(n.get("updated"))) if d]
     ref = written[0] if written else _dt.date.today()
     text = f"{n.get('title', '')}\n{n.get('body', '')}"
-    about = [(d, d) for d in dates.dates_in(text, ref)] + _month_spans(text, ref)
+    about = [(d, d) for d in dates.dates_in(text, ref)] + _month_spans(text, ref) if _MAYBE_DATED.search(text) else []
     meta = n.get("meta") or {}
     about += [(d, d) for d in (day(meta.get(k)) for k in ("valid_to", "due", "done")) if d]
     return about, written
@@ -631,22 +637,27 @@ def dated_recall(brain, raw, query, project=None, today=None, limit=3, use_cache
     pos = {k: i for i, k in enumerate(idx.keys)}
     span = (end - start).days + 2  # un mois cité ne dit rien d'un jour (« en novembre » n'est pas « hier »)
     mid = start + (end - start) / 2
-    cands = []
+    cands, homes = [], {}
     for n in brain.active():
         if n["type"] == "project":
+            continue
+        # Le sujet d'abord, les dates ensuite : le premier tri ne coûte que des recherches dans l'index (avant : les dates
+        # de chacun des 3 000 souvenirs analysées, 170 ms de plus par question datée).
+        if terms:  # la moitié au moins des mots du sujet, dans le souvenir ou dans le titre de son projet
+            tf = idx.tfs[pos[n["id"]]] if n["id"] in pos else {}
+            pid = n.get("project")
+            if pid not in homes:
+                home = brain.nodes.get(pid) if pid else None
+                homes[pid] = set(tokenize(home["title"])) if home else set()
+            title = homes[pid]
+            if 2 * sum(1 for fs in forms.values() if any(f in tf or f in title for f in fs)) < len(terms):
+                continue
+        elif project and n.get("project") != project:
             continue
         about, written = _periods(n)
         cited = [a + (b - a) / 2 for a, b in about if a <= end and b >= start and (b - a).days <= span]
         when = [d for d in written if start <= d <= end]
         if not cited and not when:
-            continue
-        if terms:  # la moitié au moins des mots du sujet, dans le souvenir ou dans le titre de son projet
-            tf = idx.tfs[pos[n["id"]]] if n["id"] in pos else {}
-            home = brain.nodes.get(n.get("project")) if n.get("project") else None
-            title = set(tokenize(home["title"])) if home else set()
-            if 2 * sum(1 for fs in forms.values() if any(f in tf or f in title for f in fs)) < len(terms):
-                continue
-        elif project and n.get("project") != project:
             continue
         own = hits.get(n["id"])
         cands.append((not cited, bool(about) and not cited, -(own["score"] if own else 0.0), n.get("project") != project,

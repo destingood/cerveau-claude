@@ -1145,6 +1145,19 @@ def main():
     keyed, _, _ = ask(world, a3[3], a3[2], "rappel-cles-A3")  # (ask puts the graph back as it was)
     check(res["A3"] == [] and keyed[:1] == ["y03"], "mots-clés écrits sur le souvenir : la question qui le ratait le trouve",
           (res["A3"], keyed))
+    # A word with two senses: « port » is the shipping cost in the shop (A2: « le port est offert »), not the port of a
+    # server or a USB socket, in a message or in a memory (« écoute sur le port 3000 »).
+    tech = [ask(world, text, proj, f"rappel-port-{i}")[0] for i, (proj, text) in enumerate((
+        (None, "quel port utilise le serveur MCP par défaut ?"),
+        ("boutique", "le port 8080 est déjà pris, comment le libérer ?"),
+        (None, "mon port USB ne marche plus depuis la mise à jour")))]
+    check(not any(tech) and "b04" in res["A2"][:3],
+          "« port » : la livraison pour la boutique, rien pour un port de serveur ou USB", (tech, res["A2"]))
+    from brainkit.search import Index
+    mini = Index([("dev", [("Serveur de dev : il écoute sur le port 3000 en local", 1.0)]),
+                  ("envoi", [("Expédition des colis le lundi et le jeudi", 1.0)])])
+    hits = [h["key"] for h in mini.search("livraison", 5)]
+    check(hits == ["envoi"], "« port 3000 » dans un souvenir : pas un synonyme de la livraison", hits)
     # Same answer from the real process (`python -I -S brain.py hook prompt`, Python implementation), on two questions
     # and a negative whose answer does not depend on the day.
     env = dict(os.environ, BRAIN_IMPL="python")

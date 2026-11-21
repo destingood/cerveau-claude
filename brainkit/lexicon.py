@@ -73,12 +73,34 @@ for _line in _GROUPS.strip().splitlines():
 # (« Microsoft Store », « iTunes du Store ») n'est pas la boutique, « C:\Program Files » n'est pas un fichier. La recherche
 # exacte les trouve toujours (« Microsoft Store ») ; seuls les synonymes (« boutique » → « store ») les ignorent.
 _FAUX_AMIS = re.compile(r"\b(?:Microsoft|Windows|App|Play|Web|Games|Steam|Xbox|Galaxy|[Dd]u|[Ll]e|[Aa]u)\s+Store\b|"
-                        r"\b(?:Program|Common) Files\b")
+                        r"\b(?:Program|Common) Files\b|"
+                        r"\b[Pp]orts?\s+(?:\d{2,5}\b|USB|TCP|UDP|COM\d*\b|s[ée]rie\b|HDMI|Ethernet|r[ée]seau\b)")
 
 
 def faux_amis(text) -> list:
     """Mots métier pris dans un faux ami (« pas celui du Store » → ["store"]) : à ne pas compter comme synonymes."""
     return [t for m in _FAUX_AMIS.finditer(text or "") for t in tokenize(m.group(0)) if t in SYN]
+
+
+# Synonymes à double sens, côté message : « le port est offert » parle de livraison, « quel port utilise le serveur
+# MCP ? » ou « le port 8080 est pris » non. Quand le message emploie le mot dans son autre sens (un de ces mots à côté,
+# ou un numéro juste après), ses synonymes métier ne comptent pas ; le mot lui-même reste cherché tel quel.
+_OTHER_SENSE = {"port": frozenset(tokenize(
+    "serveur serveurs server reseau réseau network usb tcp udp http https localhost mcp ssh docker api firewall pare-feu "
+    "routeur router proxy vpn socket ecoute écoute écouter listen ouvert ouverts ouvrir occupé occupe bloqué hdmi "
+    "ethernet série serie com"))}
+
+
+def other_sense(qterms) -> set:
+    """Mots du message (déjà découpés, dans l'ordre) employés dans leur autre sens : leurs synonymes ne comptent pas."""
+    out = set()
+    for w, cues in _OTHER_SENSE.items():
+        if w not in qterms:
+            continue
+        i = qterms.index(w)
+        if set(qterms) & cues or (i + 1 < len(qterms) and qterms[i + 1].isdigit()):
+            out.add(w)
+    return out
 
 # Clé phonétique (français d'abord, correcte pour l'anglais courant). Ordre des règles important.
 _PHON = [
