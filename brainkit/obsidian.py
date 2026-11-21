@@ -456,7 +456,7 @@ def status_text(brain, root, today=None) -> str:
     if len(todo) > 15:
         out.append(f"- … et {len(todo) - 15} autre(s) : [[{DASHBOARD}]] → vue « À faire »")
     rows = []
-    for s in sorted((journal.load().get("sessions") or {}).values(),
+    for s in sorted(journal.all_sessions(),  # celles de ce PC et, en mode wiki, des autres PC (journal/<PC>/)
                     key=lambda s: str(s.get("end") or s.get("start") or ""), reverse=True):
         what = s.get("title") or s.get("first") or s.get("brief")
         if not what:
@@ -469,6 +469,14 @@ def status_text(brain, root, today=None) -> str:
         if len(rows) == 6:
             break
     out += ["", "## 💬 Dernières sessions", ""] + (rows or ["- Aucune encore."])
+    try:  # le journal complet, un dossier par PC : lien vers le dernier mois de chacun
+        months = wiki.journal_months(root)
+    except Exception as exc:
+        log(f"obsidian : journal : {exc!r}")
+        months = []
+    if months:
+        out += ["", "Journal : " + " · ".join(f"[[{rel}|{'avant la 8.31' if pc == wiki.OLD_JOURNAL else pc}]]"
+                                             for pc, rel in months)]
     st = ws.stats(brain.data)
     out += ["", "## 📚 Mémoire", "", "| Type | Pages |", "|---|---:|"]
     out += [f"| {TYPES.get(t, t)} | {c} |" for t, c in sorted(st["types"].items(), key=lambda x: (-x[1], x[0]))]
