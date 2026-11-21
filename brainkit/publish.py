@@ -65,10 +65,13 @@ def _json(path: Path, data) -> None:
 def _hook(arg: str, timeout: int, status=None) -> dict:
     """Hook en forme « exécutable + arguments » : aucun shell à lancer (Git Bash ou PowerShell sous Windows), aucun
     guillemet à échapper ; Python direct en mode isolé (-I -S), le plus rapide (le cerveau n'utilise que la stdlib)."""
+    from .install import ASYNC
     h = {"type": "command", "command": "python", "args": ["-I", "-S", "${CLAUDE_PLUGIN_ROOT}/brain.py", "hook", arg],
          "timeout": timeout}
     if status:
         h["statusMessage"] = status
+    if arg in ASYNC:  # sortie inutile, rien ne l'attend : lancé sans bloquer (install.ASYNC)
+        h["async"] = True
     return h
 
 

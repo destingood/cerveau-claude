@@ -143,6 +143,28 @@ def spawn_background(args) -> bool:
         return False
 
 
+REFRESH_MARK = STATE_DIR / "index-fond.lance"  # dernier lancement de `brain index --auto` (recalcul en arrière-plan)
+REFRESH_EVERY = 60  # s : analyse trouvée périmée en chemin → au plus un lancement par minute
+
+
+def refresh_later(projects=(), viz=False, now=False) -> bool:
+    """Analyse du graphe, BRAIN.md et index du démarrage de `projects` (plus la visualisation avec `viz`) refaits en
+    arrière-plan par `brain index --auto`, une tâche à la fois (index.refresh). Sans `now` — un hook qui trouve
+    l'analyse périmée en chemin — au plus un lancement par minute : les suivants savent qu'elle est en route."""
+    args = ["index", "--auto"] + (["--viz"] if viz else [])
+    for pid in projects:
+        args += ["-p", pid]
+    try:
+        if not now and REFRESH_MARK.exists() and time.time() - REFRESH_MARK.stat().st_mtime < REFRESH_EVERY:
+            return False
+        REFRESH_MARK.parent.mkdir(parents=True, exist_ok=True)
+        REFRESH_MARK.write_text(now_iso(), encoding="utf-8")
+    except OSError as exc:
+        log(f"recalcul en arrière-plan : {exc!r}")
+        return False
+    return spawn_background(args)
+
+
 def _project_path(proj):
     path = (proj.get("meta") or {}).get("path") if proj else None
     return path if path and os.path.isdir(path) else None
@@ -1213,8 +1235,9 @@ def on_session_end(data, cfg, event="session-end"):
     if event == "session-end":  # entretien et sauvegarde automatiques, une fois par jour (en arrière-plan)
         for args in daily_due(cfg):
             spawn_background(args)
-    brain = Brain.load()
-    idx.rebuild(brain, cfg)
+    # Analyse du graphe, BRAIN.md, index du démarrage de ce projet (prêt pour la session suivante, ou celle d'après la
+    # compaction) et, en fin de session, visualisation : en arrière-plan. Avant, 120 à 350 ms dans le hook.
+    refresh_later([proj["id"]] if proj else [], viz=event == "session-end", now=True)
     if event == "session-end" and (brain.data.get("wiki") or {}).get("root") and not brain.data["wiki"].get("missing"):
         try:  # wiki : index.md, entrée « session » au journal, puis commit + pull + push en arrière-plan
             from . import wiki
@@ -1230,13 +1253,6 @@ def on_session_end(data, cfg, event="session-end"):
                 commun.spawn(["commun", "sync", "--auto"])
         except Exception as exc:
             log(f"commun fin de session : {exc!r}")
-    if event == "session-end":
-        try:  # visualisation 3D et analyse du graphe gardées à jour sans y penser
-            from . import viz
-            if viz.is_stale():
-                viz.render(brain)
-        except Exception as exc:
-            log(f"viz fin de session : {exc!r}")
 
 
 # ------------------------------------------------------------------------------------------ PostCompact
@@ -1313,6 +1329,8 @@ def _run(event, data) -> int:
             log(f"hook {event} : installation illisible {exc!r}")
             return 0
     t0 = time.time()
+    from . import common
+    outer, common.HOOK = common.HOOK, event  # dans le hook : l'analyse du graphe n'est jamais calculée sur place
     try:
         handler = HANDLERS.get(event)
         if handler:
@@ -1331,6 +1349,7 @@ def _run(event, data) -> int:
             except Exception:
                 pass
     finally:
+        common.HOOK = outer
         elapsed = time.time() - t0
         if elapsed > 2:
             log(f"hook {event} lent : {elapsed:.2f}s")

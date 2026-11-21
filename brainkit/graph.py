@@ -8,7 +8,8 @@
 - chemins : plus court chemin entre deux souvenirs (liens explicites d'abord, puis déduits).
 
 Le résultat est mis en cache dans state/analysis.json, recalculé seulement quand le contenu du graphe change
-(les compteurs de rappel ne déclenchent pas de recalcul)."""
+(les compteurs de rappel ne déclenchent pas de recalcul). Jamais dans un hook : il y prend l'analyse précédente, même
+périmée, et le recalcul part en arrière-plan (`brain index --auto`)."""
 from __future__ import annotations
 
 import hashlib
@@ -471,11 +472,30 @@ def analyze(brain) -> dict:
 _MEMO = {}  # analyses calculées sans écrire (banc d'essai, `q --at`) : une par état du graphe, en mémoire seulement
 
 
-def ensure(brain=None, force=False, write=True) -> dict:
+def _in_hook() -> bool:
+    """Dans un hook (hooks._run) ? Le travail lourd n'y attend jamais."""
+    from . import common
+    return bool(common.HOOK)
+
+
+def empty() -> dict:
+    """Analyse vide (aucune encore calculée) : ni lien déduit, ni concept, ni communauté — seuls les liens écrits
+    comptent en attendant la vraie."""
+    return {"version": VERSION, "generated": now_iso(), "n": 0, "explicit": 0, "concepts": [], "inferred": [],
+            "communities": [], "comm": {}, "pr": {}, "deg": {}, "key": [], "bridges": [], "dups": [],
+            "gaps": {"isolated": [], "stale": [], "old_todos": [], "contradictions": []}, "questions": [], "sig": None,
+            "stale": True}
+
+
+def ensure(brain=None, force=False, write=True, wait=None, sig=None, projects=()) -> dict:
     """Analyse à jour (cache state/analysis.json, recalcul seulement si le contenu du graphe a changé).
-    write=False : rien n'est lu ni écrit sur le disque (monde fictif du banc d'essai, état passé)."""
+    write=False : rien n'est lu ni écrit sur le disque (monde fictif du banc d'essai, état passé).
+    wait=False (le défaut dans un hook) : jamais de calcul sur place — 1 à 4 s sur un gros cerveau, dans le délai du
+    hook. L'analyse en cache sert même périmée (« stale » : True ; vide s'il n'y en a pas encore) et le recalcul part en
+    arrière-plan, qui refait aussi l'index du démarrage de `projects`. `sig` : empreinte de ce cerveau déjà calculée
+    (_signature)."""
     brain = brain or Brain.load()
-    sig = _signature(brain)
+    sig = sig or _signature(brain)
     if not write:
         if sig not in _MEMO:
             if len(_MEMO) >= 4:
@@ -484,8 +504,15 @@ def ensure(brain=None, force=False, write=True) -> dict:
         return _MEMO[sig]
     if not force:
         cached = read_json(ANALYSIS_FILE, None)
-        if isinstance(cached, dict) and cached.get("sig") == sig and cached.get("version") == VERSION:
+        usable = isinstance(cached, dict) and cached.get("version") == VERSION
+        if usable and cached.get("sig") == sig:
             return cached
+        if wait is None:
+            wait = not _in_hook()
+        if not wait:
+            from .hooks import refresh_later
+            refresh_later(projects)
+            return dict(cached, stale=True) if usable else empty()
     data = analyze(brain)
     data["sig"] = sig
     try:

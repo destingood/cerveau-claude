@@ -69,7 +69,8 @@
               "hook",
               "pre-compact"
             ],
-            "timeout": 15
+            "timeout": 15,
+            "async": true
           }
         ]
       }
