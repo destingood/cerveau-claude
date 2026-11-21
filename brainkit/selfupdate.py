@@ -14,7 +14,7 @@ import subprocess
 import sys
 from pathlib import Path
 
-from .common import CLAUDE_HOME, PLUGIN, load_config, read_json, write_json
+from .common import CLAUDE_HOME, PLUGIN, load_config, oserror_fr, read_json, remove_tree, write_json
 
 # CODE (remplacé par une mise à jour) vs DONNÉES (jamais touchées : graph.json, config.json, BRAIN.md, history/…).
 CODE_ROOT_FILES = ("brain.py",)
@@ -205,32 +205,57 @@ def deploy(source, *, force=False, verify=True, dry_run=False, verifier=None, lo
         log(f"(simulation) sauvegarde prévue : {backup} — rien n'a été touché")
         return 0
 
-    _make_backup(target, backup)
-    log(f"✓ sauvegarde du code {tv} : {backup}")
     try:
+        _make_backup(target, backup)
+    except Exception as exc:  # sans sauvegarde complète, pas de retour arrière possible : on ne touche à rien
+        log(f"✗ sauvegarde du code {tv} impossible ({_why(exc)}) — rien n'a été modifié dans {target}")
+        remove_tree(backup)
+        return 1
+    log(f"✓ sauvegarde du code {tv} : {backup}")
+
+    def back(why) -> int:
+        log(f"✗ {why} — restauration de la version précédente…")
+        try:
+            _restore(backup, target, added)
+        except BaseException as exc:  # le retour arrière lui-même a échoué : dire comment le finir à la main
+            log(f"✗ le retour arrière a échoué ({_why(exc)}). Le code {tv} complet est dans {backup} : copie son contenu "
+                f"(brain.py, brainkit/, tests/, agents/, skills/) dans {target} en remplaçant les fichiers, puis lance "
+                f"`brain doctor`. Tes souvenirs, eux, n'ont pas été touchés.")
+            return 1
+        log(f"✓ revenu au code {tv} — rien de cassé n'est resté en place (sauvegarde : {backup})")
+        return 1
+
+    step = "copie"
+    try:  # toute erreur (pas seulement du disque), même une interruption (Ctrl+C), défait ce qui a été copié
         for rel in changed + added:
             dst = target / rel
             dst.parent.mkdir(parents=True, exist_ok=True)
             shutil.copy2(src_files[rel], dst)
         for rel in removed:
             (target / rel).unlink(missing_ok=True)
-    except OSError as exc:
-        log(f"✗ copie interrompue ({exc!r}) — restauration de la version précédente…")
-        _restore(backup, target, added)
-        return 1
+        if verify:
+            step = "vérification"
+            vok, summary = (verifier or _default_verify)(target)
+            log(("✓ " if vok else "✗ ") + summary)
+            if not vok:
+                return back("la vérification a échoué")
+        step = "enregistrement de la source"
+        _remember(target, source, sv)
+    except KeyboardInterrupt:
+        back(f"{step} interrompue")
+        raise
+    except Exception as exc:
+        return back(f"{step} interrompue ({_why(exc)})")
 
-    if verify:
-        vok, summary = (verifier or _default_verify)(target)
-        log(("✓ " if vok else "✗ ") + summary)
-        if not vok:
-            log("  → la vérification a échoué : restauration de la version précédente…")
-            _restore(backup, target, added)
-            log(f"✓ revenu au code {tv} — rien de cassé n'est resté en place (sauvegarde : {backup})")
-            return 1
-
-    _remember(target, source, sv)
     log(f"✓ cerveau mis à jour en {sv} dans {target} — données intactes, sauvegarde : {backup}")
     return 0
+
+
+def _why(exc) -> str:
+    """Une erreur en clair (disque, droits…), sans trace Python."""
+    if isinstance(exc, OSError):
+        return oserror_fr(exc)
+    return f"{type(exc).__name__} : {exc}" if str(exc) else type(exc).__name__
 
 
 def run(source=None, *, force=False, verify=True, dry_run=False) -> int:

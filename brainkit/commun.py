@@ -560,14 +560,9 @@ def _pull(path, me) -> str:
 def _unstick(path) -> None:
     """Un git interrompu (PC éteint, processus tué) ne bloque pas les synchronisations suivantes : verrous de git
     abandonnés retirés, rebase inachevé abandonné. Appelé sous GIT_LOCK : aucun autre git du cerveau ne tourne."""
-    import time
+    from . import gitmsg
     g = Path(path) / ".git"
-    for name in ("index.lock", "HEAD.lock", "ORIG_HEAD.lock"):
-        try:
-            if time.time() - (g / name).stat().st_mtime > 120:
-                (g / name).unlink()
-        except OSError:
-            pass
+    gitmsg.clear_stale_locks(path, 120)
     if (g / "rebase-merge").exists() or (g / "rebase-apply").exists():
         git(path, "rebase", "--abort", timeout=30)
 
@@ -860,8 +855,9 @@ def spawn(args, low=True):
         env["BRAIN_TASK"] = "1"  # comme hooks.spawn_background : rien si le cerveau a été effacé entre-temps
         if low:
             env["BRAIN_BG"] = "1"  # cli.main : CPU, disque et mémoire en priorité basse
+        from . import wikistore
         kw = dict(stdin=subprocess.DEVNULL, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, close_fds=True,
-                  cwd=str(BRAIN_DIR), env=env)
+                  cwd=str(BRAIN_DIR), env=wikistore.child_env(env))
         if os.name == "nt":
             kw["creationflags"] = 0x08000000 | 0x00000200 | (0x00004000 if low else 0)  # comme hooks.spawn_background
         else:

@@ -3,7 +3,7 @@
 Une mémoire persistante pour Claude Code, faite par destingood : Claude se souvient de toi, de tes projets, de tes
 décisions et de ce qu'il a appris, d'une session à l'autre. Tout reste chez toi, sur ton PC.
 
-![Version 8.29.0](https://img.shields.io/badge/version-8.29.0-2ea44f) ![Python 3.10 ou plus](https://img.shields.io/badge/python-3.10%2B-3776ab) ![Windows, macOS, Linux](https://img.shields.io/badge/Windows_%C2%B7_macOS_%C2%B7_Linux-555)
+![Version 8.30.0](https://img.shields.io/badge/version-8.30.0-2ea44f) ![Python 3.10 ou plus](https://img.shields.io/badge/python-3.10%2B-3776ab) ![Windows, macOS, Linux](https://img.shields.io/badge/Windows_%C2%B7_macOS_%C2%B7_Linux-555)
 
 **Sommaire** — [Installer](#installer-une-seule-fois) · [Au quotidien](#au-quotidien) · [Ce que fait le cerveau](#ce-que-fait-le-cerveau) ·
 [Moins de tokens](#moins-de-tokens) · [Il apprend tout seul](#le-cerveau-apprend-tout-seul) ·
@@ -80,6 +80,9 @@ outils, et tes boutiques suivies).
   observations anciennes condensées — et ce qui demande du jugement (corrections entendues, doublons, conflits,
   à-faire en retard) est tranché par Claude au démarrage suivant : ce qui est sûr est appliqué, un doute est laissé
   et cité, rien n'est inventé.
+- **Rien ne se perd** : une sauvegarde chaque jour, hors de `~/.claude` (sous Windows sur un second disque s'il y en a
+  un, sinon dans `~/Sauvegardes-cerveau-Claude` ; `brain config backup.dir <dossier>` pour en choisir un autre). Un
+  fichier de mémoire abîmé se répare seul, sans perdre ce qui s'y lit encore, et le cerveau te dit ce qu'il a repris.
 - **Le style concis** (`/output-style cerveau:concis`) : l'action d'abord, sans préambule ni récapitulatif. Il devient
   ton style par défaut, sauf si tu en avais déjà choisi un ; `brain config style off` pour revenir.
 - **La relecture sécurité** (skill `/cerveau:securite`) relit le code exposé (site, API, formulaire) avant de le livrer.
@@ -315,4 +318,4 @@ invite tes amis (Settings → Collaborators → Add people), puis rejoins-le le 
 
 `/plugin uninstall cerveau@cerveau`. Tes souvenirs restent dans `~/.claude/brain` (supprime ce dossier pour tout effacer).
 
-Version 8.29.0.
+Version 8.30.0.

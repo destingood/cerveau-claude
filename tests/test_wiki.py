@@ -802,6 +802,29 @@ check(r.returncode == 0 and "📚 Le cerveau vit dans le wiki" in out and "SKILL
       "lanceur en session cloud : le cerveau démarre sur le wiki (consignes avec la référence SKILL.md)",
       out[-400:] + r.stderr.decode("utf-8", "replace")[-400:])
 check((CLOUD2 / "claude" / "brain" / "brain.py").is_file(), "lanceur en session cloud : lanceur stable du cerveau écrit")
+# macOS : le dossier temporaire passe par un lien (/var → /private/var). Le wiki ouvert par un lien n'est pas un projet à
+# cartographier, et une tâche de fond (dans le dossier du cerveau) garde le wiki : avant, `brain map` s'y croyait en
+# cerveau classique et réécrivait le cache sans le wiki, qui disparaissait de la session suivante.
+LINKED = TMP / "lien-vers-le-wiki"
+try:
+    os.symlink(CLONE, LINKED, target_is_directory=True)
+except (OSError, NotImplementedError):
+    LINKED = None
+if LINKED:
+    CLOUD4 = TMP / "cloud4"
+    env_l = dict(env_c, CLAUDE_CONFIG_DIR=str(CLOUD4 / "claude"), BRAIN_HOME=str(CLOUD4 / "claude" / "brain"))
+    r = subprocess.run([sys.executable, "-I", "-S", str(launcher), "session-start"], capture_output=True, cwd=str(LINKED),
+                       env=env_l, timeout=120,
+                       input=json.dumps({"session_id": "c4", "cwd": str(LINKED), "source": "startup"}).encode())
+    out = r.stdout.decode("utf-8", "replace")
+    check(r.returncode == 0 and "📚 Le cerveau vit dans le wiki" in out and "Projet courant" not in out,
+          "session cloud ouverte par un lien vers le wiki : le wiki, pas un projet à cartographier", out[-400:])
+from brainkit import wikistore  # noqa: E402
+saved_found = list(wikistore._FOUND)
+wikistore._FOUND[:] = [CLONE]
+check(wikistore.child_env({}).get("BRAIN_WIKI") == str(CLONE) and wikistore.child_env({"BRAIN_WIKI": "x"})["BRAIN_WIKI"] == "x",
+      "tâche de fond : le wiki trouvé depuis le dossier courant lui est passé (BRAIN_WIKI), sans écraser un réglage")
+wikistore._FOUND[:] = saved_found
 r = subprocess.run([sys.executable, "-I", "-S", str(launcher), "prompt"], capture_output=True, cwd=str(CLONE), env=env_c,
                    input=json.dumps({"session_id": "c2", "cwd": str(CLONE),
                                      "prompt": "parle-moi de la synthèse japonaise sur Kyoto et Uji"}).encode(), timeout=60)

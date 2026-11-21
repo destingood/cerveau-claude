@@ -289,13 +289,15 @@ def _apply(brain, node, entry, note, path, stems, report, renamed):
     new["tags"] = clean_tags([t.lstrip("#") for t in tags] if isinstance(tags, list) else str(tags))
     due = meta.get("due")
     new["due"] = (dates.parse(str(due)) or f0.get("due")) if due else None
-    changes, conflicts = {}, []
+    changes, conflicts, replaced = {}, [], []
     for key in FIELDS:
         if new[key] == f0.get(key):
             continue  # pas touché dans Obsidian
-        if cur[key] != f0.get(key) and cur[key] != new[key] and not file_newer:
-            conflicts.append(key)  # modifié des deux côtés, le cerveau est plus récent
-            continue
+        if cur[key] != f0.get(key) and cur[key] != new[key]:  # modifié des deux côtés
+            if not file_newer:
+                conflicts.append(key)  # le cerveau est plus récent : il garde sa valeur, la note part dans Conflits/
+                continue
+            replaced.append(FR.get(key) or ("échéance" if key == "due" else key))  # la note est plus récente : sa valeur, celle du cerveau dans Conflits/
         if new[key] != cur[key]:
             changes[key] = new[key]
     if _sha(note["body"]) != entry.get("body_h"):
@@ -304,7 +306,11 @@ def _apply(brain, node, entry, note, path, stems, report, renamed):
         if brain_changed and not file_newer and body != str(node.get("body") or "").strip():
             conflicts.append("contenu")
         elif body != str(node.get("body") or "").strip():
+            if brain_changed:
+                replaced.append("contenu")
             changes["body"] = body
+    if replaced:
+        report["replaced"].append((node["title"], replaced))
     if changes:
         due_change = changes.pop("due", "∅")
         if due_change != "∅":
@@ -325,6 +331,30 @@ def _apply(brain, node, entry, note, path, stems, report, renamed):
     if conflicts:
         report["conflicts"].append((node["title"], conflicts))
     return bool(changes)
+
+
+def _free(path):
+    """Un nom de fichier libre : « Note (…).md », sinon « Note (…) 2.md »… (deux conflits dans la même minute)."""
+    p, i = Path(path), 2
+    while p.exists():
+        p = Path(path).with_name(f"{Path(path).stem} {i}{Path(path).suffix}")
+        i += 1
+    return p
+
+
+def _brain_copy(n) -> str:
+    """Version du cerveau d'une note modifiée des deux côtés, quand celle d'Obsidian (plus récente) l'emporte : gardée
+    dans Conflits/ (jamais relue comme une note gérée : pas de brain_id)."""
+    lines = [f"# {n['title']}", "",
+             f"_Version du cerveau du {fmt_date(n.get('updated'))}, remplacée par la note d'Obsidian modifiée après "
+             f"elle : rien n'est perdu. Garde ce qui compte dans la note, puis supprime ce fichier._", ""]
+    due = (n.get("meta") or {}).get("due")
+    for label, value in (("type", TYPES.get(n.get("type"), n.get("type"))), ("projet", n.get("project")),
+                         ("importance", n.get("importance")), ("tags", ", ".join(n.get("tags") or [])),
+                         ("échéance", due)):
+        if value:
+            lines.append(f"- {label} : {value}")
+    return "\n".join(lines + ["", str(n.get("body") or "").strip(), ""])
 
 
 def _inbox(brain, root, stems, report):
@@ -378,8 +408,8 @@ def sync(root, do_import=True) -> dict:
     if man.get("brain") and Path(man["brain"]) != BRAIN_DIR:
         raise RuntimeError(f"ce coffre appartient à un autre cerveau ({man['brain']})")
     previous = man.get("files") or {}
-    report = {"root": str(root), "imported": [], "created": [], "archived": [], "conflicts": [], "duplicates": [],
-              "written": 0, "removed": 0, "kept": [], "notes": 0}
+    report = {"root": str(root), "imported": [], "created": [], "archived": [], "conflicts": [], "replaced": [],
+              "duplicates": [], "written": 0, "removed": 0, "kept": [], "notes": 0}
     found = _scan(root)
     handled = set()
     if do_import and (previous or (root / INBOX).is_dir()):
@@ -410,13 +440,20 @@ def sync(root, do_import=True) -> dict:
                 if _sha(raw) == entry.get("hash"):
                     handled.add(nid)
                     continue
-                before = len(report["conflicts"])
+                before, swapped = len(report["conflicts"]), len(report["replaced"])
+                old_node = json.loads(json.dumps(node))
                 _apply(brain, node, entry, parse_note(raw.decode("utf-8", "replace")), path, stems, report, renamed)
                 if len(report["conflicts"]) > before:  # la version d'Obsidian est gardée à part : rien ne se perd
-                    copy = root / CONFLICTS / f"{path.stem} ({now_iso()[:16].replace(':', 'h')}).md"
+                    copy = _free(root / CONFLICTS / f"{path.stem} ({now_iso()[:16].replace(':', 'h')}).md")
                     copy.parent.mkdir(exist_ok=True)
                     copy.write_bytes(raw)
                     report["kept"].append(f"version Obsidian en conflit gardée : {copy.relative_to(root)}")
+                if len(report["replaced"]) > swapped:  # la note d'Obsidian l'emporte : la version du cerveau à part
+                    copy = _free(root / CONFLICTS / f"{path.stem} (version du cerveau "
+                                                    f"{now_iso()[:16].replace(':', 'h')}).md")
+                    copy.parent.mkdir(exist_ok=True)
+                    write_text(copy, _brain_copy(old_node))
+                    report["kept"].append(f"version du cerveau en conflit gardée : {copy.relative_to(root)}")
                 handled.add(nid)
             _relink(brain, renamed)
             _inbox(brain, root, stems, report)

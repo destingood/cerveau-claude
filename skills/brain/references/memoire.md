@@ -17,7 +17,7 @@ Toutes les commandes et options de la mémoire. Commande : `python "$HOME/.claud
 | Lier | `link <a> <b> [-r relates\|depends_on\|fixes\|supersedes\|contradicts]` (ou `[[id]]` dans un contenu) · `link --suggest` liens déduits à confirmer |
 | Archiver | `rm <id>` (réversible : `edit <id> --unarchive`) · `--purge` = définitif (instantané pris avant) |
 | Historique / annuler | `history` (instantanés) · `restore <n°>` (l'état courant est sauvegardé d'abord) |
-| Sauvegardes (autre disque) | `backup` · `backup --list` · `backup --restore <archive.zip>` · `backup --to <dossier>` |
+| Sauvegardes (hors de ~/.claude) | `backup` · `backup --list` · `backup --restore <archive.zip>` · `backup --to <dossier>` |
 
 Types : `user` (qui est l'utilisateur), `feedback` (règle/préférence/correction), `project` (un dossier), `decision`,
 `fact` (état/fait sur un travail en cours), `learning` (piège, solution, astuce), `reference` (lien, doc, ressource),

@@ -109,7 +109,8 @@ DEFAULT_CONFIG = {
     # Journal des sessions. `rattrapage_le` : dernier contrôle quotidien (au démarrage) des sessions de Claude Code des 7
     # derniers jours absentes du journal (hooks muets) ; elles sont alors importées en arrière-plan.
     "journal": {"enabled": True, "keep": 500, "rattrapage_le": None},
-    # Sauvegarde quotidienne hors du disque système (dossier auto : D:\\Sauvegardes-cerveau-Claude, sinon E:…).
+    # Sauvegarde quotidienne hors de ~/.claude. Dossier auto (dir vide) : sous Windows le premier autre disque
+    # (D:\\Sauvegardes-cerveau-Claude, sinon E:…), sinon ~/Sauvegardes-cerveau-Claude, annoncé une fois (décision E7).
     "backup": {"enabled": True, "dir": None, "keep": 14},
     # Échéances : les à-faire datés apparaissent au démarrage quand ils approchent (ou sont en retard).
     "due": {"days_ahead": 7},
@@ -199,6 +200,46 @@ def write_json(path, data, indent=1) -> None:
 
 def write_text(path, text: str) -> None:
     _atomic_write(Path(path), text)
+
+
+def write_bytes(path, data: bytes) -> None:
+    path = Path(path)
+    path.parent.mkdir(parents=True, exist_ok=True)
+    tmp = path.with_name(f"{path.name}.{os.getpid()}.tmp")
+    tmp.write_bytes(data)
+    os.replace(tmp, path)
+
+
+# Messages pour l'utilisateur, dits une fois au démarrage suivant (0 token) : réparation du graphe, dossier choisi
+# pour les sauvegardes… Un fichier par sujet dans state/a-dire/ ; le hook du démarrage les lit puis les retire.
+NOTICES_DIR = STATE_DIR / "a-dire"
+
+
+def tell_user(key: str, line: str) -> None:
+    try:
+        write_text(NOTICES_DIR / f"{slugify(key, 40) or 'message'}.txt", line)
+    except OSError as exc:
+        log(f"message pour l'utilisateur ({key}) : {exc!r}")
+
+
+def take_notices() -> list:
+    """Messages en attente (les plus anciens d'abord), retirés une fois lus. Rien à lire : quelques µs."""
+    try:
+        items = sorted(os.scandir(NOTICES_DIR), key=lambda e: e.stat().st_mtime_ns)
+    except OSError:
+        return []
+    out = []
+    for e in items:
+        if not e.name.endswith(".txt"):
+            continue
+        try:
+            text = Path(e.path).read_text(encoding="utf-8", errors="replace").strip()
+            os.remove(e.path)
+        except OSError:
+            continue
+        if text:
+            out.append(text)
+    return out
 
 
 def remove_tree(path, wait=0.0) -> bool:

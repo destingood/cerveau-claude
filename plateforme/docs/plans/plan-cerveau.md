@@ -35,7 +35,9 @@ sauf les correctifs sûrs, faits tout de suite à ta demande.
    le bon souvenir revient pour 58 questions sur 62, contre 33, sans faux rappel de plus ; étape 4 le 21/11, la
    vitesse (8.27.0) : à 3 000 souvenirs, chaque hook sous 150 ms, `brain add` de 2,1 s à 0,17 s ; étape 5 le 21/11,
    la consommation (8.28.0) : 18 skills au lieu de 33, démarrage et outils MCP −30 % ; étape 6 le 21/11, les erreurs
-   (8.29.0) : plus aucune trace Python ni message en anglais dans les 400 cas d'essai des commandes.
+   (8.29.0) : plus aucune trace Python ni message en anglais dans les 400 cas d'essai des commandes ; étape 7 le 21/11, ne plus
+   perdre de souvenir (8.30.0) : un graph.json abîmé se répare avec les souvenirs des dernières minutes, et le wiki
+   sur deux PC ne se bloque plus au premier conflit.
 6. **Attention, sous Windows.** `brain.exe`, la version Rust du cerveau, n'a pas changé depuis la
    8.18.2 du 10/11, et son code source n'est pas dans le dépôt. C'est lui qui exécute, sur ton PC, les
    hooks de session, le rappel, `done`, le verrou et le masquage des mots de passe. L'audit a mesuré
@@ -61,6 +63,7 @@ sauf les correctifs sûrs, faits tout de suite à ta demande.
 | 21/11 | Fusionner la 8.26.0 dès la CI verte ; étape suivante : la vitesse | 8.26.0 fusionnée ; étape 4 faite (8.27.0) |
 | 21/11 | Fusionner la 8.27.0 ; étape 5 ; regrouper les skills, E2, E8, outils MCP de la mémoire seulement | 8.27.0 fusionnée ; étape 5 faite (8.28.0) |
 | 21/11 | Garder l'injection du démarrage ; étape 6 ; E1 : pas de lanceur Python | 8.28.0 fusionnée ; étape 6 faite (8.29.0) |
+| 21/11 | Fusionner la 8.29.0 ; étape 7 ; E7 : sauvegarde dans ton dossier personnel | 8.29.0 fusionnée ; étape 7 faite (8.30.0) |
 
 ## 2. Comment l'audit a été fait, et ses limites
 
@@ -223,12 +226,12 @@ les deux ensemble −30 %. Descriptions des skills listées : 29 758 → 4 180 c
 | Le verrou d'un travail long (consolidation, import) était repris au bout de 30 s : un souvenir annoncé « mémorisé » disparaissait | ✅ Le détenteur rafraîchit son verrou | 1 |
 | Un graph.json au bon format JSON mais à la mauvaise forme était remplacé par un cerveau vide, sans copie | ✅ Réparé comme un fichier abîmé, l'original gardé | 1 |
 | Mémoire hors service (graphe illisible, dossier en lecture seule) sans rien dire | ✅ Un message au démarrage | 1 |
-| Réparation d'un graph.json abîmé depuis un instantané qui peut dater de 30 min : les souvenirs récents disparaissent | Instantané toutes les N écritures ; récupérer les souvenirs lisibles du fichier abîmé ; prévenir | M · 7 |
-| Sauvegarde automatique seulement sous Windows avec un second disque | Dossier par défaut dans ton dossier personnel ; prévenir une fois (décision E7) | S · 7 |
-| Wiki sur deux PC par git : bloqué pour de bon dès le premier conflit sur `index.md` | Ne plus suivre `index.md` ; `log.md` fusionné ; copie de conflit au lieu d'abandonner | M · 7 |
-| Wiki : un verrou git oublié bloque tout envoi, alors que l'écran dit « ✓ » | Nettoyer le verrou comme le cerveau commun ; ne plus afficher ✓ | S · 7 |
-| Synchro avec un coffre Obsidian : une modification faite dans le cerveau se perd si la note a été touchée après | Copie de conflit chaque fois que les deux côtés ont changé | S · 7 |
-| Mise à jour automatique (`self-update`) : une copie à moitié faite n'est pas annulée | Retour arrière sur toute erreur | M · 7 |
+| Réparation d'un graph.json abîmé depuis un instantané qui peut dater de 30 min : les souvenirs récents disparaissent | ✅ Version d'avant chaque écriture gardée (un lien, 0,1 ms), écritures récentes notées, souvenirs lisibles du fichier abîmé repris ; un message avec les nombres | 7 |
+| Sauvegarde automatique seulement sous Windows avec un second disque | ✅ Sans second disque (ou hors Windows) : `~/Sauvegardes-cerveau-Claude`, annoncé une fois (E7) | 7 |
+| Wiki sur deux PC par git : bloqué pour de bon dès le premier conflit sur `index.md` | ✅ `index.md` hors de git ; `log.md` fusionné ; une page changée sur les deux PC : la version de GitHub en place, l'autre en copie à côté | 7 |
+| Wiki : un verrou git oublié bloque tout envoi, alors que l'écran dit « ✓ » | ✅ Verrous de plus de 2 min retirés ; une étape ratée n'affiche plus ✓ (code 1, dite au démarrage) | 7 |
+| Synchro avec un coffre Obsidian : une modification faite dans le cerveau se perd si la note a été touchée après | ✅ Les deux côtés ont changé : le plus récent en place, l'autre dans `Conflits/` | 7 |
+| Mise à jour automatique (`self-update`) : une copie à moitié faite n'est pas annulée | ✅ Retour arrière sur toute erreur, Ctrl+C compris ; rien touché si la copie de sûreté échoue | 7 |
 
 ## 7. Regroupement
 
@@ -409,12 +412,32 @@ hook au-dessus de 150 ms, premier démarrage après un changement compris ; `bra
   un Linux sans `python` crée l'alias ; `brain doctor` et le README disent comment.
 - Corrigé au passage pour Python 3.10 et 3.11 : messages d'argparse traduits, outils MCP de la boutique.
 
-**Étape 7 — Ne plus perdre de souvenir** (§6).
-- Fin (tests) : graphe abîmé réparé sans perte des souvenirs de la dernière demi-heure ; wiki sur deux
-  PC qui se resynchronise après un conflit ; aucune modification perdue avec Obsidian.
+**Étape 7 — Ne plus perdre de souvenir** (§6) : **faite le 21/11** (PR #28, cerveau 8.30.0), avec ta décision E7.
+- graph.json abîmé (coupé au milieu, octets en trop, mauvaise forme) : réparé à partir de la version d'avant la dernière
+  écriture, des écritures notées depuis (`history/recents.jsonl`, 1 Mo au plus) et de chaque souvenir encore lisible
+  dans le fichier abîmé. Les souvenirs ajoutés depuis le dernier instantané restent ; le fichier abîmé est gardé à
+  côté ; tu l'apprends une fois au démarrage, avec les nombres. Un instantané compressé à chaque écriture aurait coûté
+  146 ms à 10 000 souvenirs : la version d'avant est gardée par un lien (0,1 ms). `brain add` : 411 → 414 ms à 10 000
+  souvenirs, 157 → 163 ms à 3 000 ; hooks inchangés.
+- Sauvegarde : sous Windows le second disque reste le premier choix ; sinon `~/Sauvegardes-cerveau-Claude`, annoncé une
+  fois. Sous Mac et Linux, la sauvegarde du jour échouait sans rien dire : elle tourne.
+- Wiki sur deux PC : `index.md` (et les pages régénérées) hors de git, `log.md` fusionné des deux côtés ; une page changée
+  sur les deux PC garde la version de GitHub, celle de ce PC est posée à côté (« Titre (conflit PC 2026-11-21 14h05).md »),
+  non lue comme souvenir, dite au démarrage suivant et dans `brain wiki status`. Verrous git oubliés retirés ; plus de
+  « ✓ » pour un commit ou un envoi raté.
+- Coffre Obsidian : une note changée des deux côtés garde les deux versions (le plus récent en place, l'autre dans
+  `Conflits/`).
+- `self-update` revient en arrière sur toute erreur ; si le retour arrière lui-même échoue, le message dit où est la copie.
+- Tests : `test_pertes` (80 vérifications, 48 échouent sur la 8.29.0) et `test_wiki_conflits` (46, deux PC et un faux
+  GitHub ; 24 échouent sur la 8.29.0).
+- Restes : `journal/AAAA-MM.md` du wiki est refait par chaque PC depuis ses propres sessions, GitHub garde le mois écrit
+  en dernier (rien ne se perd sur les PC, rien ne bloque) : un journal par PC, à l'étape 8. Une suppression définitive
+  faite juste avant qu'un graph.json s'abîme peut revenir si sa ligne d'écriture manque : un souvenir revenu plutôt
+  qu'un souvenir perdu.
 
 **Étape 8 — Regrouper** : souvenirs (`brain regroupe`), code (`cli.py`, `mapper.py`), défauts de la
-carte de projets, branches (ton accord), visualisation 3D sans site extérieur.
+carte de projets, branches (ton accord), visualisation 3D sans site extérieur, un journal du wiki par
+PC (reste de l'étape 7).
 - Fin : `brain regroupe` montre puis applique ; aucun fichier de plus de 1 000 lignes ; tests verts.
 
 **Étape 9 — Documents** (§7.4) : archives, backlog trié, ADR, README, page des réglages.
@@ -472,7 +495,7 @@ Amélioration continue, puis N3 domaine par domaine. N4 reste hors du plan.
 | E4 | Seuil du rappel (`min_cov`) | **Réglé par le banc d'essai de l'étape 3 : 0,5 reste**, 0,4 rappelait un mauvais souvenir |
 | E5 | Veille PC qui ferme des processus | **Tranché le 20/11 : lister et proposer**, plus rien fermé sans ton accord (étape 2) |
 | E6 | Plugins et skills désactivés tout seuls | **Tranché le 20/11 : te les proposer**, plus rien coupé sans ton accord (étape 2) |
-| E7 | Sauvegarde sans second disque | Dans ton dossier personnel, avec un message une fois |
+| E7 | Sauvegarde sans second disque | **Tranché le 21/11 : dans ton dossier personnel** (`~/Sauvegardes-cerveau-Claude`), annoncé une fois (étape 7) |
 | E8 | Retirer les skills humanizer et vercel (tes plugins les ont déjà) | **Tranché le 21/11 : retirées** ; leurs phrases mènent aux skills de tes plugins (étape 5) |
 | E9 | Code de la plateforme qui sert seulement avec un budget API (≈ 6 000 lignes) | Le mettre de côté dans une branche, pas le supprimer |
 | E10 | prompts.chat actif par défaut | Le garder, maintenant que son texte est filtré ; le couper si tu ne t'en sers pas |

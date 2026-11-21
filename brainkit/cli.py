@@ -13,8 +13,8 @@ from . import __version__
 from . import index as idx
 from . import journal, search
 from .common import (BRAIN_DIR, CLAUDE_HOME, CMD, CONFIG_FILE, EXPORT_FILE, GRAPH_FILE, INDEX_FILE, LOG_FILE, PROJECTS_DIR, REPORT_FILE, VIZ2D_FILE, VIZ_FILE, LockBusy, budget_chars, days_since, est_tokens, fmt_date, network_reason,
-                     fold, load_config, log, now_iso, oserror_fr, set_config, setup_io, short, slugify, update_config,
-                     write_text)
+                     fold, load_config, log, now_iso, oserror_fr, set_config, setup_io, short, slugify, tell_user,
+                     update_config, write_text)
 from .store import GLOBAL_REFS, TYPES, Brain, bump_hits, clean_tags, normalize_type, priority
 
 
@@ -1098,7 +1098,10 @@ def cmd_export(a):
             print(f"  🗄 archivé (note supprimée du coffre) : « {title} » — annuler : {CMD} edit {nid} --unarchive")
         for title, fields in rep["conflicts"]:
             print(f"  ⚠ conflit sur « {title} » ({', '.join(fields)}) : modifié des deux côtés, la version du cerveau "
-                  f"(plus récente) est gardée")
+                  f"(plus récente) est gardée, celle d'Obsidian mise à part dans Conflits/")
+        for title, fields in rep.get("replaced") or []:
+            print(f"  ⚠ conflit sur « {title} » ({', '.join(fields)}) : modifié des deux côtés, la note d'Obsidian "
+                  f"(plus récente) est gardée, la version du cerveau mise à part dans Conflits/")
         for title, other in rep["duplicates"]:
             print(f"  ≈ « {title} » ressemble à « {other} » : laissé dans « À trier »")
         for line in rep["kept"]:
@@ -1195,9 +1198,12 @@ def cmd_doctor(a):
         git_ok = wiki.is_repo(wroot)
         ok(True, f"wiki : {wroot} — {sum(st['types'].values())} pages, {st['archived']} archivées · "
                  + (f"git ({wiki.remote(wroot) or 'sans origin'})" if git_ok else "pas de dépôt git (→ git init)"))
-        conflict = (wiki.read_json(wiki.SYNC_STATE, {}) or {}).get("conflict")
+        wst = wiki.read_json(wiki.SYNC_STATE, {}) or {}
+        conflict, failed = wst.get("conflict"), wst.get("failed")
         if conflict:
             ok(False, f"wiki : synchronisation git en conflit depuis le {fmt_date(conflict)} (→ brain wiki status, git status)")
+        elif isinstance(failed, dict):
+            ok(False, f"wiki : dernière synchronisation git ratée le {fmt_date(failed.get('le'))} — {failed.get('quoi')}")
     elif mode == "missing":
         ok(False, f"wiki introuvable : {wroot} — le cerveau lit son cache sans écrire (→ rebrancher, ou config wiki.path)")
     from . import commun as _commun
@@ -1333,10 +1339,15 @@ def cmd_backup(a):
             log(f"sauvegarde auto : {exc!r}")
             return
         die(f"sauvegarde impossible : {oserror_fr(exc)}" if isinstance(exc, OSError) else str(exc))
+    notice = "" if a.to else backup.home_notice(dest)  # dossier personnel faute de second disque : dit une fois
     if a.auto:
         log(f"sauvegarde auto : {path or 'déjà faite aujourd hui'}")
+        if notice:
+            tell_user("sauvegarde", notice)  # au démarrage suivant (la sauvegarde du jour tourne en arrière-plan)
         return
     print(f"✓ sauvegarde : {path} ({max(1, path.stat().st_size // 1024)} Ko) — restaurer : `brain backup --restore \"{path}\"`")
+    if notice:
+        print(notice)
 
 
 def cmd_todo(a):
@@ -2000,10 +2011,13 @@ def cmd_wiki(a):
         wiki.write_index()
         print(f"✓ {head}")
     elif act in ("sync", "synchro"):
-        for line in wiki.sync(root, push=not a.no_push, pull=not a.no_pull, auto=a.auto):
+        lines = wiki.sync(root, push=not a.no_push, pull=not a.no_pull, auto=a.auto)
+        for line in lines:
             print(line)
         if a.auto and not a.no_pull:
             wiki.mark_pulled()
+        if any(line.startswith("✗") for line in lines):
+            sys.exit(1)  # une étape ratée : la veille (`brain auto`) l'affiche ✗, jamais ✓
     elif act == "obsidian":
         from . import obsidian
         made = obsidian.setup(root, force=True)
@@ -2372,8 +2386,10 @@ def build_parser():
                                "entendues…) — --done pour le clore", ["reve"])
     s.add_argument("--done", action="store_true", help="marquer le rêve comme traité")
     s.add_argument("--no-apply", action="store_true", help="ne rien appliquer, seulement préparer le dossier")
-    s = cmd("backup", cmd_backup, "sauvegarde hors du disque système (D:, E:…) — --list, --restore <archive>", ["sauvegarde"])
-    s.add_argument("--to", help="dossier de sauvegarde (défaut : D:\\Sauvegardes-cerveau-Claude ou équivalent)")
+    s = cmd("backup", cmd_backup, "sauvegarde hors de ~/.claude (second disque, sinon dossier personnel) — --list, "
+                                  "--restore <archive>", ["sauvegarde"])
+    s.add_argument("--to", help="dossier de sauvegarde, pour cette fois (défaut : backup.dir, sinon D:\\Sauvegardes-cerveau-"
+                                "Claude ou un autre disque sous Windows, sinon ~/Sauvegardes-cerveau-Claude)")
     s.add_argument("--list", action="store_true")
     s.add_argument("--restore", help="archive .zip à restaurer")
     s.add_argument("--auto", action="store_true", help=argparse.SUPPRESS)
