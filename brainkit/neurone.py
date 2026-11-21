@@ -67,11 +67,12 @@ def features(idx, query, cands, accs, project, prev, when, raw_len) -> list:
     if pos is None:
         pos = idx._pos = {k: i for i, k in enumerate(idx.keys)}
     ctx = {r["key"]: r for r in idx.search(" ".join(prev[-2:]), limit=80)} if prev else {}
+    toks = {v for t in qt for v, _, _, _ in exp[t]}  # (index gardé : les fréquences de ces mots seulement)
     out = []
     for k, (r, acc) in enumerate(zip(cands, accs)):
         n = r["node"]
         i = pos.get(n["id"])
-        tf = idx.tfs[i] if i is not None else {}
+        tf = idx.doc_tf(i, toks) if i is not None else {}
         head = _head(n)
         exact = fuzzy = headw = maxidf = 0.0
         for t in qt:

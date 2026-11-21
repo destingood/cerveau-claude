@@ -11,12 +11,45 @@ import sys
 import time
 from pathlib import Path
 
-from . import index as idx
-from . import journal, search
-from .concis import concis, relevant
-from .common import (BRAIN_DIR, BRAIN_PY, CMD, SESSIONS_DIR, STATE_DIR, budget_chars, days_since, fold, load_config, log,
-                     now_iso, parse_iso, read_json, read_stdin_json, set_config, short, tokenize, write_json)
+from . import journal
+from .common import (BRAIN_DIR, BRAIN_PY, CMD, SESSIONS_DIR, STATE_DIR, budget_chars, commun_member, days_since, fold,
+                     load_config, log, now_iso, parse_iso, read_json, read_stdin_json, set_config, short, tokenize,
+                     write_json)
 from .store import TYPES, Brain, bump_hits, bump_used
+
+
+class _Later:
+    """Module chargé au premier usage (`search.…`, `idx.…` s'écrivent comme avant) : un hook qui ne s'en sert pas (fin
+    de tour sans souvenir montré, compaction, démarrage repris…) ne paie pas son import. Au premier usage, le nom désigne
+    le module lui-même."""
+
+    def __init__(self, alias, name):
+        self._alias, self._name = alias, name
+
+    def __getattr__(self, attr):
+        full = f"{__package__}.{self._name}"
+        __import__(full)
+        globals()[self._alias] = mod = sys.modules[full]
+        return getattr(mod, attr)
+
+
+idx = _Later("idx", "index")  # démarrage et fin de session seulement
+search = _Later("search", "search")  # rappel (message, compaction), usage des souvenirs en fin de tour
+
+
+class _Rx:
+    """Expression régulière compilée à son premier usage (`X_RX.search(…)` s'écrit comme avant) : chaque hook ne compile
+    que celles dont il se sert. Toutes celles de ce module coûtaient ~3 ms à chaque hook, compaction comprise."""
+    __slots__ = ("_args", "_rx")
+
+    def __init__(self, pattern, flags=0):
+        self._args, self._rx = (pattern, flags), None
+
+    def __getattr__(self, name):
+        if self._rx is None:
+            self._rx = re.compile(*self._args)
+        return getattr(self._rx, name)
+
 
 OBS_HOW = (f"une ligne courte chacune, priorisées (🔴 décision, blocage, préférence · 🟡 avancée, constat · 🟢 détail) : "
            f"`{CMD} obs \"🔴 …\" \"🟡 …\"`")
@@ -42,7 +75,7 @@ _NOW_VERBS = (r"relance|lance|dis|fais|regarde|montre|corrige|v[ée]rifie|envoie
 # (« …, lance toujours les tests » : une règle, pas un ordre pour maintenant)
 _NOT_A_ORDER = (r"(?![^.!?\n]*(?:-(?:le|la|les|moi|nous|lui|leur|y)\b|[,;]\s*(?:(?:et|puis|ensuite) )?(?:" + _NOW_VERBS
                 + r")\b(?!\s+(?:toujours|jamais|syst[ée]matiquement|d[ée]sormais|dor[ée]navant)\b)))")
-REMEMBER_RX = re.compile(
+REMEMBER_RX = _Rx(
     r"(?<!['‘’\"`])(?<!\bne )\b(souviens[- ]toi|retiens|"
     r"m[ée]moris[a-zé]*(?=\s*(?:qu(?:e\b|['’])|[çc]a\b|cela\b|ceci\b|bien\b|:))|"
     r"note (?:que|bien|[çc]a(?!\s+(?:dans|sur|en|[àa]|au|aux|pour)\b))|"
@@ -50,8 +83,8 @@ REMEMBER_RX = re.compile(
     r"garde (?:[çc]a |le |la |les )?en m[ée]moire|remember|ajoute (?:[çc]a |le |la )?(?:au|dans le) cerveau)" + _NOT_A_ORDER,
     re.I)
 TODO_PREFIX = "À faire : "
-NUM_NOISE = re.compile(r"(?<![\w-])(?:\d{1,2}|(?:19|20)\d{2})(?![\w-])")
-CAPTURE_RX = re.compile(r"\b(je (?:veux|voudrais|pr[ée]f[èe]re|n'aime pas|d[ée]teste)|toujours|jamais|plut[ôo]t|"
+NUM_NOISE = _Rx(r"(?<![\w-])(?:\d{1,2}|(?:19|20)\d{2})(?![\w-])")
+CAPTURE_RX = _Rx(r"\b(je (?:veux|voudrais|pr[ée]f[èe]re|n'aime pas|d[ée]teste)|toujours|jamais|plut[ôo]t|"
                         r"arr[êe]te de|ne (?:fais|mets|touche|change) (?:pas|plus|jamais)|n'oublie pas|retiens|"
                         r"d[ée]sormais|dor[ée]navant|[àa] partir de maintenant|on part sur|on garde|c'est bon pour|"
                         r"ok pour|vas-y pour|pas comme [çc]a|c'est faux|corrige|il faut que tu|tu dois)\b", re.I)
@@ -63,7 +96,7 @@ def durable_cue(text) -> bool:
     return bool({fold(m.group(1)) for m in CAPTURE_RX.finditer(text)} - TASK_CUES)
 
 
-RECALL_RX = re.compile(r"\b(tu te souviens|te rappelles|rappelle[- ]moi|on avait (?:dit|fait|d[ée]cid)|"
+RECALL_RX = _Rx(r"\b(tu te souviens|te rappelles|rappelle[- ]moi|on avait (?:dit|fait|d[ée]cid)|"
                        r"la derni[èe]re fois|d[ée]j[àa] (?:fait|vu|dit)|qu'est-ce qu'on avait)", re.I)
 
 
@@ -85,6 +118,7 @@ def context_query(raw, query) -> str:
 def gist(n, chars=220, query=None) -> str:
     """Ce qu'on montre d'un souvenir : le résumé d'une page du wiki s'il existe, sinon le début de son contenu ; avec
     `query`, les phrases qui répondent au message quand le début en montre moins (concis.relevant)."""
+    from .concis import concis, relevant
     base = (n.get("meta") or {}).get("resume") or n.get("body", "")
     return (query and relevant(base, n.get("body", ""), query, chars, n.get("title", ""))) or short(concis(base), chars)
 
@@ -606,14 +640,14 @@ def context_alert(data, cfg) -> str:
 
 
 # Demande explicite (« retiens que… ») : le hook l'enregistre lui-même.
-REM_BLOCK_RX = re.compile(r"```.*?```|<pasted_content[^>]*>.*?</pasted_content[^>]*>|<(system-reminder|ide_[a-z_]+)[^>]*>.*?</\1>",
+REM_BLOCK_RX = _Rx(r"```.*?```|<pasted_content[^>]*>.*?</pasted_content[^>]*>|<(system-reminder|ide_[a-z_]+)[^>]*>.*?</\1>",
                           re.S)
-REM_LEAD_RX = re.compile(r"(?:(?:ok|okay|bon|alors|donc|et|puis|aussi|dis|[ée]coute|stp|svp|please)\b[\s,;:!.\-–—]*)*", re.I)
-REM_LINK_RX = re.compile(r"[\s,;:!\-–—]*(?:(?:bien|[çc]a|cela|ceci)\b[\s,;:!\-–—]*)*(?:(?:que\b|qu['’]|that\b|to\b)\s*)?", re.I)
-REM_STATEMENT_RX = re.compile(r"\s*(?:qu(?:e\b|['’])|that\b|:)", re.I)  # « n'oublie pas que… » : un fait, pas un rappel
-REM_OBJECT_RX = re.compile(r"\s*(?:qu(?:e\b|['’])|that\b|[çc]a\b|cela\b|ceci\b|bien\b|:)", re.I)
-REM_ANAPHORA_RX = re.compile(r"(?:tout\s+)?ce\s+(?:que|qu['’]|qui)\b[^:]*:?", re.I)  # « retiens ce que je viens de dire »
-REM_PRONOUN_RX = re.compile(r"\s*-\s*(?:le|la|les|moi|nous|lui|leur|y|en)\b", re.I)  # « retiens-le » : un pronom, pas un fait
+REM_LEAD_RX = _Rx(r"(?:(?:ok|okay|bon|alors|donc|et|puis|aussi|dis|[ée]coute|stp|svp|please)\b[\s,;:!.\-–—]*)*", re.I)
+REM_LINK_RX = _Rx(r"[\s,;:!\-–—]*(?:(?:bien|[çc]a|cela|ceci)\b[\s,;:!\-–—]*)*(?:(?:que\b|qu['’]|that\b|to\b)\s*)?", re.I)
+REM_STATEMENT_RX = _Rx(r"\s*(?:qu(?:e\b|['’])|that\b|:)", re.I)  # « n'oublie pas que… » : un fait, pas un rappel
+REM_OBJECT_RX = _Rx(r"\s*(?:qu(?:e\b|['’])|that\b|[çc]a\b|cela\b|ceci\b|bien\b|:)", re.I)
+REM_ANAPHORA_RX = _Rx(r"(?:tout\s+)?ce\s+(?:que|qu['’]|qui)\b[^:]*:?", re.I)  # « retiens ce que je viens de dire »
+REM_PRONOUN_RX = _Rx(r"\s*-\s*(?:le|la|les|moi|nous|lui|leur|y|en)\b", re.I)  # « retiens-le » : un pronom, pas un fait
 REM_TITLE, REM_BODY, REM_MAX = 80, 600, 3  # car. du titre, du texte gardé ; phrases enregistrées par message
 
 
@@ -671,8 +705,8 @@ _PRIVATE_TOPICS = (
                   r"opinions? politique|orientation politique"),
     ("sexualité", r"homosexuel|\bgay\b|lesbienne|bisexuel|transgenre|orientation sexuelle|coming out"),
 )
-_PRIVATE_RX = [(label, re.compile(rx)) for label, rx in _PRIVATE_TOPICS]
-_OTHER_PERSON_RX = re.compile(
+_PRIVATE_RX = [(label, _Rx(rx)) for label, rx in _PRIVATE_TOPICS]
+_OTHER_PERSON_RX = _Rx(
     r"\b(?:il|elle|ils|elles|son|sa|ses|leur|leurs|lui)\b|"
     r"\b(?:mon|ma|mes|notre|nos|le|la|un|une) (?:femme|mari|epouse|epoux|fils|fille|enfants?|bebe|frere|soeur|mere|pere|"
     r"parents?|copine|copain|compagne|compagnon|conjoint|collegue|client|cliente|patron|patronne|employe|employee|"
@@ -807,8 +841,9 @@ def remember_now(data, raw):
 def on_prompt(data, cfg):
     raw = (data.get("prompt") or "").strip()
     try:  # cerveau commun : les pages des amis, récupérées en arrière-plan (au plus une fois par minute)
-        from . import commun
-        commun.maybe_pull(wait=2.5)
+        if commun_member(cfg):  # (non-membre : commun.py n'est pas chargé)
+            from . import commun
+            commun.maybe_pull(wait=2.5)
     except Exception as exc:
         log(f"commun (message) : {exc!r}")
     alert = ""
@@ -916,7 +951,7 @@ def _text_picks(brain, query, rc, project=None, injected=(), before=None, prev=(
 
 
 FICHE_CHARS = 800  # part du budget du rappel prise au plus par une fiche de synthèse
-FRIEND_ID = re.compile(r"`c--([a-z0-9]+(?:-[a-z0-9]+)*)--[a-z0-9-]+`")  # page d'un ami (cerveau commun) citée par son id
+FRIEND_ID = _Rx(r"`c--([a-z0-9]+(?:-[a-z0-9]+)*)--[a-z0-9-]+`")  # page d'un ami (cerveau commun) citée par son id
 
 
 def overview_lines(brain, query, proj, st) -> tuple:
@@ -964,9 +999,16 @@ def recall_context(data, cfg, raw, saved="") -> str:
     query = recall_query(raw)
     sid = data.get("session_id")
     st = load_state(sid)
-    brain = Brain.load()
     cwd = data.get("cwd") or st.get("cwd")
-    proj = brain.project_for_path(cwd) if cwd else None
+    brain = proj = None
+
+    def need():  # le cerveau, lu seulement s'il y a quelque chose à y chercher (« ok merci, on continue » : rien)
+        nonlocal brain, proj
+        if brain is None:
+            brain = Brain.load()
+            proj = brain.project_for_path(cwd) if cwd else None
+        return brain, proj
+
     injected = set(st.get("injected", []))
     lines = []
     # ses mots à lui : pas ceux d'un texte collé, d'un bloc de code ou d'un message de l'appli
@@ -991,6 +1033,7 @@ def recall_context(data, cfg, raw, saved="") -> str:
     if tokenize(query):
         prev = st.get("prev_q") or []
         if room > 0 or asked or rc.get("neurone", "auto") != "off":
+            brain, proj = need()
             picks = pick_memories(brain, query, rc, proj["id"] if proj else None, injected, prev=prev, raw=raw,
                                   log_to=logged)
             if not asked:
@@ -1011,6 +1054,7 @@ def recall_context(data, cfg, raw, saved="") -> str:
     named = None
     if tokenize(query) and not saved:
         try:
+            brain, proj = need()
             ov, named = overview_lines(brain, query, proj, st)
             lines += ov
             if named:  # « où en est le projet aide » : pas la décision globale qui cite « aide » en passant
@@ -1018,7 +1062,8 @@ def recall_context(data, cfg, raw, saved="") -> str:
         except Exception as exc:
             log(f"fiche (rappel) : {exc!r}")
     files = []
-    if rc["files"] and proj and named in (None, proj["id"]) and tokenize(query)             and len(st.get("files", [])) < rc["session_cap_files"]:  # autre projet nommé : pas les fichiers d'ici
+    if rc["files"] and tokenize(query) and need()[1] and named in (None, proj["id"]) \
+            and len(st.get("files", [])) < rc["session_cap_files"]:  # autre projet nommé : pas les fichiers d'ici
         from . import filesearch
         files = filesearch.recall_files(proj["id"], query, rc, exclude=set(st.get("files", [])))
     # Aucun souvenir ne répond : l'observation notée en fin de tâche qui en parle (une par message, jamais deux fois la
@@ -1028,6 +1073,7 @@ def recall_context(data, cfg, raw, saved="") -> str:
             and (tokenize(query) or search.DATED_RX.search(own)):
         try:
             from . import observations
+            brain, proj = need()
             obs = [(o, observations.line(o)) for o in observations.recall(
                 query, journal.clean_prompt(raw, 600), proj["id"] if proj else None, exclude=set(st.get("obs_shown", [])))]
         except Exception as exc:
@@ -1071,6 +1117,8 @@ def recall_context(data, cfg, raw, saved="") -> str:
         out = sk_lines + out
     if pcline:  # la veille PC passe toujours, avant les souvenirs
         out = [pcline] + out
+    if brain is not None:  # le journal de fin de tour n'aura pas à relire le cerveau (project_of)
+        note_project(brain, cwd, proj["id"] if proj else None)
     if typed:
         st["recall_hist"] = (hist + [len(shown_mem)])[-window:]
     if not out:
@@ -1237,7 +1285,7 @@ def diagnose(raw, cwd, cfg, shown_text="", expected=None) -> str:
 
 
 # ------------------------------------------------------------------------------------------ Montré ≠ utilisé
-NUM_VAL = re.compile(r"\d+[.,]\d+|\d{3,}")
+NUM_VAL = _Rx(r"\d+[.,]\d+|\d{3,}")
 YEARS = {str(y) for y in range(2020, 2036)}
 
 
@@ -1283,10 +1331,11 @@ def track_usage(st, scan, brain=None):
 
 
 def after_turn(st, scan, sid):
-    """Après une réponse : souvenirs montrés puis utilisés, et exemples étiquetés pour le neurone du rappel."""
+    """Après une réponse : souvenirs montrés puis utilisés, et exemples étiquetés pour le neurone du rappel. → le cerveau
+    s'il a fallu le lire (le reste du hook s'en sert : graph.json lu une seule fois), sinon None."""
     if not scan:
         st.pop("cands", None)  # rien d'écrit ni de fait : pas d'étiquette possible
-        return
+        return None
     brain = None
     if set(st.get("injected", [])) - set(st.get("used", [])):
         try:
@@ -1297,13 +1346,52 @@ def after_turn(st, scan, sid):
     if st.get("cands"):
         try:
             from . import neurone
+            brain = brain or Brain.load()
             neurone.learn_turn(st, scan, sid, brain)
         except Exception as exc:
             log(f"neurone : {exc!r}")
             st.pop("cands", None)
+    return brain
 
 
 # ------------------------------------------------------------------------------------------ Stop
+DIRS_FILE = STATE_DIR / "dossiers.json"  # {"stamp": empreinte de graph.json, "dirs": {dossier: id du projet ou null}}
+
+
+def project_of(cwd, brain=None):
+    """Id du projet du dossier `cwd` (ou None), pour le journal de fin de tour. Sans cerveau déjà lu par le hook : repris
+    de state/dossiers.json tant que graph.json est le même fichier, octet pour octet (store.graph_stamp lit le fichier
+    sans analyser le JSON : 4 ms au lieu de 60 à 10 000 souvenirs) ; sinon cherché dans le cerveau, et noté."""
+    if brain is None:
+        known = read_json(DIRS_FILE, None)
+        dirs = known.get("dirs") if isinstance(known, dict) else None
+        if isinstance(dirs, dict) and cwd in dirs and known.get("stamp"):
+            from .store import graph_stamp
+            if known["stamp"] == graph_stamp():
+                return dirs[cwd]
+        brain = Brain.load()
+    proj = brain.project_for_path(cwd) if cwd else None  # (projets seulement : des compteurs écrits depuis n'y changent rien)
+    pid = proj["id"] if proj else None
+    note_project(brain, cwd, pid)
+    return pid
+
+
+def note_project(brain, cwd, pid) -> None:
+    """Projet trouvé pour `cwd` dans un cerveau lu tel quel (brain.stamp) : noté pour la fin de tour (project_of)."""
+    if not cwd or not getattr(brain, "stamp", None):
+        return
+    try:
+        known = read_json(DIRS_FILE, None)
+        dirs = known.get("dirs") if isinstance(known, dict) and known.get("stamp") == brain.stamp else None
+        dirs = dict(dirs) if isinstance(dirs, dict) else {}
+        if cwd in dirs and dirs[cwd] == pid:
+            return
+        dirs[cwd] = pid
+        write_json(DIRS_FILE, {"stamp": brain.stamp, "dirs": dict(list(dirs.items())[-50:])}, indent=None)
+    except OSError as exc:
+        log(f"projet du dossier : {exc!r}")
+
+
 def unsaved_durable(tx, st) -> list:
     """Messages de l'utilisateur depuis la dernière sauvegarde (`brain add`/`obs`… de la session) qui contiennent une
     phrase durable (même détecteur que le rêve : durable_cue) et que ni le hook (« retiens… ») ni un rappel précédent
@@ -1322,7 +1410,7 @@ def on_stop(data, cfg):
     scan = tx.pop("_scan", None)
     st["tx"] = tx
     _merge_outils(st, tx, tp)
-    after_turn(st, scan, sid)
+    brain = after_turn(st, scan, sid)
     if tx.get("skills"):
         try:
             from . import skills
@@ -1330,9 +1418,8 @@ def on_stop(data, cfg):
         except Exception as exc:
             log(f"skills (usage) : {exc!r}")
     if cfg["journal"]["enabled"] and time.time() - st.get("journal_at", 0) > 60:
-        brain = Brain.load()
-        proj = brain.project_for_path(tx.get("cwd") or data.get("cwd") or st.get("cwd") or "")
-        journal.upsert(sid, tx, proj["id"] if proj else None, cfg["journal"]["keep"])
+        pid = project_of(tx.get("cwd") or data.get("cwd") or st.get("cwd") or "", brain)
+        journal.upsert(sid, tx, pid, cfg["journal"]["keep"])
         st["journal_at"] = time.time()
     cands = []
     st.pop("obs_due", None)  # ancien rappel d'après compaction (retiré : seul un message durable fait bloquer)
@@ -1342,8 +1429,9 @@ def on_stop(data, cfg):
             st["reminded"] = (st.get("reminded", []) + cands)[-15:]
     save_state(sid, st)
     try:  # cerveau commun : récupéré pendant que l'utilisateur lit la réponse → son prochain message voit les nouveautés
-        from . import commun
-        commun.maybe_pull()
+        if commun_member(cfg):
+            from . import commun
+            commun.maybe_pull()
     except Exception as exc:
         log(f"commun (fin de tour) : {exc!r}")
     if cands:
@@ -1464,7 +1552,9 @@ def run(event) -> int:
 
 def _run(event, data) -> int:
     from .common import PLUGIN
-    if PLUGIN:
+    # Cerveau classique aux commandes ? plugin.classic_install() exige son code (brainkit/) à côté des souvenirs : sans
+    # lui, rien à vérifier, et plugin.py n'est pas chargé à chaque hook.
+    if PLUGIN and (BRAIN_DIR / "brainkit").is_dir():
         try:  # dossier illisible, droits : jamais une trace Python ni un « hook error » à chaque message
             from . import plugin
             if plugin.classic_install():

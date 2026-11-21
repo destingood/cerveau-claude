@@ -15,7 +15,9 @@ from __future__ import annotations
 
 import json
 import math
+import os
 import re
+import time
 from collections import Counter
 from pathlib import Path
 
@@ -30,9 +32,10 @@ AI_SKILLS = "anthropic-skills"  # skills du compte claude.ai : « anthropic-skil
 OFF_VALUES = ("off", "user-invocable-only")  # skillOverrides : skill que Claude ne charge pas de lui-même
 OWN_PLUGIN = "cerveau"  # ce plugin-ci : ses skills métier (ecommerce…) toujours connues, sa skill « brain » jamais
 COPY_MARK = ".cerveau"  # = install.SKILL_MARK : skill métier copiée dans ~/.claude/skills par le cerveau classique
-CACHE_FILE = STATE_DIR / "skills_index.json"
+CACHE_FILE = STATE_DIR / "skills_index.bin"  # (marshal : relu à chaque message ; avant skills_index.json)
 STATS_FILE = STATE_DIR / "skills.json"
-CACHE_V = 5
+CACHE_V = 6
+RACY_NS = 2_000_000_000  # un SKILL.md écrit moins de 2 s avant d'être lu peut changer encore sans que sa date bouge
 
 FM_RE = re.compile(r"\A﻿?---[ \t]*\r?\n(.*?)\r?\n---[ \t]*(?:\r?\n|\Z)", re.S)
 NEG_RE = re.compile(r"\b(?:ne (?:pas |jamais )(?:l')?utiliser|ne l'utilise[rz]? pas|do not use|don't use|not for|never use)\b",
@@ -311,11 +314,19 @@ def synced_dirs() -> tuple:
 
 
 def _subdirs(folder, newest=False) -> list:
-    """Sous-dossiers, par nom ou du plus récent au plus ancien (`newest`)."""
+    """Sous-dossiers, par nom ou du plus récent au plus ancien (`newest`). (os.scandir : le genre de chaque entrée sans
+    un stat par dossier, à chaque message.)"""
+    def is_dir(e):
+        try:
+            return e.is_dir()
+        except OSError:
+            return False
     try:
-        dirs = sorted(d for d in folder.iterdir() if d.is_dir())
+        with os.scandir(folder) as it:  # (même ordre que des Path triés : entre voisins, celui des noms, casse comprise
+            entries = sorted((e for e in it if is_dir(e)), key=lambda e: os.path.normcase(e.name))  # selon le système)
     except OSError:
         return []
+    dirs = [Path(e.path) for e in entries]
     if newest:
         def age(d):
             try:
@@ -425,14 +436,115 @@ def with_triggers(skills, extra) -> list:
 
 
 def index(cwd=None, kc=None) -> list:
-    """Skills perso, des plugins actifs et du compte claude.ai, analysées ; en cache tant qu'aucun SKILL.md n'a bougé. `kc` : config « skills » (relue si absente) — `plugins` (True, liste de noms ou False) et `triggers`."""
+    """Skills perso, des plugins actifs et du compte claude.ai, analysées, déclencheurs ajoutés compris : gardées dans
+    state/skills_index.bin tant qu'aucun SKILL.md n'a bougé (date et taille de chacun : rien n'est relu à chaque
+    message) ni la liste des déclencheurs ajoutés. Un fichier qui change : lui seul est relu (_rebuild). `kc` : config
+    « skills » (relue si absente) — `plugins` (True, liste de noms ou False) et `triggers`."""
+    from . import __version__
     kc = (load_config().get("skills") or {}) if kc is None else kc
     sig = _files(cwd, kc.get("plugins", True))
-    cache = read_json(CACHE_FILE, {}) or {}
-    if cache.get("v") == CACHE_V and cache.get("sig") == sig:
-        return _ready(cache.get("skills", []), kc, cwd)
+    extra = {k: list(v) for k, v in declencheurs.DEFAUT.items()}  # ceux du cerveau, puis ceux de la config
+    for k, v in (kc.get("triggers") or {}).items():
+        if isinstance(v, list):
+            extra[k] = extra.get(k, []) + v
+    key = _dump(extra)
+    cache = _read_cache(CACHE_FILE, __version__)
+    if key is None or cache.get("sig") != sig or cache.get("key") != key or not _settled(cache):
+        cache = _rebuild(sig, extra, key, __version__)
+    off = overrides(cwd)  # skills coupées (skillOverrides) : relu à chaque fois, c'est petit
+    return [s for s in cache["skills"] if s["name"] not in off] if off else cache["skills"]
+
+
+RAW_FILE = STATE_DIR / "skills_raw.bin"  # analyse brute de chaque fichier, relue seulement pour refaire le catalogue
+
+
+def _dump(obj):
+    import marshal
+    try:
+        return marshal.dumps(obj)
+    except ValueError:  # (valeur que marshal ne sait pas écrire : rien de gardé)
+        return None
+
+
+def _read_cache(path, code) -> dict:
+    import marshal
+    try:
+        with open(path, "rb") as fh:
+            got = marshal.loads(fh.read())
+    except Exception:  # absent, abîmé, d'une autre version de Python
+        return {}
+    return got if isinstance(got, dict) and got.get("v") == CACHE_V and got.get("code") == code else {}
+
+
+def _write_cache(path, cache) -> None:
+    data = _dump(cache)
+    if data is None:
+        return
+    try:
+        path.parent.mkdir(parents=True, exist_ok=True)
+        tmp = path.with_name(f"{path.name}.{os.getpid()}.tmp")
+        with open(tmp, "wb") as fh:
+            fh.write(data)
+        os.replace(tmp, path)
+    except OSError:
+        pass
+
+
+def _crc(path):
+    """CRC du contenu d'un fichier (None : illisible)."""
+    import zlib
+    try:
+        with open(path, "rb") as fh:
+            return zlib.crc32(fh.read())
+    except OSError:
+        return None
+
+
+def _settled(cache) -> bool:
+    """Les SKILL.md lus moins de 2 s après avoir été écrits (date et taille ne suffisent pas à voir une réécriture dans
+    le même tic d'horloge du disque) ont-ils toujours le contenu lu ? Ceux qui ont assez vieilli sont alors fixés : on
+    ne les relit plus."""
+    crcs = cache.get("crc") or []
+    if not any(c is not None for c in crcs):
+        return True
+    late, changed = time.time_ns() - RACY_NS, False
+    for j, (entry, crc) in enumerate(zip(cache["sig"], crcs)):
+        if crc is None:
+            continue
+        if _crc(entry[0]) != crc:
+            return False
+        if entry[1] < late:
+            crcs[j], changed = None, True
+    if changed:
+        _write_cache(CACHE_FILE, cache)
+    return True
+
+
+def _rebuild(sig, extra, key, code) -> dict:
+    """Catalogue refait : seuls les fichiers nouveaux ou changés sont relus (l'analyse brute de chacun est gardée dans
+    RAW_FILE), puis les poids des mots recalculés sur l'ensemble et les déclencheurs ajoutés greffés (avant : 194 phrases
+    redécoupées à chaque message)."""
+    import marshal
     stop = desc_stop()  # la config une fois pour toutes les skills, pas à chacune
-    skills = _dedupe([s for s in (parse(f, plugin, ident, kind, stop) for f, _, _, plugin, ident, kind in sig) if s])
+    raw_cache = _read_cache(RAW_FILE, code)
+    old = {}
+    if raw_cache.get("stop") == sorted(stop):
+        old = {tuple(e): (raw, crc) for e, raw, crc in zip(raw_cache.get("sig") or [], raw_cache.get("raw") or [],
+                                                           raw_cache.get("crc") or [])}
+    late = time.time_ns() - RACY_NS
+    raws, crcs = [], []
+    for entry in sig:
+        f, mtime, _size, plugin, ident, kind = entry
+        racy = mtime >= late
+        hit = old.get(tuple(entry))
+        # (contenu lu AVANT l'analyse : une réécriture entre les deux est vue au message suivant)
+        crc = _crc(f) if racy or (hit is not None and hit[1] is not None) else None
+        if hit is not None and (hit[1] is None or hit[1] == crc):
+            raws.append(hit[0])
+        else:
+            raws.append(parse(f, plugin, ident, kind, stop))
+        crcs.append(crc if racy else None)
+    skills = _dedupe([s for s in marshal.loads(marshal.dumps(raws)) if s])  # (copie : les poids s'écrivent dedans)
     sources = {}
     for s in skills:
         sources.setdefault(s["plugin"], []).append(s)
@@ -442,22 +554,15 @@ def index(cwd=None, kc=None) -> list:
         for s in group:  # poids = importance du mot × rareté parmi les skills (un mot présent partout ne départage rien)
             for k in s["kw"]:
                 k[3] = round(k[3] * math.log((n + 1) / (df[k[0]] + 0.5)), 3) if n > 1 else float(k[3])
-    try:
-        write_json(CACHE_FILE, {"v": CACHE_V, "sig": sig, "skills": skills})
+    cache = {"v": CACHE_V, "code": code, "sig": sig, "crc": crcs, "key": key, "skills": with_triggers(skills, extra)}
+    if key is not None:
+        _write_cache(RAW_FILE, {"v": CACHE_V, "code": code, "stop": sorted(stop), "sig": sig, "raw": raws, "crc": crcs})
+        _write_cache(CACHE_FILE, cache)
+    try:  # cache de la version d'avant (JSON, tout relu au moindre changement)
+        (STATE_DIR / "skills_index.json").unlink()
     except OSError:
         pass
-    return _ready(skills, kc, cwd)
-
-
-def _ready(skills, kc, cwd) -> list:
-    """Catalogue prêt à l'emploi : sans les skills coupées (skillOverrides), avec les déclencheurs ajoutés — ceux du
-    cerveau (declencheurs.DEFAUT), puis ceux de la config."""
-    off = overrides(cwd)
-    extra = {k: list(v) for k, v in declencheurs.DEFAUT.items()}
-    for k, v in (kc.get("triggers") or {}).items():
-        if isinstance(v, list):
-            extra[k] = extra.get(k, []) + v
-    return with_triggers([s for s in skills if s["name"] not in off] if off else skills, extra)
+    return cache
 
 
 # ------------------------------------------------------------------------------------------ reconnaissance
@@ -580,9 +685,12 @@ def match(text, skills, exclude=(), min_score=4.0, long_chars=500) -> list:
         # nom composé cité ; jamais « peut-être » (mesuré : une suggestion fausse sur cinq messages sinon)
         foreign = bool(s.get("kind"))
         cited = s["name"].partition(":")[2] if s.get("plugin") else s["name"]  # « brainstorming » suffit pour plugin:…
-        pre = AS_REF if fold(cited) in GENERIC_NAME else r"(?<![\w-])"
-        if (len(cited) >= 5 and (not foreign or "-" in cited)
-                and re.search(rf"{pre}{re.escape(fold(cited))}(?![\w-])", q.text)):
+        fc = fold(cited)
+        pre = AS_REF if fc in GENERIC_NAME else r"(?<![\w-])"
+        # (motif compilé seulement si le nom est dans le message : avant, une expression par skill à chaque message,
+        # 800 compilations pour 800 skills)
+        if (len(cited) >= 5 and (not foreign or "-" in cited) and fc in q.text
+                and re.search(rf"{pre}{re.escape(fc)}(?![\w-])", q.text)):
             why = "nom cité"
         for p in s["triggers"]:
             if why:
@@ -591,7 +699,7 @@ def match(text, skills, exclude=(), min_score=4.0, long_chars=500) -> list:
                 why = f"« {p['text']} »"
         if foreign and not why:
             continue
-        matched = {k[0]: (k[3], k[4]) for k in s["kw"] if q.has(k[:3])}
+        matched = {k[0]: (k[3], k[4]) for k in s["kw"] if q.has(k)}  # (has ne lit que mot, racine, clé phonétique)
         score = round(sum(w for w, _ in matched.values()), 2)
         neg = [k[0] for k in s.get("neg_kw", []) if q.has(k)]
         if why:  # déclencheur reconnu, mais un mot de « Ne pas utiliser… » dans le message → seulement « peut-être »

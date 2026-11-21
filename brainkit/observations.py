@@ -13,13 +13,17 @@ from __future__ import annotations
 import datetime as _dt
 import hashlib
 import json
+import marshal
+import os
 import re
 
-from .common import BRAIN_DIR, FileLock, fmt_date, fold, jaccard, parse_iso, read_json, short, tokenize, write_json
+from .common import (BRAIN_DIR, STATE_DIR, FileLock, fmt_date, fold, jaccard, parse_iso, read_json, short, tokenize,
+                     write_json)
 
 OBS_FILE = BRAIN_DIR / "journal" / "observations.json"
 ARCHIVE_FILE = BRAIN_DIR / "journal" / "observations-archive.jsonl"
 LOCK = OBS_FILE.with_name("observations.lock")
+INDEX_FILE = STATE_DIR / "obsidx.bin"  # index du rappel des observations (voir _pool_index)
 PRIO = {3: "🔴", 2: "🟡", 1: "🟢"}
 KEEP_DAYS = 7  # au-delà, condensées par le rêve en un résumé par semaine et par projet
 PER_DIGEST = {3: 6, 2: 4, 1: 1}  # lignes gardées par priorité dans un résumé de semaine
@@ -143,8 +147,9 @@ def recall(query, raw="", project=None, limit=1, exclude=(), min_cov=0.5, today=
     nombres : « hier », « la semaine dernière ») : celles de la période ; sans autre mot que la date, les plus importantes
     de la période. Avant, seul `q` les retrouvait. → [observation]"""
     from . import dates
-    from .search import Index, recall_refusal, undated
-    items = [o for o in _items() if key(o) not in exclude]
+    from .search import recall_refusal, undated
+    every = _items()
+    items = [o for o in every if key(o) not in exclude]
     rng = dates.query_range(raw or query, today)
     pool = [o for o in items if rng[0] <= _day(o) <= rng[1]] if rng else items
     if not pool:
@@ -152,11 +157,81 @@ def recall(query, raw="", project=None, limit=1, exclude=(), min_cov=0.5, today=
     text = undated(query) if rng else query
     if not tokenize(text):
         return sorted(pool, key=lambda o: (-o.get("p", 2), o["at"]))[:limit] if rng else []
-    idx = Index((i, [(o["t"], 1.0)]) for i, o in enumerate(pool))
+    idx, keep = _pool_index(pool, every)
     scored = [(h["score"] * (1 + 0.2 * (pool[h["key"]].get("p", 2) - 2))
                * (1.2 if project and pool[h["key"]].get("proj") == project else 1.0), pool[h["key"]])
               for h in idx.search(text, 30) if not recall_refusal(h, min_cov)]
+    keep(idx)
     return [o for _, o in sorted(scored, key=lambda x: (-x[0], x[1]["at"]))][:limit]
+
+
+def _pool_index(pool, every=()):
+    """Index BM25 (search.Index) des observations `pool`, dans cet ordre, le même qu'avant (positions pour clés, chaque
+    texte de poids 1) : gardé dans state/obsidx.bin tant que leurs textes sont les mêmes, avec ses tables de fautes et de
+    prononciation une fois construites (avant : tout redécoupé à chaque message sans souvenir, 43 ms à 2 000
+    observations). Les mots de chaque texte (`every` : toutes les observations) y restent pour une autre liste (une
+    observation ajoutée, une autre déjà montrée dans la session) : seuls les nouveaux textes sont découpés.
+    → (index, keep(index) : réécrit le fichier si quelque chose a changé)."""
+    from collections import Counter
+    from .lexicon import faux_amis
+    from .search import MEMIDX_TAG, Index
+    texts = [o["t"] for o in pool]
+    sig = hashlib.sha1("".join(f"{len(t)}:{t}" for t in texts).encode("utf-8", "surrogatepass")).hexdigest()
+    tag = f"o1-{MEMIDX_TAG}"  # (le découpage des mots change avec l'index des souvenirs)
+    try:
+        with open(INDEX_FILE, "rb") as fh:
+            blob = marshal.loads(fh.read())
+        blob = blob if isinstance(blob, dict) and blob.get("tag") == tag else {}
+    except Exception:
+        blob = {}
+    docs = blob.get("docs") or b""  # {texte: (mots, faux amis)}, lu seulement si la liste a changé
+    fuzzy = blob.get("fuzzy") if blob.get("sig") == sig else None
+    if blob.get("sig") == sig:
+        idx = Index.from_state(blob["index"])
+        if fuzzy:
+            idx._phon, idx._del, idx._root = fuzzy
+    else:
+        try:
+            got_docs = marshal.loads(docs) if docs else {}
+        except Exception:
+            got_docs = {}
+        tfs, named = [], {}
+        for i, text in enumerate(texts):
+            got = got_docs.get(text)
+            if got is None:  # comme search.Index(…) : chaque mot du texte, poids 1
+                tf, nm = Counter(), Counter()
+                if text:
+                    for tok in tokenize(text):
+                        tf[tok] += 1.0
+                    for tok in faux_amis(text):
+                        nm[tok] += 1.0
+                got = got_docs[text] = (dict(tf), dict(nm))
+            tfs.append(got[0])
+            if got[1]:
+                named[i] = got[1]
+        idx = Index.from_tfs(range(len(texts)), tfs)
+        idx.named = named
+        alive = {o["t"] for o in every} | set(texts)
+        docs = None  # à réécrire
+        kept_docs = {t: v for t, v in got_docs.items() if t in alive}
+
+    def keep(idx):
+        built = getattr(idx, "_phon", None) is not None and not fuzzy  # tables de fautes construites par cette recherche
+        if docs is not None and not built:
+            return
+        try:
+            out = {"tag": tag, "sig": sig, "docs": docs if docs is not None else marshal.dumps(kept_docs),
+                   "index": {"keys": idx.keys, "tfs": idx.tfs, "lens": idx.lens, "df": dict(idx.df),
+                             "post": dict(idx.post), "pre": dict(idx.by_prefix), "named": idx.named},
+                   "fuzzy": (idx._phon, idx._del, idx._root) if getattr(idx, "_phon", None) is not None else None}
+            INDEX_FILE.parent.mkdir(parents=True, exist_ok=True)
+            tmp = INDEX_FILE.with_name(f"obsidx.{os.getpid()}.tmp")
+            with open(tmp, "wb") as fh:
+                fh.write(marshal.dumps(out))
+            os.replace(tmp, INDEX_FILE)
+        except Exception:
+            pass
+    return idx, keep
 
 
 def recent(n=15, project=None, days=None):

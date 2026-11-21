@@ -19,7 +19,7 @@ from __future__ import annotations
 import json
 import time
 
-from .common import PLUGIN, STATE_DIR, load_config, log, read_json, write_json
+from .common import BRAIN_DIR, PLUGIN, STATE_DIR, load_config, log, read_json, write_json
 
 EVENTS = ("session-start", "prompt", "stop", "session-end")
 HOOK_NAMES = {"session-start": "SessionStart", "prompt": "UserPromptSubmit"}
@@ -200,7 +200,7 @@ def apply(event, out_text, data, cfg=None) -> str:
     try:
         if event not in EVENTS or not isinstance(data, dict):
             return out_text
-        if PLUGIN:
+        if PLUGIN and (BRAIN_DIR / "brainkit").is_dir():  # (comme hooks._run : sans ce code, plugin.py n'est pas chargé)
             from . import plugin
             if plugin.classic_install():
                 return out_text  # cerveau classique aux commandes : le plugin ne fait rien
