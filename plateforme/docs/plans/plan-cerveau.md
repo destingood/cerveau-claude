@@ -33,7 +33,8 @@ sauf les correctifs sûrs, faits tout de suite à ta demande.
 5. **Déjà fait** (§9) : étape 1 le 20/11, douze défauts, dont tous ceux qui faisaient perdre un souvenir
    sans le dire ; étape 2 le 20/11, la sécurité restante (8.25.0) ; étape 3 le 21/11, le rappel (8.26.0) :
    le bon souvenir revient pour 58 questions sur 62, contre 33, sans faux rappel de plus ; étape 4 le 21/11, la
-   vitesse (8.27.0) : à 3 000 souvenirs, chaque hook sous 150 ms, `brain add` de 2,1 s à 0,17 s.
+   vitesse (8.27.0) : à 3 000 souvenirs, chaque hook sous 150 ms, `brain add` de 2,1 s à 0,17 s ; étape 5 le 21/11,
+   la consommation (8.28.0) : 18 skills au lieu de 33, démarrage et outils MCP −30 %.
 6. **Attention, sous Windows.** `brain.exe`, la version Rust du cerveau, n'a pas changé depuis la
    8.18.2 du 10/11, et son code source n'est pas dans le dépôt. C'est lui qui exécute, sur ton PC, les
    hooks de session, le rappel, `done`, le verrou et le masquage des mots de passe. L'audit a mesuré
@@ -57,6 +58,7 @@ sauf les correctifs sûrs, faits tout de suite à ta demande.
 | 20/11 | Corriger le sûr tout de suite, le reste après ton GO | Étape 1 faite (PR des correctifs sûrs) |
 | 20/11 | « Continue le plan », puis « continue » | Étapes 2 (8.25.0) et 3 (8.26.0) faites |
 | 21/11 | Fusionner la 8.26.0 dès la CI verte ; étape suivante : la vitesse | 8.26.0 fusionnée ; étape 4 faite (8.27.0) |
+| 21/11 | Fusionner la 8.27.0 ; étape 5 ; regrouper les skills, E2, E8, outils MCP de la mémoire seulement | 8.27.0 fusionnée ; étape 5 faite (8.28.0) |
 
 ## 2. Comment l'audit a été fait, et ses limites
 
@@ -166,14 +168,21 @@ tes échanges) :
 | Chaque message | Rappel : 0 si rien ne passe, 700 à 900 sinon | 0 à 900 |
 | Après 15 appels d'outils ou 3 modifications, puis tous les 150 appels, et après chaque résumé | Rappel de mémoriser (hook Stop) **plus un tour complet du modèle** | 1 060 + un tour |
 
+**Après l'étape 5 (21/11)**, mesuré par de vrais processus sur les cerveaux de test : injection du démarrage
+7 725 → 6 728 caractères dans un projet (300 souvenirs), 8 069 → 7 072 (3 000) ; liste des outils MCP 6 588 → 3 204 ;
+les deux ensemble −30 %. Descriptions des skills listées : 29 758 → 4 180 caractères. Skill `brain` : 23 802 → 5 377.
+
 | Problème | Correction | Effort | Étape |
 |---|---|---|---|
-| Les 33 descriptions de skills (29 000 caractères) dépassent la place que Claude Code leur donne (1 % du contexte, environ 8 000 caractères ; le mode éco l'abaisse à 0,5 %). Les descriptions en trop sont retirées, en commençant par les skills les moins utilisées | D'abord déplacer les phrases-déclencheurs du cerveau hors des descriptions (son réflexe les lit là), puis raccourcir chaque description à moins de 250 caractères, puis regrouper (§7.2) | M | 5 |
-| Le rappel de mémoriser relance un tour entier du modèle | Plus rare, plus court, ou seulement sur une vraie phrase durable (décision E3) | S | 5 |
-| Bloc de consignes réinjecté au démarrage, après un résumé et après `/clear` | Le garder à l'essentiel ; la liste des commandes va dans la skill | S | 5 |
-| 15 outils MCP exposés (mémoire, boutique, wiki), résultats sans limite de taille | Seulement les outils de mémoire par défaut ; résultats bornés | S | 5 |
-| La skill `brain` fait 24 500 caractères et reste dans le contexte une fois chargée | Garder 7 000 caractères, le reste en fichiers lus au besoin | M | 5 |
-| Un dossier qui contient seulement un README devient un projet, cartographié toutes les 10 min | Exiger un vrai marqueur de code (.git, package.json…) | S | 5 |
+| Les 33 descriptions de skills (29 000 caractères) dépassent la place que Claude Code leur donne (1 % du contexte, environ 8 000 caractères ; le mode éco l'abaisse à 0,5 %). Les descriptions en trop sont retirées, en commençant par les skills les moins utilisées | ✅ Phrases-déclencheurs dans `metadata.triggers` (le réflexe les lit là, Claude Code les ignore) ; 18 skills (§7.2), chaque description sous 250 caractères : 4 180 caractères en tout | M | 5 |
+| Le rappel de mémoriser relance un tour entier du modèle | ✅ Seulement sur une vraie phrase durable (décision E3) | S | 2 |
+| Bloc de consignes réinjecté au démarrage, après un résumé et après `/clear` | ✅ L'essentiel seulement, le même bloc partout (1 916 → 1 009 caractères) ; la liste des commandes va dans la skill | S | 5 |
+| 15 outils MCP exposés (mémoire, boutique, wiki), résultats sans limite de taille | ✅ Les 6 outils de la mémoire par défaut (ta décision du 21/11) ; boutique et wiki avec `brain config mcp.groupes '["boutique", "wiki"]'` ; chaque résultat coupé à 8 000 caractères, par pages | S | 5 |
+| La skill `brain` fait 24 500 caractères et reste dans le contexte une fois chargée | ✅ 5 377 caractères ; le reste, mot pour mot, dans 7 fichiers `references/` lus au besoin | M | 5 |
+| Un dossier qui contient seulement un README devient un projet, cartographié toutes les 10 min | ✅ Un vrai marqueur exigé (code, fichier de projet, ou 3 documents) ; les anciens projets de ce genre ne sont plus recartographiés | S | 5 |
+| Mode éco : place des descriptions de skills (décision E2) | ✅ Toujours 0,5 % du contexte, et `skillListingMaxDescChars` à 250 : plus de skills tiennent pour le même coût | S | 5 |
+| La tâche de fond refait toutes les vues après chaque fin de session (reste de l'étape 4) | ✅ Seulement les vues dont les sources ont changé : 580–660 ms → 40 ms par passage à 3 000 souvenirs | S | 5 |
+| Reste : l'injection seule baisse de 12 à 17 %, pas d'un tiers : à 3 000 souvenirs, ce sont surtout les titres des 393 règles et profils, qu'on ne retire pas | Baisser `inject.project_tokens` et `index_tokens`, ce qui montre moins de savoir au démarrage : ta décision | S | — |
 | L'ancienne skill `cerveau-ecommerce` 1.x est encore active dans ton compte claude.ai, à côté de la v2 | **Toi** : la désactiver dans claude.ai (Paramètres, Skills) | S | 5 |
 
 ### 4.4 Des erreurs s'affichent
@@ -245,6 +254,14 @@ Avant de regrouper : déplacer les phrases-déclencheurs dans les déclencheurs 
 réflexe ne trouve plus rien. Corrections au passage : chemin du script de scrapegraph (Windows
 seulement, relatif au dossier courant), test cité par image-to-code qui n'existe pas, déclencheurs
 de logo-design contraires à son contenu, le mot « logo » trop court pour déclencher.
+
+**Fait le 21/11** (étape 5), comme proposé et validé par toi : `design` (taste-skill, impeccable, design-md, skillui,
+image-to-code), `animation` (motion-design, animejs, emil-kowalski), `composants` (kokonutui, uiverse, bklit-ui),
+`web` (agent-browser, playwright, scrapegraph, agent-reach, reverse-api-engineer), `recherche` (avec perplexity),
+plus logo-design, public-apis et les 11 inchangées. Chaque ancienne skill est une fiche `<groupe>/<nom>/fiche.md`,
+avec ses scripts, ses références et sa licence. Seul écart : « motion design », « site animé » et « effet au
+scroll » mènent à `animation` (qui renvoie à la fiche taste-skill pour un site entier). Toutes les corrections
+ci-dessus sont faites.
 
 ### 7.3 Le code et les dépôts
 
@@ -366,9 +383,18 @@ hook au-dessus de 150 ms, premier démarrage après un changement compris ; `bra
   changement). Le premier ajout après la mise à jour prend environ 1 s à 3 000 souvenirs (mots des souvenirs
   gardés une fois pour toutes).
 
-**Étape 5 — Consommation** (§4.3) et regroupement des skills (§7.2).
-- Fin : injection du démarrage et outils MCP réduits d'un tiers ; la liste des skills du cerveau tient
-  dans sa place ; « fais-moi un logo » et « scrape ce site » trouvent leur skill.
+**Étape 5 — Consommation** (§4.3) et regroupement des skills (§7.2) : **faite le 21/11** (PR #26, cerveau
+8.28.0), avec tes décisions du 21/11 (regroupement comme proposé, E2, E8, outils MCP de la mémoire seulement).
+- Injection du démarrage et outils MCP : −30 % ensemble (l'injection seule −12 à −17 %, voir le reste au §4.3).
+- La liste des skills du cerveau tient dans sa place : 18 skills, 4 180 caractères au lieu de 29 758.
+- « fais-moi un logo » et « scrape ce site » trouvent leur skill, comme 29 demandes typiques des anciennes skills ;
+  « c'est impeccable » ou « film d'animation » n'en chargent aucune.
+- Le réflexe des skills nomme enfin les plugins synchronisés depuis claude.ai comme l'outil Skill les nomme, et voit
+  humanizer ; la description de la skill `brain` était du YAML invalide.
+- Tests : `test_skills_regroupees` (155 vérifications, 54 échouent sur l'ancienne disposition) et
+  `test_consommation` (44, dont 26 échouent sur la 8.27.0).
+- Toi, si tu as aussi l'installation classique : `brain self-update --force` une fois (beaucoup de fichiers de skills
+  disparaissent). Une skill de ton compte claude.ai reste à désactiver toi-même (§4.3).
 
 **Étape 6 — Erreurs et messages** (§4.4), dont la décision E1 sur `python`.
 - Fin : aucune trace Python dans les 400 cas d'essai des commandes ; `brain config` refuse une valeur
@@ -432,16 +458,16 @@ Amélioration continue, puis N3 domaine par domaine. N4 reste hors du plan.
 | # | Décision | Ma recommandation |
 |---|---|---|
 | E1 | `python` absent sur Mac et Linux | Un petit lanceur qui essaie python3, python puis py, essayé sur un Windows sans Git Bash avant de le livrer |
-| E2 | Place des skills dans le contexte (mode éco : 0,5 %) | Garder 0,5 % et ajouter `skillListingMaxDescChars` à 250 : plus de skills visibles pour le même coût |
+| E2 | Place des skills dans le contexte (mode éco : 0,5 %) | **Tranché le 21/11 : 0,5 % et `skillListingMaxDescChars` à 250** (étape 5) |
 | E3 | Rappel de mémoriser en fin de tâche (hook Stop) | **Tranché le 20/11 : seulement quand une phrase durable a été dite, texte deux fois plus court** (étape 2) |
-| E4 | Seuil du rappel (`min_cov`) | 0,4, à confirmer par le banc d'essai de l'étape 3 |
+| E4 | Seuil du rappel (`min_cov`) | **Réglé par le banc d'essai de l'étape 3 : 0,5 reste**, 0,4 rappelait un mauvais souvenir |
 | E5 | Veille PC qui ferme des processus | **Tranché le 20/11 : lister et proposer**, plus rien fermé sans ton accord (étape 2) |
 | E6 | Plugins et skills désactivés tout seuls | **Tranché le 20/11 : te les proposer**, plus rien coupé sans ton accord (étape 2) |
 | E7 | Sauvegarde sans second disque | Dans ton dossier personnel, avec un message une fois |
-| E8 | Retirer les skills humanizer et vercel (tes plugins les ont déjà) | Oui ; tes amis sans ces plugins perdent la route d'installation |
+| E8 | Retirer les skills humanizer et vercel (tes plugins les ont déjà) | **Tranché le 21/11 : retirées** ; leurs phrases mènent aux skills de tes plugins (étape 5) |
 | E9 | Code de la plateforme qui sert seulement avec un budget API (≈ 6 000 lignes) | Le mettre de côté dans une branche, pas le supprimer |
 | E10 | prompts.chat actif par défaut | Le garder, maintenant que son texte est filtré ; le couper si tu ne t'en sers pas |
-| E11 | Fusionner la PR des correctifs sûrs et publier 8.24.0 | Oui, dès que la CI est verte |
+| E11 | Fusionner la PR des correctifs sûrs et publier 8.24.0 | **Fait le 20/11** |
 | E12 | `brain.exe` (Rust 8.18.2) tant que son code source n'est pas dans le dépôt | **Tranché le 20/11 : Python partout, puis optimiser en Rust.** Fait : `brain.exe` ne tourne plus que sur demande (`BRAIN_IMPL=rust`), tous les correctifs valent sous Windows. Ensuite (D2) : tu ajoutes le code Rust au dépôt ; Claude y reporte les correctifs faits depuis la 8.18.2, l'optimise, et l'exe est construit en CI |
 
 Toujours ouvertes depuis le plan v2 : D4 (ton nom dans l'historique public), D5 (ordre des domaines),
