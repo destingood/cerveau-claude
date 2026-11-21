@@ -6,8 +6,10 @@ dates, noms, mots anglais, dossier du projet ou non) et 38 messages qui ne doive
 Chaque message passe par le hook UserPromptSubmit lui-même (`hooks.run("prompt")`, ce que lance
 `python -I -S brain.py hook prompt`, avec le JSON que Claude Code envoie sur stdin), dans une session neuve, depuis le
 dossier de son projet ou un dossier neutre. Le test imprime hit@1, hit@3 et les faux rappels et les compare à des
-planchers. L'horloge est figée au vendredi 20/11/2026 à 10 h (âge des souvenirs, « hier », « la semaine dernière ») :
-mêmes chiffres à chaque lancement, quel que soit le jour.
+planchers ; de même pour des messages longs ajoutés (8 questions, 16 hors sujet), les observations de fin de tâche,
+le démarrage de session suivi du message, et une longue session (plafond du rappel). L'horloge est figée au vendredi
+20/11/2026 à 10 h (âge des souvenirs, « hier », « la semaine dernière ») : mêmes chiffres à chaque lancement, quel que
+soit le jour.
 
 Lancement : python tests/test_rappel.py            (sortie : « N vérifications OK, M échec(s) »)
             python tests/test_rappel.py --detail   (en plus : chaque question manquée et ce qui a été montré)
@@ -1053,7 +1055,9 @@ def main():
             print(f"  · {pid} : observation montrée {noted(ctxs[pid])}")
 
     # The world itself: the clock brainkit reads is the frozen one, the expected answers exist and are recallable.
-    from brainkit import common, dates
+    from brainkit import common, dates, hooks, publish
+    from brainkit.concis import concis
+    from brainkit.store import Brain
     check(common.now_iso() == "2026-11-20T10:00:00" and dates.query_range("hier") == (_dtm.date(2026, 11, 19),) * 2,
           "horloge figée : brainkit voit le vendredi 20/11/2026 à 10 h", (common.now_iso(), dates.query_range("hier")))
     nodes = json.loads(world["base"].decode("utf-8"))["nodes"]
@@ -1064,7 +1068,6 @@ def main():
             if nodes[world["ids"][k]].get("status", "active") != "active"]
     check(not lost, "chaque souvenir attendu est actif", lost)
     check(not bad, "hook : code de sortie 0 à chaque message", bad)
-    from brainkit import publish
     leaks = publish.secrets_in(CODE, [Path(__file__).resolve().relative_to(CODE).as_posix()])
     check(not leaks, "ce fichier est publié : ni clé, ni mot de passe, ni adresse e-mail dedans", leaks)
     # The measure through the hook, against the floors.
@@ -1089,9 +1092,7 @@ def main():
           ctx)
     # Session start, then the message: the start index blocks for the session only the memories it shows whole (before,
     # every id it printed, even cut to 100-200 characters). Answered: recalled, or already whole in the start text.
-    from brainkit.concis import concis
-    from brainkit.store import Brain as _B
-    nodes_now = _B.load().nodes
+    nodes_now = Brain.load().nodes
     sh3 = answered = 0
     for q in QUESTIONS:
         keys, start = start_then_ask(world, q[3], q[2], f"rappel-demarrage-{q[0]}")
@@ -1104,8 +1105,7 @@ def main():
           f"{len(QUESTIONS)}", (sh3, answered))
     _, start = hook("session-start", {"session_id": "rappel-bloques", "cwd": str(world["neutre"]), "source": "startup",
                                       "hook_event_name": "SessionStart"})
-    from brainkit.hooks import load_state
-    blocked = set(load_state("rappel-bloques").get("injected", []))
+    blocked = set(hooks.load_state("rappel-bloques").get("injected", []))
     flat = " ".join(start.split())
     printed = {i for i in re.findall(r"`([a-z0-9][a-z0-9\-]*)`", start) if i in nodes_now}
     cut = {i for i in printed if nodes_now[i]["type"] != "project" and concis(nodes_now[i].get("body", "")) not in flat}
@@ -1136,8 +1136,6 @@ def main():
           (paused, keys, ctx[:300]))
     # Keywords: the end-of-task instruction asks for them, and a memory given the words of a future question is recalled
     # by it (A3: « logiciel » and « vidéos » appear nowhere in « Montage sur DaVinci Resolve »).
-    from brainkit import hooks
-    from brainkit.store import Brain
     check("--keys" in hooks.STOP_REASON, "consigne de fin de tâche : demande des mots-clés (--keys) à l'enregistrement",
           hooks.STOP_REASON)
     a3 = next(q for q in QUESTIONS if q[0] == "A3")
