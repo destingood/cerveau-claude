@@ -674,6 +674,23 @@ def _loads_loose(text):
         return None
 
 
+LOCAL_SPEC = re.compile(r"^\s*(?:file:|link:|workspace:|portal:|\.{1,2}/|/|~/)")  # dépendance prise dans un dossier
+
+
+def _pkg_entry(data) -> str:
+    """Fichier d'entrée d'un package.json : main, module, exports["."], source."""
+    exp = data.get("exports")
+    if isinstance(exp, dict):
+        exp = exp.get(".", exp if not any(str(k).startswith(".") for k in exp) else None)
+    while isinstance(exp, dict):  # {"import": …, "require": …, "default": …}
+        exp = next((v for k, v in exp.items() if k in ("default", "require", "import", "node") and v), None) \
+            or next((v for v in exp.values() if isinstance(v, (str, dict))), None)
+    for cand in (data.get("main"), data.get("module"), exp, data.get("source")):
+        if isinstance(cand, str) and cand.strip():
+            return cand.strip()
+    return ""
+
+
 def parse_json(text, rel):
     name = posixpath.basename(rel).lower()
     data = _loads_loose(text) if len(text) < 3_000_000 else None
@@ -683,7 +700,14 @@ def parse_json(text, rel):
         dev = list((data.get("devDependencies") or {}).keys())
         scripts = data.get("scripts") or {}
         out["pkg"] = {"name": str(data.get("name") or ""), "scripts": {k: short(v, 90) for k, v in list(scripts.items())[:25]}}
+        entry = _pkg_entry(data)
+        if entry:
+            out["pkg"]["main"] = entry
         out["deps"] = deps + dev
+        local = [k for sec in ("dependencies", "devDependencies", "peerDependencies", "optionalDependencies")
+                 for k, v in (data.get(sec) or {}).items() if isinstance(v, str) and LOCAL_SPEC.match(v)]
+        if local:  # paquets d'un dossier à soi (monorepo, file:, link:, workspace:) : pas des dépendances externes
+            out["local"] = sorted(set(local))
         if data.get("name"):
             out["title"] = str(data["name"])
         if data.get("description"):
@@ -747,6 +771,10 @@ def parse_config(text, rel):
         if m:
             deps += [k for k in re.findall(r"(?m)^([A-Za-z0-9_.\-]+)\s*=", m.group(1)) if k.lower() != "python"]
         out["deps"] = list(dict.fromkeys(deps))
+        local = re.findall(r"""['"]\s*([A-Za-z0-9_.\-]+)\s*(?:\[[^\]'"]*\])?\s*@\s*(?:file:|\.{1,2}/|/)""", text)
+        local += re.findall(r"(?m)^([A-Za-z0-9_.\-]+)\s*=\s*\{[^}\n]*\b(?:path|workspace)\s*=", text)  # poetry, uv
+        if local:
+            out["local"] = sorted(set(local))
         nm = re.search(r'(?m)^name\s*=\s*"([^"]+)"', text)
         if nm:
             out["title"] = nm.group(1)
@@ -762,15 +790,34 @@ def parse_config(text, rel):
 
 
 def parse_requirements(text, rel):
-    deps = []
-    for line in text.splitlines():
-        line = line.split("#")[0].strip()
+    deps, local = [], []
+    for raw in text.splitlines():
+        egg = re.search(r"#egg=([A-Za-z0-9_.\-]+)", raw)
+        line = re.sub(r"(?:^|\s)#.*$", "", raw.replace(egg.group(0), "") if egg else raw).strip()
+        path = re.match(r"^(?:-e|--editable)\s+(\S+)$", line)
+        target = path.group(1) if path else line
+        named = re.match(r"^([A-Za-z0-9_.\-]+)\s*(?:\[[^\]]*\])?\s*@\s*(\S+)", target)
+        if named and LOCAL_SPEC.match(named.group(2)):  # nom @ file:… : un paquet d'un dossier à soi
+            local.append(named.group(1))
+            continue
+        if target and (LOCAL_SPEC.match(target) or target in (".", "..")):  # -e ./lib/outil, ../commun : idem
+            name = egg.group(1) if egg else posixpath.basename(target.replace("\\", "/").rstrip("/"))
+            if name and name not in (".", ".."):
+                local.append(name)
+            continue
         if not line or line.startswith("-"):
+            continue
+        if re.match(r"^(?:git|hg|svn|bzr)\+|^https?://", line):  # dépôt distant : son nom est dans #egg=
+            if egg:
+                deps.append(egg.group(1))
             continue
         m = re.match(r"([A-Za-z0-9_.\-]+)", line)
         if m:
             deps.append(m.group(1))
-    return {"deps": deps, "doc": "dépendances : " + ", ".join(deps[:12])}
+    out = {"deps": deps, "doc": "dépendances : " + ", ".join(deps[:12])}
+    if local:
+        out["local"] = sorted(set(local))
+    return out
 
 
 def parse_env_names(text, rel):
@@ -1193,8 +1240,29 @@ class Resolver:
             self.by_name[posixpath.basename(k).lower()].append(k)
         self.py_roots = [""] + [d + "/" for d in ("src", "app", "lib", "backend", "server")
                                 if any(k.startswith(d + "/") for k in files)]
+        self._locals()
         self.aliases = self._aliases()
         self.alias_prefixes = tuple(a for a, _ in self.aliases)
+
+    def _locals(self):
+        """Paquets du dépôt lui-même (monorepo, dépendances file:/link:/workspace:/path) : un import vers eux est
+        résolu vers leurs fichiers, ou au moins n'est pas compté comme un paquet externe (avant, il l'était)."""
+        self.js_pkgs, self.js_local, self.py_local, roots = {}, set(), set(), []
+        for rel, f in self.files.items():
+            base, d = posixpath.basename(rel).lower(), posixpath.dirname(rel)
+            if base == "package.json":
+                pkg = f.get("pkg") or {}
+                if pkg.get("name"):
+                    self.js_pkgs.setdefault(pkg["name"], (d, pkg.get("main") or ""))
+                self.js_local.update(f.get("local") or ())
+            elif base in ("pyproject.toml", "setup.py", "setup.cfg") or f.get("lang") == "requirements":
+                self.py_local.update(_py_name(n) for n in f.get("local") or ())
+                if base == "pyproject.toml" and f.get("title"):
+                    self.py_local.add(_py_name(f["title"]))
+                if d and f.get("lang") != "requirements":  # libs/x/pyproject.toml : libs/x/src/ et libs/x/ sont des racines
+                    roots += [d + "/src/", d + "/"]
+        dirs = {k.rsplit("/", 1)[0] + "/" for k in self.files if "/" in k}
+        self.py_pkg_roots = [r for r in dict.fromkeys(roots) if any(x.startswith(r) for x in dirs)][:200]
 
     def has(self, p):
         if p in self.exact:
@@ -1257,6 +1325,18 @@ class Resolver:
         pkg = "/".join(spec.split("/")[:2]) if spec.startswith("@") else spec.split("/")[0]
         if pkg in NODE_BUILTINS:
             return None, None
+        if pkg in self.js_pkgs:  # paquet du dépôt (monorepo) : son fichier, par son point d'entrée ou son chemin
+            d, entry = self.js_pkgs[pkg]
+            sub = spec[len(pkg):].lstrip("/")
+
+            def at(x):
+                return posixpath.join(d, x) if d else x
+            if sub:
+                return self.try_js(at(sub)) or self.try_js(at("src/" + sub)), None
+            return ((self.try_js(at(entry)) if entry else None) or self.try_js(at("src/index"))
+                    or self.try_js(at("index"))), None
+        if pkg in self.js_local:  # file:/link: vers un dossier hors du dépôt : local quand même
+            return None, None
         return None, pkg
 
     def _try_py(self, cand):
@@ -1281,6 +1361,12 @@ class Resolver:
                 return hit, None
         top = parts[0]
         if top in STDLIB:
+            return None, None
+        for root in self.py_pkg_roots:  # paquets Python du dépôt (libs/x/src/x/…) : pas des paquets externes
+            hit = self._try_py(root + "/".join(parts))
+            if hit:
+                return hit, None
+        if _py_name(top) in self.py_local:
             return None, None
         return None, top
 
@@ -1332,6 +1418,11 @@ class Resolver:
                     if hit:
                         return hit
         return None
+
+
+def _py_name(name) -> str:
+    """Nom de paquet Python comparable à un nom d'import : « Mon-Paquet.x » → « mon_paquet_x »."""
+    return re.sub(r"[-_.]+", "_", str(name)).lower()
 
 
 def resolve(files):

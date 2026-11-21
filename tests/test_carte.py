@@ -81,6 +81,52 @@ for rel in ("build/genere.js", "dist/bundle.js", "coverage/lcov.js", "packages/u
 check(files.get("src/main.py", {}).get("out") == ["src/env/config.py"], "dossiers ignorés : l'import de src/env/ est résolu",
       files.get("src/main.py"))
 
+# ----------------------------------------------------------------------------------------- paquets locaux
+M = TMP / "monorepo"
+put(M, "package.json", json.dumps({"name": "mono", "private": True, "workspaces": ["packages/*"], "dependencies": {
+    "@acme/utils": "workspace:*", "commun": "file:../commun", "lien": "link:../lien", "react": "^18"}}))
+put(M, "packages/utils/package.json", json.dumps({"name": "@acme/utils", "main": "lib/index.js"}))
+put(M, "packages/utils/lib/index.js", "export function slug(s) { return s }\n")
+put(M, "packages/utils/lib/aide.js", "export const aide = 1\n")
+put(M, "packages/ui/package.json", json.dumps({"name": "ui", "exports": {".": {"import": "./src/ui.js"}}}))
+put(M, "packages/ui/src/ui.js", "export function bouton() {}\n")
+put(M, "packages/kit/package.json", json.dumps({"name": "kit", "main": "dist/kit.js"}))  # main construit : absent
+put(M, "packages/kit/src/index.js", "export function outil() {}\n")
+put(M, "apps/web/index.js", "import { slug } from '@acme/utils'\nimport { aide } from '@acme/utils/lib/aide'\n"
+    "import { bouton } from 'ui'\nimport { outil } from 'kit'\nconst c = require('commun')\n"
+    "const l = require('lien/x')\nimport React from 'react'\nimport fs from 'fs'\n")
+put(M, "pyproject.toml", '[project]\nname = "mono"\ndependencies = ["requests>=2", "coeur @ file:///opt/coeur",'
+    ' "outil-local @ ./outils/local"]\n\n[tool.uv.sources]\nsoutien = { path = "../soutien" }\n')
+put(M, "libs/corelib/pyproject.toml", '[project]\nname = "corelib"\n')
+put(M, "libs/corelib/src/corelib/__init__.py", "def noyau():\n    pass\n")
+put(M, "libs/plat/setup.py", "from setuptools import setup\nsetup(name='plat')\n")
+put(M, "libs/plat/plat/__init__.py", "def plateau():\n    pass\n")
+put(M, "requirements.txt", "flask==3.0\n-e ./outils/editable\n../voisin\nmonpaquet @ file:///srv/monpaquet\n"
+    "git+https://exemple.test/x.git#egg=distant\n")
+put(M, "app/main.py", "import corelib\nfrom corelib import noyau\nimport plat\nimport coeur\nimport outil_local\n"
+    "import soutien\nimport editable\nimport voisin\nimport monpaquet\nimport requests\nimport flask\nimport json\n")
+m = carte(M)
+f = m["files"]
+web, py = f["apps/web/index.js"], f["app/main.py"]
+check(web.get("out") == ["packages/kit/src/index.js", "packages/ui/src/ui.js", "packages/utils/lib/aide.js",
+                         "packages/utils/lib/index.js"],
+      "paquets locaux : les imports JS d'un paquet du monorepo vont vers ses fichiers (main, exports, src/index, chemin)",
+      web.get("out"))
+check(web.get("ext") == ["react"], "paquets locaux : seuls les vrais paquets JS sont externes (pas workspace:, file:, link:)",
+      web.get("ext"))
+check(py.get("out") == ["libs/corelib/src/corelib/__init__.py", "libs/plat/plat/__init__.py"],
+      "paquets locaux : les imports Python d'un paquet du dépôt (libs/x/src/x, libs/x/x) sont résolus", py.get("out"))
+check(py.get("ext") == ["flask", "requests"],
+      "paquets locaux : file:, chemin, uv path, -e ./ ne sont pas des paquets Python externes", py.get("ext"))
+check(f["requirements.txt"].get("deps") == ["flask", "distant"] and f["requirements.txt"].get("local") ==
+      ["editable", "monpaquet", "voisin"], "paquets locaux : requirements.txt sépare les dossiers des dépendances",
+      f["requirements.txt"])
+check(f["package.json"].get("local") == ["@acme/utils", "commun", "lien"], "paquets locaux : package.json les note",
+      f["package.json"].get("local"))
+lines = mapper.deps(m, "apps/web/index.js")
+check(any(x.startswith("→ paquets externes : react") for x in lines) and not any("@acme" in x and "externes" in x for x in lines),
+      "paquets locaux : `brain deps` ne les montre plus comme externes", lines)
+
 # ----------------------------------------------------------------------------------------- exports CommonJS
 C = TMP / "commonjs"
 put(C, "package.json", json.dumps({"name": "outils", "main": "lib/index.js"}))
