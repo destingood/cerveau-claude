@@ -22,7 +22,7 @@
   ],
   "mcpServers": {
     "cerveau": {
-      "command": "${CERVEAU_PYTHON:-python}",
+      "command": "python",
       "args": [
         "-I",
         "-S",

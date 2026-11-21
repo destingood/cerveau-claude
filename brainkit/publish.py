@@ -25,7 +25,6 @@ from pathlib import Path
 
 from . import __version__
 from .common import CODE_DIR, load_config, read_json, remove_tree, set_config
-from .lanceur import MCP_COMMAND, hook_plugin
 
 NAME = MARKET = "cerveau"
 AUTRES = {"plateforme"}  # dossiers d'autres projets du même dépôt (PR #8) : ni effacés, ni contrôlés, ni commités ici
@@ -37,10 +36,8 @@ OWNED = {"brain.py", "brain.exe", "brainkit", "hooks", "skills", "output-styles"
          "README.md", ".gitignore", "tests", ".mcp.json"}
 # Serveur MCP du plugin, déclaré dans plugin.json et non dans un .mcp.json à la racine : ce fichier est aussi lu comme
 # configuration du projet quand le dépôt est ouvert dans Claude Code, où ${CLAUDE_PLUGIN_ROOT} n'existe pas (le
-# serveur échouait : « python: can't open file '…/${CLAUDE_PLUGIN_ROOT}/brain.py' »). Un serveur MCP n'a que la forme
-# exec (pas de shell, donc pas le lanceur des hooks) : `python`, ou l'interpréteur mis dans la variable CERVEAU_PYTHON
-# (shell de l'utilisateur, ou "env" de ~/.claude/settings.json ; `brain doctor` la propose quand `python` manque).
-MCP_SERVERS = {"cerveau": {"command": MCP_COMMAND, "args": ["-I", "-S", "${CLAUDE_PLUGIN_ROOT}/brain.py", "mcp"]}}
+# serveur échouait : « python: can't open file '…/${CLAUDE_PLUGIN_ROOT}/brain.py' »).
+MCP_SERVERS = {"cerveau": {"command": "python", "args": ["-I", "-S", "${CLAUDE_PLUGIN_ROOT}/brain.py", "mcp"]}}
 DESC = ("Cerveau persistant pour Claude Code : souvenirs en graphe, rappel automatique à chaque message, wiki Markdown "
         "tenu par Claude (sources ingérées, coffre Obsidian, dépôt git), cartes de projets, à-faire datés, serveur MCP, "
         "et un cerveau e-commerce qui suit chaque boutique (clients sans pub, SEO, GEO, tunnel de vente, chiffres de "
@@ -66,12 +63,16 @@ def _json(path: Path, data) -> None:
 
 
 def _hook(arg: str, timeout: int, status=None) -> dict:
-    """Un hook du plugin : le lanceur de lanceur.py (décision E1 : python3, python, puis py), en forme shell, la seule
-    qui marche partout (sh, Git Bash, ou PowerShell sous Windows sans Git Bash) ; Python y tourne en mode isolé
-    (-I -S), le plus rapide (le cerveau n'utilise que la stdlib). La forme exec d'avant (`python` + args) échouait là
-    où `python` n'existe pas (macOS, beaucoup de Linux), sans rien enregistrer."""
+    """Hook en forme « exécutable + arguments » : aucun shell à lancer (Git Bash ou PowerShell sous Windows), aucun
+    guillemet à échapper ; Python direct en mode isolé (-I -S), le plus rapide (le cerveau n'utilise que la stdlib)."""
     from .install import ASYNC
-    return hook_plugin(arg, timeout, status, arg in ASYNC)  # ASYNC : sortie inutile, rien ne l'attend
+    h = {"type": "command", "command": "python", "args": ["-I", "-S", "${CLAUDE_PLUGIN_ROOT}/brain.py", "hook", arg],
+         "timeout": timeout}
+    if status:
+        h["statusMessage"] = status
+    if arg in ASYNC:  # sortie inutile, rien ne l'attend : lancé sans bloquer (install.ASYNC)
+        h["async"] = True
+    return h
 
 
 def readme(owner: str, repo: str) -> str:
@@ -383,9 +384,9 @@ invite tes amis (Settings → Collaborators → Add people), puis rejoins-le le 
 
 ## Prérequis
 
-**Python 3.10 ou plus** : les hooks du plugin le trouvent seuls (`python3`, puis `python`, puis `py`, en sautant un Python plus ancien) ; s'il n'y en a aucun, Claude Code affiche au démarrage et à chaque message « 🧠 cerveau en pause : … » avec quoi installer : python.org (Windows : coche « Add python.exe to PATH ») ou, sur macOS, `brew install python`.
-- **Le serveur MCP** (les outils de la mémoire dans Claude Code) lance la commande `python` : macOS : `mkdir -p ~/.local/bin && ln -sf "$(command -v python3)" ~/.local/bin/python`, puis redémarre Claude Code · Debian/Ubuntu : `sudo apt install python-is-python3` · ou, partout, `"env": {{"CERVEAU_PYTHON": "/chemin/de/python3"}}` dans `~/.claude/settings.json` (les hooks l'essaient alors en premier).
-- **Vérifier que le cerveau enregistre**, après ton premier message : `python ~/.claude/brain/brain.py doctor` (il dit quel Python lancent les hooks et le serveur MCP) puis `python ~/.claude/brain/brain.py journal` (macOS et Linux sans `python` : `python3`) ; si ce fichier n'existe pas, les hooks ne tournent pas : diagnostic direct avec `python3 "$(ls -d ~/.claude/plugins/cache/*/cerveau/*/ | tail -1)brain.py" doctor`.
+**Python 3.10 ou plus, et la commande `python`** : les hooks du plugin la lancent ; sans elle, rien n'est enregistré, sans aucune erreur visible.
+- macOS : `mkdir -p ~/.local/bin && ln -sf "$(command -v python3)" ~/.local/bin/python`, puis redémarre Claude Code · Debian/Ubuntu : `sudo apt install python-is-python3` · Windows : réinstalle Python depuis python.org en cochant « Add python.exe to PATH ».
+- **Vérifier que le cerveau enregistre**, après ton premier message : `python ~/.claude/brain/brain.py doctor` puis `python ~/.claude/brain/brain.py journal` (macOS sans `python` : `python3`) ; si ce fichier n'existe pas, les hooks ne tournent pas : diagnostic direct avec `python3 "$(ls -d ~/.claude/plugins/cache/*/cerveau/*/ | tail -1)brain.py" doctor`.
 
 ## Désinstaller
 
