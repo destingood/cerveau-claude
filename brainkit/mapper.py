@@ -35,7 +35,7 @@ from .common import (CLAUDE_HOME, PROJECTS_DIR, FileLock, first_line, fmt_date, 
                      norm_path, now_iso, path_within, read_json, short, tokenize, write_json, write_text)
 from .store import Brain
 
-PARSER_VERSION = 4
+PARSER_VERSION = 5  # 5 : exports CommonJS, paquets locaux
 
 # Dossiers ignorés partout : dépendances installées, caches, sorties qui ne portent que ce nom.
 IGNORE_DIRS = {
@@ -480,7 +480,16 @@ JS_PATTERNS = [
     (re.compile(r"^(?:async\s+)?function\s*\*?\s*([A-Za-z_$][\w$]*)", re.M), "fn"),
     (re.compile(r"^(?:const|let|var)\s+([A-Za-z_$][\w$]*)\s*=\s*(?:async\s+)?(?:function\b|\([^)\n]*\)\s*(?::\s*[\w<>\[\]|, ]+)?\s*=>|[A-Za-z_$][\w$]*\s*=>)", re.M), "fn"),
     (re.compile(r"^(?:interface|type|enum)\s+([A-Za-z_$][\w$]*)", re.M), "type"),
+    # CommonJS : exports.x = …, module.exports.x = …, module.exports = function nom / class Nom (avant, non indexés)
+    (re.compile(r"^[ \t]*(?:module\.)?exports\.([A-Za-z_$][\w$]*)\s*=\s*(?:async\s+)?(?:function\b|\([^)\n]*\)\s*=>|"
+                r"[A-Za-z_$][\w$]*\s*=>)", re.M), "fn"),
+    (re.compile(r"^[ \t]*(?:module\.)?exports\.([A-Za-z_$][\w$]*)\s*=\s*class\b", re.M), "class"),
+    (re.compile(r"^[ \t]*(?:module\.)?exports\.([A-Za-z_$][\w$]*)\s*=(?!=)", re.M), "const"),
+    (re.compile(r"^[ \t]*module\.exports\s*=\s*(?:async\s+)?function\s*\*?\s*([A-Za-z_$][\w$]*)", re.M), "fn"),
+    (re.compile(r"^[ \t]*module\.exports\s*=\s*class\s+([A-Za-z_$][\w$]*)", re.M), "class"),
 ]
+CJS_OBJECT = re.compile(r"^[ \t]*module\.exports\s*=\s*\{", re.M)
+CJS_ITEM = re.compile(r"\s*(?:async\s+)?\*?\s*(?:['\"]([A-Za-z_$][\w$]*)['\"]|([A-Za-z_$][\w$]*))\s*(:|\(|$)", re.S)
 JS_ROUTE = re.compile(r"""\b(?:app|router|server|api|routes|fastify|r)\s*\.\s*(get|post|put|patch|delete|all)\s*\(\s*['"`]([^'"`\n]+)['"`]""")
 JS_ENV = re.compile(r"""(?:process\.env|import\.meta\.env)\.([A-Z_][A-Z0-9_]*)|process\.env\[\s*['"]([A-Z_][A-Z0-9_]*)['"]\s*\]""")
 SCRIPT_BLOCK = re.compile(r"<script\b[^>]*>(.*?)</script>", re.S | re.I)
@@ -498,6 +507,39 @@ def _keep_scripts(text):
     return "".join(parts)
 
 
+def _cjs_object(src, lines, seen):
+    """module.exports = { a, b: c, d() {…} } → les noms exportés pas encore vus (une fonction définie plus haut sous le
+    même nom l'est déjà : elle garde sa ligne)."""
+    out = []
+    for m in CJS_OBJECT.finditer(src):
+        depth, i, start, items = 1, m.end(), m.end(), []
+        while i < len(src) and depth and i - m.end() < 20000:
+            ch = src[i]
+            if ch in "{[(":
+                depth += 1
+            elif ch in "}])":
+                depth -= 1
+            elif ch in "'\"`":  # chaîne : sautée en entier (une virgule ou une accolade dedans ne compte pas)
+                j = i + 1
+                while j < len(src) and src[j] != ch and src[j] != "\n":
+                    j += 2 if src[j] == "\\" else 1
+                i = j
+            if (ch == "," and depth == 1) or depth == 0:
+                items.append((start, i))
+                start = i + 1
+            i += 1
+        for a, b in items:
+            im = CJS_ITEM.match(src, a, b)
+            name = im and (im.group(1) or im.group(2))
+            if not name or name in seen or name in NOT_NAMES or src[a:b].lstrip().startswith("..."):
+                continue
+            seen.add(name)
+            kind = "fn" if im.group(3) == "(" or re.match(r"\s*(?:async\s+)?(?:function\b|\([^)]*\)\s*=>|[A-Za-z_$][\w$]*\s*=>)",
+                                                         src[im.end():b]) else "const"
+            out.append({"n": name, "k": kind, "l": lines.at(a + len(src[a:b]) - len(src[a:b].lstrip()))})
+    return out
+
+
 def _next_route(rel):
     m = NEXT_APP.search(rel)
     if m:
@@ -513,7 +555,12 @@ def _next_route(rel):
 def parse_js(text, rel):
     src = _keep_scripts(text) if rel.endswith((".vue", ".svelte", ".astro")) else text
     lines = Lines(src)
-    out = {"symbols": _syms(src, JS_PATTERNS, lines),
+    syms = _syms(src, JS_PATTERNS, lines)
+    if "module.exports" in src:
+        more = _cjs_object(src, lines, {s["n"] for s in syms})
+        if more:
+            syms = sorted(syms + more, key=lambda s: s["l"])[:200]
+    out = {"symbols": syms,
            "imports": list(dict.fromkeys(m.group(1) for m in JS_IMPORT.finditer(src))),
            "routes": [f"{v.upper()} {p}" for v, p in JS_ROUTE.findall(src)][:40],
            "env": sorted({a or b for a, b in JS_ENV.findall(src)}),

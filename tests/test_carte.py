@@ -81,6 +81,47 @@ for rel in ("build/genere.js", "dist/bundle.js", "coverage/lcov.js", "packages/u
 check(files.get("src/main.py", {}).get("out") == ["src/env/config.py"], "dossiers ignorés : l'import de src/env/ est résolu",
       files.get("src/main.py"))
 
+# ----------------------------------------------------------------------------------------- exports CommonJS
+C = TMP / "commonjs"
+put(C, "package.json", json.dumps({"name": "outils", "main": "lib/index.js"}))
+put(C, "lib/index.js", """'use strict'
+function interne() {}
+exports.slugify = function (s) { return s.toLowerCase() }
+exports.lent = async (x) => x
+module.exports.aide = (x) => x
+exports.VERSION = '1.0'
+exports.Panier = class {}
+""")
+put(C, "lib/objet.js", """const fs = require('fs')
+function lire() {}
+module.exports = {
+  lire,
+  ecrire() { return 1 },
+  'copier': require('./copie'),
+  taille: 3,
+  ...autres,
+  libelle: "a, b } c",
+  async vider() {},
+}
+""")
+put(C, "lib/copie.js", "module.exports = function copier() {}\n")
+put(C, "lib/moteur.js", "module.exports = class Moteur {}\n")
+put(C, "app.js", "const { slugify } = require('./lib')\nslugify('X')\n")
+m = carte(C)
+syms = {rel: {s["n"]: (s["k"], s["l"]) for s in f.get("symbols", [])} for rel, f in m["files"].items()}
+want = {"lib/index.js": {"interne": ("fn", 2), "slugify": ("fn", 3), "lent": ("fn", 4), "aide": ("fn", 5),
+                         "VERSION": ("const", 6), "Panier": ("class", 7)},
+        "lib/objet.js": {"lire": ("fn", 2), "ecrire": ("fn", 5), "copier": ("const", 6), "taille": ("const", 7),
+                         "libelle": ("const", 9), "vider": ("fn", 10)},
+        "lib/copie.js": {"copier": ("fn", 1)}, "lib/moteur.js": {"Moteur": ("class", 1)}}
+for rel, exp in want.items():
+    check(syms.get(rel) == exp, f"exports CommonJS : symboles de {rel}", syms.get(rel))
+check(mapper.where(m, "slugify")[:1] == ["lib/index.js:3  fn slugify"], "exports CommonJS : `brain where slugify` le trouve",
+      mapper.where(m, "slugify"))
+check(mapper.where(m, "vider") == ["lib/objet.js:10  fn vider"], "exports CommonJS : un export d'objet se trouve aussi",
+      mapper.where(m, "vider"))
+check("autres" not in syms["lib/objet.js"], "exports CommonJS : `...autres` n'est pas un nom exporté")
+
 # ----------------------------------------------------------------------------------------- même seconde
 import time  # noqa: E402
 
