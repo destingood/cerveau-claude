@@ -58,6 +58,13 @@ BAD = re.compile(r'[<>:"/\\|?*#^\[\]\x00-\x1f]+')
 RESERVED = {"CON", "PRN", "AUX", "NUL"} | {f"{p}{i}" for p in ("COM", "LPT") for i in range(1, 10)}
 MASS_DELETE = 0.3  # une écriture ordinaire qui effacerait plus de 30 % des pages est refusée (bogue, pas intention)
 CONFLICTS = BRAIN_DIR / "conflits"  # version du cerveau d'une page modifiée dans Obsidian pendant l'opération
+# copie de conflit git posée à côté d'une page (wiki sur deux PC) : « Titre (conflit PC-2 2026-11-21 14h05).md ». Pas une
+# page : jamais lue comme un souvenir (sinon un doublon de la page), mais visible dans Obsidian, à côté de l'original.
+CONFLICT_COPY = re.compile(r" \(conflit [^()\n/]{1,40} \d{4}-\d{2}-\d{2} \d{2}h\d{2}(?: \d{1,3})?\)(?:\.[^./\s]{1,10})?$")
+
+
+def is_conflict_copy(name) -> bool:
+    return bool(CONFLICT_COPY.search(str(name)))
 
 
 class WikiMissing(RuntimeError):
@@ -118,7 +125,8 @@ def fname(title) -> str:
 
 
 def scan(root) -> dict:
-    """Pages du wiki : {chemin relatif POSIX: (mtime_ns, taille)} (dossiers et fichiers « . » ou « _ » ignorés)."""
+    """Pages du wiki : {chemin relatif POSIX: (mtime_ns, taille)} (dossiers et fichiers « . » ou « _ » ignorés, copies de
+    conflit git aussi)."""
     out = {}
     for top in (PAGES, ARCHIVE):
         stack = [(os.path.join(str(root), top), top)]
@@ -130,7 +138,7 @@ def scan(root) -> dict:
                 continue
             with it:
                 for e in it:
-                    if e.name[:1] in "._":
+                    if e.name[:1] in "._" or (" (conflit " in e.name and CONFLICT_COPY.search(e.name)):
                         continue
                     try:
                         if e.is_dir(follow_symlinks=False):

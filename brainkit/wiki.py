@@ -61,7 +61,8 @@ Ci-dessous, `{cmd}` = `{full}` (Bash comme PowerShell).
    terminées : consultables, hors index.
 3. **`CLAUDE.md`** (ce fichier) — le schéma. Il évolue avec l'usage : quand une convention gêne, proposer de la changer.
 
-`index.md` : catalogue de toutes les pages, **régénéré par le cerveau** (ne pas l'éditer). `log.md` : journal
+`index.md` : catalogue de toutes les pages, **régénéré par le cerveau** sur chaque PC (ne pas l'éditer ; pas dans git,
+`{cmd} wiki index` le refait). `log.md` : journal
 chronologique du wiki, on ajoute **en bas** des entrées `## [AAAA-MM-JJ] opération | titre`. `journal/AAAA-MM.md` :
 l'historique des sessions et des observations datées, mois par mois (généré par le cerveau, à lire, pas à éditer).
 
@@ -148,7 +149,9 @@ sources à chercher, puis `{cmd} wiki log lint "…"`. Le rêve quotidien du cer
 - Jamais de secret (clé, jeton, mot de passe) ni de donnée sensible sur un tiers : le dépôt est privé, mais quand même.
 - Préférer enrichir une page existante plutôt qu'en créer une voisine ; garder `resume:` à jour.
 - Synchronisation : sur le PC, le cerveau fait commit, pull et push tout seul en début et en fin de session ; dans une
-  session cloud, faire le commit et pousser sur la branche de la session.
+  session cloud, faire le commit et pousser sur la branche de la session. Une page modifiée sur deux PC garde la version
+  de GitHub, et celle de l'autre PC est posée à côté : « Titre (conflit PC 2026-11-21 14h05).md ». Le cerveau ne la lit
+  pas comme une page : reprendre ce qui compte dans la page, puis supprimer la copie.
 """
 
 README = """# 🧠 Wiki de {owner}
@@ -158,7 +161,8 @@ sources). Le schéma qui guide Claude est dans [CLAUDE.md](CLAUDE.md).
 
 - **`raw/`** : tes sources (articles, PDF, transcriptions, notes). Claude les lit, ne les modifie jamais.
 - **`wiki/`** : les pages tenues par Claude (souvenirs, sources résumées, entités, concepts, sujets, analyses).
-- **[index.md](index.md)** : le catalogue · **[log.md](log.md)** : le journal du wiki · **`journal/`** : l'historique
+- **`index.md`** : le catalogue (refait sur chaque PC, hors de git) · **[log.md](log.md)** : le journal du wiki ·
+  **`journal/`** : l'historique
   des sessions et des observations, mois par mois.
 
 ## Sur ton PC
@@ -179,7 +183,10 @@ request : fusionne-la pour que ton PC les récupère.
 Images : Obsidian les range dans `raw/assets/` (Réglages → Fichiers et liens). Le dépôt doit rester **privé**.
 """
 
+# index.md : régénéré sur chaque PC à partir de ses pages ; suivi dans git, il entrait en conflit dès que deux PC
+# changeaient quelque chose, et toute synchronisation restait bloquée (avant la 8.30.0)
 GITIGNORE = """*.tmp
+/index.md
 .obsidian/workspace*.json
 .obsidian/cache
 .obsidian/plugins/*/data.json
@@ -190,7 +197,11 @@ GITIGNORE = """*.tmp
 Thumbs.db
 desktop.ini
 """
+# log.md (on ajoute en bas) et .gitignore : les lignes des deux PC sont gardées, sans conflit
+UNION = ("log.md merge=union", ".gitignore merge=union")
 GITATTRIBUTES = """* text=auto eol=lf
+log.md merge=union
+.gitignore merge=union
 *.pdf binary
 *.png binary
 *.jpg binary
@@ -367,8 +378,193 @@ def _upstream(root, why=None):
     return ["pull", "--rebase", "--autostash", "origin", branch] if code == 0 and heads.strip() else None
 
 
+# Fichiers régénérés sur chaque PC à partir de ses propres données : hors de git (sinon un conflit à chaque fois que
+# deux PC changent quelque chose). Un wiki d'avant la 8.30.0 les suivait : ils sortent de l'index à la synchro suivante,
+# sans être effacés du dossier.
+UNTRACKED = (INDEX, obsidian.STATUS, obsidian.CARD)
+GENERATED = (JOURNAL_DIR + "/", ".obsidian/")  # régénérés aussi, mais suivis : en conflit, la version de GitHub reste
+LINES_UNION = (".gitignore", ".gitattributes", ".ignore")
+
+
+def _ensure_lines(path, lines) -> bool:
+    """Ajoute à un petit fichier texte les lignes qui lui manquent (sans toucher au reste). → True s'il a changé."""
+    try:
+        text = path.read_text(encoding="utf-8")
+    except FileNotFoundError:
+        text = ""
+    except OSError:
+        return False
+    miss = [ln for ln in lines if ln not in text.splitlines()]
+    if not miss:
+        return False
+    path.parent.mkdir(parents=True, exist_ok=True)
+    write_text(path, (text.rstrip("\n") + "\n" if text.strip() else "") + "\n".join(miss) + "\n")
+    return True
+
+
+def _prepare_repo(root) -> None:
+    """Réglages git du wiki pour travailler sur plusieurs PC (idempotent, quelques ms) : index.md et les pages
+    régénérées hors de git, log.md et .gitignore fusionnés des deux côtés. `.git/info/attributes` (propre à ce PC) fait
+    effet tout de suite, avant même que le .gitattributes du dépôt soit arrivé sur l'autre PC."""
+    root = Path(root)
+    _ensure_lines(root / ".gitignore", [f"/{x}" for x in UNTRACKED])  # sinon `git add -A` les remettrait dans git
+    _ensure_lines(root / ".gitattributes", UNION)
+    if (root / ".git").is_dir():
+        _ensure_lines(root / ".git" / "info" / "attributes", UNION)
+    code, out = git(root, "ls-files", "-z", "--", *UNTRACKED, timeout=20)
+    names = [x for x in out.split("\0") if x.strip()] if code == 0 else []
+    if names:
+        git(root, "rm", "--cached", "-q", "--ignore-unmatch", "--", *names, timeout=30)
+
+
+def pc_name() -> str:
+    """Nom de ce PC dans les copies de conflit (lettres, chiffres, tirets)."""
+    import platform
+    raw = os.environ.get("COMPUTERNAME") or platform.node() or ""
+    name = re.sub(r"[^A-Za-z0-9_-]+", "-", raw.split(".")[0]).strip("-")[:30]
+    return name or "ce-PC"
+
+
+def conflict_copy_name(rel, pc=None, when=None, n=1) -> str:
+    """« wiki/Faits/Prix.md » → « wiki/Faits/Prix (conflit PC-2 2026-11-21 14h05).md » (wikistore ne le lit pas) ;
+    `n` > 1 : « … 14h05 2) » quand le premier nom est déjà pris."""
+    head, _, name = rel.rpartition("/")
+    stem, dot, ext = name.rpartition(".") if "." in name.lstrip(".") else (name, "", "")
+    tag = f"conflit {pc or pc_name()} {when or time.strftime('%Y-%m-%d %Hh%M')}" + (f" {n}" if n > 1 else "")
+    return (head + "/" if head else "") + f"{stem} ({tag}){dot}{ext}"
+
+
+def _blob(root, stage, rel):
+    """Contenu d'un fichier en conflit, côté `stage` (1 ancêtre, 2 GitHub, 3 ce PC pendant un rebase). → octets ou None."""
+    try:
+        r = subprocess.run(["git", "-C", str(root), "show", f":{stage}:{rel}"], capture_output=True, timeout=30,
+                           stdin=subprocess.DEVNULL, env={**os.environ, "GIT_TERMINAL_PROMPT": "0"})
+    except (OSError, subprocess.SubprocessError):
+        return None
+    return r.stdout if r.returncode == 0 else None
+
+
+def _unmerged(root) -> dict:
+    """Fichiers en conflit → {chemin: {étapes présentes}} (2 : version de GitHub, 3 : version de ce PC)."""
+    code, out = git(root, "ls-files", "-u", "-z", timeout=20)
+    rows = {}
+    for item in out.split("\0") if code == 0 else []:
+        meta, tab, path = item.partition("\t")
+        bits = meta.split()
+        if tab and len(bits) == 3 and bits[2].isdigit():
+            rows.setdefault(path, set()).add(int(bits[2]))
+    return rows
+
+
+def _union_log(ours, theirs) -> str:
+    """log.md des deux côtés : celui de GitHub, puis les entrées de ce PC qu'il n'a pas (jamais rien d'effacé)."""
+    def blocks(text):
+        parts = re.split(r"(?m)^(?=## \[)", text)
+        return parts[0], [b.rstrip("\n") for b in parts[1:]]
+    head, mine = blocks(ours)
+    have = set(mine)
+    extra = [b for b in blocks(theirs)[1] if b not in have]
+    out = [head.rstrip("\n")] + mine + extra
+    return "\n\n".join(x for x in out if x.strip()) + "\n"
+
+
+def _union_lines(ours, theirs) -> str:
+    seen, out = set(), []
+    for ln in ours.splitlines() + theirs.splitlines():
+        if ln not in seen or not ln.strip():
+            seen.add(ln)
+            out.append(ln)
+    return "\n".join(out).rstrip("\n") + "\n"
+
+
+def _resolve(root, copies) -> bool:
+    """Règle seul les fichiers en conflit d'un rebase (rien ne se perd) :
+    - index.md et les pages régénérées : sortis de git (chaque PC a le sien) ;
+    - log.md, .gitignore : les lignes des deux côtés gardées ;
+    - journal/ et .obsidian/ (régénérés) : la version de GitHub ;
+    - une page (ou tout autre fichier) modifiée des deux côtés : la version de GitHub reste en place, celle de ce PC
+      est posée à côté, en copie de conflit (`copies` reçoit son chemin) ; supprimée d'un côté et modifiée de l'autre :
+      la version modifiée est gardée.
+    → False s'il reste un fichier qu'on ne sait pas régler (l'appelant annule alors le rebase)."""
+    root = Path(root)
+    rows = _unmerged(root)
+    for rel, stages in sorted(rows.items()):
+        name = rel.rsplit("/", 1)[-1]
+        if rel in UNTRACKED:
+            ok = git(root, "rm", "--cached", "-q", "--", rel, timeout=30)[0] == 0
+        elif rel == LOG or name in LINES_UNION:
+            ours, theirs = (_blob(root, s, rel) or b"" for s in (2, 3))
+            merge = _union_log if rel == LOG else _union_lines
+            write_text(root / rel, merge(ours.decode("utf-8", "replace"), theirs.decode("utf-8", "replace")))
+            ok = git(root, "add", "--", rel, timeout=30)[0] == 0
+        elif 2 in stages and (3 not in stages or rel.startswith(GENERATED)):
+            ok = git(root, "checkout", "--ours", "--", rel, timeout=30)[0] == 0 and git(root, "add", "--", rel)[0] == 0
+        elif 3 in stages and 2 not in stages:  # supprimée sur GitHub, modifiée ici : la version modifiée reste
+            ok = git(root, "checkout", "--theirs", "--", rel, timeout=30)[0] == 0 and git(root, "add", "--", rel)[0] == 0
+        elif 2 in stages and 3 in stages:  # modifiée des deux côtés : GitHub en place, ce PC à côté
+            mine = _blob(root, 3, rel)
+            ok = mine is not None and git(root, "checkout", "--ours", "--", rel, timeout=30)[0] == 0 \
+                and git(root, "add", "--", rel)[0] == 0
+            if ok:
+                when, n = time.strftime("%Y-%m-%d %Hh%M"), 1
+                copy = conflict_copy_name(rel, when=when)
+                while (root / copy).exists():
+                    n += 1
+                    copy = conflict_copy_name(rel, when=when, n=n)
+                (root / copy).parent.mkdir(parents=True, exist_ok=True)
+                (root / copy).write_bytes(mine)
+                ok = git(root, "add", "--", copy, timeout=30)[0] == 0
+                if ok:
+                    copies.append(copy)
+        else:  # supprimée des deux côtés (ou rien d'exploitable) : rien à garder
+            ok = git(root, "rm", "--cached", "-q", "--ignore-unmatch", "--", rel, timeout=30)[0] == 0
+        if not ok:
+            return False
+    return True
+
+
+def _rebasing(root) -> bool:
+    g = Path(root) / ".git"
+    return (g / "rebase-merge").exists() or (g / "rebase-apply").exists()
+
+
+def _pull(root, how, copies) -> tuple:
+    """pull --rebase ; un conflit se règle seul (_resolve), commit après commit. → (code, sortie de git)."""
+    code, txt = git(root, *how, timeout=120)
+    for _ in range(50):  # un tour par commit de ce PC rejoué sur ceux de GitHub
+        if code == 0 or not _rebasing(root):
+            break
+        if _unmerged(root):
+            if not _resolve(root, copies):
+                break
+            code, txt = git(root, "-c", "core.editor=true", "rebase", "--continue", timeout=60)
+        elif re.search(r"no changes|nothing to commit|skip this patch|now empty|allow-empty", txt, re.I):
+            # commit devenu vide une fois le conflit réglé (le même changement déjà sur GitHub) : rien à rejouer
+            code, txt = git(root, "-c", "core.editor=true", "rebase", "--skip", timeout=60)
+        else:  # autre échec (identité git, hook…) : jamais de --skip, il jetterait le commit ; l'appelant annule tout
+            break
+    return code, txt
+
+
+def _unstick(root) -> list:
+    """Un git interrompu ne bloque plus la synchronisation : verrous de plus de 2 min retirés, rebase abandonné en plan
+    (plus de 2 min aussi) annulé. Appelé sous GIT_LOCK. → ce qui a été nettoyé."""
+    from . import gitmsg
+    done = gitmsg.clear_stale_locks(root, 120)
+    g = Path(root) / ".git"
+    for d in (g / "rebase-merge", g / "rebase-apply"):
+        try:
+            if d.exists() and time.time() - d.stat().st_mtime > 120:
+                git(root, "rebase", "--abort", timeout=30)
+                done.append(d.name)
+        except OSError:
+            continue
+    return done
+
+
 def commit(root, message=None) -> str:
     """Commit de tout ce qui a changé. → résumé (vide s'il n'y avait rien)."""
+    _prepare_repo(root)
     rows = _changes(root)
     if not rows:
         return ""
@@ -394,8 +590,11 @@ def commit(root, message=None) -> str:
 
 
 def sync(root=None, push=True, pull=True, auto=False) -> list:
-    """Commit, puis pull --rebase et push si le dépôt a une adresse GitHub. Un conflit annule le rebase (rien ne reste
-    à moitié fait) et se signale au démarrage suivant. → lignes de compte rendu."""
+    """Commit, puis pull --rebase et push si le dépôt a une adresse GitHub. Un conflit se règle seul (_resolve : la
+    version de GitHub en place, celle de ce PC en copie à côté, signalée au démarrage suivant) ; s'il ne peut pas l'être,
+    le rebase est annulé (rien ne reste à moitié fait). Jamais « ✓ » pour une étape ratée : ses lignes commencent par
+    « ✗ » (code de sortie 1 pour `brain wiki sync`), et `brain wiki status` dit la dernière synchro ratée.
+    → lignes de compte rendu."""
     root = Path(root or ws.root() or "")
     if not str(root) or not (root / ws.MARKER).is_file():
         return ["✗ pas de wiki ici : `brain wiki init <dossier>`"]
@@ -407,47 +606,88 @@ def sync(root=None, push=True, pull=True, auto=False) -> list:
     out = []
     try:
         with FileLock(GIT_LOCK, timeout=2 if auto else 20, stale=600):
-            msg = commit(root)
-            if msg:
-                out.append(("✗ " if msg.startswith("✗") else "✓ commit : ") + msg.lstrip("✗ "))
             from . import gitmsg
-            url = remote(root)
+            cleaned = _unstick(root)
+            if cleaned:
+                out.append(f"· git interrompu nettoyé ({', '.join(cleaned)}) : la synchronisation repart")
             st = read_json(SYNC_STATE, {}) or {}
+            fails, net = [], False
+            msg = commit(root)
+            if msg.startswith("✗"):
+                out.append(msg)
+                fails.append(msg)
+                out.append("· pull et envoi remis à la prochaine synchronisation : rien n'est perdu, les pages restent "
+                           "dans le dossier")
+                pull = push = False
+            elif msg:
+                out.append("✓ commit : " + msg)
+            url = remote(root)
             why = []
             how = _upstream(root, why) if url and pull else None
             if why:  # GitHub injoignable : rien n'est récupéré, et un envoi échouerait de même
-                out.append("✗ " + gitmsg.explain(why[0], what="pull") + " ; rien n'est perdu, les pages restent dans "
-                           "le dossier et partiront à la prochaine synchronisation")
+                line = ("✗ " + gitmsg.explain(why[0], what="pull") + " ; rien n'est perdu, les pages restent dans "
+                        "le dossier et partiront à la prochaine synchronisation")
+                out.append(line)
+                fails.append(line)
+                net = gitmsg.is_unreachable(why[0])
                 st["pull_failed"] = now_iso()
                 push = False
             if how:
-                code, txt = git(root, *how, timeout=120)
-                if code and (gitmsg.is_conflict(txt) or (root / ".git" / "rebase-merge").exists()):
+                copies = []
+                code, txt = _pull(root, how, copies)
+                if code and (gitmsg.is_conflict(txt) or _rebasing(root)):
                     git(root, "rebase", "--abort", timeout=30)
                     st["conflict"] = now_iso()
-                    out.append(f"✗ pull : conflit, la même page modifiée ici et sur GitHub — rien n'est perdu (rebase "
-                               f"annulé) ; à régler à la main dans {root} (`git status`, puis `brain wiki sync`)"
-                               f" (git : « {short(gitmsg.first_error(txt), 160)} »)")
+                    line = (f"✗ pull : conflit que le cerveau n'a pas pu régler seul — rien n'est perdu (rebase "
+                            f"annulé) ; à régler à la main dans {root} (`git status`, puis `brain wiki sync`)"
+                            f" (git : « {short(gitmsg.first_error(txt), 160)} »)")
+                    out.append(line)
+                    fails.append(line)
                     push = False
                 elif code:  # réseau, accès… : pas un conflit (avant, il était noté comme tel au démarrage suivant)
-                    if (root / ".git" / "rebase-apply").exists():
+                    if _rebasing(root):
                         git(root, "rebase", "--abort", timeout=30)
                     st["pull_failed"] = now_iso()
-                    out.append("✗ " + gitmsg.explain(txt, code, "pull") + " ; rien n'est perdu (pages gardées dans le "
-                               "dossier)")
+                    line = "✗ " + gitmsg.explain(txt, code, "pull") + " ; rien n'est perdu (pages gardées dans le dossier)"
+                    out.append(line)
+                    fails.append(line)
+                    net = gitmsg.is_unreachable(txt)
                     push = False
                 else:
                     st.pop("conflict", None)
                     st.pop("pull_failed", None)
                     out.append("✓ pull" + ("" if "up to date" in txt.lower() or "à jour" in txt.lower() else
                                           f" : {short(txt.splitlines()[-1] if txt else '', 120)}"))
+                    if copies:
+                        names = ", ".join(f"« {c.rsplit('/', 1)[-1]} »" for c in copies[:5])
+                        out.append(f"✓ conflit réglé : {len(copies)} fichier(s) modifié(s) ici et sur un autre PC — la "
+                                   f"version de GitHub reste en place, celle de ce PC est gardée en copie à côté : "
+                                   f"{names}" + (" …" if len(copies) > 5 else "")
+                                   + " (relis-la, garde ce qui compte dans la page, puis supprime la copie)")
+                        st["copies"] = sorted(set(st.get("copies") or []) | set(copies))
+                    try:  # catalogue de ce PC à jour avec les pages reçues (index.md n'est plus dans git)
+                        here = ws.root()
+                        if here and Path(here).resolve() == root.resolve():
+                            write_index(root=root)
+                    except Exception as exc:
+                        log(f"wiki sync : index.md : {exc!r}")
             if url and push:
                 code, txt = git(root, "push", "-u", "origin", "HEAD", timeout=120)
-                out.append("✓ push" if code == 0 else "✗ " + gitmsg.explain(txt, code, "push")
-                           + " ; les commits restent ici et partiront à la prochaine synchronisation")
+                if code == 0:
+                    out.append("✓ push")
+                else:
+                    line = ("✗ " + gitmsg.explain(txt, code, "push") + " ; les commits restent ici et partiront à la "
+                            "prochaine synchronisation")
+                    out.append(line)
+                    fails.append(line)
+                    net = net or gitmsg.is_unreachable(txt)
             elif not url:
                 out.append("· pas d'adresse GitHub (origin) : historique local seulement — `git remote add origin <url>`")
-            st["synced"] = now_iso()
+            if fails:  # jamais « dernière synchro » pour une synchro ratée : `brain wiki status` la dit
+                st["failed"] = {"le": now_iso(), "quoi": short(fails[0][2:], 220), "reseau": net}
+            else:
+                st.pop("failed", None)
+                st["synced"] = now_iso()
             write_json(SYNC_STATE, st)
     except TimeoutError:
         out.append("· synchronisation déjà en cours ailleurs")
@@ -1230,12 +1470,19 @@ def status(brain=None) -> str:
             if behind != "0":
                 sync_bits.append(f"{behind} à récupérer")
         st_ = read_json(SYNC_STATE, {}) or {}
+        failed = st_.get("failed") if isinstance(st_.get("failed"), dict) else None
         lines.append(f"Git : {url or 'local (pas d origin)'}" + (f" · {len(rows)} fichier(s) non commités" if rows else "")
                      + (" · " + " · ".join(sync_bits) if sync_bits else "")
-                     + (f" · dernière synchro {fmt_date(st_.get('synced'))}" if st_.get("synced") else "")
+                     + (f" · dernière synchro réussie {fmt_date(st_.get('synced'))}" if st_.get("synced") else "")
                      + (" · ⚠ conflit à régler à la main" if st_.get("conflict") else "")
-                     + (f" · ⚠ dernière récupération ratée le {fmt_date(st_['pull_failed'])} (GitHub injoignable : "
+                     + (f" · ⚠ dernière synchro ratée le {fmt_date(failed.get('le'))} : {failed.get('quoi')}"
+                        if failed else
+                        f" · ⚠ dernière récupération ratée le {fmt_date(st_['pull_failed'])} (GitHub injoignable : "
                         "réseau ou accès)" if st_.get("pull_failed") else ""))
+        copies = [c for c in st_.get("copies_vues") or [] if (root / c).exists()]
+        if copies:
+            lines.append(f"Copies de conflit à relire ({len(copies)}) : " + ", ".join(copies[:8])
+                         + (" …" if len(copies) > 8 else ""))
     else:
         lines.append("Git : pas de dépôt (historique et synchronisation absents) — `git init` dans le wiki")
     last = log_entries(root, 5)
@@ -1246,7 +1493,9 @@ def status(brain=None) -> str:
 
 
 def notice(brain) -> str:
-    """Ligne injectée au démarrage d'une session (mode wiki) : où est le wiki, ce qui attend, la méthode."""
+    """Ligne injectée au démarrage d'une session (mode wiki) : où est le wiki, ce qui attend, la méthode. Dit une fois
+    les copies de conflit posées par la dernière synchro, et une synchro ratée (hors réseau absent) tant qu'elle l'est.
+    index.md absent (clone tout frais : il n'est plus dans git) : il est régénéré ici."""
     root = ws.root()
     if not root:
         return ""
@@ -1257,11 +1506,28 @@ def notice(brain) -> str:
         pend = len(pending(brain.data, root))
     except Exception:
         pend = 0
-    conflict = (read_json(SYNC_STATE, {}) or {}).get("conflict")
+    if not (root / INDEX).exists():
+        try:
+            write_index(brain, root)
+        except Exception as exc:
+            log(f"wiki : index.md : {exc!r}")
+    sync = read_json(SYNC_STATE, {}) or {}
+    failed = sync.get("failed") if isinstance(sync.get("failed"), dict) else None
+    copies = [c for c in sync.get("copies") or [] if (root / c).exists()]
+    if sync.get("copies"):  # une seule fois : ensuite dans `brain wiki status`, tant que la copie existe
+        sync["copies_vues"] = sorted(set(sync.get("copies_vues") or []) | set(copies))
+        sync.pop("copies")
+        write_json(SYNC_STATE, sync)
+    names = ", ".join(f"« {c.rsplit('/', 1)[-1]} »" for c in copies[:4]) + (" …" if len(copies) > 4 else "")
     return (f"📚 Le cerveau vit dans le wiki {root} ({total} pages dont {know} de savoir) — schéma : {root / SCHEMA_FILE} ; "
             f"`brain q` y cherche, `brain wiki add <source>` ingère, `brain wiki lint` entretient."
             + (f" ⏳ {pend} source(s) à ingérer (`brain wiki pending`)." if pend else "")
-            + (" ⚠ Synchro git en conflit : `brain wiki status`." if conflict else ""))
+            + (" ⚠ Synchro git en conflit : `brain wiki status`." if sync.get("conflict") else "")
+            + (f" ⚠ Dernière synchro git du wiki ratée : {failed.get('quoi')} (`brain wiki status`)."
+               if failed and not failed.get("reseau") and not sync.get("conflict") else "")
+            + (f" ⚠ Page(s) modifiée(s) ici et sur un autre PC : la version de GitHub est gardée, celle de ce PC mise à "
+               f"côté en copie de conflit — à dire à l'utilisateur, qui relit puis supprime la copie : {names}."
+               if copies else ""))
 
 
 def init(path, migrate=True, push=True) -> list:

@@ -1195,9 +1195,12 @@ def cmd_doctor(a):
         git_ok = wiki.is_repo(wroot)
         ok(True, f"wiki : {wroot} — {sum(st['types'].values())} pages, {st['archived']} archivées · "
                  + (f"git ({wiki.remote(wroot) or 'sans origin'})" if git_ok else "pas de dépôt git (→ git init)"))
-        conflict = (wiki.read_json(wiki.SYNC_STATE, {}) or {}).get("conflict")
+        wst = wiki.read_json(wiki.SYNC_STATE, {}) or {}
+        conflict, failed = wst.get("conflict"), wst.get("failed")
         if conflict:
             ok(False, f"wiki : synchronisation git en conflit depuis le {fmt_date(conflict)} (→ brain wiki status, git status)")
+        elif isinstance(failed, dict):
+            ok(False, f"wiki : dernière synchronisation git ratée le {fmt_date(failed.get('le'))} — {failed.get('quoi')}")
     elif mode == "missing":
         ok(False, f"wiki introuvable : {wroot} — le cerveau lit son cache sans écrire (→ rebrancher, ou config wiki.path)")
     from . import commun as _commun
@@ -2000,10 +2003,13 @@ def cmd_wiki(a):
         wiki.write_index()
         print(f"✓ {head}")
     elif act in ("sync", "synchro"):
-        for line in wiki.sync(root, push=not a.no_push, pull=not a.no_pull, auto=a.auto):
+        lines = wiki.sync(root, push=not a.no_push, pull=not a.no_pull, auto=a.auto)
+        for line in lines:
             print(line)
         if a.auto and not a.no_pull:
             wiki.mark_pulled()
+        if any(line.startswith("✗") for line in lines):
+            sys.exit(1)  # une étape ratée : la veille (`brain auto`) l'affiche ✗, jamais ✓
     elif act == "obsidian":
         from . import obsidian
         made = obsidian.setup(root, force=True)
