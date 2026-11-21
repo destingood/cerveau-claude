@@ -4,11 +4,14 @@ plugins synchronisés : « anthropic-skills:skill », « plugin:skill »), et so
 
 Pourquoi : Claude Code tronque la liste des skills quand il y en a beaucoup (la plupart n'y figurent plus que par leur
 nom) → une skill perso risque de ne jamais se déclencher seule. Ici : index des déclencheurs (phrases « … » de la
-description, nom, mots distinctifs), reconnaissance tolérante aux fautes et à l'écriture phonétique, partie « Ne pas
-utiliser » respectée, au plus une ligne « 🧩 » par skill et par session. Une skill de plugin (souvent décrite en anglais,
-SKILL.md réécrit à chaque mise à jour) reçoit ses déclencheurs du cerveau (declencheurs.DEFAUT) et de la config
-(`brain skill trig <nom> "…"`). Skill du compte claude.ai ou commande : soufflée seulement par ces déclencheurs ajoutés
-ou par son nom composé cité (ses phrases anglaises, trop courtes, se croisent par hasard avec un message français).
+description ou de l'en-tête `metadata.triggers`, que Claude Code ne met pas dans sa liste de skills : c'est là que les
+skills du cerveau les rangent, pour des descriptions courtes ; nom ; mots distinctifs), reconnaissance tolérante aux
+fautes et à l'écriture phonétique, partie « Ne pas utiliser » respectée, au plus une ligne « 🧩 » par skill et par
+session ; une skill sur demande seulement (`disable-model-invocation`) est proposée en commande à taper. Une skill de
+plugin (souvent décrite en anglais, SKILL.md réécrit à chaque mise à jour) reçoit ses déclencheurs du cerveau
+(declencheurs.DEFAUT) et de la config (`brain skill trig <nom> "…"`). Skill du compte claude.ai ou commande : soufflée
+seulement par ces déclencheurs ajoutés ou par son nom composé cité (ses phrases anglaises, trop courtes, se croisent par
+hasard avec un message français).
 Aussi : une méthode ou un prompt collé (long texte structuré) → en faire une skill, ou mettre à jour celle qui lui
 ressemble. Suivi soufflée / réellement chargée (outil Skill) dans state/skills.json → `brain skill ls`."""
 from __future__ import annotations
@@ -34,7 +37,7 @@ OWN_PLUGIN = "cerveau"  # ce plugin-ci : ses skills métier (ecommerce…) toujo
 COPY_MARK = ".cerveau"  # = install.SKILL_MARK : skill métier copiée dans ~/.claude/skills par le cerveau classique
 CACHE_FILE = STATE_DIR / "skills_index.bin"  # (marshal : relu à chaque message ; avant skills_index.json)
 STATS_FILE = STATE_DIR / "skills.json"
-CACHE_V = 6
+CACHE_V = 7  # 7 : déclencheurs de metadata.triggers, nom des plugins synchronisés, SKILL.md à la racine d'un plugin
 RACY_NS = 2_000_000_000  # un SKILL.md écrit moins de 2 s avant d'être lu peut changer encore sans que sa date bouge
 
 FM_RE = re.compile(r"\A﻿?---[ \t]*\r?\n(.*?)\r?\n---[ \t]*(?:\r?\n|\Z)", re.S)
@@ -53,7 +56,8 @@ DESC_STOP = {fold(w) for w in """utiliser utilise utilisez utilisation quand lor
 personne skill skills tape tapes taper toute toutes question questions chaque partir pour ici exemple etc
 use used when user asks want wants any every""".split()}
 GENERIC_NAME = {"projet", "project", "expert", "contexte", "context", "agent", "assistant", "helper", "outil", "tool",
-                "general", "generateur", "generator", "manager", "gestion", "creer", "create", "faire", "recherche"}
+                "general", "generateur", "generator", "manager", "gestion", "creer", "create", "faire", "recherche",
+                "design", "animation", "composants", "web"}
 # skill nommée d'un de ces mots (« ma recherche d'emploi ») : nom cité seulement en /recherche, cerveau:recherche,
 # `recherche`, « skill recherche », « utilise recherche » ou « lance recherche »
 AS_REF = r"(?:[/:`]|(?<![\w-])(?:skills?|utilise|lance) )"
@@ -81,22 +85,43 @@ def _unquote(val: str) -> str:
     return val
 
 
+BLOCK = (">", "|", ">-", "|-", ">+", "|+")
+MAP_KEYS = ("metadata",)  # clés-dictionnaires lues par le cerveau : « metadata.triggers »…
+TRIGGERS_KEY = "metadata.triggers"  # phrases-déclencheurs du réflexe, hors de la description que liste Claude Code
+
+
 def frontmatter(text) -> tuple:
-    """En-tête YAML minimal (clé: valeur, valeurs sur plusieurs lignes, > et |) → (dict, corps)."""
+    """En-tête YAML minimal (clé: valeur, valeurs sur plusieurs lignes, > et |) → (dict, corps). Les clés du
+    dictionnaire `metadata:` (données libres que Claude Code ne lit pas et ne liste pas) deviennent « metadata.<clé> » :
+    `metadata.triggers` porte les phrases-déclencheurs des skills du cerveau."""
     m = FM_RE.match(text or "")
     if not m:
         return {}, text or ""
-    meta, key = {}, None
+    meta, key, sub, quoted_vals = {}, None, None, set()
+
+    def start(k, val):
+        meta[k] = "" if val in BLOCK else val
+        if val[:1] in ("'", '"'):
+            quoted_vals.add(k)  # entre guillemets, peut-être sur plusieurs lignes : guillemets retirés à la fin
+        else:
+            quoted_vals.discard(k)
+
     for line in m.group(1).splitlines():
         if not line.strip() or line.lstrip().startswith("#"):
             continue
         kv = re.match(r"^([A-Za-z0-9_-]+):\s*(.*)$", line)
         if kv and not line[0].isspace():
-            key, val = kv.group(1).lower(), kv.group(2).strip()
-            meta[key] = "" if val in (">", "|", ">-", "|-", ">+", "|+") else _unquote(val)
-        elif key:
-            meta[key] = (meta[key] + " " + line.strip()).strip()
-    return meta, text[m.end():]
+            key, sub = kv.group(1).lower(), None
+            start(key, kv.group(2).strip())
+            continue
+        nested = re.match(r"^(\s+)([A-Za-z0-9_-]+):\s*(.*)$", line) if key in MAP_KEYS else None
+        if nested and (sub is None or len(nested.group(1)) <= sub[1]):
+            sub = (f"{key}.{nested.group(2).lower()}", len(nested.group(1)))
+            start(sub[0], nested.group(3).strip())
+        elif sub or key:
+            k = sub[0] if sub else key
+            meta[k] = (meta[k] + " " + line.strip()).strip()
+    return {k: _unquote(v) if k in quoted_vals else v for k, v in meta.items()}, text[m.end():]
 
 
 def _norm(text) -> str:
@@ -197,25 +222,31 @@ def call_name(name) -> str:
     return re.sub(r"[^a-z0-9_-]", "-", str(name).lower())
 
 
-def parse(path, plugin="", ident="", kind="", stop=None) -> dict | None:
+def parse(path, plugin="", ident="", kind="", stop=None, fallback="") -> dict | None:
     """SKILL.md (ou commande .md) → fiche de la skill ; `plugin` : nom du plugin qui la fournit (la skill s'appelle
     alors « plugin:nom », comme dans l'outil Skill) ; `ident` : nom d'appel imposé (skill du compte claude.ai,
     commande) ; `kind` : "" (installée ici), "sync" (compte claude.ai) ou "cmd" (commande) ; `stop` : mots vides de
-    description (desc_stop(), relu de la config si absent)."""
+    description (desc_stop(), relu de la config si absent) ; `fallback` : nom pris sans `name:` dans l'en-tête, au
+    lieu de celui du dossier (SKILL.md à la racine d'un plugin : le nom du plugin).
+    Déclencheurs : les phrases « … » de la description et celles de `metadata.triggers` (hors de la liste des skills
+    que Claude Code met dans le contexte) ; après « Ne pas utiliser… », celles qui écartent la skill."""
     path = Path(path)
     try:
         text = path.read_text(encoding="utf-8", errors="replace")
     except OSError:
         return None
     meta, body = frontmatter(text)
-    label = (meta.get("name") or (path.stem if kind == "cmd" else path.parent.name)).strip()
+    label = (meta.get("name") or fallback or (path.stem if kind == "cmd" else path.parent.name)).strip()
     base = ident or label
     name = f"{plugin}:{base}" if plugin else base
     desc = " ".join((meta.get("description") or "").split())
     if not desc and kind == "cmd":  # commande sans en-tête : sa première ligne de texte, comme l'affiche Claude Code
         desc = next((short(ln.strip(" #"), 200) for ln in body.splitlines() if ln.strip(" #")), "")
+    trig_text = " ".join(str(meta.get(TRIGGERS_KEY) or "").split())
     pos, neg = split_desc(desc)
-    triggers = quoted(pos)
+    tpos, tneg = split_desc(trig_text)
+    neg = f"{neg} {tneg}".strip()
+    triggers = list(dict.fromkeys(quoted(pos) + quoted(tpos)))
     name_toks = tokenize(" ".join(dict.fromkeys((base, label))).replace("-", " ").replace("_", " ").replace(":", " "))
     trig_toks = {t for p in triggers for t in tokenize(_norm(p))}
     ents = _entities(pos)
@@ -231,14 +262,14 @@ def parse(path, plugin="", ident="", kind="", stop=None) -> dict | None:
     stop = desc_stop() if stop is None else stop
     kw = {t: w for t, w in kw.items() if t not in stop and not t.isdigit()
           and (len(t) >= 3 or t in name_toks or t in trig_toks)}
-    pos_set = set(kw) | set(tokenize(_norm(pos)))
+    pos_set = set(kw) | set(tokenize(_norm(f"{pos} {tpos}")))
     neg_only = sorted({t for t in tokenize(_norm(neg)) if len(t) >= 4 and t not in pos_set and t not in stop})
     return {"name": name, "plugin": plugin, "kind": kind, "path": str(path), "description": desc,
             "meta": {k: v for k, v in meta.items() if k not in ("name", "description")},
-            "triggers": [_trigger(p, g) for p in triggers for g in [phrase_groups(p)] if usable(g)],
-            "vague": [p for p in triggers if not usable(phrase_groups(p))],
-            "neg_triggers": [_trigger(p, g) for p in quoted(neg) for g in [phrase_groups(p)] if usable(g)],
-            "slash": sorted(set(SLASH_RE.findall(desc))),
+            "triggers": [_trigger(p, g) for p in triggers for g in [phrase_groups(p)] if usable_phrase(p, g)],
+            "vague": [p for p in triggers if not usable_phrase(p, phrase_groups(p))],
+            "neg_triggers": [_trigger(p, g) for p in quoted(neg) for g in [phrase_groups(p)] if usable_phrase(p, g)],
+            "slash": sorted(set(SLASH_RE.findall(f"{desc} {trig_text}"))),
             "kw": [[*_tok3(t), w, "name" if t in name_toks else "trigger" if t in trig_toks else
                     "entity" if t in ents else "desc"] for t, w in sorted(kw.items())],
             "neg_kw": [_tok3(t) for t in neg_only], "lines": body.count("\n") + 1,
@@ -337,16 +368,33 @@ def _subdirs(folder, newest=False) -> list:
     return dirs
 
 
+UUID_RE = re.compile(r"^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}")
+
+
+def _plugin_name(folder, name) -> str:
+    """Nom d'un plugin synchronisé : celui de son dossier, sauf quand Claude Code l'a rangé sous un identifiant
+    (« 833bb33c-…-4db2 », « figma~g2 ») : alors celui de son .claude-plugin/plugin.json, que donne l'outil Skill
+    (« vercel:deploy », « figma:figma-use ») ; à défaut, le dossier sans son suffixe « ~… »."""
+    if "~" not in name and not UUID_RE.match(name):
+        return name
+    data = read_json(Path(folder) / ".claude-plugin" / "plugin.json", {})
+    got = data.get("name") if isinstance(data, dict) else None
+    return got if isinstance(got, str) and NAME_RE.match(got) else name.partition("~")[0]
+
+
 def synced_roots() -> list:
     """[(plugin, dossier)] des plugins du compte claude.ai (repérés par leur <plugin>.meta.json), compte le plus
-    récemment synchronisé d'abord."""
+    récemment synchronisé d'abord ; plugin nommé comme dans l'outil Skill (_plugin_name)."""
     out, seen = [], set()
     for acc in _subdirs(synced_dirs()[1], newest=True):
         for meta in sorted(acc.glob("*.meta.json")):
-            name = meta.name[:-len(".meta.json")]
-            if name not in seen and (acc / name).is_dir():
+            folder = acc / meta.name[:-len(".meta.json")]
+            if not folder.is_dir():
+                continue
+            name = _plugin_name(folder, folder.name)
+            if name not in seen:
                 seen.add(name)
-                out.append((name, acc / name))
+                out.append((name, folder))
     return out
 
 
@@ -354,7 +402,8 @@ def _files(cwd=None, plugins=True) -> list:
     """[chemin, mtime, taille, plugin, nom d'appel, genre] de chaque skill visible ici : perso et du projet ; des
     plugins installés actifs, commandes comprises (genre « cmd ») ; du compte claude.ai (genre « sync » : skills
     « anthropic-skills:… » et plugins synchronisés, réglés par `plugins` comme les autres plugins). Nom d'appel vide :
-    celui de l'en-tête, ou du dossier."""
+    celui de l'en-tête, ou du dossier ; None (SKILL.md à la racine d'un plugin, comme humanizer) : celui de l'en-tête,
+    ou du plugin."""
     out = []
 
     def add(f, plugin, ident="", kind="") -> bool:
@@ -380,6 +429,8 @@ def _files(cwd=None, plugins=True) -> list:
             if not (own and (d / COPY_MARK).exists()):  # copie du mode classique : doublon de la skill du plugin
                 add(d / "SKILL.md", "")
     for plugin, folder in installed:
+        if plugin != OWN_PLUGIN:
+            add(folder.parent / "SKILL.md", plugin, None)  # skill à la racine du plugin (« humanizer:humanizer »)
         for d in _subdirs(folder):
             if not (plugin == OWN_PLUGIN and d.name == "brain"):  # le cerveau lui-même : son contexte est déjà injecté
                 add(d / "SKILL.md", plugin)
@@ -399,6 +450,7 @@ def _files(cwd=None, plugins=True) -> list:
     for plugin, folder in synced_roots():
         if plugin in have or (wanted is not None and plugin not in wanted):
             continue
+        add(folder / "SKILL.md", plugin, None, "sync")
         for d in _subdirs(folder / "skills"):
             add(d / "SKILL.md", plugin, call_name(d.name), "sync")
         for f in sorted(folder.glob("commands/*.md")):
@@ -429,8 +481,9 @@ def with_triggers(skills, extra) -> list:
         if add:
             have = {fold(p["text"]) for p in s["triggers"]}
             s = {**s, "triggers": s["triggers"] + [_trigger(p, g, added=True) for p in add
-                                                   for g in [phrase_groups(p)] if usable(g) and fold(p) not in have],
-                 "vague": s.get("vague", []) + [p for p in add if not usable(phrase_groups(p))]}
+                                                   for g in [phrase_groups(p)] if usable_phrase(p, g)
+                                                   and fold(p) not in have],
+                 "vague": s.get("vague", []) + [p for p in add if not usable_phrase(p, phrase_groups(p))]}
         out.append(s)
     return out
 
@@ -542,7 +595,7 @@ def _rebuild(sig, extra, key, code) -> dict:
         if hit is not None and (hit[1] is None or hit[1] == crc):
             raws.append(hit[0])
         else:
-            raws.append(parse(f, plugin, ident, kind, stop))
+            raws.append(parse(f, plugin, ident, kind, stop, fallback=plugin if ident is None else ""))
         crcs.append(crc if racy else None)
     skills = _dedupe([s for s in marshal.loads(marshal.dumps(raws)) if s])  # (copie : les poids s'écrivent dedans)
     sources = {}
@@ -651,9 +704,20 @@ def usable(groups) -> bool:
     return len(groups) > 1 or (len(groups) == 1 and any(len(k[0]) >= 6 for k in groups[0]))
 
 
-def phrase_hit(groups, q) -> bool:
-    """Un déclencheur est reconnu si tous ses mots-clés sont là, rapprochés (fenêtre de n + 3 mots)."""
-    if not usable(groups):
+def usable_phrase(phrase, groups) -> bool:
+    """usable(), ou une tournure d'au moins 10 lettres où il ne reste qu'un mot-clé court (« fais-moi un logo » → logo,
+    « skill impeccable » → skill) : la tournure entière est alors exigée (literal), si bien que « logo » seul ne
+    déclenche rien et que « fais-moi un logo pour ma boutique » déclenche (avant : déclencheur ignoré, trop vague)."""
+    if usable(groups):
+        return True
+    lit = literal(phrase, groups)
+    return bool(lit) and any(len(k[0]) >= 4 for k in groups[0]) and all(len("".join(v)) >= 10 for v in lit)
+
+
+def phrase_hit(groups, q, lit=None) -> bool:
+    """Un déclencheur est reconnu si tous ses mots-clés sont là, rapprochés (fenêtre de n + 3 mots). `lit` : tournure
+    exigée en plus (trigger_hit), qui rend utilisable un déclencheur au mot-clé court."""
+    if not (usable(groups) or lit):
         return False
     n = len(groups)
     hits = sorted((p, gi) for gi, g in enumerate(groups) for p in q.positions(g))
@@ -662,7 +726,7 @@ def phrase_hit(groups, q) -> bool:
 
 def trigger_hit(p, q) -> bool:
     """phrase_hit, plus la tournure entière pour un déclencheur réduit à un mot-clé (literal)."""
-    return phrase_hit(p["groups"], q) and (not p.get("lit") or any(q.seq(v) for v in p["lit"]))
+    return phrase_hit(p["groups"], q, p.get("lit")) and (not p.get("lit") or any(q.seq(v) for v in p["lit"]))
 
 
 def match(text, skills, exclude=(), min_score=4.0, long_chars=500) -> list:
@@ -697,7 +761,7 @@ def match(text, skills, exclude=(), min_score=4.0, long_chars=500) -> list:
                 break
             if (not foreign or p.get("added")) and trigger_hit(p, q):
                 why = f"« {p['text']} »"
-        if foreign and not why:
+        if (foreign or manual(s)) and not why:  # sur demande seulement : jamais « peut-être »
             continue
         matched = {k[0]: (k[3], k[4]) for k in s["kw"] if q.has(k)}  # (has ne lit que mot, racine, clé phonétique)
         score = round(sum(w for w, _ in matched.values()), 2)
@@ -735,9 +799,18 @@ def auto_block(r) -> str | None:
             f"l'outil Skill ; ses fichiers : {path.parent}\n{body}")
 
 
+def manual(s) -> bool:
+    """Skill sur demande seulement (`disable-model-invocation: true` dans son en-tête) : l'outil Skill la refuse à
+    Claude, seul l'utilisateur la lance en tapant sa commande."""
+    return str((s.get("meta") or {}).get("disable-model-invocation", "")).strip().lower() == "true"
+
+
 def hint_line(r) -> str:
     s = r["skill"]
     what = short(re.sub(r"^À utiliser\s+", "", split_desc(s["description"])[0]).strip(" .—-"), 110)
+    if manual(s):
+        return (f"🧩 Skill sur demande seulement : `/{s['name']}` — {r['why']} · {what}. Claude ne peut pas la charger : "
+                f"proposer à l'utilisateur de taper `/{s['name']}`.")
     if r["strong"]:
         return f"🧩 Skill à charger d'abord (outil Skill) : `{s['name']}` — {r['why']} · {what}"
     return f"🧩 Skill peut-être utile : `{s['name']}` ({r['why']}) — {what}. La charger si la demande colle."
@@ -850,6 +923,7 @@ def check(skills=None, exclude=(), routes=True, only=None) -> list:
     out = []
     for s in skills:
         name, path, desc = s["name"], Path(s["path"]), s["description"]
+        trig = " ".join(str((s.get("meta") or {}).get(TRIGGERS_KEY) or "").split())
         folder = path.parent.name
         if only is not None and name not in only:
             continue
@@ -860,7 +934,7 @@ def check(skills=None, exclude=(), routes=True, only=None) -> list:
             if not s["triggers"] and ours:
                 out.append(("ℹ️", name, f"skill du plugin {s['plugin']} sans déclencheur : le réflexe ne marche qu'aux "
                                         f"mots de sa description — en ajouter : `brain skill trig {name} \"…\"`"))
-            own = set() if ours else set(quoted(split_desc(desc)[0]))
+            own = set() if ours else set(quoted(split_desc(desc)[0]) + quoted(split_desc(trig)[0]))
             for v in s.get("vague", []):
                 if v not in own:
                     out.append(("ℹ️", name, f"déclencheur « {v} » trop vague (un seul mot court) : ignoré par le réflexe"))
@@ -881,14 +955,19 @@ def check(skills=None, exclude=(), routes=True, only=None) -> list:
             out.append(("⚠️", name, f"le nom diffère du dossier « {folder} »"))
         if len(desc) > 1024:
             out.append(("❌", name, f"description de {len(desc)} car. (> 1024 : coupée par Claude Code)"))
+        elif len(desc) > 250:
+            out.append(("ℹ️", name, f"description de {len(desc)} car. : le mode éco la coupe à 250 dans la liste des skills "
+                                    "(skillListingMaxDescChars) ; les phrases « … » peuvent passer dans l'en-tête "
+                                    "metadata.triggers, que le réflexe lit aussi"))
         elif len(desc) < 80:
             out.append(("⚠️", name, "description très courte : dire QUAND l'utiliser et avec quels mots"))
         if not s["triggers"]:
-            out.append(("⚠️", name, "aucun déclencheur « … » dans la description : le réflexe ne marche qu'aux mots-clés"))
+            out.append(("⚠️", name, "aucun déclencheur « … » dans la description ni dans metadata.triggers : le réflexe "
+                                    "ne marche qu'aux mots-clés"))
         for v in s.get("vague", []):
             if not v.startswith("/"):
                 out.append(("ℹ️", name, f"déclencheur « {v} » trop vague (un seul mot court) : ignoré par le réflexe"))
-        if not NEG_RE.search(desc):
+        if not NEG_RE.search(f"{desc} {trig}"):
             out.append(("ℹ️", name, "pas de « Ne pas utiliser… » : utile pour éviter les déclenchements à tort"))
         if s.get("lines", 0) > 500:
             out.append(("⚠️", name, f"SKILL.md de {s['lines']} lignes (> 500) : déplacer le détail dans des fichiers liés"))
