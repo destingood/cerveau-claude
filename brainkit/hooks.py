@@ -398,6 +398,9 @@ def on_session_start(data, cfg):
     except Exception as exc:
         log(f"commun (démarrage) : {exc!r}")
     brain = Brain.load()
+    from .common import take_notices
+    for line in take_notices():  # graph.json réparé, sauvegarde rangée chez toi… : dit une fois, à l'utilisateur
+        too_big = f"{too_big}\n{line}" if too_big else line
     proj = brain.project_for_path(cwd)
     wiki_root = (brain.data.get("wiki") or {}).get("root")
     in_wiki = bool(wiki_root) and _within(cwd, wiki_root)  # le dossier du wiki n'est pas un projet à cartographier

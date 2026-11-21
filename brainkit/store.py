@@ -49,6 +49,8 @@ TYPE_ALIASES = {
 }
 RELATIONS = ("relates", "part_of", "depends_on", "uses", "fixes", "supersedes", "contradicts", "about")
 LOCK_FILE = BRAIN_DIR / ".graph.lock"
+_HELD = []  # non vide : ce processus tient LOCK_FILE (Brain.edit)
+RECENT_NODES = 300  # souvenirs touchés par une écriture, au plus, notés dans history/recents.jsonl
 # Compteurs de rappel (montré, utilisé) en attente : un petit fichier à part, que chaque lecture du graphe applique et
 # que la prochaine écriture du graphe absorbe. Avant, chaque rappel réécrivait tout graph.json (−116 ms sur 387 à
 # 10 000 souvenirs) et rendait périmés l'index BRAIN.md et la vue 3D.
@@ -170,16 +172,12 @@ def _load_graph():
                 log("wiki débranché (config wiki.path vide) : le cerveau repart en classique depuis son dernier cache")
                 return data, None
             return data, _stamp(raw, st)
-        except ValueError:  # JSON abîmé : réparation depuis un instantané ou une sauvegarde
-            from .backup import recover_graph
-            data = recover_graph()
+        except ValueError:  # JSON abîmé : réparé sans perdre ce qui est lisible (reparation.py), l'original gardé
+            from . import reparation
+            data = reparation.repair(raw)
             if data is None:
-                raise RuntimeError("graph.json illisible et aucun instantané ni sauvegarde pour le réparer")
-            try:
-                os.replace(GRAPH_FILE, GRAPH_FILE.with_name(f"graph.corrupt-{time.strftime('%Y%m%d-%H%M%S')}.json"))
-            except OSError:
-                pass
-            write_json(GRAPH_FILE, data)
+                raise RuntimeError("graph.json illisible, et ni instantané, ni sauvegarde, ni souvenir lisible dans le "
+                                   "fichier pour le réparer")
             return data, None
         except OSError as exc:  # verrou passager
             last = exc
@@ -230,7 +228,9 @@ def replace_all(data):
     mode, root = wikistore.resolve()
     with FileLock(LOCK_FILE, timeout=6.0):
         if mode == "classic":
+            from . import history
             write_json(GRAPH_FILE, data)
+            history.restart()  # la réparation repartira de cet état, pas de celui qu'on vient de quitter
         elif mode == "missing":
             raise wikistore.WikiMissing(f"wiki introuvable : {root}")
         else:
@@ -265,6 +265,9 @@ class Brain:
                 _log(f"commun : pages des amis : {exc!r}")
         else:  # (non-membre : commun.py n'est pas chargé)
             self.stamp = stamp
+        # Ce que la prochaine écriture note dans history/recents.jsonl : souvenirs touchés depuis cet instant, liens
+        # ajoutés après les _e0 premiers, suppressions définitives.
+        self._t0, self._e0, self._purged = now_iso(), len(self.edges), set()
 
     # Empreinte de graph.json tel qu'il a été lu (_load_graph), tant que ce cerveau n'est pas modifié : l'index des
     # souvenirs (search.memory_index) et le projet d'un dossier (hooks.project_of) s'en servent pour ne pas tout relire
@@ -294,7 +297,11 @@ class Brain:
     def edit(cls, timeout=6.0):
         """Lecture-modification-écriture sous verrou (plusieurs sessions peuvent tourner en parallèle)."""
         with FileLock(LOCK_FILE, timeout=timeout):
-            brain = cls()
+            _HELD.append(1)  # une réparation faite pendant la lecture n'attend pas le verrou qu'on tient déjà
+            try:
+                brain = cls()
+            finally:
+                _HELD.pop()
             yield brain
             if brain.dirty:
                 brain.save()
@@ -313,6 +320,8 @@ class Brain:
             self.data["wiki"] = data["wiki"]
             self._stems = None
         else:
+            self._note_writes(data, history)
+            history.keep_previous()
             write_json(GRAPH_FILE, data)
         self.dirty = False
         if counted:  # … et quittent le fichier d'attente (un arrêt entre les deux ne compte rien deux fois)
@@ -321,6 +330,20 @@ class Brain:
         if self.data.get("commun"):  # membre du cerveau commun : ma part publique part en arrière-plan si elle change
             from . import commun
             commun.after_save(data)
+
+    def _note_writes(self, data, history):
+        """Souvenirs touchés depuis la lecture (ou la dernière écriture) → history/recents.jsonl, pour qu'un graph.json
+        abîmé se répare sans les perdre (reparation.py). 1 à 2 ms à 10 000 souvenirs. Au-delà de RECENT_NODES (import,
+        consolidation : précédés d'un instantané forcé), seules les suppressions sont notées."""
+        since, stamp = getattr(self, "_t0", ""), data["updated"]
+        fresh = {k: n for k, n in data["nodes"].items() if isinstance(n, dict) and str(n.get("updated") or "") >= since}
+        if len(fresh) > RECENT_NODES:
+            fresh = {}
+        e0 = getattr(self, "_e0", len(self.edges))
+        edges = [e for e in self.edges[e0:] if isinstance(e, dict) and not _foreign(e.get("from"))
+                 and not _foreign(e.get("to"))] if len(self.edges) >= e0 else []
+        history.record(stamp, fresh, getattr(self, "_purged", ()), edges)
+        self._t0, self._e0, self._purged = stamp, len(self.edges), set()
 
     def _own_data(self) -> dict:
         """Ce qui s'enregistre : mes souvenirs, sans les pages des amis (ni les liens qui les touchent)."""
@@ -635,6 +658,8 @@ class Brain:
         self._writable(nid)
         if purge:
             self.nodes.pop(nid, None)
+            # noté dans les écritures récentes, et effacé des lignes plus anciennes : une réparation ne le ramène pas
+            self.__dict__.setdefault("_purged", set()).add(nid)
             self.data["edges"] = [e for e in self.edges if nid not in (e["from"], e["to"])]
             for n in self.nodes.values():
                 if n.get("project") == nid:
