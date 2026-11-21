@@ -13,6 +13,11 @@ import sys
 import tempfile
 from pathlib import Path
 
+for _stream in (sys.stdout, sys.stderr):  # console Windows en cp1252 (job sans PYTHONUTF8) : « ✓ » y plantait
+    try:
+        _stream.reconfigure(encoding="utf-8", errors="replace")
+    except (AttributeError, ValueError):
+        pass
 CODE = Path(__file__).resolve().parent.parent
 TMP = Path(tempfile.mkdtemp(prefix="cerveau-lanceur-ci-"))
 WIN = os.name == "nt"
