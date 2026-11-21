@@ -1,9 +1,7 @@
----
-name: perplexity
-description: "Recherche web Perplexity pour le cerveau : brancher sur ce PC le serveur MCP officiel de Perplexity (chaque utilisateur avec son propre compte), puis s'en servir — perplexity_search (résultats classés bruts), perplexity_ask, perplexity_reason, perplexity_research (réponses rédigées avec sources), payants à l'appel. À utiliser quand l'utilisateur demande « perplexity », « avec perplexity », « recherche perplexity », « cherche sur perplexity », « demande à perplexity », « recherche approfondie perplexity », « perplexity research », « branche perplexity », « installe perplexity », ou pour connecter, payer ou dépanner le serveur Perplexity. Ne pas utiliser pour la « visibilité dans perplexity », une boutique « visible dans perplexity », « cité par perplexity », le « référencement perplexity » ou un « audit geo » (c'est du SEO : cerveau e-commerce), ni pour une recherche web ordinaire (WebSearch intégré à Claude, sans frais à l'appel)."
----
-
 # Perplexity — recherche web, réglée sur chaque PC
+
+> Fiche « perplexity » de la skill `cerveau:recherche` (autrefois la skill `perplexity`), lue à la demande ; ses chemins relatifs (`references/`, `scripts/`…) partent de son dossier, `recherche/perplexity/`.
+> Quand la suivre : Recherche web Perplexity pour le cerveau : brancher sur ce PC le serveur MCP officiel de Perplexity (chaque utilisateur avec son propre compte), puis s'en servir — perplexity_search (résultats classés bruts), perplexity_ask, perplexity_reason, perplexity_research (réponses rédigées avec sources), payants à l'appel. À utiliser quand l'utilisateur demande « perplexity », « avec perplexity », « recherche perplexity », « cherche sur perplexity », « demande à perplexity », « recherche approfondie perplexity », « perplexity research », « branche perplexity », « installe perplexity », ou pour connecter, payer ou dépanner le serveur Perplexity. Ne pas utiliser pour la « visibilité dans perplexity », une boutique « visible dans perplexity », « cité par perplexity », le « référencement perplexity » ou un « audit geo » (c'est du SEO : cerveau e-commerce), ni pour une recherche web ordinaire (WebSearch intégré à Claude, sans frais à l'appel).
 
 Le plugin apporte la marche à suivre, pas la connexion : chaque utilisateur branche Perplexity sur son PC, avec
 son compte et son paiement. Rien n'est partagé entre amis (ni compte, ni clé, ni facture).

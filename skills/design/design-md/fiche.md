@@ -1,9 +1,7 @@
----
-name: design-md
-description: "Donner à un site ou une appli le système de design d'une marque connue avec getdesign (github.com/VoltAgent/awesome-design-md, licence MIT) : 86 fichiers DESIGN.md (Stripe, Apple, Notion, Airbnb, Linear, Vercel, Tesla, Nike, Spotify, Starbucks…) avec couleurs, typographie, espacements, arrondis et composants, que l'agent suit pour coder l'interface. Vérifie que l'outil est là, sinon l'installe sur ce PC avec l'accord de l'utilisateur. À utiliser quand l'utilisateur dit « DESIGN.md », « design system », « système de design », « charte graphique du site », « dans le style de Stripe », « comme le site d'Apple », « inspiré de Notion », « getdesign », « awesome-design-md », et avant d'écrire une interface dans un projet qui a déjà un DESIGN.md. Ne pas utiliser pour la direction artistique d'ensemble (composition, photos, mouvement) ni pour un audit d'accessibilité."
----
-
 # getdesign — systèmes de design de marques connues, prêts pour l'agent
+
+> Fiche « design-md » de la skill `cerveau:design` (autrefois la skill `design-md`), lue à la demande ; ses chemins relatifs (`references/`, `scripts/`…) partent de son dossier, `design/design-md/`.
+> Quand la suivre : Donner à un site ou une appli le système de design d'une marque connue avec getdesign (github.com/VoltAgent/awesome-design-md, licence MIT) : 86 fichiers DESIGN.md (Stripe, Apple, Notion, Airbnb, Linear, Vercel, Tesla, Nike, Spotify, Starbucks…) avec couleurs, typographie, espacements, arrondis et composants, que l'agent suit pour coder l'interface. Vérifie que l'outil est là, sinon l'installe sur ce PC avec l'accord de l'utilisateur. À utiliser quand l'utilisateur dit « DESIGN.md », « design system », « système de design », « charte graphique du site », « dans le style de Stripe », « comme le site d'Apple », « inspiré de Notion », « getdesign », « awesome-design-md », et avant d'écrire une interface dans un projet qui a déjà un DESIGN.md. Ne pas utiliser pour la direction artistique d'ensemble (composition, photos, mouvement) ni pour un audit d'accessibilité.
 
 ## 1. Déjà là ?
 `~/.claude/skills/design-md/SKILL.md` existe → charger la skill `design-md` et la suivre. Sinon :

@@ -1,13 +1,11 @@
----
-name: animejs
-description: "Animer un site en JavaScript avec anime.js v4 (Julian Garnier, github.com/juliangarnier/anime, licence MIT) : animations et timelines, cascades, déclenchement ou synchronisation au scroll, tracés SVG qui se dessinent, morphing, déplacement sur un chemin, texte découpé en lignes, mots ou lettres, texte brouillé, éléments à glisser, transitions de mise en page, ressorts, objets Three.js. L'ajoute au projet (npm, ou fichier hébergé pour un thème Shopify) avec la syntaxe v4 vérifiée et le passage depuis la v3 ; le style se décide avant (cerveau:taste-skill pour un site, cerveau:emil-kowalski pour un composant), le réglage fin avec cerveau:motion-design. À utiliser quand l'utilisateur cite anime.js ou dit « timeline d'animation », « enchaîne les animations », « animation en cascade », « dessine le tracé svg », « morphing svg », « texte lettre par lettre », « texte brouillé », « élément à glisser », « animation synchronisée au scroll ». Ne pas utiliser pour une vidéo ni pour une animation Lottie."
----
-
 # anime.js v4 — animer un site en JavaScript
 
+> Fiche « animejs » de la skill `cerveau:animation` (autrefois la skill `animejs`), lue à la demande ; ses chemins relatifs (`references/`, `scripts/`…) partent de son dossier, `animation/animejs/`.
+> Quand la suivre : Animer un site en JavaScript avec anime.js v4 (Julian Garnier, github.com/juliangarnier/anime, licence MIT) : animations et timelines, cascades, déclenchement ou synchronisation au scroll, tracés SVG qui se dessinent, morphing, déplacement sur un chemin, texte découpé en lignes, mots ou lettres, texte brouillé, éléments à glisser, transitions de mise en page, ressorts, objets Three.js. L'ajoute au projet (npm, ou fichier hébergé pour un thème Shopify) avec la syntaxe v4 vérifiée et le passage depuis la v3 ; le style se décide avant (cerveau:design (fiche taste-skill) pour un site, cerveau:animation (fiche emil-kowalski) pour un composant), le réglage fin avec cerveau:animation (fiche motion-design). À utiliser quand l'utilisateur cite anime.js ou dit « timeline d'animation », « enchaîne les animations », « animation en cascade », « dessine le tracé svg », « morphing svg », « texte lettre par lettre », « texte brouillé », « élément à glisser », « animation synchronisée au scroll ». Ne pas utiliser pour une vidéo ni pour une animation Lottie.
+
 Le plugin apporte la méthode et la syntaxe v4 (vérifiée sur la 4.5.0) ; la librairie s'ajoute au projet qui en a
-besoin, rien à installer sur le PC. Avant le code, le style se décide avec `cerveau:taste-skill` pour un site,
-`cerveau:emil-kowalski` pour un composant ; durées et courbes fines : `cerveau:motion-design`.
+besoin, rien à installer sur le PC. Avant le code, le style se décide avec `cerveau:design` (fiche taste-skill) pour un site,
+`cerveau:animation` (fiche emil-kowalski) pour un composant ; durées et courbes fines : `cerveau:animation` (fiche motion-design).
 
 ## 1. Le bon outil ?
 - Survol, fondu, apparition simple : CSS (`transition`, `@keyframes`), sans librairie.
@@ -132,7 +130,7 @@ waapi.animate('.bouton', { scale: 1.05, duration: 200, alternate: true, loop: 1 
 - Nettoyer au démontage, sinon animations et écouteurs de scroll restent actifs : React, `return () => scope.revert()`
   dans le `useEffect` ; thème Shopify, sur l'évènement `shopify:section:unload` de la section.
 - Tester dans le navigateur, panneau visible (onglet caché : ni requestAnimationFrame ni évènement scroll ; à défaut,
-  `cerveau:playwright` en headless) ; pour la capture d'un état précis, `seek(ms)` ou `complete()` ; zéro erreur
+  `cerveau:web` (fiche playwright) en headless) ; pour la capture d'un état précis, `seek(ms)` ou `complete()` ; zéro erreur
   console.
 
 ```js

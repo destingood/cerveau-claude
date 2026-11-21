@@ -32,7 +32,7 @@ Tokens : filtrer les sorties Bash (`| tail -n 30`, `grep -c`, `-q`) ; gros fichi
 
 SKILL = f"""---
 name: brain
-description: Cerveau persistant de Claude : mémoire en graphe datée (souvenirs, concepts, liens), wiki Markdown tenu par Claude (sources ingérées, entités, concepts, sujets — coffre Obsidian, dépôt git), cartes de projets, à-faire, historique, MCP, vue 3D. Pour retrouver ou mémoriser un souvenir, ingérer une source dans le wiki, trouver un fichier ou un symbole sans explorer, reprendre une session, ou quand l'utilisateur dit « souviens-toi », « retiens », « cerveau », « wiki », « ingère », « /brain ».
+description: "Mémoire persistante de Claude : souvenirs datés, wiki Markdown, cartes de projets, à-faire, historique. Retrouver ou retenir un souvenir, ingérer une source dans le wiki, trouver un fichier, reprendre une session ; « souviens-toi », « /brain »."
 ---
 
 # 🧠 Cerveau — référence
@@ -306,7 +306,12 @@ def sync_skills(uninstall=False, quick=False) -> list:
             shutil.rmtree(mark.parent, ignore_errors=True)
             done.append(f"✓ skill /{mark.parent.name} retirée")
         return done
-    for name, src in skill_sources().items():
+    sources = skill_sources()
+    for mark in sorted(base.glob(f"*/{SKILL_MARK}")) if sources else ():
+        if mark.parent.name not in sources:  # posée par le cerveau, qui ne la livre plus (regroupée ou retirée)
+            shutil.rmtree(mark.parent, ignore_errors=True)
+            done.append(f"✓ skill /{mark.parent.name} retirée : le cerveau ne la livre plus")
+    for name, src in sources.items():
         dst = base / name
         mark = dst / SKILL_MARK
         if dst.exists() and not mark.exists():

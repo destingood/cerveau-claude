@@ -1,9 +1,7 @@
----
-name: motion-design
-description: "Concevoir ou corriger les animations d'un site ou d'une appli avec Motion Design Skill de LottieFiles (github.com/LottieFiles/motion-design-skill, licence MIT) : durées, courbes d'easing, chorégraphie, principes Disney adaptés à l'interface, états chargement, succès et erreur, mouvement réduit. Marche avec CSS, Framer Motion, GSAP, Lottie ou des ressorts. Vérifie qu'elle est là, sinon l'installe sur ce PC avec l'accord de l'utilisateur, ou la suit une fois sans rien installer. À utiliser quand l'utilisateur dit « règle la durée de cette animation », « affine la courbe d’easing », « ajuste cette animation Lottie », « animation de chargement », « transition de page », « anime le logo ». Ne pas utiliser pour monter une vidéo, ni pour le design statique (couleurs, typographie, mise en page)."
----
-
 # Motion design — des animations d'interface qui ont une raison d'être
+
+> Fiche « motion-design » de la skill `cerveau:animation` (autrefois la skill `motion-design`), lue à la demande ; ses chemins relatifs (`references/`, `scripts/`…) partent de son dossier, `animation/motion-design/`.
+> Quand la suivre : Concevoir ou corriger les animations d'un site ou d'une appli avec Motion Design Skill de LottieFiles (github.com/LottieFiles/motion-design-skill, licence MIT) : durées, courbes d'easing, chorégraphie, principes Disney adaptés à l'interface, états chargement, succès et erreur, mouvement réduit. Marche avec CSS, Framer Motion, GSAP, Lottie ou des ressorts. Vérifie qu'elle est là, sinon l'installe sur ce PC avec l'accord de l'utilisateur, ou la suit une fois sans rien installer. À utiliser quand l'utilisateur dit « règle la durée de cette animation », « affine la courbe d’easing », « ajuste cette animation Lottie », « animation de chargement », « transition de page », « anime le logo ». Ne pas utiliser pour monter une vidéo, ni pour le design statique (couleurs, typographie, mise en page).
 
 ## 1. Déjà là ?
 `~/.claude/skills/motion-design/SKILL.md` existe → charger la skill `motion-design` et la suivre ; elle renvoie à

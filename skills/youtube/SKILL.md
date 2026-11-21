@@ -1,6 +1,14 @@
 ---
 name: youtube
-description: "YouTube pour le cerveau : préparer, écrire, emballer et analyser ses propres vidéos en 11 étapes — planning, niche, script et accroche notée, titre et miniature, coupes, chapitres, description et tags, Shorts, commentaires, rétention, audit. Rien ne se publie : la skill écrit, l'utilisateur publie. À utiliser quand l'utilisateur dit « ma chaîne YouTube », « script de ma vidéo », « accroche de ma vidéo », « titre de ma vidéo », « miniature YouTube », « CTR de ma vidéo », « coupe les blancs », « chapitres de ma vidéo », « timestamps YouTube », « description YouTube », « tags YouTube », « fais des shorts de ma vidéo », « réponds aux commentaires YouTube », « planning de vidéos », « ce qui marche sur YouTube dans ma niche », « pourquoi les gens arrêtent de regarder », « audit de ma chaîne ». Ne pas utiliser pour lire la vidéo d'un autre — « résume cette vidéo », « transcris cette vidéo » : cerveau:agent-reach — ni pour monter ou animer une vidéo."
+description: "Ses propres vidéos YouTube : planning, script et accroche, titre et miniature, coupes, chapitres, description et tags, Shorts, commentaires, rétention, audit. Rien n'est publié. Pas pour lire la vidéo d'un autre."
+metadata:
+  triggers: >-
+    « ma chaîne YouTube » « script de ma vidéo » « accroche de ma vidéo » « titre de ma vidéo » « miniature YouTube »
+    « CTR de ma vidéo » « coupe les blancs » « chapitres de ma vidéo » « timestamps YouTube » « description YouTube »
+    « tags YouTube » « fais des shorts de ma vidéo » « réponds aux commentaires YouTube » « planning de vidéos »
+    « ce qui marche sur YouTube dans ma niche » « pourquoi les gens arrêtent de regarder » « audit de ma chaîne » Ne pas
+    utiliser pour lire la vidéo d'un autre — « résume cette vidéo », « transcris cette vidéo » : cerveau:web — ni pour
+    monter ou animer une vidéo.
 ---
 
 # YouTube — de l'idée à la vidéo prête à publier
@@ -77,5 +85,5 @@ fichiers à la fois.
 - Mémoriser ce qui sert plus tard, après un `q` anti-doublon : la chaîne et sa niche (`brain add -t fact …`), les
   chaînes de référence, le format retenu et la correction prioritaire de l'audit (`-t decision`). Le profil de voix
   reste dans `~/.claude/youtube/voice.md`.
-- Lire ou résumer la vidéo d'un autre, ou ce qu'en disent Reddit et X : skill `cerveau:agent-reach`.
-- Script ou description qui sonne IA : skill `cerveau:humanizer`.
+- Lire ou résumer la vidéo d'un autre, ou ce qu'en disent Reddit et X : skill `cerveau:web` (fiche agent-reach).
+- Script ou description qui sonne IA : skill `humanizer:humanizer` (plugin Humanizer, s'il est installé).

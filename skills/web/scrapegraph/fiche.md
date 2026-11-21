@@ -1,16 +1,17 @@
----
-name: scrapegraph
-description: "ScrapeGraphAI pour le cerveau : installer sur ce PC la bibliothèque libre scrapegraphai (github.com/ScrapeGraphAI/Scrapegraph-ai, licence MIT) avec un modèle local Ollama, gratuit, puis s'en servir pour extraire en JSON ce qu'on demande d'une page, de plusieurs pages ou d'une recherche web, sans faire entrer les pages entières dans la conversation. À utiliser quand l'utilisateur dit « scrapegraph », « installe scrapegraph », « scrape ce site », « scrape cette page », « aspire les données de », « récupère tous les produits et les prix de », « liste les prix des concurrents », « extrais en JSON », ou veut un tableau tiré de plusieurs pages (catalogue, fiches, annuaire d'entreprises). Ne pas utiliser pour lire une page une fois (WebFetch), pour un fait à vérifier (WebSearch), pour cliquer, remplir ou se connecter (agent-browser, playwright), ni pour l'API payante ScrapeGraph."
----
-
 # ScrapeGraphAI — extraire des données de pages web, en local et gratuit
 
-Le plugin apporte la marche à suivre et le script `scripts/sgai.py` (dans le dossier de cette skill) ; chaque PC
-installe la bibliothèque et le modèle lui-même. Le contenu des pages est lu par le modèle local : seul le JSON
-revient dans la conversation (moins de tokens que WebFetch sur plusieurs pages).
+> Fiche « scrapegraph » de la skill `cerveau:web` (autrefois la skill `scrapegraph`), lue à la demande ; ses chemins relatifs (`references/`, `scripts/`…) partent de son dossier, `web/scrapegraph/`.
+> Quand la suivre : ScrapeGraphAI pour le cerveau : installer sur ce PC la bibliothèque libre scrapegraphai (github.com/ScrapeGraphAI/Scrapegraph-ai, licence MIT) avec un modèle local Ollama, gratuit, puis s'en servir pour extraire en JSON ce qu'on demande d'une page, de plusieurs pages ou d'une recherche web, sans faire entrer les pages entières dans la conversation. À utiliser quand l'utilisateur dit « scrapegraph », « installe scrapegraph », « scrape ce site », « scrape cette page », « aspire les données de », « récupère tous les produits et les prix de », « liste les prix des concurrents », « extrais en JSON », ou veut un tableau tiré de plusieurs pages (catalogue, fiches, annuaire d'entreprises). Ne pas utiliser pour lire une page une fois (WebFetch), pour un fait à vérifier (WebSearch), pour cliquer, remplir ou se connecter (agent-browser, playwright), ni pour l'API payante ScrapeGraph.
 
-Python de l'outil : `~/.scrapegraphai/venv/Scripts/python.exe` (Windows) ou `~/.scrapegraphai/venv/bin/python`
-(macOS, Linux) — noté `PY` ci-dessous.
+Le plugin apporte la marche à suivre et le script `sgai.py` ; chaque PC installe la bibliothèque et le modèle
+lui-même. Le contenu des pages est lu par le modèle local : seul le JSON revient dans la conversation (moins de
+tokens que WebFetch sur plusieurs pages).
+
+Noté ci-dessous, à remplacer par le chemin complet (le script se lance depuis n'importe quel dossier) :
+- `PY` : le Python de l'outil, `~/.scrapegraphai/venv/Scripts/python.exe` (Windows) ou
+  `~/.scrapegraphai/venv/bin/python` (macOS, Linux) ;
+- `SGAI` : le script, `scrapegraph/scripts/sgai.py` dans le dossier de la skill cerveau:web (« Base directory » au
+  chargement), entre guillemets s'il contient une espace.
 
 ## 1. Est-ce prêt sur ce PC ?
 1. `PY -c "import scrapegraphai"` : erreur ou fichier absent → étape 2.
@@ -21,7 +22,7 @@ Python de l'outil : `~/.scrapegraphai/venv/Scripts/python.exe` (Windows) ou `~/.
 ## 2. Installer (avec l'accord de l'utilisateur : code tiers et ~7 Go téléchargés)
 1. `uv --version` ; absent → l'utilisateur l'installe depuis docs.astral.sh/uv.
 2. `uv venv --python 3.12 ~/.scrapegraphai/venv` puis
-   `uv pip install --python ~/.scrapegraphai/venv/Scripts/python.exe scrapegraphai==2.3.1` (Python 3.12 minimum ; essayé en 3.12).
+   `uv pip install --python PY scrapegraphai==2.3.1` (Python 3.12 minimum ; essayé en 3.12).
 3. **Couper la télémétrie, activée par défaut** : elle envoie le prompt, le contenu de la page, la réponse et
    l'URL au serveur de l'éditeur. Écrire `~/.scrapegraphai.conf` :
    `[DEFAULT]` puis `telemetry_enabled = false` (le script la coupe aussi de son côté).
@@ -30,16 +31,16 @@ Python de l'outil : `~/.scrapegraphai/venv/Scripts/python.exe` (Windows) ou `~/.
    Petite machine : `qwen3.5:4b` (3,3 Go) et `--model qwen3.5:4b`.
 6. Navigateur : le Chrome installé sert par défaut. Sans Chrome : `PY -m playwright install chromium`, puis
    `--chromium` à chaque appel.
-7. Essai : `PY scripts/sgai.py "titre de la page" https://example.com` ; noter dans le cerveau
+7. Essai : `PY SGAI "titre de la page" https://example.com` ; noter dans le cerveau
    (`brain add -t fact -T "ScrapeGraphAI installé sur ce PC" -b "date, version, modèle"`).
 
 ## 3. S'en servir
 | Besoin | Commande |
 |---|---|
-| Une page | `PY scripts/sgai.py "liste les produits : nom, prix affiché tel quel, lien" <url>` |
-| Plusieurs pages (en parallèle) | `PY scripts/sgai.py "<consigne>" <url1> <url2> …` |
-| Recherche web puis extraction (DuckDuckGo) | `PY scripts/sgai.py "<question>" --search 5` |
-| Fichier local (HTML, texte, Markdown) | `PY scripts/sgai.py "<consigne>" page.html` |
+| Une page | `PY SGAI "liste les produits : nom, prix affiché tel quel, lien" <url>` |
+| Plusieurs pages (en parallèle) | `PY SGAI "<consigne>" <url1> <url2> …` |
+| Recherche web puis extraction (DuckDuckGo) | `PY SGAI "<question>" --search 5` |
+| Fichier local (HTML, texte, Markdown) | `PY SGAI "<consigne>" page.html` |
 | Autre modèle | `--model qwen3.5:4b` ou variable `SGAI_MODEL` ; fournisseur payant : `--model openai/gpt-4o-mini` (clé dans la variable d'environnement du fournisseur, posée par l'utilisateur) |
 | Voir le navigateur, détails | `--show`, `-v` |
 

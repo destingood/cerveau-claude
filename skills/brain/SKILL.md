@@ -1,6 +1,6 @@
 ---
 name: brain
-description: Cerveau persistant de Claude : mémoire en graphe datée (souvenirs, concepts, liens), wiki Markdown tenu par Claude (sources ingérées, entités, concepts, sujets — coffre Obsidian, dépôt git), cartes de projets, à-faire, historique, MCP, vue 3D. Pour retrouver ou mémoriser un souvenir, ingérer une source dans le wiki, trouver un fichier ou un symbole sans explorer, reprendre une session, ou quand l'utilisateur dit « souviens-toi », « retiens », « cerveau », « wiki », « ingère », « /brain ».
+description: "Mémoire persistante de Claude : souvenirs datés, wiki Markdown, cartes de projets, à-faire, historique. Retrouver ou retenir un souvenir, ingérer une source dans le wiki, trouver un fichier, reprendre une session ; « souviens-toi », « /brain »."
 ---
 
 # 🧠 Cerveau — référence

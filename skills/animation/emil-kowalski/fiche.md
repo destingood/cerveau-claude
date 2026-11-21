@@ -1,9 +1,7 @@
----
-name: emil-kowalski
-description: "Les 16 skills d'Emil Kowalski, créateur de Sonner et Vaul (github.com/emilkowalski/skills, licence MIT) : choisir la bonne et la suivre, l'installer à la demande ou la lire une fois sans rien installer — finition d'interface, animations web (créer, revoir, auditer, retirer, fluidifier), interface testée avec des données extrêmes, site qui paraît natif sur téléphone, toasts Sonner, choix d'une librairie front, plusieurs versions d'un composant, React Native et Expo, Swift. À utiliser quand l'utilisateur dit « skills d'emil », « emil kowalski », « anime ce bouton », « micro-interaction », « revois mes animations », « audite les animations », « trop d'animations », « l'animation saccade », « comment s'appelle cet effet », « teste le pire cas », « casse mon interface », « fais plus natif sur mobile », « peaufine l'interface », « quelle librairie choisir », « plusieurs versions de ce composant ». Ne pas utiliser pour un montage vidéo, une animation Lottie ni le design statique (couleurs, logo, mise en page)."
----
-
 # Skills d'Emil Kowalski — la bonne, au bon moment
+
+> Fiche « emil-kowalski » de la skill `cerveau:animation` (autrefois la skill `emil-kowalski`), lue à la demande ; ses chemins relatifs (`references/`, `scripts/`…) partent de son dossier, `animation/emil-kowalski/`.
+> Quand la suivre : Les 16 skills d'Emil Kowalski, créateur de Sonner et Vaul (github.com/emilkowalski/skills, licence MIT) : choisir la bonne et la suivre, l'installer à la demande ou la lire une fois sans rien installer — finition d'interface, animations web (créer, revoir, auditer, retirer, fluidifier), interface testée avec des données extrêmes, site qui paraît natif sur téléphone, toasts Sonner, choix d'une librairie front, plusieurs versions d'un composant, React Native et Expo, Swift. À utiliser quand l'utilisateur dit « skills d'emil », « emil kowalski », « anime ce bouton », « micro-interaction », « revois mes animations », « audite les animations », « trop d'animations », « l'animation saccade », « comment s'appelle cet effet », « teste le pire cas », « casse mon interface », « fais plus natif sur mobile », « peaufine l'interface », « quelle librairie choisir », « plusieurs versions de ce composant ». Ne pas utiliser pour un montage vidéo, une animation Lottie ni le design statique (couleurs, logo, mise en page).
 
 Le plugin apporte le choix et la marche à suivre, pas les skills : chacune s'installe sur le PC qui en a besoin.
 Chaque skill installée ajoute sa description à toutes les conversations : n'installer que ce qui sert souvent.
@@ -31,8 +29,8 @@ Chaque skill installée ajoute sa description à toutes les conversations : n'in
 « seulement » : la skill ne se lance qu'à la main. Proposer `/nom` ; si l'utilisateur vient de demander exactement
 ça, lire son `SKILL.md` (installé ou en ligne, section 3) et suivre sa méthode.
 
-Animer une page ou un site entier : `cerveau:taste-skill`. Un logo, une animation Lottie, ou régler finement durées,
-courbes et chorégraphie : `cerveau:motion-design`. `animate` décide et code l'animation d'un composant (bouton, menu,
+Animer une page ou un site entier : `cerveau:design` (fiche taste-skill). Un logo, une animation Lottie, ou régler finement durées,
+courbes et chorégraphie : `cerveau:animation` (fiche motion-design). `animate` décide et code l'animation d'un composant (bouton, menu,
 modale, popover, feuille, toast).
 
 ## 2. Déjà là ?

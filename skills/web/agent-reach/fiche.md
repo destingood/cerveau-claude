@@ -1,9 +1,7 @@
----
-name: agent-reach
-description: "Agent Reach pour le cerveau : installer sur ce PC l'outil libre agent-reach (github.com/Panniantong/Agent-Reach, licence MIT), puis s'en servir pour lire en lecture seule ce que la recherche web de Claude rate — X/Twitter, Reddit, YouTube (sous-titres, transcription), Bilibili, GitHub, V2EX, LinkedIn (offres d'emploi), Instagram, Facebook, Xiaohongshu, Xueqiu, Boss Zhipin, podcasts Xiaoyuzhou. À utiliser quand l'utilisateur dit « agent-reach », « agent reach », « installe agent-reach », « lis ce tweet », « lis ce fil reddit », « sous-titres de cette vidéo YouTube », ou colle un lien d'une de ces plateformes que WebFetch ne lit pas ; ou pour vérifier, mettre à jour, ajouter ou retirer une plateforme, se connecter ou désinstaller. Ne poste, ne commente, n'aime et n'écrit jamais rien. Ne pas utiliser pour une page web ordinaire que WebSearch ou WebFetch lisent déjà."
----
-
 # Agent Reach — lire les réseaux sociaux, réglé sur chaque PC
+
+> Fiche « agent-reach » de la skill `cerveau:web` (autrefois la skill `agent-reach`), lue à la demande ; ses chemins relatifs (`references/`, `scripts/`…) partent de son dossier, `web/agent-reach/`.
+> Quand la suivre : Agent Reach pour le cerveau : installer sur ce PC l'outil libre agent-reach (github.com/Panniantong/Agent-Reach, licence MIT), puis s'en servir pour lire en lecture seule ce que la recherche web de Claude rate — X/Twitter, Reddit, YouTube (sous-titres, transcription), Bilibili, GitHub, V2EX, LinkedIn (offres d'emploi), Instagram, Facebook, Xiaohongshu, Xueqiu, Boss Zhipin, podcasts Xiaoyuzhou. À utiliser quand l'utilisateur dit « agent-reach », « agent reach », « installe agent-reach », « lis ce tweet », « lis ce fil reddit », « sous-titres de cette vidéo YouTube », ou colle un lien d'une de ces plateformes que WebFetch ne lit pas ; ou pour vérifier, mettre à jour, ajouter ou retirer une plateforme, se connecter ou désinstaller. Ne poste, ne commente, n'aime et n'écrit jamais rien. Ne pas utiliser pour une page web ordinaire que WebSearch ou WebFetch lisent déjà.
 
 Le plugin apporte la marche à suivre, pas l'outil : chaque utilisateur installe agent-reach sur son PC, avec ses
 propres connexions. Rien n'est partagé entre amis (ni session, ni cookie, ni clé).

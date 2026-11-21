@@ -48,7 +48,7 @@ def main() -> int:
         from scrapegraphai.graphs import SearchGraph, SmartScraperGraph, SmartScraperMultiGraph
     except ModuleNotFoundError as exc:
         sys.exit(f"✗ {exc} : ScrapeGraphAI n'est pas installé pour ce Python "
-                 "(skill scrapegraph, « 2. Installer », puis lancer sgai.py avec le Python du venv)")
+                 "(skill cerveau:web, fiche scrapegraph, « 2. Installer », puis lancer sgai.py avec le Python du venv)")
 
     if a.search:
         config["max_results"] = a.search

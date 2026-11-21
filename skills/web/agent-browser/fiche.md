@@ -1,9 +1,7 @@
----
-name: agent-browser
-description: "Piloter un navigateur en lignes de commande avec agent-browser de Vercel Labs (github.com/vercel-labs/agent-browser, licence Apache-2.0, binaire Rust rapide) : ouvrir un site et y cliquer, extraire les données d'une page, chercher les bugs d'une appli (QA exploratoire), mesurer la vitesse (web vitals), inspecter une appli React, piloter une appli Electron (VS Code, Discord, Slack). Vérifie qu'il est là, sinon l'installe sur ce PC avec l'accord de l'utilisateur. À utiliser quand l'utilisateur dit « agent-browser », « installe agent-browser », « cherche les bugs de mon site », « teste mon appli à fond », « vitesse de chargement de la page », « web vitals », « extrais les données de la page », « ouvre ce site et », « navigue sur le site ». Ne pas utiliser pour générer des tests Playwright (skill playwright-cli) ni pour une simple recherche ou lecture d'une page web."
----
-
 # agent-browser — un navigateur piloté, sans fenêtre par défaut
+
+> Fiche « agent-browser » de la skill `cerveau:web` (autrefois la skill `agent-browser`), lue à la demande ; ses chemins relatifs (`references/`, `scripts/`…) partent de son dossier, `web/agent-browser/`.
+> Quand la suivre : Piloter un navigateur en lignes de commande avec agent-browser de Vercel Labs (github.com/vercel-labs/agent-browser, licence Apache-2.0, binaire Rust rapide) : ouvrir un site et y cliquer, extraire les données d'une page, chercher les bugs d'une appli (QA exploratoire), mesurer la vitesse (web vitals), inspecter une appli React, piloter une appli Electron (VS Code, Discord, Slack). Vérifie qu'il est là, sinon l'installe sur ce PC avec l'accord de l'utilisateur. À utiliser quand l'utilisateur dit « agent-browser », « installe agent-browser », « cherche les bugs de mon site », « teste mon appli à fond », « vitesse de chargement de la page », « web vitals », « extrais les données de la page », « ouvre ce site et », « navigue sur le site ». Ne pas utiliser pour générer des tests Playwright (skill playwright-cli) ni pour une simple recherche ou lecture d'une page web.
 
 ## 1. Déjà là ?
 `agent-browser --version` répond et `~/.claude/skills/agent-browser/SKILL.md` existe → charger la skill

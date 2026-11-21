@@ -1,14 +1,12 @@
----
-name: uiverse
-description: "Trouver et intégrer un élément d'interface de Galaxy d'Uiverse.io (github.com/uiverse-io/galaxy, licence MIT) : 3 802 boutons, cartes, loaders, interrupteurs, cases à cocher, champs, formulaires, infobulles et motifs de fond en HTML + CSS ou Tailwind, cherchés en local, comparés en aperçu, adaptés au site (classes préfixées, couleurs, accessibilité, crédit gardé). Vérifie qu'elle est là, sinon l'installe avec l'accord de l'utilisateur. À utiliser quand l'utilisateur dit « un joli bouton pour mon site », « un bouton stylé », « un loader pour mon site / ma boutique », « un spinner », « un interrupteur stylé », « une case à cocher stylée », « une carte produit stylée », « une barre de recherche stylée », « un formulaire de connexion stylé », « une infobulle », « un motif de fond ». Ne pas utiliser pour la direction artistique d'un site entier, le mouvement d'un élément existant (cerveau:emil-kowalski ou cerveau:motion-design), reproduire une maquette (cerveau:image-to-code) ni un logo (cerveau:logo-design)."
----
-
 # Uiverse — un élément d'interface tout fait (collection Galaxy), fondu dans le site
 
-Script `galaxy.py`, Python standard (3.8 ou plus), rien à installer avec pip. Il est dans `scripts/` du dossier de
-cette skill (« Base directory » au chargement) : le lancer par ce chemin complet, `python` sous Windows, `python3`
-ailleurs — `python "<dossier de la skill>/scripts/galaxy.py" search loader --css`. Collection : `~/.claude/galaxy`
-(autre dossier : variable `GALAXY_DIR`).
+> Fiche « uiverse » de la skill `cerveau:composants` (autrefois la skill `uiverse`), lue à la demande ; ses chemins relatifs (`references/`, `scripts/`…) partent de son dossier, `composants/uiverse/`.
+> Quand la suivre : Trouver et intégrer un élément d'interface de Galaxy d'Uiverse.io (github.com/uiverse-io/galaxy, licence MIT) : 3 802 boutons, cartes, loaders, interrupteurs, cases à cocher, champs, formulaires, infobulles et motifs de fond en HTML + CSS ou Tailwind, cherchés en local, comparés en aperçu, adaptés au site (classes préfixées, couleurs, accessibilité, crédit gardé). Vérifie qu'elle est là, sinon l'installe avec l'accord de l'utilisateur. À utiliser quand l'utilisateur dit « un joli bouton pour mon site », « un bouton stylé », « un loader pour mon site / ma boutique », « un spinner », « un interrupteur stylé », « une case à cocher stylée », « une carte produit stylée », « une barre de recherche stylée », « un formulaire de connexion stylé », « une infobulle », « un motif de fond ». Ne pas utiliser pour la direction artistique d'un site entier, le mouvement d'un élément existant (cerveau:animation (fiche emil-kowalski) ou cerveau:animation (fiche motion-design)), reproduire une maquette (cerveau:design, fiche image-to-code) ni un logo (cerveau:logo-design).
+
+Script `galaxy.py`, Python standard (3.8 ou plus), rien à installer avec pip. Il est dans `uiverse/scripts/` du
+dossier de la skill cerveau:composants (« Base directory » au chargement) : le lancer par ce chemin complet, `python`
+sous Windows, `python3` ailleurs — `python "<dossier de la skill>/uiverse/scripts/galaxy.py" search loader --css`.
+Collection : `~/.claude/galaxy` (autre dossier : variable `GALAXY_DIR`).
 
 ## 1. Déjà là ?
 `galaxy.py search` sans mot affiche le sommaire par catégorie. « Galaxy absente » → installer (2).
@@ -85,6 +83,6 @@ Chaque élément tourne dans un cadre isolé (iframe `sandbox`) ; ceux en Tailwi
   `--full` seulement si l'utilisateur tient à un gros élément.
 - Galaxy fournit des pièces, pas une direction artistique : un seul style par page (mêmes rayons, ombres et durées que
   le reste du site). Direction d'ensemble : skills design-taste-frontend ou impeccable si elles sont installées ;
-  animer l'élément → cerveau:emil-kowalski, régler finement durées et courbes → cerveau:motion-design ; maquette à
-  reproduire → cerveau:image-to-code.
+  animer l'élément → cerveau:animation (fiche emil-kowalski), régler finement durées et courbes → cerveau:animation (fiche motion-design) ; maquette à
+  reproduire → cerveau:design (fiche image-to-code).
 - Ne jamais annoncer un rendu qui n'a pas été regardé.

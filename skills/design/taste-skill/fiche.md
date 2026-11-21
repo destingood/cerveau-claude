@@ -1,9 +1,7 @@
----
-name: taste-skill
-description: "Direction artistique et motion design d'un site ou d'une appli avec taste-skill de Leonxlnx (github.com/Leonxlnx/taste-skill, licence MIT, skill design-taste-frontend) : trois directions tirées de 247 sites de galeries, typo, palette, héros et sections, puis une couche d'animation obligatoire (moment signature, entrées par section, retour sur chaque contrôle, image qui bouge), contrôlée sur captures. L'installe au besoin avec l'accord de l'utilisateur, ou suit sa partie animation sans l'installer. À utiliser quand l'utilisateur dit « motion design », « site animé », « animations du site », « site vivant », « effet au scroll », « direction artistique », « refais le design », « refais ma landing page », « design pro », « design premium », « style Awwwards », « ça fait template », « rends mon site plus beau », « taste skill ». Ne pas utiliser pour régler une seule animation (cerveau:motion-design), un seul bouton (cerveau:emil-kowalski) ni pour reproduire une capture ou une maquette (cerveau:image-to-code)."
----
-
 # Taste-skill — une vraie direction artistique, et un site qui bouge
+
+> Fiche « taste-skill » de la skill `cerveau:design` (autrefois la skill `taste-skill`), lue à la demande ; ses chemins relatifs (`references/`, `scripts/`…) partent de son dossier, `design/taste-skill/`.
+> Quand la suivre : Direction artistique et motion design d'un site ou d'une appli avec taste-skill de Leonxlnx (github.com/Leonxlnx/taste-skill, licence MIT, skill design-taste-frontend) : trois directions tirées de 247 sites de galeries, typo, palette, héros et sections, puis une couche d'animation obligatoire (moment signature, entrées par section, retour sur chaque contrôle, image qui bouge), contrôlée sur captures. L'installe au besoin avec l'accord de l'utilisateur, ou suit sa partie animation sans l'installer. À utiliser quand l'utilisateur dit « motion design », « site animé », « animations du site », « site vivant », « effet au scroll », « direction artistique », « refais le design », « refais ma landing page », « design pro », « design premium », « style Awwwards », « ça fait template », « rends mon site plus beau », « taste skill ». Ne pas utiliser pour régler une seule animation (cerveau:animation, fiche motion-design), un seul bouton (cerveau:animation, fiche emil-kowalski) ni pour reproduire une capture ou une maquette (cerveau:design, fiche image-to-code).
 
 ## 1. Déjà là ?
 `~/.claude/skills/design-taste-frontend/SKILL.md` existe → charger la skill `design-taste-frontend` et suivre ses
@@ -45,7 +43,7 @@ Retrait : `npx -y skills remove design-taste-frontend -g -a claude-code -y`, pui
 - Interdits : préchargeur, curseur personnalisé, molette détournée ; défilement lissé seulement par `Stage.smooth()`.
 - `draw.mjs` répond « No scene library yet. » → construire la scène (`references/scenes.md` §8) et la contrôler
   avec `scenes.mjs`.
-- Régler finement une animation précise (courbe, ressort, Lottie) : `cerveau:motion-design` en plus.
+- Régler finement une animation précise (courbe, ressort, Lottie) : `cerveau:animation` (fiche motion-design) en plus.
 
 ## Règles
 - Avant le code : la direction retenue et l'idée du site, en une ligne chacune.

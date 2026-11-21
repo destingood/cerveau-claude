@@ -1,9 +1,18 @@
 ---
 name: rea
-description: "Rétro-ingénierie avec REA (Reverse Engineer Anything, morluto/rea, MIT, npm rea-agents) : serveur MCP et CLI qui analysent en local un binaire (pseudocode, chaînes, références ; Hopper, Ghidra, IDA, Kuna), une appli JavaScript/Electron, un APK, .NET, Flutter, PyInstaller, un firmware, une base SQLite, une capture HAR/PCAP, un site, un processus, et expliquent avec preuves comment une fonction marche, pour en refaire sa version. Vérifie qu'il est là, sinon l'installe sur ce PC avec l'accord de l'utilisateur et le branche à Claude Code. À utiliser quand l'utilisateur dit « rea », « installe rea », « reverse engineer », « rétro-ingénierie », « décompile », « analyse ce binaire », « analyse cet APK », « comment marche cette fonction dans cette appli ». Ne pas utiliser pour lire le code source d'un dépôt ordinaire, refaire une appli d'après ses écrans (cerveau:replica), faire d'un site un client d'API (reverse-api-engineer), piloter un navigateur (agent-browser), ni contourner une licence, une protection, un DRM."
+description: "Rétro-ingénierie locale avec REA : binaire, APK, appli Electron, .NET, firmware, capture HAR ou PCAP — comment marche une fonction, preuves à l'appui. Sur demande : /cerveau:rea."
+disable-model-invocation: true
+metadata:
+  triggers: >-
+    « rea » « installe rea » « reverse engineer » « rétro-ingénierie » « décompile » « analyse ce binaire »
+    « analyse cet APK » « comment marche cette fonction dans cette appli » Ne pas utiliser pour lire le code source d'un
+    dépôt ordinaire, refaire une appli d'après ses écrans (cerveau:replica), faire d'un site un client d'API
+    (cerveau:web), piloter un navigateur (cerveau:web), ni contourner une licence, une protection, un DRM.
 ---
 
 # REA — rétro-ingénierie avec preuves, réglée sur chaque PC
+
+Source : REA, Reverse Engineer Anything (dépôt morluto/rea, licence MIT, paquet npm rea-agents).
 
 Le plugin apporte la marche à suivre, pas l'outil : chaque utilisateur installe REA sur son PC. Tout s'analyse en
 local ; seuls les résultats des outils entrent dans la conversation (donc chez le fournisseur du modèle).
@@ -85,7 +94,7 @@ défaut. Redémarrer le client après un changement.
 - REA : comprendre une fonction d'une appli ou d'un binaire existant avec preuves (code, réseau, exécution), puis
   en refaire sa version. Peut nourrir l'étape d'analyse de cerveau:replica quand l'utilisateur possède l'appli.
 - cerveau:replica : refaire une appli d'après ses écrans, ses parcours et ses avis, sans toucher à son code.
-- cerveau:reverse-api-engineer : faire d'un site sans API publique un client d'API typé (il capture les
+- cerveau:web (fiche reverse-api-engineer) : faire d'un site sans API publique un client d'API typé (il capture les
   requêtes du navigateur) ; REA, lui, lit une capture HAR ou PCAP déjà faite et tout ce qui n'est pas un site.
 - Le code source d'un dépôt ordinaire : les outils habituels (lecture, recherche), pas REA.
 - agent-browser ou playwright-cli : piloter un site ; lire une page : l'outil de lecture web intégré, moins coûteux.

@@ -1,9 +1,7 @@
----
-name: image-to-code
-description: "Image-to-code pour le cerveau (d'après image-to-code-skill de Leonxlnx, MIT) : transformer une image de site — capture d'écran, maquette Figma exportée, photo d'une maquette, site à imiter, ou maquette générée d'abord quand un outil d'images est branché — en vrai site responsive qui lui ressemble au plus près : analyse section par section (textes, typographie, espacements, couleurs, boutons, composants), code fidèle, puis comparaison capture contre image. À utiliser quand l'utilisateur dit « image en code », « maquette en code », « code cette maquette », « transforme cette image en site », « reproduis cette maquette », « capture d'écran en site », « génère la maquette puis code », « design depuis une image », ou colle une image de page web à coder. Ne pas utiliser pour la direction artistique d'un site sans image de départ (skill design-taste-frontend si elle est installée), ni pour copier le logo, les textes ou les photos d'un site tiers."
----
-
 # Image-to-code — d'une image de site au vrai code
+
+> Fiche « image-to-code » de la skill `cerveau:design` (autrefois la skill `image-to-code`), lue à la demande ; ses chemins relatifs (`references/`, `scripts/`…) partent de son dossier, `design/image-to-code/`.
+> Quand la suivre : Image-to-code pour le cerveau (d'après image-to-code-skill de Leonxlnx, MIT) : transformer une image de site — capture d'écran, maquette Figma exportée, photo d'une maquette, site à imiter, ou maquette générée d'abord quand un outil d'images est branché — en vrai site responsive qui lui ressemble au plus près : analyse section par section (textes, typographie, espacements, couleurs, boutons, composants), code fidèle, puis comparaison capture contre image. À utiliser quand l'utilisateur dit « image en code », « maquette en code », « code cette maquette », « transforme cette image en site », « reproduis cette maquette », « capture d'écran en site », « génère la maquette puis code », « design depuis une image », ou colle une image de page web à coder. Ne pas utiliser pour la direction artistique d'un site sans image de départ (skill design-taste-frontend si elle est installée), ni pour copier le logo, les textes ou les photos d'un site tiers.
 
 L'image est la source du design ; le code la traduit. On ne redessine pas « de goût » en codant : on extrait, puis
 on reproduit. Règles complètes d'origine (anglais) dans `references/`, à lire seulement la partie utile.
@@ -61,4 +59,6 @@ Contrôle final : `references/04-anti-slop-et-finition.md` (sections 29 et 35).
 ## Mise à jour depuis l'original
 Source : github.com/nexu-io/open-design, dossier skills/image-to-code-skill (amont : github.com/Leonxlnx/taste-skill).
 Recouper le SKILL.md d'origine sans son en-tête aux titres « ## 13. », « ## 21. » et « ## 29. » pour refaire les
-quatre fichiers de `references/`, sans retoucher le texte ; puis `python tests/test_image_to_code.py`.
+quatre fichiers de `references/`, sans retoucher le texte ; puis, dans le dépôt du cerveau,
+`python tests/test_skills_regroupees.py` : il vérifie que chacun commence au bon titre (« # CORE DIRECTIVE », « ## 13. »,
+« ## 21. », « ## 29. ») et que les fichiers cités par cette fiche existent.

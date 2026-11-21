@@ -1,9 +1,7 @@
----
-name: kokonutui
-description: "KokonutUI (github.com/kokonut-labs/kokonutui, licence MIT) : 102 composants React gratuits, chacun avec son animation (Tailwind CSS, Motion), copiés en source dans le projet par le registre shadcn @kokonutui puis accordés au thème du site — boutons, textes, fonds et héros, cartes, saisie, navigation, médias, 18 blocs d'interface IA (zone de prompt, choix du modèle). Trouve le bon composant, l'ajoute, l'adapte et le vérifie au navigateur ; charge la skill officielle si elle est installée, sinon l'installe avec accord ou la lit une fois. À utiliser quand l'utilisateur dit « kokonut », « composant animé », « composants tout fait », « bibliothèque de composants », « fond animé », « texte animé », « interface de chat IA », ou veut un héros, un bouton ou une section qui en jette sans tout coder. Ne pas utiliser hors React (« thème Shopify », HTML pur), pour un graphique (cerveau:bklit-ui), pour régler une animation existante (cerveau:motion-design) ni pour la direction artistique (cerveau:taste-skill)."
----
-
 # KokonutUI
+
+> Fiche « kokonutui » de la skill `cerveau:composants` (autrefois la skill `kokonutui`), lue à la demande ; ses chemins relatifs (`references/`, `scripts/`…) partent de son dossier, `composants/kokonutui/`.
+> Quand la suivre : KokonutUI (github.com/kokonut-labs/kokonutui, licence MIT) : 102 composants React gratuits, chacun avec son animation (Tailwind CSS, Motion), copiés en source dans le projet par le registre shadcn @kokonutui puis accordés au thème du site — boutons, textes, fonds et héros, cartes, saisie, navigation, médias, 18 blocs d'interface IA (zone de prompt, choix du modèle). Trouve le bon composant, l'ajoute, l'adapte et le vérifie au navigateur ; charge la skill officielle si elle est installée, sinon l'installe avec accord ou la lit une fois. À utiliser quand l'utilisateur dit « kokonut », « composant animé », « composants tout fait », « bibliothèque de composants », « fond animé », « texte animé », « interface de chat IA », ou veut un héros, un bouton ou une section qui en jette sans tout coder. Ne pas utiliser hors React (« thème Shopify », HTML pur), pour un graphique (cerveau:composants, fiche bklit-ui), pour régler une animation existante (cerveau:animation, fiche motion-design) ni pour la direction artistique (cerveau:design, fiche taste-skill).
 
 Composants gratuits (MIT) de kokonut-labs : la commande shadcn copie leur code source dans le projet, qu'on adapte ensuite comme du code maison. Registre lu le 03/11/2026 (dépôt au commit 4d497b7 du 31/10/2026) ; essai fait sous Windows avec Vite, React 19, Tailwind v4 et shadcn 4.23.
 
@@ -42,11 +40,11 @@ Liste à jour : https://kokonutui.com/r/registry.json ; une ligne par composant 
 
 ## Règles
 - Gratuit seulement : un composant marqué « Part of Kokonut UI Pro » est payant (le registre répond 404 même si llms.txt affiche sa commande) ; proposer le plus proche du catalogue gratuit.
-- Thème Shopify (Liquid) ou HTML pur : pas de React, donc rien à copier ; prendre un élément HTML + CSS de cerveau:uiverse, ou reproduire l'effet en CSS avec cerveau:emil-kowalski.
+- Thème Shopify (Liquid) ou HTML pur : pas de React, donc rien à copier ; prendre un élément HTML + CSS de cerveau:composants (fiche uiverse), ou reproduire l'effet en CSS avec cerveau:animation (fiche emil-kowalski).
 - Partir du composant au lieu de recoder l'effet, et ne garder que ceux qui servent la page.
 - Mouvement réduit : `useReducedMotion()` vaut null côté serveur, ne changer le rendu qu'après le montage ; ce qui bouge seul plus de 5 s (fond, texte en boucle) doit pouvoir s'arrêter (WCAG 2.2.2).
 - Tailwind v4 : `scale-*`, `translate-*` et `rotate-*` sont des propriétés CSS à part, donc `transition-transform` et non `transition-[transform]`.
 - Thème : vérifier que les variables utilisées (`--card`, `--muted`…) existent dans le CSS du projet, sinon les fonds restent transparents.
 - Base UI (`components.json` : style `base-nova`) : la commande convertit le code écrit pour Radix, mais un `DropdownMenuLabel` hors de `DropdownMenuGroup` fait planter le menu au clic (« Base UI error #31 », vu avec `ai-prompt`) ; l'entourer de `DropdownMenuGroup`, ou créer le projet avec `-b radix`.
-- Régler le mouvement : cerveau:motion-design ; direction artistique du site entier : cerveau:taste-skill ; graphiques : cerveau:bklit-ui ; finition et revue des animations : cerveau:emil-kowalski.
+- Régler le mouvement : cerveau:animation (fiche motion-design) ; direction artistique du site entier : cerveau:design (fiche taste-skill) ; graphiques : cerveau:composants (fiche bklit-ui) ; finition et revue des animations : cerveau:animation (fiche emil-kowalski).
 - Répondre dans la langue de l'utilisateur.

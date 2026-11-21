@@ -1,9 +1,7 @@
----
-name: playwright
-description: "Piloter un navigateur en lignes de commande avec playwright-cli de Microsoft (github.com/microsoft/playwright-cli, licence Apache-2.0) : tester son site, un parcours d'achat ou un formulaire, faire des captures d'écran, générer des tests Playwright — en moins de tokens que le MCP Playwright. Vérifie qu'il est là, sinon l'installe sur ce PC avec l'accord de l'utilisateur. À utiliser quand l'utilisateur dit « playwright », « playwright-cli », « installe playwright », « teste mon site dans le navigateur », « teste le parcours », « teste mon formulaire », « capture d'écran de la page », « automatise le navigateur ». Ne pas utiliser pour une simple recherche ou lecture d'une page web."
----
-
 # Playwright CLI — un navigateur piloté, sans fenêtre par défaut
+
+> Fiche « playwright » de la skill `cerveau:web` (autrefois la skill `playwright`), lue à la demande ; ses chemins relatifs (`references/`, `scripts/`…) partent de son dossier, `web/playwright/`.
+> Quand la suivre : Piloter un navigateur en lignes de commande avec playwright-cli de Microsoft (github.com/microsoft/playwright-cli, licence Apache-2.0) : tester son site, un parcours d'achat ou un formulaire, faire des captures d'écran, générer des tests Playwright — en moins de tokens que le MCP Playwright. Vérifie qu'il est là, sinon l'installe sur ce PC avec l'accord de l'utilisateur. À utiliser quand l'utilisateur dit « playwright », « playwright-cli », « installe playwright », « teste mon site dans le navigateur », « teste le parcours », « teste mon formulaire », « capture d'écran de la page », « automatise le navigateur ». Ne pas utiliser pour une simple recherche ou lecture d'une page web.
 
 ## 1. Déjà là ?
 `playwright-cli --version` répond et `~/.claude/skills/playwright-cli/SKILL.md` existe → charger la skill

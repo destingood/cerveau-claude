@@ -1,9 +1,7 @@
----
-name: skillui
-description: "Extraire le système de design d'un site, d'un dépôt Git ou d'un projet local avec SkillUI (CLI npm skillui, github.com/amaancoderx/npxskillui, licence MIT, analyse statique sans IA ni clé) : couleurs, typographie, espacements, ombres, composants, animations et captures (mode ultra avec Playwright), rangés en DESIGN.md, tokens JSON et captures que l'agent suit pour coder une interface du même esprit. Vérifie que l'outil est là, sinon l'installe avec l'accord de l'utilisateur. À utiliser quand l'utilisateur dit « skillui », « extrais le design de ce site », « récupère le design de », « mêmes couleurs et polices que ce site », « tokens de design », « un site dans le style de <adresse> », ou donne l'adresse d'un site dont il veut le style. Ne pas utiliser pour une marque du catalogue getdesign (Stripe, Apple, Notion… → design-md) ni pour une image ou une maquette (→ image-to-code). Cloner les fonctions d'un logiciel : replica."
----
-
 # SkillUI — le design d'un site existant, prêt pour l'agent
+
+> Fiche « skillui » de la skill `cerveau:design` (autrefois la skill `skillui`), lue à la demande ; ses chemins relatifs (`references/`, `scripts/`…) partent de son dossier, `design/skillui/`.
+> Quand la suivre : Extraire le système de design d'un site, d'un dépôt Git ou d'un projet local avec SkillUI (CLI npm skillui, github.com/amaancoderx/npxskillui, licence MIT, analyse statique sans IA ni clé) : couleurs, typographie, espacements, ombres, composants, animations et captures (mode ultra avec Playwright), rangés en DESIGN.md, tokens JSON et captures que l'agent suit pour coder une interface du même esprit. Vérifie que l'outil est là, sinon l'installe avec l'accord de l'utilisateur. À utiliser quand l'utilisateur dit « skillui », « extrais le design de ce site », « récupère le design de », « mêmes couleurs et polices que ce site », « tokens de design », « un site dans le style de <adresse> », ou donne l'adresse d'un site dont il veut le style. Ne pas utiliser pour une marque du catalogue getdesign (Stripe, Apple, Notion… → design-md) ni pour une image ou une maquette (→ image-to-code). Cloner les fonctions d'un logiciel : replica.
 
 SkillUI lit un site (HTML, CSS, styles calculés), un dossier ou un dépôt et en sort un dossier `<nom>-design/` :
 `DESIGN.md`, `references/`, `tokens/*.json` (ultra), captures, `fonts/`, plus un `SKILL.md`, un `CLAUDE.md` et une

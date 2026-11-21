@@ -1,6 +1,10 @@
 ---
 name: securite
-description: "Liste de contrôle sécurité avant de livrer ou de relire du code exposé (site, API, formulaire, upload, connexion, cookies, webhook, appel d'une URL reçue, XML, archive, prompt d'IA nourri de contenu externe) : par classe de faille, la règle et la bibliothèque sûre par défaut (Python, JS/TS, PHP, Go). Exemples : « sécurise ce code », « faille / XSS / injection SQL / CSRF », « est-ce que c'est sécurisé ». Ne pas utiliser pour un script local sans entrée extérieure."
+description: "Contrôle sécurité avant de livrer ou relire du code exposé (site, API, formulaire, upload, connexion, webhook, prompt nourri de contenu externe) : règle et bibliothèque sûre par faille. Pas pour un script local."
+metadata:
+  triggers: >-
+    « sécurise ce code » « faille / XSS / injection SQL / CSRF » « est-ce que c'est sécurisé » Ne pas utiliser pour un
+    script local sans entrée extérieure.
 ---
 
 # Sécurité : liste de contrôle du code exposé

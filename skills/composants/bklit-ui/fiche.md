@@ -1,9 +1,7 @@
----
-name: bklit-ui
-description: "Bklit UI (github.com/bklit/bklit-ui, licence MIT) : graphiques animés pour sites React et Next.js, copiés en source dans le projet par le registre shadcn @bklit — courbes, aires, barres, camemberts et anneaux, jauges, radar, carte de chaleur, entonnoir, sankey, carte du monde, mini-courbes pour cartes KPI et tableaux de bord ; style décrit avec des mots et accordé au thème du site ; migration depuis Recharts, les graphiques shadcn ou TanStack Charts. Choisit la bonne de ses 3 skills, la charge si elle est installée, sinon l'installe avec accord ou la lit une fois sans rien installer. À utiliser quand l'utilisateur dit « ajoute un graphique », « graphique animé », « fais un dashboard », « carte KPI », « mini-courbe », « camembert », « ajoute une jauge », « carte de chaleur », « design des graphiques », « remplace recharts », « barres arrondies ». Ne pas utiliser hors React (« thème Shopify », HTML pur), pour un « graphique Excel », dans un document ou une image, ni pour un logo."
----
-
 # Bklit UI — des graphiques React animés, la bonne skill au bon moment
+
+> Fiche « bklit-ui » de la skill `cerveau:composants` (autrefois la skill `bklit-ui`), lue à la demande ; ses chemins relatifs (`references/`, `scripts/`…) partent de son dossier, `composants/bklit-ui/`.
+> Quand la suivre : Bklit UI (github.com/bklit/bklit-ui, licence MIT) : graphiques animés pour sites React et Next.js, copiés en source dans le projet par le registre shadcn @bklit — courbes, aires, barres, camemberts et anneaux, jauges, radar, carte de chaleur, entonnoir, sankey, carte du monde, mini-courbes pour cartes KPI et tableaux de bord ; style décrit avec des mots et accordé au thème du site ; migration depuis Recharts, les graphiques shadcn ou TanStack Charts. Choisit la bonne de ses 3 skills, la charge si elle est installée, sinon l'installe avec accord ou la lit une fois sans rien installer. À utiliser quand l'utilisateur dit « ajoute un graphique », « graphique animé », « fais un dashboard », « carte KPI », « mini-courbe », « camembert », « ajoute une jauge », « carte de chaleur », « design des graphiques », « remplace recharts », « barres arrondies ». Ne pas utiliser hors React (« thème Shopify », HTML pur), pour un « graphique Excel », dans un document ou une image, ni pour un logo.
 
 Le plugin apporte le choix et la marche à suivre, pas les skills : chacune s'installe sur le PC qui en a besoin.
 Chaque skill installée ajoute sa description à toutes les conversations : n'installer que ce qui sert.
@@ -16,7 +14,7 @@ Chaque skill installée ajoute sa description à toutes les conversations : n'in
 | `bklit-ui-migrate` | remplacer Recharts, les graphiques shadcn (`ChartContainer`) ou TanStack Charts : inventaire, tri (direct, contournement, à garder), réécriture fichier par fichier sans perdre données, couleurs ni libellés, retrait de l'ancienne dépendance quand plus rien ne s'en sert |
 
 Graphique neuf → `bklit-ui`, plus `bklit-ui-design` quand le style est décrit en mots ; graphiques déjà en place
-→ `bklit-ui-migrate`. Animer une page, un bouton ou un logo : `cerveau:motion-design`. Graphique dans un document,
+→ `bklit-ui-migrate`. Animer une page, un bouton ou un logo : `cerveau:animation` (fiche motion-design). Graphique dans un document,
 un tableur ou une image : pas Bklit.
 
 ## 2. Le projet s'y prête ?

@@ -1,6 +1,12 @@
 ---
 name: fortnite
-description: "Maps Fortnite (îles Créatif et UEFN) pour le cerveau : faire monter une map en tendance sans payer, d'abord les maps de combat et d'entraînement (zone wars, box fight, realistics, 1v1, free for all, aim, red vs blue). Concept et niche lus dans l'API publique d'Epic, algorithme de Discover et recherche du jeu, titre, description, tags, genre, miniatures et test A/B, rétention (rebond à 2, 5 et 10 min, J1, J7), lobby vide, accolades, lancement et fenêtre de test de deux semaines, SEO et GEO (Google, ChatGPT, Perplexity), mesure et diagnostic du goulot. Cinq outils Python. À utiliser quand l'utilisateur dit « ma map fortnite », « mon île fortnite », « map UEFN », « code de map », « Discover fortnite », « ma map n'a pas de joueurs », « titre de ma map », « tags de ma map », « miniature de ma map », « rétention de ma map », « tendances fortnite », « publier ma map », « portail créateur fortnite ». Ne pas utiliser pour jouer à Fortnite, ni pour coder en Verse ou monter le niveau dans UEFN."
+description: "Maps Fortnite (Créatif, UEFN) : faire monter une map en tendance sans payer — niche, Discover, titre, tags, miniatures, rétention, lancement, SEO, mesure. Pas pour jouer ni coder en Verse."
+metadata:
+  triggers: >-
+    « ma map fortnite » « mon île fortnite » « map UEFN » « code de map » « Discover fortnite »
+    « ma map n'a pas de joueurs » « titre de ma map » « tags de ma map » « miniature de ma map » « rétention de ma map »
+    « tendances fortnite » « publier ma map » « portail créateur fortnite » Ne pas utiliser pour jouer à Fortnite, ni
+    pour coder en Verse ou monter le niveau dans UEFN.
 ---
 
 # Maps Fortnite — de la niche choisie à la map en tendance
@@ -81,4 +87,4 @@ session cloud dont le réseau la bloque), le dire et demander à l'utilisateur d
   cerveau commun.
 - Échéances du lancement (J3, J7, J14) : `brain add -t todo -T "<map> : diagnostic J7" --due <date>`.
 - Vidéos de la map (titres, Shorts, chaîne) : skill `cerveau:youtube`. Visibilité dans les assistants IA, en détail :
-  `searchfit-seo:ai-visibility`. Texte qui sonne IA : `cerveau:humanizer`.
+  `searchfit-seo:ai-visibility`. Texte qui sonne IA : `humanizer:humanizer` (plugin Humanizer, s'il est installé).
