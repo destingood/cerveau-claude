@@ -71,7 +71,7 @@ def _relevance(brain, focus, sig=None, info=None):
     `info["stale"]` le dit."""
     try:
         from . import graph
-        an = graph.ensure(brain, sig=sig, projects=(focus,))
+        an = graph.ensure(brain, sig=sig)
     except Exception:
         return {}
     if info is not None:
@@ -343,7 +343,7 @@ def start_index(brain, cfg=None, focus=None, previews=None, sig=None) -> str:
             previews.extend(x for x in hit.get("previews") or [] if isinstance(x, str))
         if hit.get("stale") and graph._in_hook():  # analyse périmée à la construction, toujours pas refaite : relancée
             from .hooks import refresh_later  # (au plus une fois par minute)
-            refresh_later((focus,))
+            refresh_later()
         return hit["text"]
     own, info = [], {}
     text = build_index(brain, cfg, focus=focus, previews=own, sig=sig, info=info)
@@ -356,39 +356,17 @@ def start_index(brain, cfg=None, focus=None, previews=None, sig=None) -> str:
     return text
 
 
-def refresh(projects=(), viz=False, rounds=3) -> None:
-    """Tâche de fond `brain index --auto`, lancée par les hooks (hooks.refresh_later) : analyse du graphe (si le contenu
-    a changé), fiches de synthèse, BRAIN.md et index du démarrage de `projects`, puis la visualisation si `viz` (fin de
-    session) et qu'elle est périmée. Une tâche à la fois : la suivante attend son tour, puis ne refait que ce qui est
-    encore périmé. Le contenu change pendant le calcul : un tour de plus (au plus `rounds`)."""
+def prebuild(brain, cfg=None, n=2) -> int:
+    """Index du démarrage des `n` derniers projets ouverts, refaits d'avance par la tâche de fond des vues (vues.py,
+    après la vue 3D : avec l'analyse du graphe à jour) : la session suivante le trouve prêt, même après une écriture.
+    → nombre d'index refaits ou déjà à jour."""
     from . import graph
-    from .common import BRAIN_DIR, FileLock
-    from .store import Brain
-    try:
-        with FileLock(STATE_DIR / "index-fond.lock", timeout=600, stale=60):
-            cfg = load_config()
-            for _ in range(rounds):
-                if not BRAIN_DIR.is_dir():
-                    return  # cerveau effacé pendant l'attente (dossier d'essai) : surtout ne pas le recréer
-                brain = Brain.load()
-                sig = graph._signature(brain)
-                try:
-                    from . import fiches
-                    fiches.ensure(brain, graph.ensure(brain, sig=sig, wait=True))
-                except Exception as exc:
-                    log(f"analyse du graphe (arrière-plan) : {exc!r}")
-                start_index(brain, cfg, sig=sig)
-                for pid in dict.fromkeys(projects):
-                    if (brain.nodes.get(pid) or {}).get("type") == "project":
-                        start_index(brain, cfg, focus=pid, sig=sig)
-                if viz:
-                    from . import viz as v
-                    if v.is_stale():
-                        v.render(brain)
-                if graph._signature(Brain.load()) == sig:
-                    break
-    except TimeoutError as exc:
-        log(f"index en arrière-plan : {exc!r}")
+    cfg, sig, done = cfg or load_config(), graph._signature(brain), 0
+    for pid in [k for k in _start_items() if k][-n:]:
+        if (brain.nodes.get(pid) or {}).get("type") == "project":
+            start_index(brain, cfg, focus=pid, sig=sig)
+            done += 1
+    return done
 
 
 def fit_digest(digest, budget):

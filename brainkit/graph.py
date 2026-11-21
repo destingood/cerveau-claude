@@ -9,7 +9,7 @@
 
 Le résultat est mis en cache dans state/analysis.json, recalculé seulement quand le contenu du graphe change
 (les compteurs de rappel ne déclenchent pas de recalcul). Jamais dans un hook : il y prend l'analyse précédente, même
-périmée, et le recalcul part en arrière-plan (`brain index --auto`)."""
+périmée, et la tâche de fond des vues la refait (vues.py)."""
 from __future__ import annotations
 
 import hashlib
@@ -487,13 +487,13 @@ def empty() -> dict:
             "stale": True}
 
 
-def ensure(brain=None, force=False, write=True, wait=None, sig=None, projects=()) -> dict:
+def ensure(brain=None, force=False, write=True, wait=None, sig=None) -> dict:
     """Analyse à jour (cache state/analysis.json, recalcul seulement si le contenu du graphe a changé).
     write=False : rien n'est lu ni écrit sur le disque (monde fictif du banc d'essai, état passé).
     wait=False (le défaut dans un hook) : jamais de calcul sur place — 1 à 4 s sur un gros cerveau, dans le délai du
-    hook. L'analyse en cache sert même périmée (« stale » : True ; vide s'il n'y en a pas encore) et le recalcul part en
-    arrière-plan, qui refait aussi l'index du démarrage de `projects`. `sig` : empreinte de ce cerveau déjà calculée
-    (_signature)."""
+    hook. L'analyse en cache sert même périmée (« stale » : True ; vide s'il n'y en a pas encore) et la tâche de fond
+    des vues la refait (hooks.refresh_later). wait=True : toujours à jour (les vues, qui la montrent). `sig` : empreinte
+    de ce cerveau déjà calculée (_signature)."""
     brain = brain or Brain.load()
     sig = sig or _signature(brain)
     if not write:
@@ -511,7 +511,7 @@ def ensure(brain=None, force=False, write=True, wait=None, sig=None, projects=()
             wait = not _in_hook()
         if not wait:
             from .hooks import refresh_later
-            refresh_later(projects)
+            refresh_later()
             return dict(cached, stale=True) if usable else empty()
     data = analyze(brain)
     data["sig"] = sig

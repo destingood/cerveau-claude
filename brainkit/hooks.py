@@ -162,26 +162,24 @@ def spawn_background(args) -> bool:
         return False
 
 
-REFRESH_MARK = STATE_DIR / "index-fond.lance"  # dernier lancement de `brain index --auto` (recalcul en arrière-plan)
-REFRESH_EVERY = 60  # s : analyse trouvée périmée en chemin → au plus un lancement par minute
+REFRESH_MARK = STATE_DIR / "analyse-demandee"  # dernière demande de recalcul faite par un hook (analyse périmée)
+REFRESH_EVERY = 60  # s : au plus une demande par minute
 
 
-def refresh_later(projects=(), viz=False, now=False) -> bool:
-    """Analyse du graphe, BRAIN.md et index du démarrage de `projects` (plus la visualisation avec `viz`) refaits en
-    arrière-plan par `brain index --auto`, une tâche à la fois (index.refresh). Sans `now` — un hook qui trouve
-    l'analyse périmée en chemin — au plus un lancement par minute : les suivants savent qu'elle est en route."""
-    args = ["index", "--auto"] + (["--viz"] if viz else [])
-    for pid in projects:
-        args += ["-p", pid]
+def refresh_later() -> bool:
+    """Analyse du graphe trouvée périmée dans un hook (qui ne la calcule jamais) : la tâche de fond des vues (vues.py)
+    la refait avec la vue 3D, puis l'index du démarrage des derniers projets. Au plus une demande par minute ; elle
+    compte même si la tâche est au travail (elle reprend les demandes arrivées entre-temps avant de rendre la main)."""
     try:
-        if not now and REFRESH_MARK.exists() and time.time() - REFRESH_MARK.stat().st_mtime < REFRESH_EVERY:
+        if REFRESH_MARK.exists() and time.time() - REFRESH_MARK.stat().st_mtime < REFRESH_EVERY:
             return False
         REFRESH_MARK.parent.mkdir(parents=True, exist_ok=True)
         REFRESH_MARK.write_text(now_iso(), encoding="utf-8")
-    except OSError as exc:
+        from . import vues
+        return vues.request()
+    except Exception as exc:
         log(f"recalcul en arrière-plan : {exc!r}")
         return False
-    return spawn_background(args)
 
 
 def _project_path(proj):
@@ -1405,9 +1403,14 @@ def on_session_end(data, cfg, event="session-end"):
     if event == "session-end":  # entretien et sauvegarde automatiques, une fois par jour (en arrière-plan)
         for args in daily_due(cfg):
             spawn_background(args)
-    # Analyse du graphe, BRAIN.md, index du démarrage de ce projet (prêt pour la session suivante, ou celle d'après la
-    # compaction) et, en fin de session, visualisation : en arrière-plan. Avant, 120 à 350 ms dans le hook.
-    refresh_later([proj["id"]] if proj else [], viz=event == "session-end", now=True)
+    # BRAIN.md, vues 3D et 2D (avec l'analyse du graphe à jour) et index du démarrage de ce projet, prêts pour la session
+    # suivante ou celle d'après la compaction : la tâche de fond des vues (vues.py) — avant, 120 à 350 ms dans le hook.
+    # Demandées même si d'autres sont en cours : celles-là ont pu lire le journal avant cette session.
+    try:
+        from . import vues
+        vues.request()
+    except Exception as exc:
+        log(f"vues ({event}) : {exc!r}")
     if event == "session-end" and (brain.data.get("wiki") or {}).get("root") and not brain.data["wiki"].get("missing"):
         try:  # wiki : index.md, entrée « session » au journal, puis commit + pull + push en arrière-plan
             from . import wiki

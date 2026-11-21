@@ -762,9 +762,6 @@ def cmd_report(a):
 
 # ================================================================================== contexte, journal, entretien
 def cmd_index(a):
-    if a.auto:  # tâche de fond des hooks : analyse du graphe, index du démarrage, visualisation (fin de session)
-        idx.refresh(a.project or (), viz=a.viz)
-        return
     text = idx.rebuild(Brain.load())
     print(text if a.print else f"✓ BRAIN.md régénéré ({len(text)} car. ≈ {est_tokens(text)} tokens)")
 
@@ -2182,9 +2179,6 @@ def build_parser():
 
     s = cmd("index", cmd_index, "régénérer l'index BRAIN.md")
     s.add_argument("--print", action="store_true")
-    s.add_argument("--auto", action="store_true", help=argparse.SUPPRESS)
-    s.add_argument("--viz", action="store_true", help=argparse.SUPPRESS)
-    s.add_argument("-p", "--project", action="append", help=argparse.SUPPRESS)
     s = cmd("context", cmd_context, "voir ce qui est injecté au démarrage d'une session ici")
     s.add_argument("--cwd")
     s = cmd("recall", cmd_recall, "tester le rappel automatique pour un message (--pourquoi : diagnostic)")

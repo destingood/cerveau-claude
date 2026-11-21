@@ -211,7 +211,7 @@ def render(brain=None):
     from . import graph, wikistore
     from .viz3d import LIBS, TEMPLATE_3D
     brain = brain or Brain.load()
-    an = graph.ensure(brain)
+    an = graph.ensure(brain, wait=True)  # la vue montre l'analyse : toujours à jour, même lancée depuis un hook
     wroot = wikistore.root()
     wfiles = ((brain.data.get("wiki") or {}).get("files") or {}) if wroot else {}
     comm, prs, deg = an.get("comm", {}), an.get("pr", {}), an.get("deg", {})

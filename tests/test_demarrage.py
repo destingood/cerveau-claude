@@ -1,8 +1,8 @@
 """Démarrage, fin de session et compaction sans attente (étape 4 du plan, « Vitesse ») : l'analyse du graphe n'est jamais
-calculée dans un hook (la précédente sert, le recalcul part en arrière-plan), l'index du démarrage est gardé tant que
-rien de ce qu'il montre n'a changé, la fin de session et la compaction confient visualisation et index à une tâche de
-fond, et un fichier énorme de la mémoire de Claude Code n'est pas importé. Aucune mesure de temps (trop variable en CI) :
-le verrou de la tâche de fond, tenu par le test, montre ce que fait le hook et ce qui attend la tâche.
+calculée dans un hook (la précédente sert, la tâche de fond des vues la refait), l'index du démarrage est gardé tant que
+rien de ce qu'il montre n'a changé, la fin de session et la compaction confient visualisation et index à cette tâche,
+et un fichier énorme de la mémoire de Claude Code n'est pas importé. Aucune mesure de temps (trop variable en CI) : le
+verrou des vues, tenu par le test, montre ce que fait le hook et ce qui attend la tâche.
 
 Lancement : python tests/test_demarrage.py   (sortie : « N vérifications OK, M échec(s) »)"""
 import datetime as dt
@@ -28,11 +28,11 @@ for d in (WORK, WORK2, TMP / "home", TMP / "claude", TMP / "brain" / "state"):
 os.chdir(TMP)
 sys.path.insert(0, str(CODE))
 
-from brainkit import graph, index, install, store  # noqa: E402
-from brainkit.common import GRAPH_FILE, INDEX_FILE, STATE_DIR, FileLock, load_config, read_json, remove_tree  # noqa: E402
+from brainkit import graph, index, install, store, vues  # noqa: E402
+from brainkit.common import GRAPH_FILE, INDEX_FILE, STATE_DIR, load_config, read_json, remove_tree  # noqa: E402
 from brainkit.store import Brain  # noqa: E402
 
-LOCK, MARK = STATE_DIR / "index-fond.lock", STATE_DIR / "index-fond.lance"  # tâche de fond : verrou, dernier lancement
+ASKED = STATE_DIR / "analyse-demandee"  # dernière demande de recalcul faite par un hook (au plus une par minute)
 CACHE, VIZ = STATE_DIR / "demarrage.json", TMP / "brain" / "cerveau.html"
 KEPT = "⟦GARDÉ⟧"  # marque glissée dans un index gardé : la revoir prouve qu'il n'a pas été refait
 
@@ -64,19 +64,14 @@ def brain(*args):
     return r.returncode, r.stdout.decode("utf-8", "replace") + r.stderr.decode("utf-8", "replace")
 
 
-def wait(cond, limit=90.0) -> bool:
-    end = time.time() + limit
-    while time.time() < end:
-        if cond():
-            return True
-        time.sleep(0.1)
-    return bool(cond())
-
-
 def idle():
-    """Attend la fin de la tâche de fond en cours (elle tient son verrou pendant tout son travail)."""
-    with FileLock(LOCK, timeout=180):
-        pass
+    """Vues demandées toutes refaites (par la tâche de fond, ou ici si elle n'est pas partie)."""
+    vues.wait(180)
+
+
+def requests() -> int:
+    """Vues demandées jusqu'ici (state/vues.json)."""
+    return (read_json(STATE_DIR / "vues.json", {}) or {}).get("n", 0)
 
 
 def analysis_sig():
@@ -142,31 +137,31 @@ hook("session-start", "s0")
 idle()
 
 # ------------------------------------------------------------------ 1. démarrage après un changement : l'analyse attend
-with FileLock(LOCK, timeout=180):  # la tâche de fond ne peut pas passer tant que le test tient son verrou
-    if MARK.exists():
-        MARK.unlink()
-    before = analysis_sig()
+with vues.lock():  # la tâche des vues ne peut pas travailler tant que le test tient leur verrou
+    if ASKED.exists():
+        ASKED.unlink()
+    before, asked = analysis_sig(), requests()
     add("feedback", "Répondre aux avis clients sous 24 h", "Chaque avis client reçoit une réponse sous 24 heures.")
     after = current_sig()
     text = ctx(hook("session-start", "a1"))
     stale = analysis_sig() == before != after
-    check(stale and MARK.is_file() and "Projet courant : Boutique Atelier" in text
+    check(stale and requests() > asked and "Projet courant : Boutique Atelier" in text
           and "Répondre aux avis clients sous 24 h" in text,
-          "démarrage après un changement : l'analyse du graphe n'est pas refaite dans le hook (la précédente sert, son "
-          "recalcul est lancé), l'index est injecté avec le nouveau souvenir",
-          f"analyse {analysis_sig()} (avant {before}, contenu {after}) · lancé {MARK.is_file()} · {text[:300]}")
-fresh = wait(lambda: analysis_sig() == after)
-check(stale and fresh, "l'analyse est refaite par la tâche de fond, dès qu'elle peut passer", analysis_sig())
-idle()
+          "démarrage après un changement : l'analyse du graphe n'est pas refaite dans le hook (la précédente sert, la "
+          "tâche des vues est demandée), l'index est injecté avec le nouveau souvenir",
+          f"analyse {analysis_sig()} (avant {before}, contenu {after}) · demandes {asked} → {requests()} · {text[:300]}")
+idle()  # le verrou rendu, la tâche des vues passe
+check(stale and analysis_sig() == after, "l'analyse est refaite par la tâche des vues, dès qu'elle peut passer",
+      analysis_sig())
 got = entry("boutique")
 check(got.get("stale") is False and "Répondre aux avis clients sous 24 h" in (got.get("text") or ""),
-      "la tâche de fond prépare aussi l'index du démarrage du projet, avec l'analyse à jour", got)
+      "la tâche des vues refait aussi l'index du démarrage du projet, avec l'analyse à jour", got)
 
 # ------------------------------------------------------------------ 2. index du démarrage gardé tant que rien ne change
 hook("session-start", "b1")
 tampered = tamper("boutique")
 kept = KEPT in ctx(hook("session-start", "b2"))
-store.bump_hits(["b3", "b4", "vouvoyer"])  # compteurs de rappel : ils réécrivent graph.json à chaque message
+store.bump_hits(["b3", "b4", "vouvoyer"])  # compteurs de rappel
 with Brain.edit() as b:  # date de la carte du projet : le cartographe la réécrit à chaque passage
     b.nodes["boutique"]["meta"]["mapped"] = now
     b.dirty = True
@@ -177,11 +172,12 @@ add("feedback", "Emballer chaque bol dans du papier kraft", "Jamais de plastique
 text = ctx(hook("session-start", "b4"))
 check(kept and KEPT not in text and "Emballer chaque bol dans du papier kraft" in text,
       "index du démarrage refait quand un souvenir change", text[:300])
-c, out = brain("index", "--auto", "-p", "boutique", "-p", "potager")  # la tâche de fond, lancée à la main : attendue
+idle()
+c, out = brain("vues")  # la tâche des vues, lancée à la main (comme après une écriture) : attendue
 got = entry("boutique")
-check(c == 0 and analysis_sig() == current_sig() and got.get("stale") is False and entry("potager").get("text")
-      and "Emballer chaque bol" in (got.get("text") or "") and INDEX_FILE.exists(),
-      "brain index --auto : analyse, BRAIN.md et index du démarrage des projets demandés refaits", out[-300:])
+check(c == 0 and analysis_sig() == current_sig() and got.get("stale") is False
+      and "Emballer chaque bol" in (got.get("text") or ""),
+      "les vues refaites refont l'analyse puis l'index du démarrage des derniers projets ouverts", out[-300:])
 
 hook("session-start", "c1")
 tampered = tamper("boutique")
@@ -207,16 +203,17 @@ finally:
 check(KEPT in today_text and KEPT not in tomorrow_text and "Projet courant : Boutique Atelier" in tomorrow_text,
       "index du démarrage refait le lendemain (« dans 3 j » change chaque jour)", tomorrow_text[:200])
 
-# Hors projet, BRAIN.md : régénéré quand graph.json est plus récent (test_noyau), sans être refait si seuls les compteurs
-# ont bougé.
+# Hors projet, BRAIN.md : régénéré quand graph.json est plus récent (test_noyau), sans être refait si rien de ce qu'il
+# montre n'a changé (graph.json réécrit pour y ranger les compteurs de rappel, par exemple).
 index.rebuild(Brain.load())
 tampered = tamper("")
 old = time.time() - 30
 os.utime(INDEX_FILE, (old, old))
-store.bump_hits(["p1"])
+os.utime(GRAPH_FILE, None)
 again = index.ensure_index(Brain.load())
 check(tampered and KEPT in again and INDEX_FILE.read_text(encoding="utf-8") == again,
-      "hors projet : BRAIN.md plus vieux que graph.json à cause des compteurs → réécrit tel quel, pas refait", again[-200:])
+      "hors projet : BRAIN.md plus vieux que graph.json, rien de ce qu'il montre n'a changé → réécrit tel quel, pas refait",
+      again[-200:])
 idle()
 
 # ------------------------------------------------------------------ 3. fin de session et compaction : en arrière-plan
@@ -226,32 +223,31 @@ transcript.write_text("\n".join(json.dumps(x) for x in [
     {"type": "user", "cwd": str(WORK), "message": {"role": "user", "content": "règle le thème de la boutique"}},
     {"type": "assistant", "message": {"id": "m1", "role": "assistant", "content": [{"type": "text", "text": "Fait."}]}},
 ]) + "\n", encoding="utf-8")
-store.bump_hits(["b5"])  # graph.json plus récent que la visualisation : elle est à refaire
+store.bump_hits(["b5"])  # compteurs plus récents que la visualisation : elle est à refaire
 viz_before = VIZ.stat().st_mtime_ns if VIZ.exists() else None
-with FileLock(LOCK, timeout=180):
-    if MARK.exists():
-        MARK.unlink()
+with vues.lock():
+    asked = requests()
     os.utime(INDEX_FILE, (old, old))
     index_before = INDEX_FILE.stat().st_mtime_ns
     hook("session-end", "e1", transcript_path=str(transcript))
     viz_kept = (VIZ.stat().st_mtime_ns if VIZ.exists() else None) == viz_before
     index_kept = INDEX_FILE.stat().st_mtime_ns == index_before
     sessions = (read_json(TMP / "brain" / "journal" / "sessions.json", {}) or {}).get("sessions") or {}
-    check(viz_kept and index_kept and MARK.is_file() and "e1" in sessions,
+    check(viz_kept and index_kept and requests() > asked and "e1" in sessions,
           "fin de session : ni visualisation ni index refaits dans le hook (le journal, lui, y est écrit), la tâche "
-          "de fond est lancée", f"viz {viz_kept} · index {index_kept} · lancé {MARK.is_file()} · {list(sessions)}")
-done = wait(lambda: VIZ.exists() and VIZ.stat().st_mtime_ns != viz_before)
-check(viz_kept and done, "fin de session : la tâche de fond refait la visualisation (cerveau.html)", VIZ.exists())
+          "des vues est demandée", f"viz {viz_kept} · index {index_kept} · demandes {asked} → {requests()}")
 idle()
+check(viz_kept and VIZ.exists() and VIZ.stat().st_mtime_ns != viz_before,
+      "fin de session : la tâche des vues refait la visualisation (cerveau.html)", VIZ.exists())
 
-with FileLock(LOCK, timeout=180):
-    if MARK.exists():
-        MARK.unlink()
+with vues.lock():
+    asked = requests()
     os.utime(INDEX_FILE, (old, old))
     index_before = INDEX_FILE.stat().st_mtime_ns
     hook("pre-compact", "e2", transcript_path=str(transcript))
-    check(INDEX_FILE.stat().st_mtime_ns == index_before and MARK.is_file(),
-          "avant une compaction : l'index n'est pas refait dans le hook, la tâche de fond le prépare", MARK.is_file())
+    check(INDEX_FILE.stat().st_mtime_ns == index_before and requests() > asked,
+          "avant une compaction : l'index n'est pas refait dans le hook, la tâche des vues le prépare",
+          f"demandes {asked} → {requests()}")
 idle()
 
 spec = json.loads((CODE / "hooks" / "hooks.json").read_text(encoding="utf-8"))["hooks"]
