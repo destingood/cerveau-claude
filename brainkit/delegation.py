@@ -434,6 +434,9 @@ def set_mode(value) -> str:
 def set_model(spec) -> str:
     """`--modele eclaireur=sonnet` (agent du cerveau), `Explore=off|haiku|sonnet` (type intégré), `nom=defaut`."""
     from .common import update_config
+    if "=" not in str(spec or ""):  # « --modele eclaireur » : une faute de frappe, pas un retour au modèle par défaut
+        return (f"✗ forme attendue : nom=modèle, pas « {spec} » (ex. `--modele eclaireur=sonnet` ; "
+                "`eclaireur=defaut` pour revenir au modèle par défaut)")
     name, _, value = str(spec or "").partition("=")
     name, value = name.strip(), value.strip().lower()
     known = list(AGENTS) + list(SEARCH) + ["general-purpose"]

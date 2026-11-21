@@ -627,10 +627,29 @@ def _status(dest: Path) -> list:
     return r.stdout.decode("utf-8", "replace").splitlines() if r.returncode == 0 else ["(git status a échoué)"]
 
 
+def _default_dest(cfg, repo=None):
+    """Dossier de publication sans argument. Le code est un clone git (CODE_DIR) : sur place s'il n'y a pas de dossier
+    retenu, ou si ce clone est celui du même dépôt GitHub (--repo, publish.repo, ou le remote du dossier retenu) ; le
+    dossier retenu sinon (clone d'un autre dépôt, ou dépôt impossible à lire)."""
+    kept = cfg.get("dir")
+    kept = Path(kept) if kept and Path(kept).is_dir() else None
+    if not (CODE_DIR / ".git").exists():
+        return kept
+    if kept is None or kept.resolve() == CODE_DIR.resolve():
+        return CODE_DIR
+    mine = origin_repo(CODE_DIR).lower()
+    want = (repo or cfg.get("repo") or origin_repo(kept)).lower().removesuffix(".git")
+    if mine and want and mine == want:
+        print(f"· publication sur place, depuis ce clone de {want} (dossier retenu {kept} laissé de côté)")
+        return CODE_DIR
+    return kept
+
+
 def run(dest=None, owner=None, repo=None, push=False, check=True) -> int:
     cfg = load_config().get("publish", {})
-    # Sans dossier donné ni retenu : le dossier du code lui-même, s'il est un clone git (publication sur place, D1).
-    dest = Path(dest or cfg.get("dir") or (CODE_DIR if (CODE_DIR / ".git").exists() else ""))
+    # Sans dossier donné : sur place quand le code tourne depuis un clone du même dépôt (D1), le dossier retenu
+    # seulement sinon. Avant, le dossier retenu passait devant : lancé depuis le clone, le plugin partait d'un autre.
+    dest = Path(dest or _default_dest(cfg, repo) or "")
     if not str(dest) or str(dest) == ".":
         print("✗ dossier du dépôt manquant : brain publish <dossier du clone GitHub> [--repo proprietaire/depot]")
         return 1
@@ -677,24 +696,45 @@ def run(dest=None, owner=None, repo=None, push=False, check=True) -> int:
     if not (dest / ".git").exists():
         print(f"· pas de dépôt git dans {dest} : clone d'abord ton dépôt GitHub ici (git clone …), puis relance")
         return 0
-    git = ["git", "-C", str(dest)]
-    subprocess.run(git + ["add", "-A", "--", "."] + [f":(exclude){d}" for d in sorted(AUTRES)], check=True)
-    if subprocess.run(git + ["diff", "--cached", "--quiet"]).returncode == 0:
+    from . import gitmsg
+
+    def git(*args, timeout=120, interactive=False):
+        """git -C <dépôt> … → (code, sortie) ; jamais d'exception (git absent, délai dépassé). interactive : l'envoi
+        peut demander une connexion à GitHub dans le terminal (git la lit au clavier, pas dans sa sortie)."""
+        quiet = {} if interactive else {"stdin": subprocess.DEVNULL, "env": {**os.environ, "GIT_TERMINAL_PROMPT": "0"}}
+        try:
+            r = subprocess.run(["git", "-C", str(dest), *args], capture_output=True, timeout=timeout, **quiet)
+            return r.returncode, (r.stdout + r.stderr).decode("utf-8", "replace").strip()
+        except subprocess.TimeoutExpired:
+            return 124, f"timed out after {timeout} s"
+        except OSError as exc:
+            return 127, str(exc)
+
+    code, out = git("add", "-A", "--", ".", *[f":(exclude){d}" for d in sorted(AUTRES)])
+    if code:
+        print("✗ " + gitmsg.explain(out, code, "préparation du commit") + " ; rien n'est publié")
+        return 1
+    if git("diff", "--cached", "--quiet")[0] == 0:
         print("✓ rien de nouveau depuis la dernière publication")
     else:
         tag = f"{NAME}--v{__version__}"
-        if subprocess.run(git + ["rev-parse", "-q", "--verify", f"refs/tags/{tag}"], capture_output=True).returncode == 0:
+        if git("rev-parse", "-q", "--verify", f"refs/tags/{tag}")[0] == 0:
             print(f"✗ la version {__version__} est déjà publiée (tag {tag}) : change __version__ (brainkit/__init__.py) "
                   f"pour que les amis reçoivent la mise à jour")
-            subprocess.run(git + ["reset", "-q"])
+            git("reset", "-q")
             return 1
-        subprocess.run(git + ["commit", "-q", "-m", f"cerveau {__version__}"], check=True)
-        subprocess.run(git + ["tag", "-a", tag, "-m", f"cerveau {__version__}"], check=True)  # annoté : --follow-tags
+        for args in (["commit", "-q", "-m", f"cerveau {__version__}"],
+                     ["tag", "-a", tag, "-m", f"cerveau {__version__}"]):  # tag annoté : --follow-tags
+            code, out = git(*args)
+            if code:
+                print("✗ " + gitmsg.explain(out, code, args[0]) + " ; rien n'est publié")
+                return 1
         print(f"✓ commit et tag {tag} prêts")
     if push:
-        r = subprocess.run(git + ["push", "--follow-tags", "origin", "HEAD"])
-        print("✓ publié : les amis recevront la mise à jour au prochain démarrage de Claude Code" if r.returncode == 0
-              else "✗ envoi refusé (connexion GitHub ?)")
-        return r.returncode
+        code, out = git("push", "--follow-tags", "origin", "HEAD", timeout=300, interactive=True)
+        print("✓ publié : les amis recevront la mise à jour au prochain démarrage de Claude Code" if code == 0
+              else "✗ " + gitmsg.explain(out, code, "envoi sur GitHub") + " ; le commit et le tag restent prêts, "
+              "`brain publish --push` les renverra")
+        return 0 if code == 0 else 1
     print("→ pour publier : brain publish --push (ou git push --follow-tags dans le dépôt)")
     return 0

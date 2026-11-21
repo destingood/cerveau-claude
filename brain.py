@@ -9,6 +9,12 @@ Usage : python brain.py <commande> …      (python brain.py -h pour l'aide comp
 import os
 import sys
 
+if sys.version_info < (3, 10):  # avant tout import du cerveau, qui suppose Python 3.10 ou plus récent
+    sys.stderr.buffer.write(("🧠 cerveau : Python %d.%d est trop ancien, il faut Python 3.10 ou plus récent "
+                             "(python.org ; README du cerveau, section « Prérequis »).\n" % sys.version_info[:2])
+                            .encode("utf-8", "replace"))
+    sys.exit(1)
+
 HERE = os.path.dirname(os.path.abspath(__file__))
 sys.path.insert(0, HERE)
 
