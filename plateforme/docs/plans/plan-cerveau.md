@@ -34,7 +34,8 @@ sauf les correctifs sûrs, faits tout de suite à ta demande.
    sans le dire ; étape 2 le 20/11, la sécurité restante (8.25.0) ; étape 3 le 21/11, le rappel (8.26.0) :
    le bon souvenir revient pour 58 questions sur 62, contre 33, sans faux rappel de plus ; étape 4 le 21/11, la
    vitesse (8.27.0) : à 3 000 souvenirs, chaque hook sous 150 ms, `brain add` de 2,1 s à 0,17 s ; étape 5 le 21/11,
-   la consommation (8.28.0) : 18 skills au lieu de 33, démarrage et outils MCP −30 %.
+   la consommation (8.28.0) : 18 skills au lieu de 33, démarrage et outils MCP −30 % ; étape 6 le 21/11, les erreurs
+   (8.29.0) : plus aucune trace Python ni message en anglais dans les 400 cas d'essai des commandes.
 6. **Attention, sous Windows.** `brain.exe`, la version Rust du cerveau, n'a pas changé depuis la
    8.18.2 du 10/11, et son code source n'est pas dans le dépôt. C'est lui qui exécute, sur ton PC, les
    hooks de session, le rappel, `done`, le verrou et le masquage des mots de passe. L'audit a mesuré
@@ -59,6 +60,7 @@ sauf les correctifs sûrs, faits tout de suite à ta demande.
 | 20/11 | « Continue le plan », puis « continue » | Étapes 2 (8.25.0) et 3 (8.26.0) faites |
 | 21/11 | Fusionner la 8.26.0 dès la CI verte ; étape suivante : la vitesse | 8.26.0 fusionnée ; étape 4 faite (8.27.0) |
 | 21/11 | Fusionner la 8.27.0 ; étape 5 ; regrouper les skills, E2, E8, outils MCP de la mémoire seulement | 8.27.0 fusionnée ; étape 5 faite (8.28.0) |
+| 21/11 | Garder l'injection du démarrage ; étape 6 ; E1 : pas de lanceur Python | 8.28.0 fusionnée ; étape 6 faite (8.29.0) |
 
 ## 2. Comment l'audit a été fait, et ses limites
 
@@ -189,16 +191,16 @@ les deux ensemble −30 %. Descriptions des skills listées : 29 758 → 4 180 c
 
 | Problème | Correction | Effort | Étape |
 |---|---|---|---|
-| `python` absent (Mac, Ubuntu) : « hook error » à chaque message et après chaque commande | Décision E1 : lanceur qui essaie python3, python puis py, ou consigne d'installation vérifiée par `brain doctor` | M | 6 |
-| « Stop hook feedback » : le cerveau bloque la fin d'une réponse pour rappeler de mémoriser | Décision E3 | S | 5 |
+| `python` absent (Mac, Ubuntu) : « hook error » à chaque message et après chaque commande | Décision E1 du 21/11 : **pas de lanceur** (mesuré sous Windows : +39 ms par hook avec Git Bash, +200 à +280 ms sans) ; les hooks gardent `python`, `brain doctor` vérifie le `python` des hooks et sa version, et un Python avant 3.10 est refusé par une ligne en français | M | 6 |
+| « Stop hook feedback » : le cerveau bloque la fin d'une réponse pour rappeler de mémoriser | ✅ Seulement sur une phrase durable pas encore enregistrée (E3) | S | 2 |
 | Traces Python en anglais : graphe illisible, dossier en lecture seule, fichier absent | ✅ Message en français avec la marche à suivre | S | 1 |
 | `brain pc` plante sous Mac et Linux | ✅ Message clair | S | 1 |
-| `brain config clé valeur` accepte n'importe quoi (« abc » pour un nombre), et une seule valeur fausse casse l'injection | Vérifier le type et la clé avant d'écrire | M | 6 |
-| Code de sortie 0 sur un échec (`deps`, `explain`, `echange voir`…), valeurs négatives acceptées | Code 1 et message clair | S | 6 |
-| Messages de git bruts ou trompeurs (« ✓ à jour » quand le dépôt est injoignable) | Messages en français avec la marche à suivre | S | 6 |
-| Serveur MCP : erreurs en anglais ; une valeur qui commence par « - » est prise pour une option | Vérifier les arguments, message en français | M | 6 |
-| `brain tokens` plante sur une ligne de transcript sans compteur | La sauter | S | 6 |
-| `brain publish` sans dossier reprend le dernier dossier retenu au lieu de publier sur place depuis le clone (vu le 20/11) | Depuis un clone du même dépôt : sur place, le dossier retenu seulement sinon | S | 6 |
+| `brain config clé valeur` accepte n'importe quoi (« abc » pour un nombre), et une seule valeur fausse casse l'injection | ✅ Clé, type et bornes vérifiés avant d'écrire, avec un exemple ; une valeur fausse déjà enregistrée reprend son défaut, et tu en es prévenu une fois | M | 6 |
+| Code de sortie 0 sur un échec (`deps`, `explain`, `echange voir`…), valeurs négatives acceptées | ✅ Code 1 et message clair (2 pour une commande mal écrite) | S | 6 |
+| Messages de git bruts ou trompeurs (« ✓ à jour » quand le dépôt est injoignable) | ✅ Une phrase en français : ce qui s'est passé et quoi faire (wiki, publication) | S | 6 |
+| Serveur MCP : erreurs en anglais ; une valeur qui commence par « - » est prise pour une option | ✅ Arguments vérifiés, réponses en français, jamais de trace Python | M | 6 |
+| `brain tokens` plante sur une ligne de transcript sans compteur | ✅ Sautée | S | 6 |
+| `brain publish` sans dossier reprend le dernier dossier retenu au lieu de publier sur place depuis le clone (vu le 20/11) | ✅ Depuis un clone du même dépôt : sur place, le dossier retenu seulement sinon | S | 6 |
 
 ## 5. Sécurité et confidentialité
 
@@ -396,9 +398,16 @@ hook au-dessus de 150 ms, premier démarrage après un changement compris ; `bra
 - Toi, si tu as aussi l'installation classique : `brain self-update --force` une fois (beaucoup de fichiers de skills
   disparaissent). Une skill de ton compte claude.ai reste à désactiver toi-même (§4.3).
 
-**Étape 6 — Erreurs et messages** (§4.4), dont la décision E1 sur `python`.
-- Fin : aucune trace Python dans les 400 cas d'essai des commandes ; `brain config` refuse une valeur
-  fausse ; hooks qui tournent sur un Mac sans `python`.
+**Étape 6 — Erreurs et messages** (§4.4) : **faite le 21/11** (PR #27, cerveau 8.29.0).
+- Les 400 cas d'essai des commandes de l'audit : plus aucune trace Python, aucun échec avec le code 0, aucun message en
+  anglais (sur la 8.28.0 : 17 échecs avec le code 0 et 33 messages en anglais) ; `tests/test_erreurs.py` en rejoue 80.
+- `brain config` refuse une clé inconnue, un mauvais type ou une valeur hors bornes ; une valeur fausse déjà enregistrée
+  n'empêche plus le démarrage.
+- Messages de git, du serveur MCP, du réseau et du système en français ; `brain tokens`, `brain publish` corrigés ;
+  `brain q` et le serveur MCP prennent l'analyse en cache comme les hooks.
+- Hooks sur un Mac sans `python` : **non** (ta décision E1 du 21/11, après la mesure du lanceur sous Windows). Un Mac ou
+  un Linux sans `python` crée l'alias ; `brain doctor` et le README disent comment.
+- Corrigé au passage pour Python 3.10 et 3.11 : messages d'argparse traduits, outils MCP de la boutique.
 
 **Étape 7 — Ne plus perdre de souvenir** (§6).
 - Fin (tests) : graphe abîmé réparé sans perte des souvenirs de la dernière demi-heure ; wiki sur deux
@@ -457,7 +466,7 @@ Amélioration continue, puis N3 domaine par domaine. N4 reste hors du plan.
 
 | # | Décision | Ma recommandation |
 |---|---|---|
-| E1 | `python` absent sur Mac et Linux | Un petit lanceur qui essaie python3, python puis py, essayé sur un Windows sans Git Bash avant de le livrer |
+| E1 | `python` absent sur Mac et Linux | **Tranché le 21/11 : pas de lanceur**, Python direct (le lanceur coûtait +39 ms par hook sous Windows avec Git Bash, +200 à +280 ms sans) |
 | E2 | Place des skills dans le contexte (mode éco : 0,5 %) | **Tranché le 21/11 : 0,5 % et `skillListingMaxDescChars` à 250** (étape 5) |
 | E3 | Rappel de mémoriser en fin de tâche (hook Stop) | **Tranché le 20/11 : seulement quand une phrase durable a été dite, texte deux fois plus court** (étape 2) |
 | E4 | Seuil du rappel (`min_cov`) | **Réglé par le banc d'essai de l'étape 3 : 0,5 reste**, 0,4 rappelait un mauvais souvenir |
