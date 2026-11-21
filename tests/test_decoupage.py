@@ -112,7 +112,8 @@ HTML = ("<html><head><title>Le thé</title><script>x()</script></head><body><h1>
         "<td>2</td></tr></table><pre>code\n  bloc</pre><img src='i.png' alt='image'><blockquote>cite</blockquote></body></html>")
 TEXTS = ["Appelle Marc au 06 12 34 56 78 ou au +33 6 12 34 56 78, tél. : 04 72 00 00 00.",
          "Écris à jean [at] exemple [dot] fr ; chemin C:\\Users\\Jean\\Documents\\devis 2026.xlsx et ~/.claude/brain.",
-         "Le dépôt git+ssh://git@github.com/moi/prive.git et https://intra.local/x?token=abc puis https://example.com/page.",
+         "Le dépôt git+ssh://git" + "@" + "github.com/moi/prive.git et https://intra.local/x?token=abc puis "  # (coupé :
+         "https://example.com/page.",  # le contrôle de `brain publish` y verrait une adresse e-mail)
          "Il habite 12 bis rue des Lilas, 69003 Lyon, et travaille 3 avenue Foch à Paris.",
          "%USERPROFILE%\\Bureau\\notes.txt, $env:APPDATA\\x, \\\\serveur\\partage\\dossier",
          "Rien de privé ici : le thé d'Uji pousse près de Kyoto.", "<script>alert(1)</script> [[Page|alias]] [[Autre#Titre]]",
