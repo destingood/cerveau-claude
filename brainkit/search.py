@@ -30,22 +30,33 @@ class Index:
     fuzzy = True  # rapprochement phonétique / fautes de frappe pour les mots absents de l'index
     code = False  # index de fichiers et de symboles : toutes les troncatures de 4 lettres y sont gardées (voir expand)
     subword = False  # encodeur de sous-mots (trigrammes) pour un mot inconnu sans autre piste : index des souvenirs
+    sig = None  # empreinte du savoir de l'index des souvenirs gardé (memory_index) ; None : construit à la volée
+    # Index des souvenirs relu de memidx.bin : {mot: (n° des documents, fréquences)} en octets, décodés au premier usage
+    # de chaque mot (posting). Avant, relire les fréquences de chaque souvenir (un dictionnaire par souvenir) prenait
+    # 12 ms à chaque message à 3 000 souvenirs, 45 ms à 10 000 ; une recherche ne lit que les mots de la question.
+    _pk = None
 
     def __init__(self, docs=()):
         self.keys, self.tfs, self.named = [], [], {}
         for key, fields in docs:
-            tf, nm = Counter(), Counter()
-            for text, weight in fields:
-                if text:
-                    for tok in tokenize(text):
-                        tf[tok] += weight
-                    for tok in faux_amis(text):  # faux amis (« Microsoft Store ») : occurrences ignorées par les synonymes
-                        nm[tok] += weight
+            tf, nm = self.doc(fields)
             if nm:
                 self.named[len(self.keys)] = dict(nm)
             self.keys.append(key)
             self.tfs.append(tf)
         self._finalize()
+
+    @staticmethod
+    def doc(fields) -> tuple:
+        """Champs d'un document [(texte, poids)] → (fréquences pondérées de ses mots, de ses faux amis) : Counter."""
+        tf, nm = Counter(), Counter()
+        for text, weight in fields:
+            if text:
+                for tok in tokenize(text):
+                    tf[tok] += weight
+                for tok in faux_amis(text):  # faux amis (« Microsoft Store ») : occurrences ignorées par les synonymes
+                    nm[tok] += weight
+        return tf, nm
 
     @classmethod
     def from_tfs(cls, keys, tfs):
@@ -56,14 +67,91 @@ class Index:
 
     @classmethod
     def from_state(cls, d):
-        """Index déjà calculé (cache marshal) : aucune reconstruction."""
+        """Index déjà calculé (cache marshal) : aucune reconstruction. `pk` (index des souvenirs) : les fréquences
+        restent en octets jusqu'à ce qu'une recherche en ait besoin."""
         obj = cls.__new__(cls)
-        obj.keys, obj.tfs, obj.lens = d["keys"], d["tfs"], d["lens"]
+        obj.keys, obj.lens = d["keys"], d["lens"]
         obj.N = len(obj.keys)
         obj.avgdl = (sum(obj.lens) / obj.N) if obj.N else 1.0
-        obj.df, obj.post, obj.by_prefix = d["df"], d["post"], d["pre"]
+        obj.df, obj.by_prefix = d["df"], d["pre"]
         obj.named = d.get("named") or {}
+        if d.get("pk") is not None:
+            obj._pk, obj._dec, obj._tfm = d["pk"], {}, {}
+        else:
+            obj.tfs, obj.post = d["tfs"], d["post"]
         return obj
+
+    def __getattr__(self, name):
+        """Index gardé (_pk) : les tables entières (fréquences de chaque document, documents de chaque mot), refaites
+        seulement si quelqu'un les demande — la recherche, elle, passe par posting()."""
+        if name in ("tfs", "post") and self._pk is not None:
+            tfs, post = [{} for _ in self.keys], {}
+            for tok in self._pk:
+                docs, vals = self.posting(tok)
+                post[tok] = docs
+                for i, f in zip(docs, vals):
+                    tfs[i][tok] = f
+            self.tfs, self.post = tfs, post
+            return tfs if name == "tfs" else post
+        raise AttributeError(name)
+
+    def posting(self, tok) -> tuple:
+        """(documents qui contiennent `tok`, dans l'ordre ; sa fréquence pondérée dans chacun)."""
+        if self._pk is None:
+            docs = self.post.get(tok, ())
+            return docs, [self.tfs[i][tok] for i in docs]
+        got = self._dec.get(tok)
+        if got is None:
+            raw = self._pk.get(tok)
+            got = self._dec[tok] = (memoryview(raw[0]).cast("I").tolist(), memoryview(raw[1]).cast("d").tolist()) \
+                if raw else ((), ())
+        return got
+
+    def docs(self, tok):
+        """Documents qui contiennent `tok`, dans l'ordre."""
+        return self.post.get(tok, ()) if self._pk is None else self.posting(tok)[0]
+
+    def doc_tf(self, i, toks) -> dict:
+        """Fréquences pondérées des mots `toks` dans le document i ({mot: fréquence}, mots absents omis ; index construit
+        en mémoire : toutes celles du document)."""
+        if self._pk is None:
+            return self.tfs[i]
+        out = {}
+        for tok in toks:
+            m = self._tfm.get(tok)
+            if m is None:
+                m = self._tfm[tok] = dict(zip(*self.posting(tok)))
+            f = m.get(i)
+            if f is not None:
+                out[tok] = f
+        return out
+
+    def _query_tfs(self, exp) -> dict:
+        """Index gardé : {document: {variante: fréquence}} des seules variantes de la requête (`exp`, voir search)."""
+        out = {}
+        for vs in exp.values():
+            for v, *_ in vs:
+                docs, vals = self.posting(v)
+                for i, f in zip(docs, vals):
+                    d = out.get(i)
+                    if d is None:
+                        out[i] = {v: f}
+                    else:
+                        d[v] = f
+        return out
+
+    def packed(self) -> dict:
+        """{mot: (n° des documents, fréquences)} en octets (voir _pk) : l'index des souvenirs tel que memidx.bin le garde."""
+        from array import array
+        vals = {}
+        for tf in self.tfs:  # (dans l'ordre des documents, comme post)
+            for tok, f in tf.items():
+                got = vals.get(tok)
+                if got is None:
+                    vals[tok] = [f]
+                else:
+                    got.append(f)
+        return {tok: (array("I", docs).tobytes(), array("d", vals[tok]).tobytes()) for tok, docs in self.post.items()}
 
     def _finalize(self):
         self.lens = [sum(tf.values()) or 1.0 for tf in self.tfs]
@@ -213,12 +301,13 @@ class Index:
         cand = set()
         for q in qterms:
             for v, *_ in exp[q]:
-                cand.update(self.post.get(v, ()))
+                cand.update(self.docs(v))
+        tfs = self.tfs if self._pk is None else self._query_tfs(exp)
         nms = getattr(self, "named", None) or {}
         vs = {q: {q} | {v for v, *_ in exp[q]} for q in qterms}  # formes trouvées de chaque terme (proximité, plus bas)
         results = []
         for i in cand:
-            tf, dl, nm = self.tfs[i], self.lens[i], nms.get(i)
+            tf, dl, nm = tfs[i], self.lens[i], nms.get(i)
             norm = K1 * (1 - B + B * dl / self.avgdl)
             score = midf = 0.0
             matched = strong = loose = 0
@@ -245,7 +334,8 @@ class Index:
         return results[:limit]
 
 
-MEMIDX_TAG = f"m6:{sys.version_info[0]}.{sys.version_info[1]}"  # m6 : stem() garde « refus », faux amis du port
+# m6 : stem() garde « refus », faux amis du port ; m7 : fréquences en octets (Index._pk), dans l'ordre des octets d'ici
+MEMIDX_TAG = f"m7:{sys.version_info[0]}.{sys.version_info[1]}:{sys.byteorder[0]}"
 _LOADED = {}  # index des souvenirs déjà chargé dans ce processus : {fichier: (empreinte, index)}
 
 
@@ -261,6 +351,34 @@ def _mem_sig(brain) -> str:
     return h.hexdigest()
 
 
+def knowledge_sig(brain) -> str:
+    """_mem_sig(brain) sans relire tout le savoir à chaque message : calculée une fois par cerveau chargé (pas modifié
+    depuis : Brain.dirty l'efface), et d'un processus à l'autre reprise de state/memidx.key tant que graph.json est le
+    même fichier, octet pour octet (Brain.stamp : taille, date, n° de fichier, CRC). Un compteur de rappel écrit dans
+    graph.json change l'empreinte du fichier : l'empreinte du savoir est alors recalculée une fois, puis reprise."""
+    sig = getattr(brain, "_memsig", None)
+    if sig:
+        return sig
+    from .common import STATE_DIR, read_json, write_json
+    stamp, key = getattr(brain, "stamp", None), STATE_DIR / "memidx.key"
+    known = read_json(key, None) if stamp else None
+    if isinstance(known, dict) and known.get("stamp") == stamp and known.get("tag") == MEMIDX_TAG \
+            and isinstance(known.get("sig"), str):
+        sig = known["sig"]
+    else:
+        sig = _mem_sig(brain)
+        if stamp:
+            try:
+                write_json(key, {"tag": MEMIDX_TAG, "stamp": stamp, "sig": sig}, indent=None)
+            except OSError:
+                pass
+    try:
+        brain._memsig = sig
+    except AttributeError:
+        pass
+    return sig
+
+
 def memory_index(brain, include_archived=False, use_cache=True) -> Index:
     """Index des souvenirs, relu depuis state/memidx.bin (avec ses tables phonétiques et de fautes) tant que le
     savoir n'a pas changé : le rappel à chaque message n'a plus rien à reconstruire."""
@@ -268,7 +386,7 @@ def memory_index(brain, include_archived=False, use_cache=True) -> Index:
         return _build_memory_index(brain, include_archived)
     from .common import STATE_DIR
     path = STATE_DIR / "memidx.bin"
-    sig = _mem_sig(brain)
+    sig = knowledge_sig(brain)
     hit = _LOADED.get(str(path))
     if hit and hit[0] == sig:
         return hit[1]
@@ -278,37 +396,71 @@ def memory_index(brain, include_archived=False, use_cache=True) -> Index:
         if blob.get("tag") == MEMIDX_TAG and blob.get("sig") == sig:
             idx = Index.from_state(blob)
             idx._phon, idx._del, idx._root, idx._tri = blob["phon"], blob["del"], blob["root"], blob["tri"]
-            idx.subword = True
+            idx.subword, idx.sig = True, sig
             _LOADED[str(path)] = (sig, idx)
             return idx
     except Exception:
         pass
-    idx = _build_memory_index(brain, False)
+    # Savoir changé : l'index est refait, mais un souvenir dont les champs n'ont pas bougé n'est pas redécoupé (ses mots
+    # sont gardés à côté, dans memidx-docs.bin). Avant, chaque ajout faisait tout redécouper au message suivant :
+    # 250 ms à 3 000 souvenirs, 1,2 s à 10 000.
+    words = path.with_name(DOCS_FILE)
+    try:
+        with open(words, "rb") as fh:
+            got = marshal.loads(fh.read())
+        reuse = got["docs"] if isinstance(got, dict) and got.get("tag") == MEMIDX_TAG else {}
+    except Exception:
+        reuse = {}
+    keep = {}
+    idx = _build_memory_index(brain, False, reuse=reuse, keep=keep)
     ph, dl, rt = idx._fuzzy_maps()
+    idx.sig = sig  # (même savoir : les dates citées par les souvenirs se gardent avec lui, voir _cited)
     _LOADED[str(path)] = (sig, idx)
     try:
-        blob = {"tag": MEMIDX_TAG, "sig": sig, "keys": idx.keys, "tfs": [dict(t) for t in idx.tfs], "lens": idx.lens,
-                "df": dict(idx.df), "post": dict(idx.post), "pre": dict(idx.by_prefix), "phon": ph, "del": dl, "root": rt,
+        blob = {"tag": MEMIDX_TAG, "sig": sig, "keys": idx.keys, "pk": idx.packed(), "lens": idx.lens,
+                "df": dict(idx.df), "pre": dict(idx.by_prefix), "phon": ph, "del": dl, "root": rt,
                 "tri": idx._tri_maps(), "named": idx.named}
         path.parent.mkdir(parents=True, exist_ok=True)
-        tmp = path.with_name(f"memidx.{os.getpid()}.tmp")
-        with open(tmp, "wb") as fh:
-            fh.write(marshal.dumps(blob))
-        os.replace(tmp, path)
+        for target, data in ((path, blob), (words, {"tag": MEMIDX_TAG, "docs": keep})):
+            tmp = target.with_name(f"{target.name}.{os.getpid()}.tmp")
+            with open(tmp, "wb") as fh:
+                fh.write(marshal.dumps(data))
+            os.replace(tmp, target)
     except Exception:
         pass
     return idx
 
 
-def _build_memory_index(brain, include_archived=False) -> Index:
-    docs = []
+DOCS_FILE = "memidx-docs.bin"  # mots de chaque souvenir indexé : {id: (empreinte de ses champs, fréquences, faux amis)}
+
+
+def _build_memory_index(brain, include_archived=False, reuse=None, keep=None) -> Index:
+    """Index des souvenirs (titre, étiquettes, mots-clés, contenu). `reuse` : {id: (empreinte des champs, fréquences, faux
+    amis)} d'un index précédent — un souvenir aux champs inchangés n'est pas redécoupé, l'index est le même ; `keep` :
+    rempli de même pour le suivant."""
+    keys, tfs, named = [], [], {}
     for n in brain.nodes.values():
         if not include_archived and n.get("status", "active") != "active":
             continue
-        keys = (n.get("meta") or {}).get("keys") or ""  # mots-clés, synonymes, questions types donnés à l'écriture
-        docs.append((n["id"], [(n["title"], 3.0), (" ".join(n.get("tags") or []), 2.2), (keys, 1.6),
-                               (n.get("body", ""), 1.0)]))
-    idx = Index(docs)
+        meta_keys = (n.get("meta") or {}).get("keys") or ""  # mots-clés, synonymes, questions types donnés à l'écriture
+        fields = [(n["title"], 3.0), (" ".join(n.get("tags") or []), 2.2), (meta_keys, 1.6), (n.get("body", ""), 1.0)]
+        fp = hit = None
+        if reuse is not None or keep is not None:
+            fp = hashlib.sha1("".join(f"{len(t)}:{t}" for t, _ in fields).encode("utf-8", "surrogatepass")).digest()
+            hit = (reuse or {}).get(n["id"])
+        if hit is not None and hit[0] == fp:
+            tf, nm = hit[1], hit[2]
+        else:
+            tf, nm = Index.doc(fields)
+            tf, nm = dict(tf), dict(nm)
+        if keep is not None:
+            keep[n["id"]] = (fp, tf, nm)
+        if nm:
+            named[len(keys)] = nm
+        keys.append(n["id"])
+        tfs.append(tf)
+    idx = Index.from_tfs(keys, tfs)
+    idx.named = named
     idx.subword = True
     return idx
 
@@ -587,8 +739,53 @@ def _month_spans(text, ref) -> list:
     return out
 
 
-def _periods(n) -> tuple:
-    """→ (périodes dont parle le souvenir : jours et mois cités, échéance, fin de validité ; jours où il a été écrit)."""
+class _Cited(dict):
+    """{id: (jour de référence, [(début, fin)] en jours ordinaux)} : les périodes que cite le texte de chaque souvenir."""
+    changed = False
+
+
+CITED_FILE = "memidx-dates.bin"
+
+
+def _cited(idx):
+    """Périodes déjà lues dans le texte des souvenirs (_Cited), gardées à côté de l'index (state/memidx-dates.bin) pour le
+    même savoir : le texte d'un souvenir ne change pas sans changer l'empreinte de l'index, et sa date de référence (écrit
+    le) est revérifiée à chaque fois. Avant, une question datée relisait les dates de tous les souvenirs du sujet (+40 ms
+    à 3 000 souvenirs). None : index construit à la volée, rien à garder."""
+    if idx.sig is None:
+        return None
+    got = getattr(idx, "_cited", None)
+    if got is None:
+        from .common import STATE_DIR
+        got = _Cited()
+        try:
+            with open(STATE_DIR / CITED_FILE, "rb") as fh:
+                blob = marshal.loads(fh.read())
+            if blob.get("tag") == MEMIDX_TAG and blob.get("sig") == idx.sig:
+                got.update(blob["cited"])
+        except Exception:
+            pass
+        idx._cited = got
+    return got
+
+
+def _keep_cited(idx, cited) -> None:
+    from .common import STATE_DIR
+    try:
+        path = STATE_DIR / CITED_FILE
+        tmp = path.with_name(f"{CITED_FILE}.{os.getpid()}.tmp")
+        with open(tmp, "wb") as fh:
+            fh.write(marshal.dumps({"tag": MEMIDX_TAG, "sig": idx.sig, "cited": dict(cited)}))
+        os.replace(tmp, path)
+        cited.changed = False
+    except Exception:
+        pass
+
+
+def _periods(n, cited=None) -> tuple:
+    """→ (périodes dont parle le souvenir : jours et mois cités, échéance, fin de validité ; jours où il a été écrit).
+    `cited` : périodes déjà lues dans les textes (_cited), reprises si la date de référence n'a pas bougé, complétées
+    sinon."""
     import datetime as _dt
     from . import dates
 
@@ -600,8 +797,15 @@ def _periods(n) -> tuple:
 
     written = [d for d in (day(n.get("created")), day(n.get("updated"))) if d]
     ref = written[0] if written else _dt.date.today()
-    text = f"{n.get('title', '')}\n{n.get('body', '')}"
-    about = [(d, d) for d in dates.dates_in(text, ref)] + _month_spans(text, ref) if _MAYBE_DATED.search(text) else []
+    hit = cited.get(n["id"]) if cited is not None and written else None  # (sans date d'écriture : aujourd'hui, à relire)
+    if hit is not None and hit[0] == ref.toordinal():
+        about = [(_dt.date.fromordinal(a), _dt.date.fromordinal(b)) for a, b in hit[1]]
+    else:
+        text = f"{n.get('title', '')}\n{n.get('body', '')}"
+        about = [(d, d) for d in dates.dates_in(text, ref)] + _month_spans(text, ref) if _MAYBE_DATED.search(text) else []
+        if cited is not None and written:
+            cited[n["id"]] = (ref.toordinal(), [(a.toordinal(), b.toordinal()) for a, b in about])
+            cited.changed = True
     meta = n.get("meta") or {}
     about += [(d, d) for d in (day(meta.get(k)) for k in ("valid_to", "due", "done")) if d]
     return about, written
@@ -632,8 +836,10 @@ def dated_recall(brain, raw, query, project=None, today=None, limit=3, use_cache
     if len(terms) > DATED_TOPIC:
         return []
     idx = memory_index(brain, use_cache=use_cache)
+    read = _cited(idx)  # périodes déjà lues dans les textes
     hits = {r["key"]: r for r in idx.search(topic, limit=10 ** 6)} if terms else {}
     forms = {t: {t} | {v for v, _, _, _, approx in idx.variants(t) if not approx} for t in terms}
+    holds = {f: set(idx.docs(f)) for fs in forms.values() for f in fs}  # documents de chaque forme
     pos = {k: i for i, k in enumerate(idx.keys)}
     span = (end - start).days + 2  # un mois cité ne dit rien d'un jour (« en novembre » n'est pas « hier »)
     mid = start + (end - start) / 2
@@ -644,17 +850,17 @@ def dated_recall(brain, raw, query, project=None, today=None, limit=3, use_cache
         # Le sujet d'abord, les dates ensuite : le premier tri ne coûte que des recherches dans l'index (avant : les dates
         # de chacun des 3 000 souvenirs analysées, 170 ms de plus par question datée).
         if terms:  # la moitié au moins des mots du sujet, dans le souvenir ou dans le titre de son projet
-            tf = idx.tfs[pos[n["id"]]] if n["id"] in pos else {}
+            i = pos.get(n["id"])
             pid = n.get("project")
             if pid not in homes:
                 home = brain.nodes.get(pid) if pid else None
                 homes[pid] = set(tokenize(home["title"])) if home else set()
             title = homes[pid]
-            if 2 * sum(1 for fs in forms.values() if any(f in tf or f in title for f in fs)) < len(terms):
+            if 2 * sum(1 for fs in forms.values() if any(i in holds[f] or f in title for f in fs)) < len(terms):
                 continue
         elif project and n.get("project") != project:
             continue
-        about, written = _periods(n)
+        about, written = _periods(n, read)
         cited = [a + (b - a) / 2 for a, b in about if a <= end and b >= start and (b - a).days <= span]
         when = [d for d in written if start <= d <= end]
         if not cited and not when:
@@ -662,6 +868,8 @@ def dated_recall(brain, raw, query, project=None, today=None, limit=3, use_cache
         own = hits.get(n["id"])
         cands.append((not cited, bool(about) and not cited, -(own["score"] if own else 0.0), n.get("project") != project,
                       min(abs((d - mid).days) for d in cited or when), n["id"], own, n))
+    if read is not None and read.changed:
+        _keep_cited(idx, read)
     if any(not c[0] for c in cands):
         cands = [c for c in cands if not c[1]]
     cands.sort(key=lambda c: c[:6])

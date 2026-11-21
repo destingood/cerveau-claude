@@ -10,6 +10,8 @@ from .common import CLAUDE_HOME, STATE_DIR, is_scratch, read_json, write_json
 from .store import Brain, normalize_type
 
 STATE_FILE = STATE_DIR / "automem.json"
+MAX_KB = 64  # au-delà, ce n'est plus une note de mémoire (journal collé, export…) : un fichier de 63 Mo prenait 34 s et
+# 788 Mo de mémoire au démarrage. Ignoré, avec un avertissement ; `brain import --max-ko 0` l'importe quand même.
 # Types de la mémoire native → types du cerveau (« project » natif = fait sur un travail en cours, pas un dossier).
 NATIVE_TYPES = {"project": "fact", "user": "user", "feedback": "feedback", "reference": "reference"}
 FRONT = re.compile(r"^﻿?---\s*\r?\n(.*?)\r?\n---\s*\r?\n?(.*)$", re.S)
@@ -75,19 +77,48 @@ def _signature(files) -> str:
     return ";".join(parts)
 
 
-def sync(force=False, dry=False) -> list:
+def _size(f) -> int:
+    try:
+        return f.stat().st_size
+    except OSError:
+        return 0
+
+
+def too_big_line(skipped) -> str:
+    """Avertissement d'une ligne pour les fichiers ignorés par `sync` (trop gros), ou ''."""
+    if not skipped:
+        return ""
+    path, size = skipped[0]
+    more = f" (et {len(skipped) - 1} autre(s))" if len(skipped) > 1 else ""
+    return (f"⚠ Cerveau : mémoire de Claude Code non importée, fichier de {round(size / 1024)} Ko (plus de {MAX_KB} Ko) : "
+            f"{path}{more} — pour l'importer quand même : `brain import --max-ko 0`")
+
+
+def sync(force=False, dry=False, max_kb=MAX_KB, skipped=None) -> list:
+    """Mémoire native (~/.claude/projects/*/memory/*.md) → cerveau, seulement ce qui a changé. Un fichier de plus de
+    `max_kb` Ko (0 : sans limite) n'est pas lu : il va dans `skipped` [(chemin, taille)]. Une limite plus haute que
+    MAX_KB relit les dossiers qui avaient un fichier ignoré, même inchangés."""
     root = CLAUDE_HOME / "projects"
     if not root.is_dir():
         return []
     state = read_json(STATE_FILE, {}) or {}
-    todo = []
+    limit = max_kb * 1024 if max_kb and max_kb > 0 else None
+    todo, quiet = [], False
     for memdir in sorted(root.glob("*/memory")):
         files = [f for f in memdir.glob("*.md") if f.name.lower() != "memory.md"]
         if not files:
             continue
         sig = _signature(files)
         key = memdir.parent.name
-        if not force and state.get(key) == sig:
+        wider = (limit is None or limit > MAX_KB * 1024) and any(_size(f) > MAX_KB * 1024 for f in files)
+        if not force and state.get(key) == sig and not wider:
+            continue
+        big = [f for f in files if limit is not None and _size(f) > limit]
+        if skipped is not None:
+            skipped.extend((str(f), _size(f)) for f in sorted(big))
+        files = [f for f in files if f not in big]
+        if not files:  # seulement des fichiers trop gros : rien à lire, le dossier est vu (pas d'avertissement répété)
+            state[key], quiet = sig, True
             continue
         titles = {}
         index_md = memdir / "MEMORY.md"
@@ -98,6 +129,8 @@ def sync(force=False, dry=False) -> list:
                     titles[m.group(2).strip()] = m.group(1).strip()
         todo.append((key, sig, _cwd_for(memdir.parent), files, titles))
     if dry or not todo:
+        if quiet and not dry:
+            write_json(STATE_FILE, state)
         return [("à importer", key, len(files)) for key, _, _, files, _ in todo]
     report = []
     with Brain.edit() as b:

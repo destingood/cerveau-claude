@@ -191,6 +191,9 @@ def is_stale() -> bool:
     try:
         if GRAPH_FILE.stat().st_mtime > t:
             return True
+        from .store import COUNTERS_FILE  # compteurs de rappel en attente (montrés dans la vue), hors de graph.json
+        if COUNTERS_FILE.exists() and COUNTERS_FILE.stat().st_mtime > t:
+            return True
         if any(b.stat().st_mtime > t for b in (BRAIN_DIR / "boutiques").glob("*.json")):  # boutique suivie modifiée
             return True
         return any(m.stat().st_mtime > t for m in PROJECTS_DIR.glob("*/map.json"))
@@ -208,7 +211,7 @@ def render(brain=None):
     from . import graph, wikistore
     from .viz3d import LIBS, TEMPLATE_3D
     brain = brain or Brain.load()
-    an = graph.ensure(brain)
+    an = graph.ensure(brain, wait=True)  # la vue montre l'analyse : toujours à jour, même lancée depuis un hook
     wroot = wikistore.root()
     wfiles = ((brain.data.get("wiki") or {}).get("files") or {}) if wroot else {}
     comm, prs, deg = an.get("comm", {}), an.get("pr", {}), an.get("deg", {})
