@@ -1481,13 +1481,17 @@ def on_session_end(data, cfg, event="session-end"):
         except Exception as exc:
             log(f"skills (usage) : {exc!r}")
     save_state(sid, st)
-    brain = Brain.load()
-    proj = brain.project_for_path(tx.get("cwd") or data.get("cwd") or st.get("cwd") or "")
+    from . import wikistore
+    # Le projet du dossier suffit (project_of : sans relire graph.json s'il n'a pas changé) ; le wiki, lui, lit le cerveau
+    brain = Brain.load() if event == "session-end" and wikistore.resolve()[0] != "classic" else None
+    pid = project_of(tx.get("cwd") or data.get("cwd") or st.get("cwd") or "", brain)
     if cfg["journal"]["enabled"]:
-        journal.upsert(sid, tx, proj["id"] if proj else None, cfg["journal"]["keep"])
-    path = _project_path(proj)
-    if event == "session-end" and path and tx.get("edits") and cfg["auto_map"]["enabled"]:
-        spawn_background(["map", path, "-p", proj["id"], "--quiet"])
+        journal.upsert(sid, tx, pid, cfg["journal"]["keep"])
+    if event == "session-end" and pid and tx.get("edits") and cfg["auto_map"]["enabled"]:
+        brain = brain or Brain.load()
+        path = _project_path(brain.nodes.get(pid))
+        if path:
+            spawn_background(["map", path, "-p", pid, "--quiet"])
     if event == "session-end":  # entretien et sauvegarde automatiques, une fois par jour (en arrière-plan)
         for args in daily_due(cfg):
             spawn_background(args)
@@ -1499,9 +1503,11 @@ def on_session_end(data, cfg, event="session-end"):
         vues.request()
     except Exception as exc:
         log(f"vues ({event}) : {exc!r}")
-    if event == "session-end" and (brain.data.get("wiki") or {}).get("root") and not brain.data["wiki"].get("missing"):
+    if event == "session-end" and brain is not None and (brain.data.get("wiki") or {}).get("root") \
+            and not brain.data["wiki"].get("missing"):
         try:  # wiki : index.md, entrée « session » au journal, puis commit + pull + push en arrière-plan
             from . import wiki
+            proj = brain.nodes.get(pid) if pid else None
             wiki.session_close(brain, proj["title"] if proj else None)
             if _auto_sync(brain, cfg):
                 spawn_background(["wiki", "sync", "--auto"])

@@ -230,7 +230,8 @@ def rebuild(brain, cfg=None) -> str:
     text = build_index(brain, cfg)
     write_text(INDEX_FILE, text)
     try:  # BRAIN.md tout juste refait : le prochain démarrage hors projet le reprend tel quel
-        _start_put("", {"key": _start_key(brain, cfg, None), "text": text, "previews": []})
+        content, sig = _known(brain, _start_items().get(""))
+        _start_put("", _entry(brain, _start_key(brain, cfg, None, content), text, [], content, sig))
     except Exception as exc:
         log(f"index du démarrage (BRAIN.md) : {exc!r}")
     return text
@@ -243,13 +244,16 @@ def ensure_index(brain, cfg=None, sig=None) -> str:
     souvenirs."""
     cfg = cfg or load_config()
     try:
-        key = _start_key(brain, cfg, None, sig)
         hit = _start_items().get("")
+        content, sig = _known(brain, hit, sig)
+        key = _start_key(brain, cfg, None, content)
     except Exception as exc:
         log(f"index du démarrage (empreinte) : {exc!r}")
         key = hit = None
     hit = hit if isinstance(hit, dict) and isinstance(hit.get("text"), str) else None
     same = key is not None and hit is not None and hit.get("key") == key
+    if same:
+        _restamp("", brain, hit, content, sig)
     try:
         mtime = INDEX_FILE.stat().st_mtime
         fresh = not any(f.exists() and f.stat().st_mtime > mtime
@@ -266,15 +270,16 @@ def ensure_index(brain, cfg=None, sig=None) -> str:
     write_text(INDEX_FILE, text)
     if key is not None:
         try:
-            _start_put("", {"key": key, "text": text, "previews": []})
+            _start_put("", _entry(brain, key, text, [], content, sig))
         except OSError as exc:
             log(f"index du démarrage (cache) : {exc!r}")
     return text
 
 
 # ------------------------------------------------------------------------------------------ index du démarrage gardé
-START_FILE = STATE_DIR / "demarrage.json"  # {"v", "items": {projet (ou "" hors projet): {key, text, previews, stale}}}
-START_V, START_KEEP = 1, 12  # format ; projets gardés (les plus récents)
+START_FILE = STATE_DIR / "demarrage.json"  # {"v", "items": {projet ou "" (hors projet) : {key, text, previews, stale,
+# stamp, content, sig}}}
+START_V, START_KEEP = 2, 12  # format ; projets gardés (les plus récents)
 _CODE = ("index.py", "concis.py", "store.py", "dates.py", "graph.py")  # le code qui fait l'index
 _META_SKIP = ("mapped", "stack")  # méta que la carte d'un projet réécrit à chaque passage, et que l'index ne lit pas
 
@@ -287,11 +292,53 @@ def _stamp(path):
         return None
 
 
-def _start_key(brain, cfg, focus, sig=None) -> str:
-    """Empreinte de tout ce dont l'index du démarrage dépend : contenu des souvenirs et des liens (empreinte du graphe,
-    provenance, mise à jour, méta), réglages (inject, due), jour (« dans 3 j »), dernière session de chaque autre projet
-    (journal : ordre, « vu le »), cartes présentes, analyse du graphe utilisée (dans un projet), code. Pas les compteurs
-    de rappel, qui changent à chaque message : l'ordre qu'ils déplacent attend le prochain changement ou le lendemain."""
+def _content(brain, sig=None) -> tuple:
+    """Empreinte de ce que l'index lit des souvenirs et des liens : celle du graphe (graph._signature : types, titres,
+    contenus, étiquettes, projets, états, importances, liens), plus provenance, mise à jour et méta (sauf la date de la
+    carte). Pas les compteurs de rappel : l'ordre qu'ils déplacent attend le prochain changement ou le lendemain.
+    → (empreinte, empreinte du graphe)."""
+    import hashlib
+    import json
+    from . import graph
+    sig = sig or graph._signature(brain)
+    extra = [[i, n.get("source"), n.get("updated"), {k: v for k, v in (n.get("meta") or {}).items() if k not in _META_SKIP}]
+             for i, n in sorted(brain.nodes.items())]
+    h = hashlib.sha1(sig.encode("ascii"))
+    h.update(json.dumps(extra, sort_keys=True, default=str).encode("ascii"))
+    return h.hexdigest()[:24], sig
+
+
+def _known(brain, hit, sig=None) -> tuple:
+    """_content, repris de l'index gardé quand graph.json est le même fichier, octet pour octet (Brain.stamp : taille,
+    date, n° de fichier, CRC ; rien de modifié en mémoire depuis la lecture) : 15 ms à 3 000 souvenirs, 60 ms à 10 000,
+    épargnés à chaque démarrage où rien n'a été écrit."""
+    stamp = getattr(brain, "stamp", None)
+    if stamp and isinstance(hit, dict) and hit.get("stamp") == stamp and isinstance(hit.get("content"), str) \
+            and isinstance(hit.get("sig"), str):
+        return hit["content"], hit["sig"]
+    return _content(brain, sig)
+
+
+def _entry(brain, key, text, previews, content, sig, stale=False) -> dict:
+    return {"key": key, "text": text, "previews": previews, "stale": stale, "stamp": getattr(brain, "stamp", None),
+            "content": content, "sig": sig}
+
+
+def _restamp(slot, brain, hit, content, sig) -> None:
+    """Index gardé retrouvé par le calcul (graph.json réécrit sans rien changer de ce qu'il montre) : l'empreinte du
+    fichier est notée, le démarrage suivant le reprend sans recalcul."""
+    stamp = getattr(brain, "stamp", None)
+    if stamp and hit.get("stamp") != stamp:
+        try:
+            _start_put(slot, dict(hit, stamp=stamp, content=content, sig=sig))
+        except OSError as exc:
+            log(f"index du démarrage (cache) : {exc!r}")
+
+
+def _start_key(brain, cfg, focus, content) -> str:
+    """Empreinte de tout ce dont l'index du démarrage dépend : contenu des souvenirs (_content), réglages (inject, due),
+    jour (« dans 3 j »), dernière session de chaque autre projet (journal : ordre, « vu le »), cartes présentes, analyse
+    du graphe utilisée (dans un projet), code."""
     import hashlib
     import json
     from . import __version__, graph
@@ -301,12 +348,8 @@ def _start_key(brain, cfg, focus, sig=None) -> str:
     head = [START_V, __version__, [_stamp(here / f) for f in _CODE], focus, _dt.date.today().isoformat(),
             cfg.get("inject"), cfg.get("due"), [[p, seen.get(p)] for p in others],
             None if focus else [p for p in others if (PROJECTS_DIR / p / "MAP.md").exists()],
-            _stamp(graph.ANALYSIS_FILE) if focus else None, sig or graph._signature(brain)]
-    extra = [[i, n.get("source"), n.get("updated"), {k: v for k, v in (n.get("meta") or {}).items() if k not in _META_SKIP}]
-             for i, n in sorted(brain.nodes.items())]
-    h = hashlib.sha1(json.dumps(head, sort_keys=True, default=str).encode("ascii"))
-    h.update(json.dumps(extra, sort_keys=True, default=str).encode("ascii"))
-    return h.hexdigest()[:24]
+            _stamp(graph.ANALYSIS_FILE) if focus else None, content]
+    return hashlib.sha1(json.dumps(head, sort_keys=True, default=str).encode("ascii")).hexdigest()[:24]
 
 
 def _start_items() -> dict:
@@ -332,13 +375,14 @@ def start_index(brain, cfg=None, focus=None, previews=None, sig=None) -> str:
         return ensure_index(brain, cfg, sig)
     try:
         from . import graph
-        sig = sig or graph._signature(brain)
-        key = _start_key(brain, cfg, focus, sig)
         hit = _start_items().get(focus)
+        content, sig = _known(brain, hit, sig)
+        key = _start_key(brain, cfg, focus, content)
     except Exception as exc:  # empreinte impossible : l'index est refait, sans rien garder
         log(f"index du démarrage (empreinte) : {exc!r}")
         return build_index(brain, cfg, focus=focus, previews=previews)
     if isinstance(hit, dict) and hit.get("key") == key and isinstance(hit.get("text"), str):
+        _restamp(focus, brain, hit, content, sig)
         if previews is not None:
             previews.extend(x for x in hit.get("previews") or [] if isinstance(x, str))
         if hit.get("stale") and graph._in_hook():  # analyse périmée à la construction, toujours pas refaite : relancée
@@ -350,7 +394,7 @@ def start_index(brain, cfg=None, focus=None, previews=None, sig=None) -> str:
     if previews is not None:
         previews.extend(own)
     try:
-        _start_put(focus, {"key": key, "text": text, "previews": own, "stale": bool(info.get("stale"))})
+        _start_put(focus, _entry(brain, key, text, own, content, sig, bool(info.get("stale"))))
     except OSError as exc:
         log(f"index du démarrage (cache) : {exc!r}")
     return text
@@ -360,11 +404,10 @@ def prebuild(brain, cfg=None, n=2) -> int:
     """Index du démarrage des `n` derniers projets ouverts, refaits d'avance par la tâche de fond des vues (vues.py,
     après la vue 3D : avec l'analyse du graphe à jour) : la session suivante le trouve prêt, même après une écriture.
     → nombre d'index refaits ou déjà à jour."""
-    from . import graph
-    cfg, sig, done = cfg or load_config(), graph._signature(brain), 0
+    cfg, done = cfg or load_config(), 0
     for pid in [k for k in _start_items() if k][-n:]:
         if (brain.nodes.get(pid) or {}).get("type") == "project":
-            start_index(brain, cfg, focus=pid, sig=sig)
+            start_index(brain, cfg, focus=pid)
             done += 1
     return done
 
