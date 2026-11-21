@@ -2,7 +2,7 @@
 
 - cerveau.html : vue 3D (3d-force-graph / three.js) — communautés en couleur, taille = centralité, liens explicites
   animés, liens déduits en courbes, panneau de détails, rapport, recherche, tableau ; cartes de projets en 3D.
-- cerveau-2d.html : la vue 2D d'origine, 100 % locale (fonctionne hors ligne), mêmes données.
+- cerveau-2d.html : la vue 2D d'origine, sans WebGL, mêmes données (les deux vues marchent hors ligne).
 Les cartes de projets (map.json, jusqu'à plusieurs Mo) sont résumées une fois puis mises en cache (state/vizmaps).
 Le cerveau montre aussi ce qu'il sait faire et ce qu'il suit : chaque skill métier (cerveau e-commerce…) avec ses
 modules et ses outils, et chaque boutique suivie (`brain boutique`), reliée à sa fiche et à son plan."""
@@ -212,7 +212,7 @@ def _wiki_path(root, files, nid):
 
 def render(brain=None):
     from . import graph, wikistore
-    from .viz3d import LIBS, TEMPLATE_3D
+    from .viz3d import page
     brain = brain or Brain.load()
     an = graph.ensure(brain, wait=True)  # la vue montre l'analyse : toujours à jour, même lancée depuis un hook
     wroot = wikistore.root()
@@ -252,8 +252,11 @@ def render(brain=None):
                       "projects": sum(1 for n in nodes if n["t"] == "project"), "links": len(edges), "maps": len(maps),
                       "skills": sum(1 for c in extra_comms if c["label"] != "Boutiques suivies"),
                       "shops": sum(1 for n in nodes if n["t"] == "boutique")}}
-    payload = json.dumps(data, ensure_ascii=False).replace("</", "<\\/")
-    write_text(VIZ_FILE, TEMPLATE_3D.replace("__LIBS__", json.dumps(list(LIBS))).replace("__DATA__", payload))
+    # Tout « < » des données devient < (le même caractère pour le JSON) : ni « </script », ni « <!-- » suivi de
+    # « <script » (qui fait déborder un <script> jusqu'au suivant) ne peut sortir d'un souvenir. Avant, seul « </ »
+    # l'était.
+    payload = json.dumps(data, ensure_ascii=False).replace("<", "\\u003c")
+    write_text(VIZ_FILE, page(payload))
     write_text(VIZ2D_FILE, TEMPLATE_2D.replace("__DATA__", payload))
     return VIZ_FILE
 

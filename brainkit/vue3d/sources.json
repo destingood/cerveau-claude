@@ -1,0 +1,30 @@
+{
+ "3d-force-graph.min.js": {
+  "paquet": "3d-force-graph",
+  "version": "1.80.0",
+  "licence": "MIT",
+  "fichier": "dist/3d-force-graph.min.js",
+  "sha256_source": "d96e738edcca580edd524730c1c6b05ed2efce028c23ca95db1bf43033a72e42",
+  "sha256": "d96e738edcca580edd524730c1c6b05ed2efce028c23ca95db1bf43033a72e42"
+ },
+ "three-fx.js": {
+  "paquet": "three",
+  "version": "0.183.0",
+  "licence": "MIT",
+  "fichiers": [
+   "build/three.core.min.js",
+   "examples/jsm/shaders/CopyShader.js",
+   "examples/jsm/shaders/LuminosityHighPassShader.js",
+   "examples/jsm/postprocessing/Pass.js",
+   "examples/jsm/postprocessing/UnrealBloomPass.js"
+  ],
+  "sha256_source": {
+   "build/three.core.min.js": "c5f69a04c70de8c95152040c286a3c8a0489603b019dfd61b34c451e3371c4fd",
+   "examples/jsm/shaders/CopyShader.js": "a33057d5ac91c43304c186ac0e8816e62bb2ed471d3a00ff3018dfd5c0389718",
+   "examples/jsm/shaders/LuminosityHighPassShader.js": "5044f780b6e6cf863947f64c36fe1587132f7fbe395ada863cd1e5f0388dcf1e",
+   "examples/jsm/postprocessing/Pass.js": "444b409c235ead986893c472e720da1b779a56985c7d10b279c7944b52bd61c5",
+   "examples/jsm/postprocessing/UnrealBloomPass.js": "1158bb02f6467889aba19c1a788b9107054d7f6a558498b5e2152db5873bb859"
+  },
+  "sha256": "d625a2a0d7d70884750e023670cfe9151da87bc0ebb967567bdb2b6871590639"
+ }
+}

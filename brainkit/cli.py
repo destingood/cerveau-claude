@@ -362,7 +362,7 @@ def cmd_fiche(a):
 
 
 def _search_sessions(text, project=None, limit=3):
-    items = [s for s in journal.load()["sessions"].values() if project is None or s.get("project") == project]
+    items = [s for s in journal.all_sessions() if project is None or s.get("project") == project]
     if not items:
         return []
     index = search.Index((s["id"], [(s.get("title") or "", 2.5), (s.get("first") or "", 1.0), (s.get("last") or "", 1.0),

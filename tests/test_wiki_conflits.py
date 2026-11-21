@@ -2,7 +2,8 @@
 
 Un dépôt « GitHub » (dépôt nu dans un dossier temporaire, sans réseau) et deux PC, chacun avec son cerveau isolé et son
 clone du wiki : ils écrivent et se synchronisent tour à tour, sans jamais rester bloqués. Puis un verrou git oublié,
-un envoi qui échoue (jamais affiché ✓), et un coffre Obsidian modifié des deux côtés.
+un envoi qui échoue (jamais affiché ✓), un coffre Obsidian modifié des deux côtés, et (étape 8) le journal du wiki,
+un dossier par PC : les mois des deux PC restent sur GitHub, ceux d'avant la 8.31.0 sont gardés.
 
 Lancement : python tests/test_wiki_conflits.py   (sortie : « N vérifications OK, M échec(s) »)"""
 import json
@@ -121,8 +122,12 @@ gi = (W1 / ".gitignore").read_text(encoding="utf-8")
 ga = (W1 / ".gitattributes").read_text(encoding="utf-8")
 (W1 / ".gitattributes").write_text("\n".join(x for x in ga.splitlines() if "merge=union" not in x) + "\n",
                                    encoding="utf-8")
-git("add", "-f", "index.md", ".gitignore", ".gitattributes", cwd=W1)
-git("commit", "-qm", "wiki d'avant : index.md suivi", cwd=W1)
+OLD_MONTH = ("# 🗓️ Journal — octobre 2026\n\n_Généré par le cerveau._\n\n## mercredi 14 octobre\n\n"
+             "- 💬 09:15 « Ancienne session d'octobre sur les étiquettes » — projet vitrine\n")
+(W1 / "journal").mkdir(exist_ok=True)
+(W1 / "journal" / "2026-10.md").write_text(OLD_MONTH, encoding="utf-8")  # journal d'avant la 8.31.0 : un seul dossier
+git("add", "-f", "index.md", ".gitignore", ".gitattributes", "journal/2026-10.md", cwd=W1)
+git("commit", "-qm", "wiki d'avant : index.md suivi, journal/AAAA-MM.md", cwd=W1)
 git("push", "-q", "origin", "HEAD", cwd=W1)
 check(tracked("index.md"), "départ : index.md suivi dans git (comme un wiki créé avant la 8.30.0)")
 
@@ -303,6 +308,98 @@ check(n3.get("Note Pomme") == ["corps pomme, modifié dans Obsidian seulement"]
       and n3.get("Note Lune") == ["corps lune, modifié dans le cerveau seulement"]
       and "pomme" not in kept and "lune" not in kept,
       "coffre : un seul côté modifié → comme avant, sans copie de conflit", (n3.get("Note Pomme"), n3.get("Note Lune")))
+
+# ------------------------------------------------------------------ 8. journal du wiki : un dossier par PC (étape 8)
+def add_session(who, sid, end, title, last=""):
+    f = TMP / who / "brain" / "journal" / "sessions.json"
+    j = json.loads(f.read_text(encoding="utf-8")) if f.is_file() else {"sessions": {}}
+    j.setdefault("sessions", {})[sid] = {"id": sid, "start": end, "end": end, "title": title, "first": title,
+                                         "last": last or f"{title}, la suite"}
+    f.parent.mkdir(parents=True, exist_ok=True)
+    f.write_text(json.dumps(j, ensure_ascii=False), encoding="utf-8")
+
+
+def session_end(who, sid, extra=None):
+    e = env(who)
+    e.update(extra or {})
+    subprocess.run([sys.executable, "-I", "-S", str(CODE / "brain.py"), "hook", "session-end"],
+                   input=json.dumps({"session_id": sid, "cwd": str(TMP / who / "work")}).encode("utf-8"),
+                   capture_output=True, cwd=str(TMP / who / "work"), env=e, timeout=240)
+
+
+add_session("pc1", "j-pc1-a", "2026-11-03T09:10:00", "Comparer les transporteurs du PC 1")
+add_session("pc2", "j-pc2-a", "2026-11-03T16:40:00", "Préparer la newsletter du PC 2")
+session_end("pc1", "fin-pc1-a")
+code1, out1 = brain("pc1", "wiki", "sync")
+session_end("pc2", "fin-pc2-a")
+code2, out2 = brain("pc2", "wiki", "sync")
+code1b, out1b = brain("pc1", "wiki", "sync")
+check(synced_ok(code1, out1) and synced_ok(code2, out2) and synced_ok(code1b, out1b),
+      "journal : les deux PC écrivent le même mois et se synchronisent sans conflit", out1 + out2 + out1b)
+files = github_files()
+check("journal/PC1/2026-11.md" in files and "journal/PC2/2026-11.md" in files and "journal/2026-11.md" not in files,
+      "journal : un dossier par PC sur GitHub (journal/PC1/, journal/PC2/), plus de journal/AAAA-MM.md commun", files)
+check("Comparer les transporteurs du PC 1" in on_github("journal/PC1/2026-11.md")
+      and "Préparer la newsletter du PC 2" in on_github("journal/PC2/2026-11.md"),
+      "journal : chaque PC a ses sessions du mois sur GitHub")
+add_session("pc1", "j-pc1-b", "2026-11-05T11:00:00", "Relancer le fournisseur depuis le PC 1")
+session_end("pc1", "fin-pc1-b")
+code1, out1 = brain("pc1", "wiki", "sync")
+add_session("pc2", "j-pc2-b", "2026-11-05T18:20:00", "Corriger les fiches produit sur le PC 2")
+session_end("pc2", "fin-pc2-b")
+code2, out2 = brain("pc2", "wiki", "sync")
+code1, out1b = brain("pc1", "wiki", "sync")
+m1, m2 = on_github("journal/PC1/2026-11.md"), on_github("journal/PC2/2026-11.md")
+check(all(x in m1 for x in ("Comparer les transporteurs", "Relancer le fournisseur"))
+      and all(x in m2 for x in ("Préparer la newsletter", "Corriger les fiches produit")),
+      "journal : après d'autres synchros, aucun mois ne passe d'un PC à l'autre (avant : le dernier PC écrasait)",
+      m1 + "\n----\n" + m2)
+check(not any("(conflit" in p.name for p in (W1 / "journal").rglob("*.md"))
+      and not any("(conflit" in p.name for p in (W2 / "journal").rglob("*.md")),
+      "journal : aucune copie de conflit")
+code, out = brain("pc1", "q", "newsletter")
+check("Préparer la newsletter du PC 2" in out and "[PC2]" in out, "`brain q` sur le PC 1 trouve une session du PC 2", out)
+code, out = brain("pc2", "q", "transporteurs")
+check("Comparer les transporteurs du PC 1" in out and "[PC1]" in out,
+      "`brain q` sur le PC 2 trouve une session du PC 1", out)
+code, out = brain("pc2", "q", "newsletter")
+check(out.count("« Préparer la newsletter du PC 2 »") == 1, "`brain q` : la session du PC lui-même n'est pas en double", out)
+check("journal/ancien/2026-10.md" in files and "journal/2026-10.md" not in files
+      and "Ancienne session d'octobre sur les étiquettes" in on_github("journal/ancien/2026-10.md"),
+      "journal d'avant la 8.31.0 : rangé dans journal/ancien/, rien de perdu", files)
+code, out = brain("pc1", "q", "étiquettes octobre")
+check("Ancienne session d'octobre" in out and "avant la 8.31" in out,
+      "`brain q` trouve aussi les sessions d'avant la 8.31.0", out)
+# un PC pas encore à jour réécrit l'ancien journal/2026-10.md : remis dans journal/ancien/, les deux versions fusionnées
+git("pull", "-q", "--rebase", cwd=W2)
+(W2 / "journal" / "2026-10.md").write_text(OLD_MONTH.replace(
+    "\n## mercredi 14 octobre", "\n## mardi 13 octobre\n\n- 💬 08:05 « Session d'un PC pas à jour »\n"
+    "\n## mercredi 14 octobre"), encoding="utf-8")
+git("add", "journal/2026-10.md", cwd=W2)
+git("commit", "-qm", "ancienne version du cerveau : journal/2026-10.md réécrit", cwd=W2)
+git("push", "-q", "origin", "HEAD", cwd=W2)
+session_end("pc1", "fin-pc1-c")
+code1, out1 = brain("pc1", "wiki", "sync")
+old = on_github("journal/ancien/2026-10.md")
+check(synced_ok(code1, out1) and "journal/2026-10.md" not in github_files() and "Session d'un PC pas à jour" in old
+      and "Ancienne session d'octobre" in old and old.count("## mercredi 14 octobre") == 1,
+      "un PC pas à jour réécrit l'ancien mois : rangé à nouveau, les deux versions fusionnées jour par jour", out1 + old)
+status = (W1 / "Cerveau.md").read_text(encoding="utf-8") if (W1 / "Cerveau.md").is_file() else ""
+check("[[journal/PC1/2026-11|PC1]]" in status and "[[journal/PC2/2026-11|PC2]]" in status
+      and "Préparer la newsletter du PC 2" in status,
+      "page Cerveau d'Obsidian : liens vers le journal de chaque PC, et les dernières sessions de tous les PC", status[-1200:])
+schema = (W1 / "CLAUDE.md").read_text(encoding="utf-8")
+check("journal/<PC>/AAAA-MM.md" in schema, "CLAUDE.md du wiki : le journal par PC est décrit")
+# session cloud (conteneur jetable) : un seul dossier journal/cloud/, fusionné d'une session à l'autre
+cloud = {"CERVEAU_CLOUD": "1"}
+add_session("pc2", "j-cloud-a", "2026-11-07T10:00:00", "Session cloud numéro un")
+session_end("pc2", "fin-cloud-a", cloud)
+(TMP / "pc2" / "brain" / "journal" / "sessions.json").unlink()  # nouveau conteneur : journal local vide
+add_session("pc2", "j-cloud-b", "2026-11-07T15:00:00", "Session cloud numéro deux")
+session_end("pc2", "fin-cloud-b", cloud)
+c = (W2 / "journal" / "cloud" / "2026-11.md").read_text(encoding="utf-8") if (W2 / "journal" / "cloud" / "2026-11.md").is_file() else ""
+check("Session cloud numéro un" in c and "Session cloud numéro deux" in c and c.count("## samedi 7 novembre") == 1,
+      "session cloud : journal/cloud/ garde les sessions des conteneurs successifs (fusionné, pas réécrit)", c)
 
 print(f"{len(OK)} vérifications OK, {len(FAIL)} échec(s)")
 sys.exit(1 if FAIL else 0)

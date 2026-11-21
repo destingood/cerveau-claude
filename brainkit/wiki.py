@@ -63,8 +63,10 @@ Ci-dessous, `{cmd}` = `{full}` (Bash comme PowerShell).
 
 `index.md` : catalogue de toutes les pages, **régénéré par le cerveau** sur chaque PC (ne pas l'éditer ; pas dans git,
 `{cmd} wiki index` le refait). `log.md` : journal
-chronologique du wiki, on ajoute **en bas** des entrées `## [AAAA-MM-JJ] opération | titre`. `journal/AAAA-MM.md` :
-l'historique des sessions et des observations datées, mois par mois (généré par le cerveau, à lire, pas à éditer).
+chronologique du wiki, on ajoute **en bas** des entrées `## [AAAA-MM-JJ] opération | titre`. `journal/<PC>/AAAA-MM.md` :
+l'historique des sessions et des observations datées, mois par mois, un dossier par PC (`journal/cloud/` pour les
+sessions cloud, `journal/ancien/` pour les mois d'avant la 8.31.0) ; généré par le cerveau, à lire, pas à éditer.
+`{cmd} q` trouve aussi les sessions des autres PC.
 
 ## Types de pages
 | Dossier | `type` | Pour |
@@ -163,7 +165,7 @@ sources). Le schéma qui guide Claude est dans [CLAUDE.md](CLAUDE.md).
 - **`wiki/`** : les pages tenues par Claude (souvenirs, sources résumées, entités, concepts, sujets, analyses).
 - **`index.md`** : le catalogue (refait sur chaque PC, hors de git) · **[log.md](log.md)** : le journal du wiki ·
   **`journal/`** : l'historique
-  des sessions et des observations, mois par mois.
+  des sessions et des observations, mois par mois, un dossier par PC.
 
 ## Sur ton PC
 1. Clone ce dépôt, puis ouvre le dossier dans Obsidian (« Ouvrir un dossier comme coffre »). Signet « Cerveau » :
@@ -415,6 +417,7 @@ def _prepare_repo(root) -> None:
     names = [x for x in out.split("\0") if x.strip()] if code == 0 else []
     if names:
         git(root, "rm", "--cached", "-q", "--ignore-unmatch", "--", *names, timeout=30)
+    _migrate_journal(root)  # journal/AAAA-MM.md d'avant la 8.31.0 → journal/ancien/ (un dossier par PC désormais)
 
 
 def pc_name() -> str:
@@ -481,7 +484,8 @@ def _resolve(root, copies) -> bool:
     """Règle seul les fichiers en conflit d'un rebase (rien ne se perd) :
     - index.md et les pages régénérées : sortis de git (chaque PC a le sien) ;
     - log.md, .gitignore : les lignes des deux côtés gardées ;
-    - journal/ et .obsidian/ (régénérés) : la version de GitHub ;
+    - un mois du journal (journal/…/AAAA-MM.md) : les lignes des deux côtés, jour par jour ;
+    - .obsidian/ (régénéré) : la version de GitHub ;
     - une page (ou tout autre fichier) modifiée des deux côtés : la version de GitHub reste en place, celle de ce PC
       est posée à côté, en copie de conflit (`copies` reçoit son chemin) ; supprimée d'un côté et modifiée de l'autre :
       la version modifiée est gardée.
@@ -492,9 +496,10 @@ def _resolve(root, copies) -> bool:
         name = rel.rsplit("/", 1)[-1]
         if rel in UNTRACKED:
             ok = git(root, "rm", "--cached", "-q", "--", rel, timeout=30)[0] == 0
-        elif rel == LOG or name in LINES_UNION:
+        elif rel == LOG or name in LINES_UNION or (rel.startswith(JOURNAL_DIR + "/") and MONTH_RX.match(name)
+                                                   and 2 in stages and 3 in stages):
             ours, theirs = (_blob(root, s, rel) or b"" for s in (2, 3))
-            merge = _union_log if rel == LOG else _union_lines
+            merge = _union_log if rel == LOG else _merge_month if rel.startswith(JOURNAL_DIR + "/") else _union_lines
             write_text(root / rel, merge(ours.decode("utf-8", "replace"), theirs.decode("utf-8", "replace")))
             ok = git(root, "add", "--", rel, timeout=30)[0] == 0
         elif 2 in stages and (3 not in stages or rel.startswith(GENERATED)):
@@ -671,6 +676,8 @@ def sync(root=None, push=True, pull=True, auto=False) -> list:
                             write_index(root=root)
                     except Exception as exc:
                         log(f"wiki sync : index.md : {exc!r}")
+                    if _migrate_journal(root):  # un PC pas à jour a réécrit un journal/AAAA-MM.md : rangé, envoyé
+                        commit(root, "cerveau : journal d'avant la 8.31.0 rangé dans journal/ancien/")
             if url and push:
                 code, txt = git(root, "push", "-u", "origin", "HEAD", timeout=120)
                 if code == 0:
@@ -1689,22 +1696,187 @@ def journal_pages(sessions=True, keep=None) -> dict:
     return pages
 
 
+# Journal du wiki, un dossier par PC : journal/<PC>/AAAA-MM.md. Avant la 8.31.0, un seul journal/AAAA-MM.md refait par
+# chaque PC à partir de ses propres sessions : GitHub gardait le mois du dernier PC synchronisé, et les mois changeaient
+# d'un PC à l'autre. Chaque PC n'écrit plus que son dossier : deux PC n'écrivent jamais le même fichier.
+MONTH_RX = re.compile(r"^(\d{4})-(\d{2})\.md$")
+JOURNAL_PC_FILE = STATE_DIR / "wiki-pc.json"  # nom de ce PC dans journal/, choisi une fois (propre à ce PC)
+OLD_JOURNAL = "ancien"  # journal/ancien/AAAA-MM.md : les mois d'avant la 8.31.0, tous PC confondus, figés
+CLOUD_JOURNAL = "cloud"  # sessions cloud (conteneur jetable) : un seul dossier, fusionné au lieu d'être réécrit
+SESSION_RX = re.compile(r"^- 💬 (\d{2}:\d{2}) « (.*) »((?: — .*)?)$")
+DAY_RX = re.compile(r"^## \S+ (\d{1,2}) ")
+
+
+def _cloud() -> bool:
+    return bool(os.environ.get("CLAUDE_CODE_REMOTE") or os.environ.get("CERVEAU_CLOUD"))
+
+
+def journal_pc(root=None, create=True):
+    """Dossier de ce PC dans journal/ : choisi une fois puis gardé (le nom réseau d'un Mac change parfois). Un dossier
+    du même nom déjà dans le wiki vient d'un autre PC (même nom) : suffixe -2, -3… Session cloud : « cloud ».
+    create=False : None tant qu'il n'est pas choisi."""
+    if _cloud():
+        return CLOUD_JOURNAL
+    st = read_json(JOURNAL_PC_FILE, {}) or {}
+    if st.get("pc") or not create:
+        return st.get("pc")
+    base = pc_name()
+    if base in (OLD_JOURNAL, CLOUD_JOURNAL):
+        base = f"PC-{base}"
+    name, i, root = base, 2, Path(root or ws.root() or "")
+    while str(root) and (root / JOURNAL_DIR / name).is_dir() and i < 100:
+        name, i = f"{base}-{i}", i + 1
+    write_json(JOURNAL_PC_FILE, {"pc": name, "le": now_iso()})
+    return name
+
+
+def _sections(text):
+    """Un mois du journal → (lignes d'en-tête, {titre du jour: lignes}, ordre des jours)."""
+    head, days, order, cur = [], {}, [], None
+    for ln in text.splitlines():
+        if ln.startswith("## "):
+            cur = ln
+            if cur not in days:
+                days[cur] = []
+                order.append(cur)
+        elif cur is None:
+            head.append(ln)
+        elif ln.strip():
+            days[cur].append(ln)
+    return head, days, order
+
+
+def _merge_month(ours, theirs) -> str:
+    """Deux versions d'un même mois du journal : chaque jour garde ses lignes des deux côtés, jamais rien d'effacé
+    (jours rangés par date)."""
+    head, days, order = _sections(ours)
+    _, more, order2 = _sections(theirs)
+    for d in order2:
+        if d not in days:
+            days[d], order = [], order + [d]
+        days[d] += [ln for ln in more[d] if ln not in days[d]]
+
+    def num(d):
+        m = DAY_RX.match(d)
+        return int(m.group(1)) if m else 99
+    order.sort(key=num)
+    out = "\n".join(head).rstrip()
+    for d in order:
+        out += "\n\n" + d + "\n\n" + "\n".join(days[d])
+    return out.strip() + "\n"
+
+
+def _migrate_journal(root) -> list:
+    """journal/AAAA-MM.md (avant la 8.31.0) → journal/ancien/AAAA-MM.md, qui ne sera plus jamais réécrit : rien de ce
+    qu'il contient ne se perd. Déjà là (un autre PC a migré, ou un PC pas encore à jour a réécrit le mois) : les deux
+    versions fusionnées. → mois déplacés."""
+    jdir = Path(root) / JOURNAL_DIR
+    moved = []
+    for p in sorted(jdir.glob("*.md")) if jdir.is_dir() else []:
+        if not MONTH_RX.match(p.name):
+            continue
+        dest = jdir / OLD_JOURNAL / p.name
+        try:
+            old = p.read_text(encoding="utf-8")
+            have = dest.read_text(encoding="utf-8") if dest.is_file() else None
+            if have != old:
+                write_text(dest, old if have is None else _merge_month(have, old))
+            p.unlink()
+        except OSError as exc:
+            log(f"wiki : journal {p.name} pas déplacé : {exc!r}")
+            continue
+        moved.append(p.name)
+    if moved:
+        log(f"wiki : journal d'avant la 8.31.0 rangé dans {JOURNAL_DIR}/{OLD_JOURNAL}/ ({', '.join(moved)})")
+    return moved
+
+
 def write_journal(root=None) -> int:
-    """journal/ à jour dans le wiki (seuls les mois qui changent sont réécrits). → nombre de mois écrits."""
+    """journal/<ce PC>/ à jour dans le wiki (seuls les mois qui changent sont réécrits ; en session cloud, fusionnés avec
+    ceux des sessions cloud d'avant). Range d'abord les mois d'avant la 8.31.0 dans journal/ancien/. → mois écrits."""
     root = Path(root or ws.root() or "")
     if not str(root) or not (root / ws.MARKER).is_file():
         return 0
-    n = 0
-    for rel, text in journal_pages().items():
-        p = root / rel
+    _migrate_journal(root)
+    pages = journal_pages()
+    if not pages:
+        return 0
+    pc, n = journal_pc(root), 0
+    for rel, text in pages.items():
+        p = root / JOURNAL_DIR / pc / rel.rsplit("/", 1)[-1]
+        text = text.replace("# 🗓️ Journal — ", f"# 🗓️ Journal — {pc} — ", 1)
         try:
-            if p.read_text(encoding="utf-8") == text:
-                continue
+            have = p.read_text(encoding="utf-8")
         except OSError:
-            pass
+            have = None
+        if have is not None and pc == CLOUD_JOURNAL:
+            text = _merge_month(have, text)
+        if have == text:
+            continue
         write_text(p, text)
         n += 1
     return n
+
+
+def journal_months(root=None) -> list:
+    """Dossiers du journal du wiki → [(dossier, dernier mois « journal/<dossier>/AAAA-MM »)], ce PC d'abord."""
+    root = Path(root or ws.root() or "")
+    jdir = root / JOURNAL_DIR if str(root) else None
+    if not jdir or not jdir.is_dir():
+        return []
+    me, out = journal_pc(root, create=False), []
+    for d in sorted(x for x in jdir.iterdir() if x.is_dir()):
+        months = sorted(p.stem for p in d.glob("*.md") if MONTH_RX.match(p.name))
+        if months:
+            out.append((d.name, f"{JOURNAL_DIR}/{d.name}/{months[-1]}"))
+    return sorted(out, key=lambda x: (x[0] != me, x[0] == OLD_JOURNAL, x[0].lower()))
+
+
+def other_sessions(root=None, known=()) -> list:
+    """Sessions des autres PC (et des mois d'avant la 8.31.0), lues dans journal/ du wiki, au format du journal local
+    (journal.session_line) : `brain q` et la page Cerveau les montrent avec celles de ce PC. Celles de ce PC n'y sont
+    pas reprises (son journal local est plus complet) ; `known` : sessions déjà connues (pas de doublon)."""
+    root = Path(root or ws.root() or "")
+    jdir = root / JOURNAL_DIR if str(root) else None
+    if not jdir or not jdir.is_dir():
+        return []
+    me = journal_pc(root, create=False)
+    seen = {(str(s.get("end") or "")[:16].replace(" ", "T"), short(s.get("title") or s.get("first") or s.get("brief"), 90))
+            for s in known}
+    out = []
+    for p in sorted(jdir.glob("*/*.md")):
+        m = MONTH_RX.match(p.name)
+        pc = p.parent.name
+        if not m or pc == me:
+            continue
+        day = None
+        try:
+            lines = p.read_text(encoding="utf-8").splitlines()
+        except OSError:
+            continue
+        for i, ln in enumerate(lines):
+            d = DAY_RX.match(ln)
+            if d:
+                day = int(d.group(1))
+                continue
+            s = SESSION_RX.match(ln)
+            if not s or not day:
+                continue
+            end = f"{m.group(1)}-{m.group(2)}-{day:02d}T{s.group(1)}"
+            if (end, s.group(2)) in seen:
+                continue
+            seen.add((end, s.group(2)))
+            label = "avant la 8.31" if pc == OLD_JOURNAL else pc
+            row = {"id": f"{pc}/{end}/{i}", "end": end + ":00", "title": f"[{label}] {s.group(2)}", "pc": pc}
+            for bit in s.group(3).split(" — ")[1:]:
+                if bit.startswith("projet "):
+                    row["project"] = bit[7:].strip()
+                elif bit.startswith("dernière demande : « ") and bit.endswith("»"):
+                    row["last"] = bit[len("dernière demande : « "):-1].strip()
+                elif bit.startswith("modifiés : "):
+                    row["edits"] = [x.strip() for x in bit[11:].split(",") if x.strip() and not x.strip().startswith("+")]
+            out.append(row)
+    return out
 
 
 def session_close(brain, project=None) -> str:
