@@ -237,6 +237,26 @@ def rebuild(brain, cfg=None) -> str:
     return text
 
 
+def refresh(brain, cfg=None) -> bool:
+    """BRAIN.md pour la tâche de fond des vues : refait seulement si ce qu'il montre a changé (_start_key : contenu des
+    souvenirs, réglages, jour, dernière session de chaque projet, cartes, code) ou s'il n'est plus le texte gardé. Une
+    fin de session qui n'a rien changé ne le refait plus (avant : à chaque passage). → True s'il a été refait."""
+    cfg = cfg or load_config()
+    try:
+        hit = _start_items().get("")
+        content, sig = _known(brain, hit, None)
+        key = _start_key(brain, cfg, None, content)
+        if isinstance(hit, dict) and hit.get("key") == key and isinstance(hit.get("text"), str) \
+                and INDEX_FILE.read_text(encoding="utf-8") == hit["text"]:
+            _restamp("", brain, hit, content, sig)
+            return False
+    except Exception as exc:  # (BRAIN.md absent, empreinte impossible) : refait
+        if not isinstance(exc, OSError):
+            log(f"index du démarrage (empreinte) : {exc!r}")
+    rebuild(brain, cfg)
+    return True
+
+
 def ensure_index(brain, cfg=None, sig=None) -> str:
     """BRAIN.md, régénéré si le graphe, le journal ou le code ont bougé depuis, ou le jour changé (« dans 3 j ») ; relu
     tel quel sinon. Régénéré sans être refait quand rien de ce qu'il montre n'a changé (_start_key : les compteurs de

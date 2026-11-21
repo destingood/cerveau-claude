@@ -39,7 +39,9 @@ def refresh_views(brain=None, wait=False):
         log(f"refresh_views (wiki) : {exc!r}")
     try:
         from . import vues
-        if wait or not vues.request():  # lancement en arrière-plan impossible : comme avant, tout de suite
+        if wait:  # réparation : toutes, tout de suite
+            vues.run_now(force=True)
+        elif not vues.request():  # lancement en arrière-plan impossible : comme avant, tout de suite
             vues.run_now()
     except Exception as exc:
         log(f"refresh_views : {exc!r}")
@@ -1010,7 +1012,7 @@ def cmd_vues(a):
         done = vues.wait(a.delai)
         print("✓ vues à jour" if done else f"✗ vues toujours en cours après {a.delai:g} s")
         return 0 if done else 1
-    vues.run_now()
+    vues.run_now(force=True)  # à la main : toutes, même celles dont rien n'a changé
     print(f"✓ vues refaites : {INDEX_FILE.name}, {EXPORT_FILE.name}, {VIZ_FILE.name}, {VIZ2D_FILE.name}")
     return 0
 
@@ -2226,8 +2228,8 @@ def build_parser():
     s = cmd("eco", cmd_eco, "mode éco : moins de tokens sans rien perdre (sorties longues mises en fichier, résumé plus tôt, "
             "plugins inutilisés, skills, mémoire, cache) — --appliquer · --annuler · --poser ID · --cache auto", ["econome"])
     s.add_argument("--appliquer", action="store_true", help="écrire les leviers sûrs (bashOutputMaxChars, autoCompactWindow, "
-                   "skillListingBudgetFraction, autoMemoryEnabled) dans ~/.claude/settings.json (retour exact "
-                   "possible) ; fait tout seul au 1er démarrage")
+                   "skillListingBudgetFraction, skillListingMaxDescChars, autoMemoryEnabled) dans "
+                   "~/.claude/settings.json (retour exact possible) ; fait tout seul au 1er démarrage")
     s.add_argument("--annuler", action="store_true", help="remettre exactement les réglages d'avant et couper l'application automatique")
     s.add_argument("--forcer", action="store_true", help="remplacer une valeur que tu avais déjà réglée toi-même")
     s.add_argument("--sortie", type=int, help="bashOutputMaxChars, de 4000 à 128000 (défaut 10000)")
@@ -2433,9 +2435,15 @@ def build_parser():
     s.add_argument("--force", action="store_true")
     s.add_argument("--dry-run", action="store_true")
     s.add_argument("--max-ko", type=int, help="taille maximale d'un fichier importé, en Ko (défaut 64 ; 0 : sans limite)")
-    s = cmd("config", cmd_config, "lire/modifier la configuration (ex : config recall.enabled false)")
-    s.add_argument("key", nargs="?")
-    s.add_argument("value", nargs="?")
+    s = cmd("config", cmd_config, "lire/modifier la configuration (ex : config recall.enabled false ; serveur MCP : "
+            "config mcp.groupes '[\"wiki\", \"boutique\"]' ajoute ces outils aux 6 de la mémoire, "
+            "config mcp.max_car 8000 borne chaque résultat)")
+    s.description = ("Lire ou modifier la configuration du cerveau (config.json). Sans clé : tout. Valeur en JSON ou en "
+                     "texte. Serveur MCP : les 6 outils de la mémoire sont listés par défaut ; `config mcp.groupes "
+                     "'[\"wiki\", \"boutique\"]'` (ou \"tout\") ajoute ceux du wiki et des boutiques ; `config mcp.max_car "
+                     "8000` : un résultat plus long est coupé en pages (la suite avec « page: 2 »).")
+    s.add_argument("key", nargs="?", help="clé à points, ex : recall.enabled, mcp.groupes")
+    s.add_argument("value", nargs="?", help="nouvelle valeur (JSON ou texte)")
     s = cmd("hook", cmd_hook, "point d'entrée des hooks Claude Code (usage interne)")
     s.add_argument("event", choices=["session-start", "prompt", "stop", "pre-compact", "post-compact", "session-end",
                                      "post-bash", "pre-agent"])

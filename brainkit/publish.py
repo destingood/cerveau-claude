@@ -188,7 +188,9 @@ garde sa propre mémoire.
 - **Filtres appris** : `brain compact --decouvrir` repère le bruit qui revient dans les sorties de tes commandes et
   `brain compact --apprendre <commande> --enregistrer` en fait un filtre appliqué tout seul. L'entretien du jour le
   fait aussi de lui-même, annoncé une fois ; `brain compact --oublier <commande>` pour retirer un filtre.
-- **Texte injecté plus court** au démarrage, à chaque message et dans la liste des outils.
+- **Texte injecté plus court** au démarrage, à chaque message et dans la liste des outils : le serveur MCP du
+  cerveau ne liste que les 6 outils de la mémoire ; `brain config mcp.groupes '["wiki", "boutique"]'` ajoute ceux
+  du wiki et des boutiques (utile dans l'app Claude ou Cowork), et un résultat trop long arrive par pages.
 - **Skills chargées d'office** : `brain config skills.auto '["ma-skill"]'` et, dès qu'un message correspond à la skill,
   le cerveau glisse lui-même son contenu dans la conversation, sans attendre que Claude l'ouvre ; il la ressert
   après chaque résumé de la conversation.
@@ -448,13 +450,13 @@ def _fresh_exe():
 
 def _generated(dest: Path, owner: str, repo: str) -> None:
     """Les fichiers que le plugin tire de son code : hooks, skill /brain, manifestes, README."""
-    from .install import EVENTS, SKILL
+    from .install import EVENTS, write_brain_skill
     hooks = {event: [{**({"matcher": matcher} if matcher else {}), "hooks": [_hook(arg, timeout, status)]}]
              for event, arg, timeout, status, matcher in EVENTS}
     _json(dest / "hooks" / "hooks.json", {"description": "Cerveau : injection au démarrage, rappel à chaque message, "
                                                          "sorties de commandes compactes, mémorisation en fin de tâche",
                                           "hooks": hooks})
-    _lf(dest / "skills" / "brain" / "SKILL.md", SKILL)
+    write_brain_skill(dest / "skills" / "brain", write=_lf)  # SKILL.md et ses fichiers references/
     plugin = {"name": NAME, "version": __version__, "description": DESC, "author": {"name": owner},
               "keywords": KEYWORDS, "mcpServers": MCP_SERVERS}
     if repo:

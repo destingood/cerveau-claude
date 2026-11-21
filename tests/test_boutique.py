@@ -353,6 +353,21 @@ check(c == 0 and (TMP / "brain" / "boutiques" / "atelier-lumiere.json").exists()
       "restauration : le suivi de la boutique revient", out)
 
 # ------------------------------------------------------------------ 8. outils MCP
+# Par défaut (décision du 21/11), seuls les outils de la mémoire sont listés ; `mcp.groupes` ajoute ceux des boutiques.
+req = "\n".join(json.dumps(x) for x in (
+    {"jsonrpc": "2.0", "id": 1, "method": "initialize", "params": {"protocolVersion": "2024-11-05", "capabilities": {}}},
+    {"jsonrpc": "2.0", "id": 2, "method": "tools/list"},
+    {"jsonrpc": "2.0", "id": 3, "method": "tools/call", "params": {"name": "boutique_etat", "arguments": {}}})) + "\n"
+r = subprocess.run([sys.executable, "-I", "-S", str(CODE / "brain.py"), "mcp"], input=req.encode(), capture_output=True,
+                   cwd=str(TMP / "work"), env=os.environ.copy(), timeout=120)
+resp = {x["id"]: x for x in (json.loads(y) for y in r.stdout.decode("utf-8").splitlines() if y.strip())}
+names = [t["name"] for t in resp.get(2, {}).get("result", {}).get("tools", [])]
+off = resp.get(3, {}).get("result", {})
+check(names and all(n.startswith("memory_") for n in names) and off.get("isError")
+      and "mcp.groupes" in off.get("content", [{}])[0].get("text", ""),
+      "MCP par défaut : outils de la mémoire seulement ; boutique_etat dit comment l'activer", (names, off))
+c, out = brain("config", "mcp.groupes", '["boutique"]')
+check(c == 0, "MCP : `brain config mcp.groupes` ajoute les outils boutique", out)
 req = "\n".join(json.dumps(x) for x in (
     {"jsonrpc": "2.0", "id": 1, "method": "initialize", "params": {"protocolVersion": "2024-11-05", "capabilities": {}}},
     {"jsonrpc": "2.0", "id": 2, "method": "tools/list"},
