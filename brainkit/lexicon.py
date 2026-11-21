@@ -13,13 +13,13 @@ from .common import fold, stem, tokenize
 _GROUPS = """
 boutique shop store magasin ecommerce e-commerce
 commande order commandes
-vente ventes sale sales vendre
+vente ventes sale sales vendre vendu vendus
 achat achats purchase acheter buy
 produit produits product products
 client clients customer customers acheteur buyer
 panier cart checkout
 paiement payment payer
-livraison livraisons shipping expedition delivery colis transporteur
+livraison livraisons shipping expedition delivery colis transporteur port envoi envoie envoyer expedier expedie
 prix price tarif tarifs cout cost
 facture factures invoice invoices facturation
 remboursement refund retour retours return
@@ -53,6 +53,14 @@ traduction translate traduire
 video videos
 article articles blog guide guides
 theme themes template
+entreprise entreprises societe societes employeur employeurs groupe
+salaire salaires remuneration salarial salariale salary
+supprimer suppression effacer delete
+seuil threshold
+suiveur trailing
+annee annees annuel annuelle yearly year
+miniature miniatures thumbnail thumbnails vignette
+clic clics click clicks ctr
 """
 
 SYN: dict[str, set] = {}
@@ -65,12 +73,34 @@ for _line in _GROUPS.strip().splitlines():
 # (« Microsoft Store », « iTunes du Store ») n'est pas la boutique, « C:\Program Files » n'est pas un fichier. La recherche
 # exacte les trouve toujours (« Microsoft Store ») ; seuls les synonymes (« boutique » → « store ») les ignorent.
 _FAUX_AMIS = re.compile(r"\b(?:Microsoft|Windows|App|Play|Web|Games|Steam|Xbox|Galaxy|[Dd]u|[Ll]e|[Aa]u)\s+Store\b|"
-                        r"\b(?:Program|Common) Files\b")
+                        r"\b(?:Program|Common) Files\b|"
+                        r"\b[Pp]orts?\s+(?:\d{2,5}\b|USB|TCP|UDP|COM\d*\b|s[ée]rie\b|HDMI|Ethernet|r[ée]seau\b)")
 
 
 def faux_amis(text) -> list:
     """Mots métier pris dans un faux ami (« pas celui du Store » → ["store"]) : à ne pas compter comme synonymes."""
     return [t for m in _FAUX_AMIS.finditer(text or "") for t in tokenize(m.group(0)) if t in SYN]
+
+
+# Synonymes à double sens, côté message : « le port est offert » parle de livraison, « quel port utilise le serveur
+# MCP ? » ou « le port 8080 est pris » non. Quand le message emploie le mot dans son autre sens (un de ces mots à côté,
+# ou un numéro juste après), ses synonymes métier ne comptent pas ; le mot lui-même reste cherché tel quel.
+_OTHER_SENSE = {"port": frozenset(tokenize(
+    "serveur serveurs server reseau réseau network usb tcp udp http https localhost mcp ssh docker api firewall pare-feu "
+    "routeur router proxy vpn socket ecoute écoute écouter listen ouvert ouverts ouvrir occupé occupe bloqué hdmi "
+    "ethernet série serie com"))}
+
+
+def other_sense(qterms) -> set:
+    """Mots du message (déjà découpés, dans l'ordre) employés dans leur autre sens : leurs synonymes ne comptent pas."""
+    out = set()
+    for w, cues in _OTHER_SENSE.items():
+        if w not in qterms:
+            continue
+        i = qterms.index(w)
+        if set(qterms) & cues or (i + 1 < len(qterms) and qterms[i + 1].isdigit()):
+            out.add(w)
+    return out
 
 # Clé phonétique (français d'abord, correcte pour l'anglais courant). Ordre des règles important.
 _PHON = [
@@ -128,16 +158,17 @@ def within_one(a: str, b: str) -> bool:
     return a[i:] == b[i + 1:]
 
 
-_SUFFIXES = ("issements", "issement", "ationnels", "ationnel", "ations", "ation", "itions", "ition", "ements", "ement",
-             "ments", "ment", "ances", "ance", "ences", "ence", "iques", "ique", "ables", "able", "euses", "euse",
-             "eurs", "eur", "ees", "ee", "es", "er", "ez", "e", "s")
+_SUFFIXES = ("issements", "issement", "ationnels", "ationnel", "cations", "cation", "ations", "ation", "itions", "ition",
+             "ements", "ement", "ments", "ment", "ances", "ance", "ences", "ence", "iques", "ique", "ables", "able",
+             "euses", "euse", "eurs", "eur", "ees", "ee", "es", "er", "ez", "e", "s")
 
 
 def root(token: str) -> str:
-    """Famille de mots : « réinstallation », « réinstallé », « réinstaller » → « reinstal »."""
+    """Famille de mots : « réinstallation », « réinstallé », « réinstaller » → « reinstal » ; « publication »,
+    « publié » → « publi » ; « refus », « refusé » → « refus » (le « s » après u, i, a reste, comme dans stem)."""
     s = fold(token)
     for suf in _SUFFIXES:
-        if s.endswith(suf) and len(s) - len(suf) >= 4:
+        if s.endswith(suf) and len(s) - len(suf) >= 4 and not (suf == "s" and s.endswith(("us", "is", "as"))):
             s = s[: -len(suf)]
             break
     if len(s) >= 5 and s[-1] == s[-2]:
@@ -148,4 +179,4 @@ def root(token: str) -> str:
 # Terminaisons d'une autre forme du même mot (« tester » → « test », « créer » → « crée », « réelle » → « réel »,
 # « loaded » → « load ») : seul un début de mot de 4 lettres suivi de l'une d'elles compte comme troncature
 # (« boutique » ne se réduit pas à « bout »).
-INFLEXIONS = frozenset(("e", "ee", "r", "er", "ez", "nt", "ent", "x", "le", "d", "ed", "ing"))
+INFLEXIONS = frozenset(("e", "ee", "r", "er", "ez", "nt", "ent", "x", "s", "le", "d", "ed", "ing"))

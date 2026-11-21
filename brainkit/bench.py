@@ -4,6 +4,8 @@
   frappe et une variante phonétique (déterministes, donc reproductibles). On mesure s'il sort dans les 3 premiers
   (hit@3) et si le hook de message l'injecterait (« rappel auto »).
 - Faux rappels : 16 messages sans rapport (météo, recette, calcul…) ne doivent rien injecter.
+- Questions naturelles : celles de tests/test_rappel.py (paraphrases, fautes, trois phrases, dates…) sur son cerveau
+  d'essai fixe, par le vrai hook ; les requêtes ci-dessus ne sont faites que des mots de chaque souvenir.
 - Vitesse : temps réels des hooks, lancés comme Claude Code les lance.
 - Tokens : ce que coûte chaque démarrage de session (bloc CLAUDE.md + description de la skill + injection)."""
 from __future__ import annotations
@@ -116,6 +118,25 @@ def recall_quality(brain):
         fp += any(search.accept_recall(x, rc["min_cov"], rc["min_score"], query=qq) for x in r)
     res["hors sujet"] = (fp, len(OFF_TOPIC))
     return res
+
+
+def natural_questions(timeout=180):
+    """Questions en français naturel (paraphrases, fautes, trois phrases, dates…) passées par le vrai hook, sur le cerveau
+    d'essai fixe de tests/test_rappel.py (`--mesure` : dossier temporaire, horloge figée, jamais tes souvenirs). Les
+    requêtes ci-dessus ne sont faites que des mots de chaque souvenir : elles disaient 100 % là où ces questions
+    obtenaient 53 %. → {hit1, hit3, n, faux, neg, …} ou None (tests absents de l'installation, ou échec)."""
+    test = BRAIN_PY.parent / "tests" / "test_rappel.py"
+    if not test.is_file():
+        return None
+    try:
+        r = subprocess.run([sys.executable, "-I", "-S", str(test), "--mesure"], capture_output=True, timeout=timeout)
+    except (OSError, subprocess.SubprocessError):
+        return None
+    m = re.search(r"^MESURE (.+)$", r.stdout.decode("utf-8", "replace"), re.M)
+    try:
+        return {k: int(v) for k, v in (x.split("=", 1) for x in m.group(1).split())} if m else None
+    except ValueError:
+        return None
 
 
 def _hook_cmd():
@@ -406,6 +427,15 @@ def run(quick=False):
                      + (" (mots du contenu, pas du titre)" if label == "contenu" else ""))
     fp, tot = q["hors sujet"]
     lines.append(f"  hors sujet  faux rappels {fp}/{tot}")
+    nat = natural_questions()
+    if nat:
+        lines += ["Questions en français naturel (cerveau d'essai fixe de tests/test_rappel.py, par le vrai hook) :",
+                  f"  hit@3 {nat['hit3']}/{nat['n']} ({100 * nat['hit3'] / max(1, nat['n']):.0f} %) · hit@1 {nat['hit1']} · "
+                  f"faux rappels {nat['faux']}/{nat['neg']}"
+                  + (f" · trois phrases {nat['long']}/{nat['nlong']}, faux rappels {nat['faux_long']}/{nat['neg_long']}"
+                     if "long" in nat else "")]
+    else:
+        lines.append("Questions en français naturel : mesure indisponible (tests/test_rappel.py absent ou en échec)")
     s = scenarios(brain)
     pct = lambda a, b: f"{100 * a / max(1, b):.0f} %"  # noqa: E731
     u, nu, fu, nk = s["mise à jour"]

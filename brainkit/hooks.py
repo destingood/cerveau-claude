@@ -24,14 +24,32 @@ STOP_REASON = (
     "🧠 Cerveau — avant de conclure, en UN SEUL appel Bash (chaîné avec &&) : "
     f"`{CMD} obs \"🔴 …\" \"🟡 …\"` (3 à 5 observations datées), puis le durable dit par l'utilisateur (0 à 3 : "
     f"feedback, user, decision, fact, learning, reference, todo) : `{CMD} add -t <type> -T \"titre\" -b \"fait + pourquoi "
-    "+ comment l'appliquer\"` (`-p none` hors projet ; `edit <id>` corrige). Jamais de secret."
+    "+ comment l'appliquer\" --keys \"synonymes, mots d'une question qui le chercherait\"` (`-p none` hors projet ; "
+    "`edit <id>` corrige). Jamais de secret."
 )
 WIKI_REASON = (" Wiki : une réponse qui vaut d'être gardée (synthèse, comparaison, analyse) → page Analyses "
                f"(`{CMD} add -t analyse -T … -b - --resume …`) puis `{CMD} wiki log query \"…\"` ; une source lue ou "
                f"citée → `{CMD} wiki add` puis la méthode du CLAUDE.md du wiki.")
-REMEMBER_RX = re.compile(r"(?<!['‘’\"`])\b(souviens[- ]toi|retiens|m[ée]moris|note (?:que|bien|[çc]a)|n'oublie pas|"
-                         r"garde (?:[çc]a |le |la |les )?en m[ée]moire|remember|ajoute (?:[çc]a |le |la )?(?:au|dans le) cerveau)",
-                         re.I)
+# Déclencheur de la capture « retiens… » : strict. Pas « ne retiens pas », pas un pronom (« retiens-le »), pas un ordre à
+# exécuter tout de suite (« …, relance-le et dis-moi »), pas « note ça dans la description » ; « mémorise » et « n'oublie pas »
+# seulement devant « que… » (ou ça, cela) ; « n'oublie pas de <verbe> » seulement avec une échéance (à-faire).
+_DEADLINE = (r"(?:demain|apr[èe]s-demain|d['’]ici\b|avant (?:le|la|l['’]|les|demain|fin|lundi|mardi|mercredi|jeudi|vendredi|"
+             r"samedi|dimanche|\d)|(?:la )?semaine prochaine|le mois prochain|\b\d{1,2}/\d{1,2}\b|"
+             r"(?:lundi|mardi|mercredi|jeudi|vendredi|samedi|dimanche) prochain)")
+_NOW_VERBS = (r"relance|lance|dis|fais|regarde|montre|corrige|v[ée]rifie|envoie|ouvre|cherche|r[ée]ponds|donne|essaie|teste|"
+              r"supprime|mets|[ée]cris|cr[ée]e|ajoute|modifie|explique|commence|continue|finis|arr[êe]te|pr[ée]pare|"
+              r"g[ée]n[èe]re|trouve|compare|calcule|traduis|reformule|r[ée]sume|liste")
+# (« …, lance toujours les tests » : une règle, pas un ordre pour maintenant)
+_NOT_A_ORDER = (r"(?![^.!?\n]*(?:-(?:le|la|les|moi|nous|lui|leur|y)\b|[,;]\s*(?:(?:et|puis|ensuite) )?(?:" + _NOW_VERBS
+                + r")\b(?!\s+(?:toujours|jamais|syst[ée]matiquement|d[ée]sormais|dor[ée]navant)\b)))")
+REMEMBER_RX = re.compile(
+    r"(?<!['‘’\"`])(?<!\bne )\b(souviens[- ]toi|retiens|"
+    r"m[ée]moris[a-zé]*(?=\s*(?:qu(?:e\b|['’])|[çc]a\b|cela\b|ceci\b|bien\b|:))|"
+    r"note (?:que|bien|[çc]a(?!\s+(?:dans|sur|en|[àa]|au|aux|pour)\b))|"
+    r"n['’]oublie pas(?=\s*(?:que\b|qu['’]|:)|\s+(?:de\s+|d['’])[^.!?\n]*" + _DEADLINE + r")|"
+    r"garde (?:[çc]a |le |la |les )?en m[ée]moire|remember|ajoute (?:[çc]a |le |la )?(?:au|dans le) cerveau)" + _NOT_A_ORDER,
+    re.I)
+TODO_PREFIX = "À faire : "
 NUM_NOISE = re.compile(r"(?<![\w-])(?:\d{1,2}|(?:19|20)\d{2})(?![\w-])")
 CAPTURE_RX = re.compile(r"\b(je (?:veux|voudrais|pr[ée]f[èe]re|n'aime pas|d[ée]teste)|toujours|jamais|plut[ôo]t|"
                         r"arr[êe]te de|ne (?:fais|mets|touche|change) (?:pas|plus|jamais)|n'oublie pas|retiens|"
@@ -51,8 +69,9 @@ RECALL_RX = re.compile(r"\b(tu te souviens|te rappelles|rappelle[- ]moi|on avait
 
 def recall_query(raw) -> str:
     """Message → requête de rappel : blocs collés et balises retirés, nombres sans valeur (« 12 fois 8 », « le 15/10 »,
-    « 2026 ») effacés. Partagé avec `brain bench` pour mesurer exactement ce que fait le hook."""
-    return NUM_NOISE.sub(" ", journal.clean_prompt(raw, 600))
+    « 2026 ») et mots de remplissage (« était », « déjà », search.FILLER) effacés. Partagé avec `brain bench` pour
+    mesurer exactement ce que fait le hook."""
+    return search.drop_filler(NUM_NOISE.sub(" ", journal.clean_prompt(raw, 600)))
 
 
 def context_query(raw, query) -> str:
@@ -356,7 +375,7 @@ def on_session_start(data, cfg):
     if source in ("compact", "clear"):
         # L'injection précédente et les rappels ont quitté le contexte : on repart de ce qui est visible maintenant
         # (avant : « déjà injectés » gardés, donc plus jamais rappelés après une compaction).
-        st["injected"], st["files"], st["recalled"] = sorted(ids), [], 0
+        st["injected"], st["files"], st["recalled"], st["recall_hist"] = sorted(ids), [], 0, []
         st["skills_hinted"] = []  # skills soufflées ou chargées d'office : sorties du contexte, à resservir
         st["outils_hinted"] = []  # connecteurs soufflés : idem
         from . import compact
@@ -594,6 +613,7 @@ REM_LINK_RX = re.compile(r"[\s,;:!\-–—]*(?:(?:bien|[çc]a|cela|ceci)\b[\s,;:
 REM_STATEMENT_RX = re.compile(r"\s*(?:qu(?:e\b|['’])|that\b|:)", re.I)  # « n'oublie pas que… » : un fait, pas un rappel
 REM_OBJECT_RX = re.compile(r"\s*(?:qu(?:e\b|['’])|that\b|[çc]a\b|cela\b|ceci\b|bien\b|:)", re.I)
 REM_ANAPHORA_RX = re.compile(r"(?:tout\s+)?ce\s+(?:que|qu['’]|qui)\b[^:]*:?", re.I)  # « retiens ce que je viens de dire »
+REM_PRONOUN_RX = re.compile(r"\s*-\s*(?:le|la|les|moi|nous|lui|leur|y|en)\b", re.I)  # « retiens-le » : un pronom, pas un fait
 REM_TITLE, REM_BODY, REM_MAX = 80, 600, 3  # car. du titre, du texte gardé ; phrases enregistrées par message
 
 
@@ -616,15 +636,18 @@ def remember_texts(raw) -> list:
             end = m.end()
             while end < len(sent) and sent[end].isalpha():  # « mémoris » → « mémorise »
                 end += 1
-            word, tail = fold(m.group(0)), sent[end:]
-            if (word.startswith("memoris") and not REM_OBJECT_RX.match(tail)) \
-                    or (word.startswith(("n'oublie", "souviens", "remember"))
+            word, tail = fold(m.group(0)).replace("’", "'"), sent[end:]
+            todo = word.startswith("n'oublie") and re.match(r"\s+(?:de\s+|d['’])", tail) and re.search(_DEADLINE, tail, re.I)
+            if REM_PRONOUN_RX.match(tail) or (word.startswith("memoris") and not REM_OBJECT_RX.match(tail)) \
+                    or (word.startswith(("n'oublie", "souviens", "remember")) and not todo
                         and not (REM_STATEMENT_RX.match(tail) or CAPTURE_RX.search(tail))):
                 continue
             tail = tail[REM_LINK_RX.match(tail).end():]
             if word.startswith(("n'oublie", "souviens")):
                 tail = re.sub(r"^(?:de\b|d['’])\s*", "", tail, flags=re.I)
             text = f"{'' if REM_LEAD_RX.fullmatch(head) else head} {tail}"
+            if todo:  # « n'oublie pas de relancer X avant jeudi » : un à-faire daté, pas un fait
+                text = TODO_PREFIX + text.strip()
             if sent.endswith(":"):
                 text += " ; ".join([""] + sents[i + 1:])
             text = " ".join(text.split()).strip(" ;,:-–—").rstrip(".!?… ")
@@ -637,12 +660,75 @@ def remember_texts(raw) -> list:
     return out[:REM_MAX]
 
 
-def _remember_one(b, text, cwd) -> str:
+# Vie privée d'un tiers (santé, famille, religion, politique, sexualité) : jamais enregistrée par le hook. La phrase
+# n'est écartée que si elle parle de quelqu'un d'autre que l'utilisateur (un prénom, il/elle, « sa femme », « le client »…).
+_PRIVATE_TOPICS = (
+    ("santé", r"maternit|enceinte|grossesse|accouch|arret maladie|maladie|malade|cancer|depress|burn-?out|handicap|hospitalis|"
+              r"chimio|psychiatr|sante mentale|seropositi|invalidite|fausse couche"),
+    ("famille", r"divorc|deces\b|decede|obseques|enterrement|deuil"),
+    ("religion", r"musulman|juif\b|juive|chretien|catholique|protestant|bouddhiste|hindou|athee|religion|religieu|ramadan"),
+    ("politique", r"vote pour|votes? a (?:gauche|droite)|electeur|syndique|parti politique|extreme (?:droite|gauche)|"
+                  r"opinions? politique|orientation politique"),
+    ("sexualité", r"homosexuel|\bgay\b|lesbienne|bisexuel|transgenre|orientation sexuelle|coming out"),
+)
+_PRIVATE_RX = [(label, re.compile(rx)) for label, rx in _PRIVATE_TOPICS]
+_OTHER_PERSON_RX = re.compile(
+    r"\b(?:il|elle|ils|elles|son|sa|ses|leur|leurs|lui)\b|"
+    r"\b(?:mon|ma|mes|notre|nos|le|la|un|une) (?:femme|mari|epouse|epoux|fils|fille|enfants?|bebe|frere|soeur|mere|pere|"
+    r"parents?|copine|copain|compagne|compagnon|conjoint|collegue|client|cliente|patron|patronne|employe|employee|"
+    r"salarie|salariee|stagiaire|voisin|voisine|ami|amie|cousin|cousine|oncle|tante|candidat|candidate)\b")
+# Mots qu'une majuscule ne change pas en prénom : « jusqu'au 3 Décembre », « Lundi, je suis malade »
+_NOT_A_NAME = {"janvier", "fevrier", "mars", "avril", "mai", "juin", "juillet", "aout", "septembre", "octobre", "novembre",
+               "decembre", "lundi", "mardi", "mercredi", "jeudi", "vendredi", "samedi", "dimanche", "noel", "paques",
+               "toussaint", "ascension", "pentecote"}
+
+
+def private_about_other(text) -> str:
+    """« santé », « religion »… si la phrase dit quelque chose de privé sur quelqu'un d'autre que l'utilisateur, sinon ''."""
+    from .common import STOPWORDS
+    f = fold(text)
+    topic = next((label for label, rx in _PRIVATE_RX if rx.search(f)), "")
+    if not topic:
+        return ""
+    words = re.findall(r"(?:^|(?<=\s))([A-ZÀ-Ý][a-zà-ÿ]{2,})\b(?!['’])", text)  # « J'ai », « Aujourd'hui » : pas des noms
+    named = any(fold(w) not in STOPWORDS and fold(w) not in _NOT_A_NAME for w in words)
+    return topic if named or _OTHER_PERSON_RX.search(f) else ""
+
+
+def _known_already(b, text, title):
+    """Un souvenir actif qui dit déjà la même chose avec d'autres mots (trouvé par l'index de recherche : au moins 4 mots
+    de contenu en commun et 70 % de ceux de la phrase, aucun chiffre nouveau, aucun repère de temps différent, aucun
+    changement de valeur) → son id, sinon None. Un fait dont la valeur change n'est pas un doublon : c'est une mise à jour."""
+    from . import reconcile
+    toks = set(tokenize(text))
+    if len(toks) < 4:
+        return None
+    nums = set(reconcile.NUM_RX.findall(text))
+    for r in search.search_memories(b, text, limit=5, expand=False, use_cache=False):
+        n = r["node"]
+        if n["type"] == "project" or n["id"].startswith("c--"):  # jamais une page d'ami
+            continue
+        old = f"{n['title']} {n.get('body', '')}"
+        shared = toks & set(tokenize(old))
+        if len(shared) < 4 or len(shared) / len(toks) < 0.7 or not nums <= set(reconcile.NUM_RX.findall(old)):
+            continue
+        sig = reconcile.signals(n, title, text)
+        if not sig.get("autre événement") and not any(sig.get(k) for k in reconcile.VALUE_SIGNALS):
+            return n["id"]
+    return None
+
+
+def _remember_one(b, text, cwd):
     """Un souvenir enregistré comme `brain add` : complète celui qui dit déjà ça, remplace celui dont la valeur change,
-    sinon en crée un (règle si c'est une préférence, sinon fait du projet courant). → son id."""
+    sinon en crée un (à-faire si « n'oublie pas de… avant jeudi », règle si c'est une préférence, sinon fait du projet
+    courant) ; un fait déjà là sous d'autres mots n'est pas enregistré deux fois.
+    → (« new » | « merged » | « updated » | « known », id, type, titre)."""
     from . import reconcile
     from .common import fmt_date
-    ntype = "feedback" if CAPTURE_RX.search(text) else "fact"
+    todo = text.startswith(TODO_PREFIX)
+    text = text[len(TODO_PREFIX):] if todo else text
+    text = text[:1].upper() + text[1:]
+    ntype = "todo" if todo else "feedback" if CAPTURE_RX.search(text) else "fact"
     title, body = short(text, REM_TITLE), f"{short(text, REM_BODY)} (noté le {fmt_date(now_iso())})"
     proj = None if ntype == "feedback" else b.project_for_path(cwd)
     pid = proj["id"] if proj else None
@@ -652,27 +738,42 @@ def _remember_one(b, text, cwd) -> str:
         has = fold(text) in fold(old.get("body", ""))
         b.update(old["id"], body=old.get("body", "") if has else f"{old.get('body', '')}\n{body}".strip())
         b.adjust_confidence(old["id"], +0.1)  # redit : un peu plus sûr
-        return old["id"]
+        return "merged", old["id"], old["type"], old["title"]
+    if dec["action"] == "new" and not todo:
+        known = _known_already(b, text, title)
+        if known:
+            return "known", known, ntype, b.nodes[known]["title"]
     node = b.add(ntype, title, body, project=pid, source="auto")
     if dec["action"] == "update":  # même sujet, valeur changée : l'ancien est archivé (consultable)
         b.supersede(node["id"], dec["target"]["id"])
-    return node["id"]
+        return "updated", node["id"], ntype, title
+    return "new", node["id"], ntype, title
 
 
-def remember_now(data, raw) -> str:
+def remember_now(data, raw):
     """Demande explicite (« retiens que… ») : enregistrée par le hook lui-même — zéro token, et rien n'est perdu si Claude
-    oublie. Mêmes règles que `brain add` : anti-doublon, jamais de secret (la phrase est alors écartée).
-    → la ligne pour Claude, ou '' si le hook ne peut pas s'en charger (Claude fait alors `add`, comme avant)."""
+    oublie. Mêmes règles que `brain add` : anti-doublon (même reformulé), jamais de secret ni de vie privée d'un tiers (la
+    phrase est alors écartée, et on le dit).
+    → (la ligne pour Claude, la ligne vue par l'utilisateur) ; ('', '') si le hook ne peut pas s'en charger (Claude fait
+    alors `add`, comme avant)."""
     from .privacy import find
     found = {t: find(t) for t in remember_texts(raw)}
     leaks = sorted({x for v in found.values() for x in v})
-    texts, ids = [t for t, v in found.items() if not v], []
+    clean = [t for t, v in found.items() if not v]
+    private = {t: private_about_other(t) for t in clean}
+    texts = [t for t in clean if not private[t]]
+    skipped = sorted({v for v in private.values() if v})
+    done = []
     if texts and data.get("simulation"):  # `brain recall` : montrer sans enregistrer
         return "🧠 (simulation) serait enregistré tel quel : " + " · ".join(
-            f"[{TYPES['feedback' if CAPTURE_RX.search(t) else 'fact']}] « {short(t, REM_TITLE)} »" for t in texts)
+            f"[{TYPES['todo' if t.startswith(TODO_PREFIX) else 'feedback' if CAPTURE_RX.search(t) else 'fact']}] "
+            f"« {short(t.removeprefix(TODO_PREFIX), REM_TITLE)} »" for t in texts), ""
     if texts:
         with Brain.edit(timeout=2.5) as b:
-            ids = [_remember_one(b, text, data.get("cwd")) for text in texts]
+            done = [_remember_one(b, text, data.get("cwd")) for text in texts]
+    ids = [x[1] for x in done if x[0] != "known"]
+    known = [x for x in done if x[0] == "known"]
+    if done or skipped:
         sid = data.get("session_id")
         if sid:  # déjà montrés à Claude : ni rappelés dans ce message, ni redemandés en fin de tâche
             st = load_state(sid)
@@ -680,14 +781,27 @@ def remember_now(data, raw) -> str:
             said = journal.clean_prompt(raw, 300)
             st["auto_saved"] = [x for x in st.get("auto_saved", []) if x != said][-9:] + [said]
             save_state(sid, st)
-    lines = []
+    lines, seen = [], []
     if ids:
         many = len(ids) > 1
         lines.append(f"🧠 Déjà enregistré{'s tels quels' if many else ' tel quel'} ({', '.join(f'`{x}`' for x in ids)}) : "
                      f"complète-{'les' if many else 'le'} avec `{CMD} edit {'<id>' if many else ids[0]}` seulement si c'est utile")
+        for kind, i, ntype, title in done:
+            if kind != "known":
+                what = {"todo": "à faire", "feedback": "règle"}.get(ntype, "fait")
+                seen.append(f"🧠 Retenu ({what}{', remplace l’ancien' if kind == 'updated' else ''}) : « {short(title, 70)} »")
+    for kind, i, ntype, title in known:
+        lines.insert(0, f"🧠 Déjà dans le cerveau (`{i}`) sous d'autres mots : pas enregistré en double")
+        seen.append(f"🧠 Déjà retenu (`{i}`) : pas enregistré en double")
+    if skipped:
+        lines.append(f"🧠 Non enregistré : information privée ({', '.join(skipped)}) sur quelqu'un d'autre : ne la copie pas "
+                     "dans le cerveau sauf demande explicite")
+        seen.append(f"🧠 Pas retenu : information privée ({', '.join(skipped)}) sur quelqu'un d'autre. "
+                    "Dis-le-moi si tu veux vraiment la garder.")
     if leaks:
         lines.append(f"🧠 Secret probable dans le message ({', '.join(leaks)}) : non enregistré, ne le copie jamais dans le cerveau")
-    return "\n".join(lines)
+        seen.append(f"🧠 Pas retenu : secret probable ({', '.join(leaks)}).")
+    return "\n".join(lines), "\n".join(seen)
 
 
 def on_prompt(data, cfg):
@@ -706,7 +820,8 @@ def on_prompt(data, cfg):
     saved = ""
     if not raw.startswith("/") and not journal.is_auto(raw) and REMEMBER_RX.search(raw):
         try:  # « retiens que… » : enregistré ici même, indépendamment du rappel automatique
-            saved = remember_now(data, raw)
+            saved, seen = remember_now(data, raw)
+            alert = f"{alert}\n{seen}".strip() if seen else alert  # ce qui a été retenu (ou pas) : visible de l'utilisateur
         except Exception as exc:
             log(f"mémorisation automatique : {exc!r}")
     # Fin d'une tâche de fond : rien à rappeler (les souvenirs gardent leur place pour un vrai message)
@@ -724,6 +839,8 @@ def on_prompt(data, cfg):
 
 
 MEM_HEADER = "🧠 Souvenirs liés :"
+OBS_HEADER = "🗒️ Observation notée en fin de tâche :"
+OBS_SESSION_CAP = 6  # observations montrées au plus par session
 
 
 def memory_line(n, full=True, query=None) -> str:
@@ -748,7 +865,24 @@ def _rule_picks(found, injected, rc, accept, query=None) -> list:
 
 
 def pick_memories(brain, query, rc, project=None, injected=(), before=None, prev=(), raw=None, log_to=None) -> list:
-    """Souvenirs à injecter pour un message → [(souvenir, ligne)].
+    """Souvenirs à injecter pour un message → [(souvenir, ligne)] : ceux de la période d'une question datée d'abord
+    (search.dated_recall : « la semaine dernière », « le mois dernier », « hier »), puis ceux du texte (_text_picks)."""
+    picks = _text_picks(brain, query, rc, project, injected, before, prev, raw, log_to)
+    if before or not raw:  # rejeu du neurone : la règle du texte seule
+        return picks
+    try:
+        dated = [r["node"] for r in search.dated_recall(brain, journal.clean_prompt(raw, 600), query, project,
+                                                        limit=rc["max_items"]) if r["node"]["id"] not in injected]
+    except Exception as exc:
+        log(f"rappel daté : {exc!r}")
+        return picks
+    ids = {n["id"] for n in dated}
+    return ([(n, memory_line(n, query=query)) for n in dated] + [p for p in picks if p[0]["id"] not in ids])[:max(
+        rc["max_items"], len(picks))]
+
+
+def _text_picks(brain, query, rc, project=None, injected=(), before=None, prev=(), raw=None, log_to=None) -> list:
+    """Souvenirs du texte du message → [(souvenir, ligne)].
     Règle fixe (`recall.neurone` « off », ou neurone pas encore appris) : ceux que `accept_recall` laisse passer, en
     ligne complète. Neurone appris sur les échanges de cet utilisateur (neurone.py) : les meilleurs candidats classés
     par probabilité d'être utiles ; ligne complète si elle est forte (≥ neurone_haut), titre seul pour les autres que la
@@ -846,13 +980,27 @@ def recall_context(data, cfg, raw, saved="") -> str:
         lines.append(f"🧠 L'utilisateur fait appel à un souvenir : cherche avec `{CMD} q \"…\"` et `{CMD} journal`.")
     picks, logged, learn = [], [], False
     recalled = st.get("recalled", 0)
+    # Plafond glissant : au plus session_cap_items souvenirs sur les session_cap_window derniers messages tapés (celui-ci
+    # compris), puis le rappel reprend ; avant, plus rien après 12 souvenirs, et sans le dire. Une demande explicite
+    # (« tu te souviens… », « rappelle-moi… ») passe toujours.
+    typed = not journal.is_auto(raw)
+    window = max(1, int(rc.get("session_cap_window") or 1))
+    hist = (st.get("recall_hist") or [])[-(window - 1):] if window > 1 else []
+    asked = bool(RECALL_RX.search(own))
+    room = rc["session_cap_items"] - sum(hist)
     if tokenize(query):
         prev = st.get("prev_q") or []
-        if recalled < rc["session_cap_items"] or rc.get("neurone", "auto") != "off":
+        if room > 0 or asked or rc.get("neurone", "auto") != "off":
             picks = pick_memories(brain, query, rc, proj["id"] if proj else None, injected, prev=prev, raw=raw,
                                   log_to=logged)
-            if recalled >= rc["session_cap_items"]:
-                picks = []  # plafond de la session atteint : rien de plus à l'écran, mais l'apprentissage continue
+            if not asked:
+                if picks and room <= 0 and not st.get("cap_said"):
+                    lines.append(f"🧠 Rappel automatique en pause : {rc['session_cap_items']} souvenirs montrés sur les "
+                                 f"{window} derniers messages ; un souvenir précis : `{CMD} q \"…\"`.")
+                    st["cap_said"] = True
+                picks = picks[:max(0, room)]  # plafond atteint : rien de plus à l'écran, l'apprentissage continue
+        if room > 0:
+            st["cap_said"] = False
         # Messages tapés seulement (pas les avis automatiques) : contexte de la session et exemples pour le neurone
         if not journal.is_auto(raw):
             if rc.get("neurone", "auto") != "off":
@@ -873,6 +1021,17 @@ def recall_context(data, cfg, raw, saved="") -> str:
     if rc["files"] and proj and named in (None, proj["id"]) and tokenize(query)             and len(st.get("files", [])) < rc["session_cap_files"]:  # autre projet nommé : pas les fichiers d'ici
         from . import filesearch
         files = filesearch.recall_files(proj["id"], query, rc, exclude=set(st.get("files", [])))
+    # Aucun souvenir ne répond : l'observation notée en fin de tâche qui en parle (une par message, jamais deux fois la
+    # même dans la session) ; « on a fait quoi hier ? » n'a que des mots vides, mais une date.
+    obs, shown_obs = [], []
+    if not picks and not saved and len(st.get("obs_shown", [])) < OBS_SESSION_CAP \
+            and (tokenize(query) or search.DATED_RX.search(own)):
+        try:
+            from . import observations
+            obs = [(o, observations.line(o)) for o in observations.recall(
+                query, journal.clean_prompt(raw, 600), proj["id"] if proj else None, exclude=set(st.get("obs_shown", [])))]
+        except Exception as exc:
+            log(f"observations (rappel) : {exc!r}")
     # Lignes entières seulement, dans le budget (jamais une ligne coupée qu'on paierait sans pouvoir s'en servir) ;
     # seuls les éléments vraiment affichés sont marqués « déjà injectés ».
     budget = rc["max_chars"]
@@ -880,6 +1039,8 @@ def recall_context(data, cfg, raw, saved="") -> str:
     used = sum(len(x) + 1 for x in out)
     shown_mem, shown_files = [], []
     groups = [(MEM_HEADER, picks, shown_mem)]
+    if obs:
+        groups.append((OBS_HEADER, obs, shown_obs))
     if files:
         groups.append((f"📁 Fichiers liés (carte `{proj['id']}`) :",
                        [(f, f"- `{f['path']}` — {short(f['desc'], 100)}") for f in files], shown_files))
@@ -910,8 +1071,10 @@ def recall_context(data, cfg, raw, saved="") -> str:
         out = sk_lines + out
     if pcline:  # la veille PC passe toujours, avant les souvenirs
         out = [pcline] + out
+    if typed:
+        st["recall_hist"] = (hist + [len(shown_mem)])[-window:]
     if not out:
-        if learn:  # rien à montrer, mais le contexte de la session et les candidats sont gardés
+        if learn or typed:  # rien à montrer, mais le contexte de la session, les candidats et le plafond sont gardés
             st["cwd"] = cwd
             save_state(sid, st)
         return ""
@@ -920,6 +1083,9 @@ def recall_context(data, cfg, raw, saved="") -> str:
         st["skills_hinted"] = sorted(set(st.get("skills_hinted", [])) | set(sk_names))
     if shown_pl:
         st["prompts"] = st.get("prompts", []) + [p["id"] for p in shown_pl]
+    if shown_obs:
+        from .observations import key
+        st["obs_shown"] = st.get("obs_shown", []) + [key(o) for o in shown_obs]
     st["recalled"] = recalled + len(shown_mem)
     st["injected"] = sorted(injected | {n["id"] for n in shown_mem})
     st["files"] = sorted(set(st.get("files", [])) | {f["path"] for f in shown_files})
@@ -1063,8 +1229,10 @@ def diagnose(raw, cwd, cfg, shown_text="", expected=None) -> str:
     st = read_json(last, {}) or {} if last else {}
     if expected in st.get("injected", []):
         out.append("⚠ déjà montré dans la dernière session : le rappel ne répète pas un souvenir dans une session")
-    if st.get("recalled", 0) >= rc["session_cap_items"]:
-        out.append(f"⚠ dernière session : plafond de {rc['session_cap_items']} souvenirs atteint (recall.session_cap_items)")
+    window = max(1, int(rc.get("session_cap_window") or 1))
+    if sum((st.get("recall_hist") or [])[-window:]) >= rc["session_cap_items"]:
+        out.append(f"⚠ dernière session : plafond de {rc['session_cap_items']} souvenirs sur les {window} derniers messages "
+                   "atteint (recall.session_cap_items, recall.session_cap_window)")
     return "\n".join(out)
 
 
