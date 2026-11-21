@@ -95,6 +95,27 @@ for name in ("main", "build_parser", "die", "refresh_views", "Parser", "node_lin
              "cmd_q", "cmd_add", "cmd_doctor", "cmd_hook"):
     check(callable(getattr(cli, name, None)), f"brainkit.cli.{name} existe toujours")
 
+# ------------------------------------------------------------------ 2 bis. découpage : petits modules chargés au besoin
+big = {p.name: n for p in sorted((CODE / "brainkit").glob("cli*.py"))
+       if (n := p.read_text(encoding="utf-8").count("\n")) > 1000}
+check(not big and (CODE / "brainkit" / "cli_memoire.py").is_file(), "cli découpé : aucun module cli*.py de plus de "
+      "1 000 lignes", big)
+check(not any(m.startswith("brainkit.cli_") and m != "brainkit.cli_commun" for m in sys.modules),
+      "construire le parseur ne charge le code d'aucune commande",
+      sorted(m for m in sys.modules if m.startswith("brainkit.cli")))
+try:
+    from brainkit import cli_carte, cli_commun
+    moved = cli.map_for is cli_carte.map_for and cli.die is cli_commun.die and cli._FR_ON is cli_commun._FR_ON
+except ImportError as exc:  # cli.py d'avant le découpage
+    moved = exc
+check(moved is True, "anciens noms internes (cli.map_for, cli.die…) servis depuis leur nouveau module", moved)
+r = subprocess.run([sys.executable, "-X", "importtime", str(CODE / "brain.py"), "--version"], capture_output=True,
+                   env=os.environ.copy(), cwd=str(P1), timeout=60)
+loaded = set(re.findall(r"\|\s+(brainkit[\w.]*)\s*$", r.stderr.decode("utf-8", "replace"), re.M))
+check(r.returncode == 0 and "brainkit.cli" in loaded and not loaded & {"brainkit.search", "brainkit.index",
+                                                                      "brainkit.cli_memoire", "brainkit.cli_entretien"},
+      "`brain --version` ne charge ni la recherche ni le code des commandes", sorted(loaded))
+
 # ------------------------------------------------------------------ 3. erreurs de la ligne de commande
 for args, want, text in ((["zzzz"], 2, "commande inconnue"), (["q"], 2, "argument manquant"),
                          (["q", "x", "-k", "abc"], 2, "nombre entier attendu"), (["show", "zzz"], 1, "introuvable"),
