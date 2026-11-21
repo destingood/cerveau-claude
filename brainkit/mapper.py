@@ -941,21 +941,32 @@ def classify(rel):
     return LANG_BY_EXT.get(posixpath.splitext(low)[1])
 
 
-def process_file(root, rel, prev, max_bytes, size=None, mtime=None):
-    """→ (fiche, a_été_parsé) ou None si illisible."""
+RACY_NS = 2_000_000_000  # dates de fichier à 2 s près (FAT, exFAT) : marge de la règle « racy » de git
+
+
+def process_file(root, rel, prev, max_bytes, size=None, mtime=None, ino=0, racy=None):
+    """→ (fiche, a_été_parsé) ou None si illisible. `mtime` en nanosecondes ; `ino` : n° du fichier (0 s'il est
+    inconnu). Fiche réutilisée sans relire le fichier si taille, date à la nanoseconde et n° sont les mêmes, et si sa
+    date n'est pas trop proche de la carte précédente (`racy` : début de son parcours moins RACY_NS) : modifié dans la
+    même seconde que la carte précédente, sur un disque aux dates grossières, il est relu (et pas re-analysé si son
+    contenu n'a pas changé). Avant, la date à la seconde près cachait un changement fait dans la même seconde."""
     path = os.path.join(root, rel)
     if size is None or mtime is None:
         try:
             st = os.stat(path)
         except OSError:
             return None
-        size, mtime = st.st_size, int(st.st_mtime)
-    if prev and prev.get("size") == size and prev.get("mtime") == mtime and prev.get("v") == PARSER_VERSION:
+        size, mtime, ino = st.st_size, st.st_mtime_ns, st.st_ino
+    if (prev and prev.get("size") == size and prev.get("mns") == mtime and prev.get("ino", 0) == (ino or 0)
+            and prev.get("v") == PARSER_VERSION and (racy is None or mtime < racy)):
         return dict(prev), False
     name = posixpath.basename(rel)
     lang = classify(rel)
     ext = posixpath.splitext(name.lower())[1]
-    rec = {"v": PARSER_VERSION, "size": size, "mtime": mtime, "lang": lang or ("asset" if ext in ASSET_EXT else "other")}
+    rec = {"v": PARSER_VERSION, "size": size, "mtime": mtime // 1_000_000_000, "mns": mtime,
+           "lang": lang or ("asset" if ext in ASSET_EXT else "other")}
+    if ino:
+        rec["ino"] = ino
     if SENSITIVE.search(name) and not SAFE_SUFFIX.search(name):
         rec["sensitive"] = True  # jamais lu : peut contenir des secrets
         return rec, True
@@ -984,7 +995,10 @@ def process_file(root, rel, prev, max_bytes, size=None, mtime=None):
     sha = hashlib.sha1(data).hexdigest()
     if prev and prev.get("sha1") == sha and prev.get("v") == PARSER_VERSION:
         prev = dict(prev)
-        prev.update(size=size, mtime=mtime)
+        prev.update(size=size, mtime=rec["mtime"], mns=mtime)
+        prev.pop("ino", None)
+        if ino:
+            prev["ino"] = ino
         return prev, False
     text = _decode(data)
     rec["sha1"] = sha
@@ -1053,7 +1067,7 @@ def _looks_like_env(path) -> bool:
 
 def walk(root, max_files):
     """Parcours en largeur (niveau par niveau) : si la limite est atteinte, ce sont les profondeurs qui sont
-    tronquées, pas des dossiers entiers. → [(chemin relatif, taille, mtime)], tronqué ?"""
+    tronquées, pas des dossiers entiers. → [(chemin relatif, taille, date en ns, n° du fichier)], tronqué ?"""
     ignored = _gitignore(root)
     isjunction = getattr(os.path, "isjunction", lambda p: False)
     files = []
@@ -1085,7 +1099,7 @@ def walk(root, max_files):
                 st = e.stat()
             except OSError:
                 continue
-            files.append((rel, st.st_size, int(st.st_mtime)))
+            files.append((rel, st.st_size, st.st_mtime_ns, st.st_ino))
             if len(files) >= max_files:
                 return files, True
         queue.extend(subdirs)
@@ -1881,12 +1895,16 @@ def map_project(path=None, project=None, quiet=False, full=False, max_files=None
 
 def _map_locked(pid, title, root, outdir, cfg, full, max_files):
     t0 = time.time()
-    previous = {} if full else ((read_json(outdir / "map.json", {}) or {}).get("files") or {})
+    old = {} if full else (read_json(outdir / "map.json", {}) or {})
+    previous = old.get("files") or {}
+    scanned = (old.get("meta") or {}).get("scan_ns")
+    racy = scanned - RACY_NS if isinstance(scanned, int) else None
+    scan_ns = time.time_ns()  # avant le parcours : un fichier modifié pendant celui-ci sera relu la fois suivante
     listing, truncated = walk(root, max_files or cfg["max_files"])
     files, parsed = {}, 0
     max_bytes = cfg["max_file_kb"] * 1024
-    for rel, size, mtime in listing:
-        res = process_file(root, rel, previous.get(rel), max_bytes, size, mtime)
+    for rel, size, mtime, ino in listing:
+        res = process_file(root, rel, previous.get(rel), max_bytes, size, mtime, ino, racy)
         if res is None:
             continue
         rec, was_parsed = res
@@ -1905,7 +1923,8 @@ def _map_locked(pid, title, root, outdir, cfg, full, max_files):
     pkg = (files.get("package.json") or {}).get("pkg") or {}
     meta = {"pid": pid, "name": title, "root": root, "generated": now_iso(), "truncated": truncated,
             "n_files": len(files), "parsed": parsed, "stack": detect_stack(files), "entries": entry_points(files),
-            "scripts": pkg.get("scripts") or {}, "dups": dup_count, "dup_dirs": dup_dirs.most_common(4)}
+            "scripts": pkg.get("scripts") or {}, "dups": dup_count, "dup_dirs": dup_dirs.most_common(4),
+            "scan_ns": scan_ns}
     meta["seconds"] = round(time.time() - t0, 2)
     write_json(outdir / "map.json", {"meta": meta, "files": files, "cycles": sccs}, indent=None)
     write_text(outdir / "MAP.md", build_report(meta, files, in_edges, pr, comms, sccs))

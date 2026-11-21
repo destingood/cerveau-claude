@@ -81,6 +81,49 @@ for rel in ("build/genere.js", "dist/bundle.js", "coverage/lcov.js", "packages/u
 check(files.get("src/main.py", {}).get("out") == ["src/env/config.py"], "dossiers ignorés : l'import de src/env/ est résolu",
       files.get("src/main.py"))
 
+# ----------------------------------------------------------------------------------------- même seconde
+import time  # noqa: E402
+
+Q = TMP / "seconde"
+a = put(Q, "app.py", "def avant():\n    pass\n")
+b = put(Q, "autre.py", "def stable():\n    pass\n")
+carte(Q)
+st = a.stat()
+a.write_text("def apres():\n    pass\n", encoding="utf-8", newline="\n")  # même taille
+os.utime(a, ns=(st.st_atime_ns, st.st_mtime_ns + 1000))  # 1 µs plus tard : la même seconde
+m = carte(Q)
+check([s["n"] for s in m["files"]["app.py"].get("symbols", [])] == ["apres"],
+      "même seconde : un changement 1 µs après la carte précédente est vu", m["files"]["app.py"])
+st = a.stat()
+a.write_text("def autre():\n    pass\n", encoding="utf-8", newline="\n")
+os.utime(a, ns=(st.st_atime_ns, st.st_mtime_ns))  # date identique (disque aux dates à la seconde, FAT…)
+m = carte(Q)
+check([s["n"] for s in m["files"]["app.py"].get("symbols", [])] == ["autre"],
+      "même seconde : un changement à date identique, juste après la carte précédente, est vu", m["files"]["app.py"])
+old = time.time_ns() - 3600 * 10**9  # fichiers d'il y a une heure : plus rien n'est proche de la dernière carte
+for f in (a, b):
+    os.utime(f, ns=(old, old))
+carte(Q)
+g = mapper.process_file.__globals__
+reads = []
+
+
+def counting_open(path, *args, **kw):
+    reads.append(str(path))
+    return open(path, *args, **kw)
+
+
+g["open"] = counting_open
+try:
+    meta = mapper.map_project(str(Q), quiet=True)
+finally:
+    del g["open"]
+check(meta["parsed"] == 0 and not [r for r in reads if r.endswith(".py")],
+      "même seconde : un projet inchangé n'est ni relu ni ré-analysé", (meta["parsed"], reads))
+os.utime(b, ns=(old, old + 5))  # date changée, contenu identique : relu, pas ré-analysé
+meta = mapper.map_project(str(Q), quiet=True)
+check(meta["parsed"] == 0, "même seconde : contenu identique sous une autre date : pas ré-analysé", meta)
+
 # ----------------------------------------------------------------------------------------- fin
 from brainkit.common import remove_tree  # noqa: E402
 
