@@ -58,7 +58,8 @@ def fresh():
     la tâche de fond des vues lancée par un cas ne gêne pas le suivant."""
     global CASE
     CASE = TMP / f"cas{len(list(TMP.glob('cas*')))}"
-    shutil.copytree(SEED, CASE)
+    # (un fichier temporaire de la tâche de fond peut disparaître pendant la copie, un verrou copié bloquerait le cas)
+    shutil.copytree(SEED, CASE, ignore=shutil.ignore_patterns("*.tmp", "*.lock"))
     os.environ["BRAIN_HOME"] = str(CASE)
 
 
@@ -81,6 +82,9 @@ for i, (ty, title) in enumerate([("decision", "Robots.txt bloque les robots d'IA
 brain("map", P1, "--quiet", home=SEED)
 brain("map", P2, "--quiet", home=SEED)
 brain("report", home=SEED)  # analyse du graphe à jour au départ
+# Les ajouts ont demandé les vues à la tâche de fond : attendre qu'elle ait fini, sinon chaque copie du cerveau d'essai
+# se fait pendant qu'elle y écrit (vu sous Windows : un termes.bin.<pid>.tmp disparu en pleine copie).
+brain("vues", "--attendre", home=SEED)
 NOT_DIR = P1 / "src" / "app.py"
 
 # (arguments, code de sortie attendu, texte attendu dans la sortie ou None) — 0 réussite, 1 échec, 2 ligne de commande
