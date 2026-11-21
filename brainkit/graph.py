@@ -492,7 +492,8 @@ def ensure(brain=None, force=False, write=True, wait=None, sig=None) -> dict:
     write=False : rien n'est lu ni écrit sur le disque (monde fictif du banc d'essai, état passé).
     wait=False (le défaut dans un hook) : jamais de calcul sur place — 1 à 4 s sur un gros cerveau, dans le délai du
     hook. L'analyse en cache sert même périmée (« stale » : True ; vide s'il n'y en a pas encore) et la tâche de fond
-    des vues la refait (hooks.refresh_later). wait=True : toujours à jour (les vues, qui la montrent). `sig` : empreinte
+    des vues la refait (hooks.refresh_later). Même chose hors d'un hook pour `brain q` et le serveur MCP
+    (common.LAZY). wait=True : toujours à jour (les vues, qui la montrent). `sig` : empreinte
     de ce cerveau déjà calculée (_signature)."""
     brain = brain or Brain.load()
     sig = sig or _signature(brain)
@@ -508,7 +509,8 @@ def ensure(brain=None, force=False, write=True, wait=None, sig=None) -> dict:
         if usable and cached.get("sig") == sig:
             return cached
         if wait is None:
-            wait = not _in_hook()
+            from . import common
+            wait = not (_in_hook() or common.LAZY)
         if not wait:
             from .hooks import refresh_later
             refresh_later()

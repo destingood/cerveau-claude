@@ -32,6 +32,9 @@ CMD = 'python "$HOME/.claude/brain/brain.py"'
 if PLUGIN and BRAIN_DIR != Path.home() / ".claude" / "brain":  # plugin avec un autre dossier Claude (CLAUDE_CONFIG_DIR)
     CMD = f'python "{BRAIN_DIR.as_posix()}/brain.py"'
 HOOK = None  # événement du hook en cours (posé par hooks._run) : le travail lourd n'y attend jamais, il part en arrière-plan
+# Commande de lecture rapide (`brain q`, serveur MCP) : comme dans un hook, l'analyse du graphe en cache sert même
+# périmée et la tâche de fond des vues la refait (1 à 4 s de calcul évitées juste après une écriture).
+LAZY = False
 
 # Mesuré le 16/10/2026 sur 427 paires de requêtes réelles (contexte n+1 − contexte n autour d'un seul gros résultat
 # d'outil) : 2,06 car./token en médiane ; Markdown FR 2,23, Python 2,27, sorties Bash 2,01. L'ancien 3,7 sous-estimait ×1,7.
@@ -258,6 +261,48 @@ def log(msg: str) -> None:
         pass
 
 
+class LockBusy(TimeoutError):
+    """Verrou tenu par une autre session (FileLock) : un TimeoutError, comme avant, mais qu'on distingue d'un délai
+    réseau dépassé (urllib, socket : TimeoutError eux aussi)."""
+
+
+# errno → français (messages d'erreur des commandes : « No such file or directory » ne dit rien à l'utilisateur)
+_ERRNO_FR = {2: "introuvable", 13: "accès refusé", 1: "opération refusée", 28: "disque plein", 30: "disque en lecture seule",
+             17: "existe déjà", 20: "n'est pas un dossier", 21: "est un dossier", 16: "fichier occupé",
+             39: "dossier non vide", 36: "nom trop long", 122: "quota du disque atteint", 5: "erreur de lecture du disque"}
+
+
+def oserror_fr(exc) -> str:
+    """OSError → « <chemin> : <raison en français> » (Windows : winerror 32, fichier ouvert ailleurs)."""
+    why = _ERRNO_FR.get(getattr(exc, "errno", None) or 0)
+    if getattr(exc, "winerror", None) == 32:
+        why = "fichier ouvert par un autre programme"
+    why = why or (exc.strerror if getattr(exc, "strerror", None) else str(exc))
+    where = getattr(exc, "filename", None)
+    return f"{where} : {why}" if where else why
+
+
+def network_reason(exc) -> str:
+    """Erreur réseau (urllib, socket) → la raison en français ; "" pour une autre erreur d'entrée-sortie. Avant, une
+    connexion refusée se lisait « accès impossible à un fichier du cerveau » ou « <urlopen error [Errno 111]> »."""
+    import socket
+    import urllib.error
+    if isinstance(exc, urllib.error.HTTPError):
+        return f"le site répond {exc.code}" + (" (accès refusé)" if exc.code in (401, 403) else " (introuvable)"
+                                               if exc.code == 404 else " (trop de demandes, attends un peu)"
+                                               if exc.code == 429 else "")
+    reason = exc.reason if isinstance(exc, urllib.error.URLError) else exc
+    if isinstance(reason, (ConnectionRefusedError, ConnectionResetError, ConnectionAbortedError)):
+        return "connexion refusée ou coupée"
+    if isinstance(reason, socket.gaierror):
+        return "adresse introuvable (pas de réseau, ou DNS)"
+    if isinstance(reason, (socket.timeout, TimeoutError)) and not isinstance(reason, LockBusy):
+        return "délai dépassé"
+    if isinstance(exc, (urllib.error.URLError, ConnectionError)):
+        return short(str(reason), 120)
+    return ""
+
+
 class FileLock:
     """Verrou inter-processus minimal (création exclusive d'un fichier), reprise des verrous périmés.
 
@@ -311,7 +356,7 @@ class FileLock:
                     if not self.strict:
                         log(f"verrou occupé, on continue sans : {self.path}")
                         return self
-                    raise TimeoutError(f"verrou occupé : {self.path}")
+                    raise LockBusy(f"verrou occupé : {self.path}")
                 time.sleep(0.05)
 
     def __exit__(self, *exc):
@@ -338,8 +383,137 @@ def _merge(base, over):
     return out
 
 
+# Bornes des réglages numériques [min, max] (None : pas de borne) ; les autres nombres vont de 0 à l'infini. Une valeur
+# hors bornes dans config.json est remplacée par le défaut, comme une valeur du mauvais type (CONFIG_ISSUES).
+CONFIG_RANGES = {"recall.min_cov": (0, 1), "recall.min_cov_files": (0, 1), "recall.neurone_haut": (0, 1),
+                 "recall.neurone_bas": (0, 1), "compact.min_gain": (0, 1), "pc.ram_alert_pct": (0, 100),
+                 "promptlib.timeout": (0.1, 60), "eco.bash_output_max_chars": (4000, 128000),
+                 "eco.auto_compact_window": (100000, 1000000), "mcp.max_car": (1000, None), "map.max_files": (1, None),
+                 "map.max_file_kb": (1, None), "backup.keep": (1, None), "journal.keep": (1, None),
+                 "auto_map.refresh_minutes": (1, None)}
+# Réglages qui prennent plusieurs formes : skills.plugins (oui/non, ou la liste des plugins lus), style (texte, ou
+# false pour aucun), mcp.groupes (liste, ou texte « wiki,boutique » que mcp_server découpe).
+CONFIG_FORMS = {"skills.plugins": (bool, list), "style": (str, bool, type(None)), "mcp.groupes": (list, str)}
+CONFIG_ISSUES = []  # réglages faux de config.json remplacés par leur défaut à la dernière lecture : [(clé, valeur, attendu)]
+_BOOL_WORDS = {"true": True, "false": False, "oui": True, "non": False, "on": True, "off": False, "1": True, "0": False,
+               "vrai": True, "faux": False, "yes": True, "no": False}
+
+
+def config_kind(key, default) -> str:
+    """Type attendu d'un réglage, en clair (messages) : d'après sa valeur par défaut."""
+    if key in CONFIG_FORMS:
+        return {"skills.plugins": "oui/non (true, false) ou liste de plugins", "style": "texte (nom du style) ou off",
+                "mcp.groupes": "liste de groupes"}[key]
+    if isinstance(default, bool):
+        return "oui/non (true ou false)"
+    if isinstance(default, int) and not key.endswith(("_minutes", "_hours", "_days")) and key != "due.days_ahead":
+        return "nombre entier"
+    if isinstance(default, (int, float)):
+        return "nombre"
+    if isinstance(default, str):
+        return "texte"
+    if isinstance(default, list):
+        return "liste"
+    if isinstance(default, dict):
+        return "objet JSON"
+    return "texte ou null"
+
+
+def config_value(key, default, val):
+    """(valeur ramenée au type du défaut, None) si `val` convient au réglage `key`, sinon (None, type attendu). Rien
+    de lourd : chaque lecture de la configuration (chaque hook) passe les valeurs écrites par là."""
+    if key in CONFIG_FORMS:
+        return (val, None) if isinstance(val, CONFIG_FORMS[key]) else (None, config_kind(key, default))
+    if default is None:  # chemin, date ou choix encore vide : texte ou null
+        return (val, None) if val is None or isinstance(val, str) else (None, "texte ou null")
+    if isinstance(default, bool):
+        if isinstance(val, bool):
+            return val, None
+        if isinstance(val, int) and val in (0, 1):
+            return bool(val), None
+        if isinstance(val, str) and val.strip().lower() in _BOOL_WORDS:
+            return _BOOL_WORDS[val.strip().lower()], None
+        return None, config_kind(key, default)
+    if isinstance(default, (int, float)):
+        if isinstance(val, str):
+            try:
+                val = float(val.strip().replace(",", "."))
+            except ValueError:
+                return None, config_kind(key, default)
+        if isinstance(val, bool) or not isinstance(val, (int, float)) or val != val or val in (float("inf"), float("-inf")):
+            return None, config_kind(key, default)
+        lo, hi = CONFIG_RANGES.get(key, (0, None))
+        if (lo is not None and val < lo) or (hi is not None and val > hi):
+            return None, f"{config_kind(key, default)} de {lo} à {hi}" if hi is not None else \
+                f"{config_kind(key, default)} d'au moins {lo}"
+        if config_kind(key, default) == "nombre entier":
+            if val != int(val):
+                return None, "nombre entier"
+            val = int(val)
+        return val, None
+    if isinstance(default, str):
+        return (val, None) if isinstance(val, str) else (None, "texte")
+    if isinstance(default, list):
+        if isinstance(val, str):
+            val = [val]
+        if not isinstance(val, list):
+            return None, "liste"
+        if default and all(isinstance(x, (int, float)) and not isinstance(x, bool) for x in default) \
+                and not all(isinstance(x, (int, float)) and not isinstance(x, bool) for x in val):
+            return None, "liste de nombres"
+        return val, None
+    if isinstance(default, dict):
+        return (val, None) if isinstance(val, dict) else (None, "objet JSON")
+    return val, None
+
+
+def _sane(defaults, over, prefix, issues):
+    """Valeurs écrites dans config.json qui ne conviennent pas à leur réglage (« abc » pour un nombre, texte pour une
+    section…) : retirées de `over` (lu à l'instant, donc à nous), le défaut les remplace. Les clés hors des défauts
+    (état tenu par le cerveau, sections libres comme skills.triggers) ne sont pas regardées."""
+    for key in list(over):
+        if key not in defaults:
+            continue
+        dflt, val, path = defaults[key], over[key], prefix + key
+        if isinstance(dflt, dict) and dflt and path not in CONFIG_FORMS:
+            if isinstance(val, dict):
+                _sane(dflt, val, path + ".", issues)
+            else:
+                issues.append((path, val, "objet JSON"))
+                del over[key]
+            continue
+        good, want = config_value(path, dflt, val)
+        if want:
+            issues.append((path, val, want))
+            del over[key]
+        elif good is not val:
+            over[key] = good
+
+
 def load_config() -> dict:
-    return _merge(DEFAULT_CONFIG, read_json(CONFIG_FILE, {}) or {})
+    over = read_json(CONFIG_FILE, {}) or {}
+    issues = []
+    if not isinstance(over, dict):  # liste, texte… : rien d'utilisable, les défauts partout
+        issues.append(("(fichier)", over, "objet JSON"))
+        over = {}
+    _sane(DEFAULT_CONFIG, over, "", issues)
+    CONFIG_ISSUES[:] = issues
+    return _merge(DEFAULT_CONFIG, over)
+
+
+def config_issues_line() -> str:
+    """Réglages faux remplacés par leur défaut, en une ligne pour l'utilisateur ("" s'il n'y en a pas)."""
+    if not CONFIG_ISSUES:
+        return ""
+    bits = []
+    for key, val, want in CONFIG_ISSUES[:4]:
+        shown = json.dumps(val, ensure_ascii=False)
+        bits.append(f"{key} = {shown[:40] + '…' if len(shown) > 40 else shown} ({want} attendu)")
+    more = f" (+{len(CONFIG_ISSUES) - 4})" if len(CONFIG_ISSUES) > 4 else ""
+    first = CONFIG_ISSUES[0][0]
+    fix = "`brain config` pour voir" if first == "(fichier)" else f"corriger : `brain config {first} <valeur>`"
+    return (f"⚠ Cerveau : réglage ignoré dans {CONFIG_FILE.name}, valeur par défaut utilisée — " + " · ".join(bits)
+            + f"{more} ; {fix}")
 
 
 def update_config(change) -> dict:
@@ -358,7 +532,9 @@ def set_config(dotted: str, value) -> dict:
         cur = cfg
         keys = dotted.split(".")
         for key in keys[:-1]:
-            cur = cur.setdefault(key, {})
+            if not isinstance(cur.get(key), dict):  # section abîmée (texte, liste…), déjà ignorée à la lecture : refaite
+                cur[key] = {}
+            cur = cur[key]
         cur[keys[-1]] = value
     return update_config(change)
 
