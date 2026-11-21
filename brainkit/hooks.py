@@ -175,6 +175,7 @@ def cleanup_states(max_days=5):
 def spawn_background(args) -> bool:
     """Lance `brain.py <args>` dans un processus détaché (aucune fenêtre, n'attend pas)."""
     import subprocess  # importé seulement ici : ~5 ms épargnées à chaque hook
+    from . import wikistore  # déjà chargé par store.Brain : rien de plus à importer
     try:
         exe = Path(sys.executable)
         if os.name == "nt" and exe.name.lower() == "pythonw.exe" and (exe.parent / "python.exe").exists():
@@ -182,7 +183,7 @@ def spawn_background(args) -> bool:
         # Dossier courant = le cerveau : sous Windows, il ne s'efface pas tant que la tâche tourne (remove_tree attend) ;
         # BRAIN_TASK : cli.main ne fait rien si le cerveau a été effacé avant que la tâche démarre (dossier de test)
         kw = dict(stdin=subprocess.DEVNULL, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, close_fds=True,
-                  cwd=str(BRAIN_DIR), env={**os.environ, "BRAIN_BG": "1", "BRAIN_TASK": "1"})
+                  cwd=str(BRAIN_DIR), env=wikistore.child_env({**os.environ, "BRAIN_BG": "1", "BRAIN_TASK": "1"}))
         if os.name == "nt":
             # CREATE_NO_WINDOW | CREATE_NEW_PROCESS_GROUP | BELOW_NORMAL_PRIORITY_CLASS : console cachée, priorité basse.
             # Pas pythonw + DETACHED_PROCESS : sans console, git ne répond plus (Git 2.56, Windows 11, 21/10/2026)
@@ -232,9 +233,11 @@ def _mappable(proj, path) -> bool:
 
 
 def _within(path, root) -> bool:
+    """Le dossier `path` est-il dans `root` ? Aussi à travers un lien (macOS : /var → /private/var) : sinon le dossier
+    du wiki d'une session cloud était pris pour un projet à cartographier."""
     from .common import path_within
     try:
-        return path_within(path, root)
+        return path_within(path, root) or path_within(os.path.realpath(path), os.path.realpath(root))
     except Exception:
         return False
 

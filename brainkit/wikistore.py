@@ -108,8 +108,21 @@ def resolve(cwd=None):
         return "classic", None
     found = _find_up(here)
     if found and _cache_free_for(found):
+        _FOUND[:] = [found]
         return "wiki", found
     return "classic", None
+
+
+_FOUND = []  # wiki trouvé depuis le dossier courant par ce processus (session cloud ouverte dans le dépôt du wiki)
+
+
+def child_env(env: dict) -> dict:
+    """Environnement d'une tâche de fond : elle tourne dans le dossier du cerveau, pas dans celui du wiki. Un wiki trouvé
+    depuis le dossier courant (sans wiki.path) lui est donc passé par BRAIN_WIKI ; sinon elle se croyait en cerveau
+    classique, réécrivait le cache sans le wiki, et la session suivante ne voyait plus le wiki (session cloud, 21/11)."""
+    if _FOUND and not env.get("BRAIN_WIKI"):
+        env["BRAIN_WIKI"] = str(_FOUND[0])
+    return env
 
 
 def root():

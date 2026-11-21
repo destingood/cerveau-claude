@@ -281,7 +281,7 @@ def tree(root, version, extra=None):
     for rel, text in files.items():
         p = root / rel
         p.parent.mkdir(parents=True, exist_ok=True)
-        p.write_text(text, encoding="utf-8")
+        p.write_text(text, encoding="utf-8", newline="\n")  # mêmes octets partout (Windows écrirait \r\n)
     return root
 
 

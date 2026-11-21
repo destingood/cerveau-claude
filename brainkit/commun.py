@@ -855,8 +855,9 @@ def spawn(args, low=True):
         env["BRAIN_TASK"] = "1"  # comme hooks.spawn_background : rien si le cerveau a été effacé entre-temps
         if low:
             env["BRAIN_BG"] = "1"  # cli.main : CPU, disque et mémoire en priorité basse
+        from . import wikistore
         kw = dict(stdin=subprocess.DEVNULL, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, close_fds=True,
-                  cwd=str(BRAIN_DIR), env=env)
+                  cwd=str(BRAIN_DIR), env=wikistore.child_env(env))
         if os.name == "nt":
             kw["creationflags"] = 0x08000000 | 0x00000200 | (0x00004000 if low else 0)  # comme hooks.spawn_background
         else:
