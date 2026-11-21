@@ -3,6 +3,7 @@ source du code), et garde-fou de l'ancien mode, qui n'efface jamais un fichier s
 plugin (C23 : les dossiers d'un autre projet rangés dans le même dépôt).
 
 Lancement : python tests/test_publish.py   (sortie : « N vérifications OK, M échec(s) »)"""
+import json
 import os
 import re
 import shutil
@@ -145,6 +146,22 @@ else:
     check(code == 0 and tagged and '"version": "99.0.0"' in plugin and not status.strip()
           and set(before) <= set(publish.git_files(snap)),
           "sur place : nouvelle version, manifestes réécrits, commit et tag, rien d'effacé", out + status)
+
+    # 5. sans dossier, depuis un clone du même dépôt : sur place, même si un autre dossier est retenu (vu le 20/11 : le
+    # dossier retenu passait devant, le plugin était construit dans un autre clone)
+    other = TMP / "autre-clone"
+    git(TMP, "clone", "-q", str(snap), str(other))
+    git(snap, "remote", "add", "origin", "https://github.com/destingood/cerveau-claude.git")
+    conf = TMP / "maison" / ".claude" / "brain" / "config.json"
+    data = json.loads(conf.read_text(encoding="utf-8")) if conf.is_file() else {}
+    data.setdefault("publish", {})["dir"] = str(other)
+    conf.parent.mkdir(parents=True, exist_ok=True)
+    conf.write_text(json.dumps(data), encoding="utf-8")
+    head = git(other, "rev-parse", "HEAD")[1]
+    code, out = publie()
+    check(code == 0 and "sur place" in out and "rien de nouveau" in out and git(other, "rev-parse", "HEAD")[1] == head
+          and not git(other, "status", "--porcelain")[1].strip(),
+          "sans dossier, depuis un clone du même dépôt : publication sur place, le dossier retenu n'est pas touché", out)
 
 if not remove_tree(TMP, wait=60):
     print(f"(dossier pas effacé : {TMP})")
