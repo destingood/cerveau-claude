@@ -23,17 +23,24 @@ def die(msg, code=1):
     sys.exit(code)
 
 
-def refresh_views():
-    """Après une modification : index injecté, export lisible et visualisation à jour (mode wiki : index.md aussi)."""
+def refresh_views(brain=None, wait=False):
+    """Après une modification. Mode wiki : index.md du wiki tout de suite (une page du wiki, lue par Claude et envoyée
+    par git). Le reste — index injecté BRAIN.md, export MEMOIRES.md, vues 3D et 2D — est refait en arrière-plan une fois
+    les écritures calmées (vues.py) : la commande n'écrit que le graphe. wait=True : tout de suite (réparation).
+    `brain` : le cerveau tout juste enregistré par l'appelant (évite de le relire)."""
     try:
-        b = Brain.load()
-        idx.rebuild(b)
-        idx.export(b)
-        if b.data.get("wiki") and not b.data["wiki"].get("missing"):
-            from . import wiki
-            wiki.write_index(b)
-        from . import viz
-        viz.render(b)
+        from . import wikistore
+        if wikistore.resolve()[0] == "wiki":
+            b = brain or Brain.load()
+            if b.data.get("wiki") and not b.data["wiki"].get("missing"):
+                from . import wiki
+                wiki.write_index(b)
+    except Exception as exc:
+        log(f"refresh_views (wiki) : {exc!r}")
+    try:
+        from . import vues
+        if wait or not vues.request():  # lancement en arrière-plan impossible : comme avant, tout de suite
+            vues.run_now()
     except Exception as exc:
         log(f"refresh_views : {exc!r}")
 
@@ -349,15 +356,18 @@ def cmd_add(a):
             print(f"✓ mémorisé `{node['id']}` [{TYPES[ntype]}]{extra}"
                   + (f" · échéance {dates.human(due_txt)}" if due_txt else "")
                   + (f" · étiquettes auto : {', '.join(tags)}" if auto_tags and tags else ""))
-    refresh_views()
+    from . import mots
+    sug = []
     if created:
-        try:
-            sug = [x for x in graph.inferred_of(graph.ensure(Brain.load()), created, 3) if x[2] != "faible"][:2]
-            if sug:
-                print("Liens suggérés : " + " · ".join(f"`{o}` ({', '.join(why)}) → `brain link {created} {o}`"
-                                                        for o, w, conf, why in sug))
+        try:  # les liens déduits du seul nouveau souvenir, comme l'analyse complète du graphe les donnerait
+            sug = [x for x in mots.inferred(b, created, 3) if x[2] != "faible"][:2]
         except Exception as exc:
             log(f"add : suggestions : {exc!r}")
+    refresh_views(b)
+    if sug:
+        print("Liens suggérés : " + " · ".join(f"`{o}` ({', '.join(why)}) → `brain link {created} {o}`"
+                                                for o, w, conf, why in sug))
+    mots.keep(b)  # premier ajout après une mise à jour : les mots de tout le cerveau, gardés pour les suivants
 
 
 def cmd_supersede(a):
@@ -972,16 +982,35 @@ def cmd_export(a):
         for line in rep["kept"]:
             print(f"  · {line}")
         return
-    idx.export(Brain.load())
+    from . import vues
+    with vues.lock():  # après la régénération en arrière-plan en cours, jamais en même temps qu'elle
+        idx.export(Brain.load())
     print(f"✓ {EXPORT_FILE}")
 
 
 def cmd_viz(a):
-    from . import viz
-    path = viz.render(Brain.load())
+    from . import viz, vues
+    with vues.lock():  # après la régénération en arrière-plan en cours, jamais en même temps qu'elle
+        path = viz.render(Brain.load())
     print(f"✓ {path} (vue 3D) · {VIZ2D_FILE} (vue 2D, fonctionne hors ligne)")
     if a.open:
         os.startfile(str(path)) if os.name == "nt" else print("(ouvre le fichier dans un navigateur)")
+
+
+def cmd_vues(a):
+    """Vues refaites après une écriture (BRAIN.md, MEMOIRES.md, vues 3D et 2D) : --fond, la tâche détachée qui les
+    refait ; --attendre, attendre qu'elles soient à jour ; sans option, les refaire tout de suite."""
+    from . import vues
+    if a.fond:
+        vues.background()
+        return 0
+    if a.attendre:
+        done = vues.wait(a.delai)
+        print("✓ vues à jour" if done else f"✗ vues toujours en cours après {a.delai:g} s")
+        return 0 if done else 1
+    vues.run_now()
+    print(f"✓ vues refaites : {INDEX_FILE.name}, {EXPORT_FILE.name}, {VIZ_FILE.name}, {VIZ2D_FILE.name}")
+    return 0
 
 
 def cmd_stats(a):
@@ -1732,7 +1761,7 @@ def _doctor_fix():
             filesearch.build_cache(p["id"])
     ns = argparse.Namespace(dry_run=False, auto=True)
     cmd_consolidate(ns)
-    refresh_views()
+    refresh_views(wait=True)  # réparation : vues refaites tout de suite, pas en arrière-plan
     try:
         path = backup.run(force=True)
         print(f"✓ sauvegarde : {path}")
@@ -2248,6 +2277,11 @@ def build_parser():
     s.add_argument("--force", action="store_true", help="recalculer l'analyse")
     s = cmd("viz", cmd_viz, "générer cerveau.html (graphe 3D interactif) et cerveau-2d.html")
     s.add_argument("--open", action="store_true")
+    s = cmd("vues", cmd_vues, "vues refaites après une écriture (BRAIN.md, MEMOIRES.md, cerveau.html) : tout de suite, "
+            "ou --attendre celles en cours (elles se refont seules en arrière-plan)")
+    s.add_argument("--attendre", action="store_true", help="attendre que les vues demandées soient refaites")
+    s.add_argument("--delai", type=float, default=120.0, help="--attendre : au plus tant de secondes (défaut 120)")
+    s.add_argument("--fond", action="store_true", help=argparse.SUPPRESS)
     s = cmd("prompts", cmd_prompts, "prompts.chat : chercher des prompts/skills (FR traduit), get <id> = texte "
             "complet, --hook \"message\" = ce que le rappel automatique injecterait", ["prompt", "promptschat"])
     s.add_argument("query", nargs="*")

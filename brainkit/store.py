@@ -218,6 +218,7 @@ class Brain:
         self.data = data
         self.dirty = False
         self._sim_cache = None
+        self._adj = None
         self._counted = None
         if loaded:  # compteurs de rappel en attente : chaque lecteur voit les mêmes nombres qu'avant
             try:
@@ -347,6 +348,8 @@ class Brain:
         return cands[0] if len(cands) == 1 else None
 
     def neighbors(self, nid):
+        if self._adj is not None:  # cerveau en lecture seule (vues en arrière-plan) : voisins indexés une fois
+            return [(self.nodes[i], rel, d) for i, rel, d in self._adj.get(nid, ())]
         out = []
         for e in self.edges:
             if e["from"] == nid and e["to"] in self.nodes:
@@ -354,6 +357,19 @@ class Brain:
             elif e["to"] == nid and e["from"] in self.nodes:
                 out.append((self.nodes[e["from"]], e["rel"], "←"))
         return out
+
+    def freeze_neighbors(self):
+        """Pour un cerveau qu'on ne modifie plus (vues régénérées en arrière-plan) : les voisins de chaque souvenir
+        indexés une fois, dans le même ordre que neighbors(). L'export MEMOIRES.md ne parcourt plus tous les liens pour
+        chacun des souvenirs (O(N × liens) : 0,7 s à 3 000 souvenirs)."""
+        adj = {}
+        for e in self.edges:
+            a, b = e["from"], e["to"]
+            if b in self.nodes:
+                adj.setdefault(a, []).append((b, e["rel"], "→"))
+            if a != b and a in self.nodes:
+                adj.setdefault(b, []).append((a, e["rel"], "←"))
+        self._adj = adj
 
     def project_members(self, pid, include_archived=False):
         return [n for n in self.nodes.values()
@@ -366,7 +382,7 @@ class Brain:
         doublons : « Objectif du mois » de la boutique et celui de la chaîne YouTube)."""
         tt = set(tokenize(title))
         bt = set(tokenize(f"{title} {body}"))
-        cache = self._sim_cache
+        cache = self._words()
         out = []
         for n in self.active(own=True):  # jamais une page d'ami : rien de privé ne doit y fusionner
             if n["type"] == "project" or n["id"] == exclude:
@@ -374,11 +390,10 @@ class Brain:
             if ntype and n["type"] != ntype:
                 continue
             text = (n["title"], n.get("body", ""))
-            hit = cache.get(n["id"]) if cache is not None else None
+            hit = cache.get(n["id"])
             if hit is None or hit[0] != text:
                 hit = (text, set(tokenize(text[0])), set(tokenize(f"{text[0]} {text[1]}")))
-                if cache is not None:
-                    cache[n["id"]] = hit
+                cache[n["id"]] = hit
             nt, nb = hit[1], hit[2]
             # Borne exacte : jaccard(a, b) <= min(|a|, |b|) / max(|a|, |b|). Rien à calculer quand les tailles seules
             # interdisent d'atteindre le seuil (le gros du temps d'une consolidation sur un grand cerveau).
@@ -390,11 +405,24 @@ class Brain:
         out.sort(key=lambda x: -x[0])
         return out[:limit]
 
-    def cache_similar(self):
-        """Garde les mots de chaque souvenir pour une série d'appels à similar() (consolidation, rêve, optimisation) :
-        chaque souvenir n'est découpé qu'une fois au lieu d'une fois par comparaison."""
+    def _words(self) -> dict:
+        """Mots de chaque souvenir pour similar() ({id: ((titre, contenu), mots du titre, mots du tout)}) : gardés d'un
+        appel à l'autre (chaque entrée porte le texte dont elle vient : un souvenir modifié est redécoupé), et repris
+        au premier appel de state/mots.bin pour les souvenirs inchangés depuis (mots.py) — `brain add` ne redécoupe plus
+        tout le cerveau pour chercher ses doublons."""
         if self._sim_cache is None:
-            self._sim_cache = {}
+            try:
+                from . import mots
+                self._sim_cache = mots.prime(self)
+            except Exception as exc:
+                log(f"mots : {exc!r}")
+                self._sim_cache = {}
+        return self._sim_cache
+
+    def cache_similar(self):
+        """Série d'appels à similar() (consolidation, rêve, optimisation) : chaque souvenir n'est découpé qu'une fois.
+        (Toujours vrai désormais : gardé pour les appelants.)"""
+        self._words()
 
     # ------------------------------------------------------------------------------ projets
     def projects(self):
