@@ -6,6 +6,8 @@ change pour qui s'en sert.
 2. Les sorties des fonctions pures (aucun disque, aucune date, aucun nom de machine) sont identiques, octet pour octet,
    à celles d'avant le découpage : empreintes relevées sur la 8.30.0. Une modification VOULUE d'un de ces textes se
    reporte ici : `python tests/test_decoupage.py --empreintes` affiche les nouvelles.
+3. Aucun de ces modules ni de leurs parties ne dépasse 1 000 lignes.
+4. Importer l'un d'eux (ce que font les hooks) ne charge pas les parties lourdes ; elles viennent à la demande.
 Lancement : python tests/test_decoupage.py   (sortie : « N vérifications OK, M échec(s) »)"""
 import hashlib
 import importlib
@@ -201,6 +203,28 @@ if "--empreintes" in sys.argv:
 for label, fn in CASES.items():
     got = hashlib.sha256(json.dumps(fn(), ensure_ascii=False, sort_keys=True).encode()).hexdigest()[:20]
     check(got == EXPECTED.get(label), f"{label} : même sortie qu'avant le découpage", f"{got} ≠ {EXPECTED.get(label)}")
+
+# ------------------------------------------------------------------ 3. aucun fichier de plus de 1 000 lignes
+for path in sorted((CODE / "brainkit").glob("*.py")):
+    if path.stem in MODULES or path.stem.startswith(tuple(f"{m}_" for m in MODULES)):
+        n = len(path.read_text(encoding="utf-8").splitlines())
+        check(n <= 1000, f"{path.name} : {n} lignes (1 000 au plus)")
+
+# ------------------------------------------------------------------ 4. les hooks ne chargent que ce qui leur sert
+# Importer commun, wiki ou echange (ce que font les hooks) ne charge ni les règles de vie privée, ni l'ingestion des
+# sources, ni la synchronisation git : ces modules viennent à la demande.
+import subprocess  # noqa: E402
+
+probe = ("import sys; sys.path.insert(0, sys.argv[1]); from brainkit import commun, wiki, echange; "
+         "print(' '.join(sorted(m for m in sys.modules if m.startswith('brainkit.'))))")
+r = subprocess.run([sys.executable, "-I", "-S", "-c", probe, str(CODE)], capture_output=True, env=os.environ.copy(),
+                   timeout=60)
+loaded = set(r.stdout.decode("utf-8", "replace").split())
+check(r.returncode == 0 and not loaded & {"brainkit.commun_prive", "brainkit.wiki_sources", "brainkit.wiki_git",
+                                          "brainkit.wiki_textes"},
+      "importer commun, wiki et echange ne charge pas leurs parties lourdes", sorted(loaded))
+check(commun.clean("tél. 06 12 34 56 78") == "tél. «téléphone»" and wiki.UrlRefusee.__module__ == "brainkit.wiki_sources",
+      "une partie se charge au premier nom demandé")
 
 if not remove_tree(TMP, wait=30):
     print(f"(dossier pas effacé : {TMP})")
