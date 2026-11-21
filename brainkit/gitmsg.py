@@ -66,6 +66,34 @@ def explain(out, code=None, what="git") -> str:
     return f"{what} : git a échoué" + (f" (« {line[:200]} »)" if line else "") + " — `git status` dans le dossier"
 
 
+LOCKS = ("index.lock", "HEAD.lock", "ORIG_HEAD.lock", "FETCH_HEAD.lock", "config.lock", "packed-refs.lock")
+
+
+def clear_stale_locks(repo, age=120) -> list:
+    """Verrous laissés par un git interrompu (PC éteint, processus tué) : retirés s'ils ont plus de `age` secondes,
+    sinon plus aucun commit ni envoi ne passe. Un verrou récent est laissé (un git travaille peut-être encore). À
+    appeler sous le verrou du cerveau qui protège ce dépôt (aucun autre git du cerveau n'y tourne). → noms retirés."""
+    import time
+    from pathlib import Path
+    g = Path(repo) / ".git"
+    if not g.is_dir():
+        return []
+    cands = [g / name for name in LOCKS]
+    try:
+        cands += list((g / "refs").rglob("*.lock"))  # branche ou référence distante (push, fetch tués)
+    except OSError:
+        pass
+    gone = []
+    for p in cands:
+        try:
+            if time.time() - p.stat().st_mtime > age:
+                p.unlink()
+                gone.append(p.relative_to(g).as_posix())
+        except OSError:
+            continue
+    return gone
+
+
 def is_conflict(out) -> bool:
     return bool(re.search(r"conflict|could not apply|unmerged", str(out or "").lower()))
 
