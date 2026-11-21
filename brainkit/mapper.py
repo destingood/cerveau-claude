@@ -37,11 +37,23 @@ from .store import Brain
 
 PARSER_VERSION = 4
 
+# Dossiers ignorés partout : dépendances installées, caches, sorties qui ne portent que ce nom.
 IGNORE_DIRS = {
-    "node_modules", "__pycache__", "venv", "env", "virtualenv", "dist", "build", "out", "target", "coverage",
-    "vendor", "bower_components", "site-packages", "Pods", "obj", "__MACOSX", "$RECYCLE.BIN",
-    "System Volume Information", "htmlcov", "storybook-static",
+    "node_modules", "__pycache__", "venv", "virtualenv", "vendor", "bower_components", "site-packages", "Pods",
+    "__MACOSX", "$RECYCLE.BIN", "System Volume Information", "htmlcov", "storybook-static",
 }
+# Sorties de build : ignorées à la racine du projet ou à côté d'un fichier de build (package.json, pyproject.toml…),
+# gardées ailleurs. Avant, `src/build/` ou `app/out/` (du vrai code) disparaissaient de la carte (audit du 20/11).
+BUILD_DIRS = {"dist", "build", "out", "target", "obj", "coverage"}
+# Environnement Python : ignoré seulement s'il en a l'air (pyvenv.cfg, conda-meta, script activate) ; `src/env/` reste.
+ENV_DIRS = {"env"}
+ENV_MARKS = ("pyvenv.cfg", "conda-meta", "bin/activate", "Scripts/activate", "Scripts/activate.bat")
+BUILD_FILES = {"package.json", "pyproject.toml", "setup.py", "setup.cfg", "cargo.toml", "go.mod", "pom.xml",
+               "build.gradle", "build.gradle.kts", "settings.gradle", "settings.gradle.kts", "composer.json", "gemfile",
+               "cmakelists.txt", "makefile", "meson.build", "tsconfig.json", "angular.json", "deno.json", "pubspec.yaml",
+               "build.xml", "project.json", "mix.exs", "stack.yaml", "dune-project", "build.sbt"}
+BUILD_FILE_RX = re.compile(r"\.(?:sln|csproj|fsproj|vbproj|vcxproj)$|^(?:vite|webpack|rollup|next|nuxt|svelte|astro|"
+                           r"vue|gatsby|remix|tsup|esbuild|parcel|quasar)\.config\.[cm]?[jt]s$|^(?:gulpfile|gruntfile)\.", re.I)
 KEEP_DOT_DIRS = {".github", ".gitlab", ".devcontainer", ".storybook", ".husky"}
 JUNK_FILES = {"thumbs.db", "desktop.ini", ".ds_store"}
 
@@ -1023,6 +1035,22 @@ def _gitignore(root):
     return ignored
 
 
+def _has_build_file(entries) -> bool:
+    for e in entries:
+        low = e.name.lower()
+        if low in BUILD_FILES or BUILD_FILE_RX.search(low):
+            try:
+                if e.is_file():
+                    return True
+            except OSError:
+                continue
+    return False
+
+
+def _looks_like_env(path) -> bool:
+    return any(os.path.exists(os.path.join(path, m)) for m in ENV_MARKS)
+
+
 def walk(root, max_files):
     """Parcours en largeur (niveau par niveau) : si la limite est atteinte, ce sont les profondeurs qui sont
     tronquées, pas des dossiers entiers. → [(chemin relatif, taille, mtime)], tronqué ?"""
@@ -1037,6 +1065,7 @@ def walk(root, max_files):
         except OSError:
             continue
         subdirs = []
+        beside = None  # ce dossier contient-il un fichier de build ? (calculé seulement s'il a un dossier build/, out/…)
         for e in entries:
             name = e.name
             rel = f"{rel_dir}/{name}" if rel_dir else name
@@ -1044,7 +1073,11 @@ def walk(root, max_files):
                 if e.is_symlink() or isjunction(e.path):
                     continue
                 if e.is_dir():
-                    if not (name in IGNORE_DIRS or (name.startswith(".") and name not in KEEP_DOT_DIRS) or ignored(rel, True)):
+                    if name in BUILD_DIRS and beside is None:
+                        beside = not rel_dir or _has_build_file(entries)
+                    if not (name in IGNORE_DIRS or (name.startswith(".") and name not in KEEP_DOT_DIRS)
+                            or (name in BUILD_DIRS and beside) or (name in ENV_DIRS and _looks_like_env(e.path))
+                            or ignored(rel, True)):
                         subdirs.append(rel)
                     continue
                 if name.lower() in JUNK_FILES or name.startswith("~$") or ignored(rel, False):
