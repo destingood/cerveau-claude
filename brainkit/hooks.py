@@ -221,6 +221,16 @@ def _project_path(proj):
     return path if path and os.path.isdir(path) else None
 
 
+def _mappable(proj, path) -> bool:
+    """Recartographier tout seul ce projet ? Un projet créé tout seul (source « auto ») seulement si son dossier est
+    toujours un vrai projet (mapper.looks_like_project) : avant, un dossier qui ne contenait qu'un README l'était, et
+    sa carte était refaite toutes les 10 min. Un projet ajouté à la main (`proj add`, `map`) l'est toujours."""
+    if (proj or {}).get("source") != "auto":
+        return True
+    from . import mapper  # (importé seulement quand une carte est à refaire)
+    return mapper.looks_like_project(path)
+
+
 def _within(path, root) -> bool:
     from .common import path_within
     try:
@@ -376,7 +386,8 @@ def on_session_start(data, cfg):
             brain = b  # tel qu'il vient d'être écrit : pas besoin de le relire (20 à 60 ms)
             proj = brain.project_for_path(cwd)
     path = _project_path(proj)
-    if path and cfg["auto_map"]["enabled"] and filesearch.needs_refresh(proj["id"], cfg["auto_map"]["refresh_minutes"]):
+    if path and cfg["auto_map"]["enabled"] and filesearch.needs_refresh(proj["id"], cfg["auto_map"]["refresh_minutes"]) \
+            and _mappable(proj, path):
         spawn_background(["map", path, "-p", proj["id"], "--quiet"])
     st = load_state(sid)
     source = data.get("source") or "startup"
@@ -1490,7 +1501,7 @@ def on_session_end(data, cfg, event="session-end"):
     if event == "session-end" and pid and tx.get("edits") and cfg["auto_map"]["enabled"]:
         brain = brain or Brain.load()
         path = _project_path(brain.nodes.get(pid))
-        if path:
+        if path and _mappable(brain.nodes.get(pid), path):
             spawn_background(["map", path, "-p", pid, "--quiet"])
     if event == "session-end":  # entretien et sauvegarde automatiques, une fois par jour (en arrière-plan)
         for args in daily_due(cfg):
