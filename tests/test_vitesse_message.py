@@ -3,8 +3,8 @@ sans jamais servir un état périmé, et chaque hook ne charge que ce dont il se
 en CI) : on compte ce qui est fait (empreinte du savoir, index reconstruit, cerveau lu, fichiers analysés, modules).
 
 - index des souvenirs : repris sans relire tout le savoir tant que graph.json n'a pas changé (une réécriture de même
-  taille, même date, même n° de fichier comprise), reconstruit après un vrai changement ; relu de memidx.bin, il rend
-  les mêmes résultats que l'index construit en mémoire ;
+  taille, même date, même n° de fichier comprise), reconstruit après un vrai changement en ne redécoupant que les
+  souvenirs changés ; relu de memidx.bin ou refait ainsi, il rend les mêmes résultats que l'index construit en entier ;
 - message : empreinte du savoir calculée au plus une fois ; « ok merci » ne lit pas le cerveau ;
 - question datée : les dates citées par les souvenirs gardées d'un hook à l'autre, relues si la date d'écriture change ;
 - fin de tour : graph.json lu une seule fois, puis plus du tout pour le journal tant qu'il n'a pas changé (nouvelle
