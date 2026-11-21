@@ -339,7 +339,7 @@ def on_session_start(data, cfg):
         if mapper.looks_like_project(cwd):
             with Brain.edit() as b:
                 b.ensure_project(cwd, source="auto")
-            brain = Brain.load()
+            brain = b  # tel qu'il vient d'être écrit : pas besoin de le relire (20 à 60 ms)
             proj = brain.project_for_path(cwd)
     path = _project_path(proj)
     if path and cfg["auto_map"]["enabled"] and filesearch.needs_refresh(proj["id"], cfg["auto_map"]["refresh_minutes"]):
