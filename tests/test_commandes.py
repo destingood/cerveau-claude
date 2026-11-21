@@ -156,6 +156,7 @@ STEPS = [
     (["config", "recall.enabled"], 0, None),
     (["config", "recall.enabled", "false"], 0, "✓"),
     (["export"], 0, None),
+    (["viz"], 0, "les deux fonctionnent hors ligne"),  # la vue 3D aussi, depuis qu'elle embarque ses bibliothèques
     (["regroupe"], 0, None),
     (["consolidate", "--dry-run"], 0, None),
     (["history"], 0, None),
