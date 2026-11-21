@@ -311,9 +311,9 @@ def instruction(cfg=None) -> str:
     names = available()
     if mode(cfg) == "off" or not names:
         return ""
-    parts = [f"`{call_name(n)}` ({model_of(n, cfg).capitalize()}) : {ROLES[n]}" for n in names]
-    return ("↪ Délégation : passé 5 appels d'outils, confie la tâche au sous-agent le moins cher qui suffit (seul son "
-            "rapport revient) — " + " ; ".join(parts) + ". Conception, débogage, décisions : toi.")
+    # Courte : Claude Code liste déjà la description de chaque agent ; la ligne dit seulement quand et à qui.
+    parts = [f"`{call_name(n)}` ({model_of(n, cfg).capitalize()}) {ROLES[n]}" for n in names]
+    return "↪ Délégation, passé 5 appels d'outils : " + " · ".join(parts) + ". Conception, débogage, décisions : toi."
 
 
 # Message de l'utilisateur qui annonce une lecture ou une recherche en masse, ou une modification mécanique.

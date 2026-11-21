@@ -1,0 +1,21 @@
+# 🧠 Cerveau — entretien, réglages, ailleurs
+
+Journal, mode éco, sorties compactes, PC, skills, connecteurs, serveur MCP, Obsidian, réglages. Commande : `python "$HOME/.claude/brain/brain.py" <commande>`.
+
+## Entretien
+`journal [-p projet]` sessions passées · `journal -s "mots"` chercher dans leur texte · `journal --backfill` importer celles que les hooks ont manquées · `context` ce qui est injecté ici · `recall "message"` tester le rappel ·
+`consolidate [--dry-run]` fusion doublons/obsolètes · `dream` rêve (entretien : conflits, doublons, corrections entendues ; `--done`) · `stats` · `doctor` diagnostic (`doctor --fix` répare tout) ·
+`bench` banc d'essai (qualité du rappel, faux rappels, tokens par démarrage, vitesse des hooks) · `tokens [--hours 48]` où partent les tokens (contexte relu, coût fixe au démarrage, relances, habitudes coûteuses, mesuré sur les transcripts) · `report` rapport du graphe ·
+`eco` mode éco, moins de tokens sans rien perdre : état + plugins jamais utilisés · `eco --appliquer` (sorties de commandes longues mises en fichier, résumé de la conversation plus tôt, liste des skills réduite, mémoire auto coupée ; posé tout seul au 1er démarrage) · `eco --annuler` · `eco --poser ID` / `eco --retirer ID` (réglages sur accord : outils, connecteurs, git, effort, lecture, sous-agents — seulement après accord explicite de l'utilisateur) · `eco --cache auto|5m|1h|off` (durée du cache de prompt ; auto = choisie chaque jour d'après les pauses réelles) · `eco --desactiver nom@marketplace` (demande d'abord à l'utilisateur) · `eco --plugins-auto [on|off]` (veille quotidienne : PROPOSE, une fois, de désactiver plugins et skills claude.ai jamais utilisés en 30 j, sans rien désactiver) · `eco --plugins` (les désactive vraiment, seulement après accord de l'utilisateur) ·
+`compact` sorties de commandes compactes (installations, tests, builds, `git log`, clone : Claude ne lit que l'essentiel, sortie brute dans le fichier indiqué en pied) : statistiques · `compact sortie.txt --cmd "npm install"` essai · `config compact.enabled false` coupe ·
+`pc` état du PC (RAM/CPU/GPU) et ce qu'on peut libérer (sessions inactives, serveurs MCP) · `pc --clean` liste les serveurs MCP orphelins (parent mort) : PID, âge, mémoire, raison ; `pc --clean --oui` les ferme, seulement sur accord de l'utilisateur (la veille ne ferme jamais rien, elle en parle une fois) · `pc --history [h]` mesures de la veille ·
+`skill` skills perso et des plugins actifs (+ combien de fois soufflées et chargées) · `skill test "message"` laquelle se déclencherait · `skill check` contrôle (déclencheurs, liens, longueur) · `skill new <nom> -d "À utiliser quand… « … » Ne pas utiliser pour…" --body-file f` créer · `skill trig plugin:skill "déclencheur" …` déclencheurs en français pour une skill de plugin ou du compte claude.ai ·
+`outils` connecteurs et serveurs MCP vus (état, outils, phrases) · `outils test "message"` lequel se déclencherait · `outils trig <connecteur> "phrase" …` phrases françaises pour un connecteur · `outils scan` relire tout de suite les derniers transcripts · `config outils.enabled false` coupe ·
+`viz --open` vue 3D (`~/.claude/brain/cerveau.html`, régénérée en fin de session) · `export` (MEMOIRES.md lisible) ·
+`config recall.enabled false` · `config skills.paste auto|propose|off` · `install` réparer.
+
+## Ailleurs que dans l'onglet Code
+| But | Commande |
+|---|---|
+| Coffre Obsidian / Markdown, synchronisé dans les deux sens (une note par souvenir, propriétés, liens `[[ ]]`) — sans objet en mode wiki (le wiki est le coffre) | `export --vault <dossier>` (dossier retenu ensuite : `export --vault`) — notes modifiées rapatriées champ par champ, nouvelle note dans « À trier » = nouveau souvenir, note supprimée = souvenir archivé, conflit = version Obsidian gardée dans « Conflits » · `--push` écrase le coffre |
+| Serveur MCP (chat Claude, Cowork, tout client MCP) : outils memory_search / memory_add / memory_show / memory_update / memory_todo / memory_context ; avec `config mcp.groupes '["wiki", "boutique"]'`, aussi wiki_status / wiki_add_source / wiki_lint / wiki_log et boutique_etat / boutique_ajouter / boutique_plan / boutique_kpi / boutique_audit ; résultat long coupé en pages (`config mcp.max_car`, la suite avec `page`) | `mcp` (stdio) · `install --mcp` l'enregistre dans l'app Claude (`--uninstall` le retire) |

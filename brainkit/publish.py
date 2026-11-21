@@ -445,13 +445,13 @@ def _fresh_exe():
 
 def _generated(dest: Path, owner: str, repo: str) -> None:
     """Les fichiers que le plugin tire de son code : hooks, skill /brain, manifestes, README."""
-    from .install import EVENTS, SKILL
+    from .install import EVENTS, write_brain_skill
     hooks = {event: [{**({"matcher": matcher} if matcher else {}), "hooks": [_hook(arg, timeout, status)]}]
              for event, arg, timeout, status, matcher in EVENTS}
     _json(dest / "hooks" / "hooks.json", {"description": "Cerveau : injection au démarrage, rappel à chaque message, "
                                                          "sorties de commandes compactes, mémorisation en fin de tâche",
                                           "hooks": hooks})
-    _lf(dest / "skills" / "brain" / "SKILL.md", SKILL)
+    write_brain_skill(dest / "skills" / "brain", write=_lf)  # SKILL.md et ses fichiers references/
     plugin = {"name": NAME, "version": __version__, "description": DESC, "author": {"name": owner},
               "keywords": KEYWORDS, "mcpServers": MCP_SERVERS}
     if repo:
