@@ -245,6 +245,10 @@ def bounded(name, args, run, limit=None):
 def _run_cli(argv):
     """Exécute une commande du cerveau et capture sa sortie (stdout est réservé au protocole MCP)."""
     from . import cli
+    if "--" in argv:  # seulement s'il sert : Python 3.10 et 3.11 refusent « -- » après une sous-commande de sous-commande
+        i = argv.index("--")  # (« boutique etat -- atelier » : argument inattendu)
+        if not any(str(x).startswith("-") for x in argv[i + 1:]):
+            argv = argv[:i] + argv[i + 1:]
     buf = io.StringIO()
     code = 0
     with contextlib.redirect_stdout(buf), contextlib.redirect_stderr(io.StringIO()) as err:
@@ -261,6 +265,15 @@ def _run_cli(argv):
         text = f"{text}\n" + "\n".join(lines)
     text = text.strip()
     return text or (f"échec sans message (code {code})" if code else "(rien)"), bool(code)
+
+
+
+def _value_first(argv, value):
+    """« boutique <action> <valeur> --options… » : la valeur juste après l'action. Python 3.10 et 3.11 rangent un argument
+    positionnel facultatif trop tôt quand une option le précède (« boutique bilan --semaines=4 atelier » : argument
+    inattendu) ; après « -- » seulement si elle commence par « - »."""
+    head, opts = argv[:2], argv[2:]
+    return head + [value] + opts if not str(value).startswith("-") else argv + ["--", value]
 
 
 def _internal(exc, where) -> str:
@@ -440,7 +453,7 @@ def _call(name, args):
         shop = _txt(args, "boutique")
         if not shop:
             return _run_cli(["boutique", "liste"])
-        return _run_cli(["boutique", "bilan", f"--semaines={_int(args, 'semaines', 1, 520, 4)}", "--", shop])
+        return _run_cli(_value_first(["boutique", "bilan", f"--semaines={_int(args, 'semaines', 1, 520, 4)}"], shop))
     if name == "boutique_ajouter":
         argv = ["boutique", "ajouter"]
         _opt(argv, "--url", _txt(args, "url"))
@@ -449,13 +462,13 @@ def _call(name, args):
         _opt(argv, "--type", _choice(args, "type", ("physique", "mode", "createur", "occasion", "niche", "prevente",
                                                      "local", "numerique", "b2b")))
         _opt(argv, "--marge-commande", _num(args, "marge_commande"))
-        return _run_cli(argv + ["--", _txt(args, "nom", required=True)])
+        return _run_cli(_value_first(argv, _txt(args, "nom", required=True)))
     if name == "boutique_plan":
         argv = ["boutique", "plan"]
         _opt(argv, "--debut", _txt(args, "debut"))
         if _flag(args, "court"):
             argv.append("--court")
-        return _run_cli(argv + ["--", _txt(args, "boutique", required=True)])
+        return _run_cli(_value_first(argv, _txt(args, "boutique", required=True)))
     if name == "boutique_kpi":
         argv = ["boutique", "kpi"]
         shop = _txt(args, "boutique", required=True)
@@ -471,7 +484,7 @@ def _call(name, args):
             raise Bad("« canaux » : liste attendue, ex. [\"google:120:3\"]")
         for spec in canaux:
             _opt(argv, "--canal", str(spec))
-        return _run_cli(argv + ["--", shop])
+        return _run_cli(_value_first(argv, shop))
     if name == "boutique_audit":
         argv = ["boutique", "audit"]
         if _flag(args, "conformite"):
@@ -481,7 +494,7 @@ def _call(name, args):
         pages = _int(args, "pages", 0, 50, 0, clamp=True)
         if pages:
             argv.append(f"--pages={pages}")
-        return _run_cli(argv + ["--", _txt(args, "boutique", required=True)])
+        return _run_cli(_value_first(argv, _txt(args, "boutique", required=True)))
     if name == "wiki_lint":
         return _run_cli(["wiki", "lint"])
     if name == "wiki_log":
