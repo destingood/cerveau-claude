@@ -220,6 +220,129 @@ os.utime(b, ns=(old, old + 5))  # date changée, contenu identique : relu, pas r
 meta = mapper.map_project(str(Q), quiet=True)
 check(meta["parsed"] == 0, "même seconde : contenu identique sous une autre date : pas ré-analysé", meta)
 
+# ----------------------------------------------------------------------------------------- requêtes et formats
+# Caractérisation : ce que la carte répond aujourd'hui (découpage de mapper.py en modules le 21/11/2026, sans changer
+# une réponse). Un changement voulu de ces réponses se fait ici, en connaissance de cause.
+import zipfile  # noqa: E402
+
+F = TMP / "boutique"
+put(F, "package.json", json.dumps({"name": "boutique", "main": "server/index.js", "scripts": {"dev": "node server/index.js"},
+                                   "dependencies": {"express": "^4", "react": "^18"}}))
+put(F, "server/index.js", "// Serveur de la boutique\nconst express = require('express')\nconst { total } = require('./prix')\n"
+    "const app = express()\napp.get('/api/produits', (req, res) => res.json([]))\n"
+    "const PORT = process.env.PORT || 3000\n// TODO: brancher le paiement\nmodule.exports = { app }\n")
+put(F, "server/prix.js", "exports.total = (p) => p.reduce((s, x) => s + x, 0)\n")
+put(F, "outils/__init__.py", "")
+put(F, "outils/calcul.py", "def somme(xs):\n    return sum(xs)\n\n\nclass Moyenne:\n    def valeur(self):\n"
+    "        return somme([1])\n")
+put(F, "outils/tache.py", '"""Tâche du jour : calcule et envoie le rapport."""\nimport os\n\nimport requests\n'
+    "from flask import Flask\n\nfrom outils.calcul import somme, Moyenne\nfrom .aide import formater\n\n"
+    'app = Flask(__name__)\nURL = os.environ.get("RAPPORT_URL")\n\n\n'  # coupé avant le décorateur : collé au
+    '@app.route("/rapport")\ndef rapport():\n'  # saut de ligne, `brain publish` le prendrait pour une adresse e-mail
+    "    return formater(somme([1, 2]))\n\n\ndef principal():\n    m = Moyenne()\n    requests.post(URL, json=m.valeur())\n"
+    '    # POURQUOI: le serveur limite les envois\n\n\nif __name__ == "__main__":\n    principal()\n')
+put(F, "outils/aide.py", "def formater(x):\n    return str(x)\n")
+put(F, "outils/cycle_a.py", "from outils.cycle_b import b\n\n\ndef a():\n    return b()\n")
+put(F, "outils/cycle_b.py", "from outils.cycle_a import a\n\n\ndef b():\n    return a()\n")
+put(F, "tests/test_calcul.py", "from outils.calcul import somme\n\n\ndef test_somme():\n    assert somme([1]) == 1\n")
+put(F, "README.md", "# Boutique de thé\n\nUne boutique en ligne.\n\n## Installation\n\nVoir [le guide](docs/guide.md).\n")
+put(F, "docs/guide.md", "# Guide\n\n## Déployer\n")
+put(F, "public/index.html", "<html><head><title>Boutique</title><link rel=\"stylesheet\" href=\"style.css\"></head>"
+    "<body><h1>Bienvenue</h1></body></html>\n")
+put(F, "public/style.css", "@import 'theme.css';\n")
+put(F, "public/theme.css", "body{}\n")
+put(F, "donnees/ventes.csv", "date,produit,montant\n2026-01-01,the,12\n")
+put(F, "requirements.txt", "requests\nflask\n")
+put(F, "secrets.json", "{}\n")
+(F / "media").mkdir()
+(F / "media/logo.png").write_bytes(b"\x89PNG" + b"\x00" * 64)
+with zipfile.ZipFile(F / "docs/rapport.docx", "w") as z:
+    z.writestr("docProps/core.xml", "<cp:coreProperties><dc:title>Rapport annuel</dc:title></cp:coreProperties>")
+    z.writestr("word/document.xml", '<w:document><w:p><w:pPr><w:pStyle w:val="Heading1"/></w:pPr><w:r><w:t>Résultats</w:t>'
+               "</w:r></w:p></w:document>")
+with zipfile.ZipFile(F / "donnees/budget.xlsx", "w") as z:
+    z.writestr("xl/workbook.xml", '<workbook><sheets><sheet name="Janvier"/><sheet name="Février"/></sheets></workbook>')
+(F / "docs/fiche.pdf").write_bytes(b"%PDF-1.4 << /Title (Fiche produit) >> << /Type /Page >>\n")
+m = carte(F)
+files = m["files"]
+got = mapper.where(m, "somme")
+check(got == ['outils/calcul.py:1  fn somme', 'tests/test_calcul.py:4  fn test_somme'],
+      'requêtes : where', got)
+got = mapper.where(m, "PORT")
+check(got == ['outils/tache.py:15  fn rapport', "variable d'env PORT utilisée dans : server/index.js", 'outils/tache.py  route ANY /rapport → rapport'],
+      'requêtes : where env', got)
+got = mapper.where(m, "rapport")
+check(got == ['outils/tache.py:15  fn rapport', 'outils/tache.py  route ANY /rapport → rapport'],
+      'requêtes : where route', got)
+got = mapper.deps(m, "outils/tache.py")
+check(got == ['`outils/tache.py`', '→ importe (2) : outils/aide.py, outils/calcul.py', '→ paquets externes : flask, requests', '← importé par (0) : —'],
+      'requêtes : deps', got)
+got = mapper.explain(m, "outils/calcul.py")[1:]
+check(got == ['Symboles (3) : somme (fn l.1), Moyenne (class l.5), Moyenne.valeur (method l.6)', 'Importé par (2) : outils/tache.py, tests/test_calcul.py'],
+      'requêtes : explain fichier', got)
+got = mapper.explain(m, "outils/calcul.py:somme")[:3]
+check(got == ['Symbole « somme » : outils/calcul.py:1  fn', 'Appelé par (3) : Moyenne.valeur (outils/calcul.py:7) · rapport (outils/tache.py:16) · test_somme (tests/test_calcul.py:5)', ''],
+      'requêtes : explain symbole', got)
+got = mapper.impact(m, "somme")
+check(got == (['Impact de « somme » — outils/calcul.py:1 (fonction) · profondeur 2', '', 'Dépend directement (3) :', '- outils/calcul.py:7  Moyenne.valeur appelle somme', '- outils/tache.py:16  rapport appelle somme', '- tests/test_calcul.py:5  test_somme appelle somme', '', 'Niveau 2 (1) :', '- outils/tache.py:21  principal appelle (déduit) Moyenne.valeur', '', 'À revoir : 1 fichier(s) — `outils/tache.py`', 'Tests reliés : `tests/test_calcul.py`', '(« déduit » : méthode au nom unique dans le projet, appelée sur un objet : à confirmer)'], 0),
+      'requêtes : impact', got)
+got = mapper.path_between(m, "outils/tache.py", "outils/aide.py")
+check(got == ['1 saut(s) : `outils/tache.py` importe `outils/aide.py`'],
+      'requêtes : path', got)
+got = mapper.path_between(m, "public/index.html", "public/theme.css")
+check(got == ['2 saut(s) : `public/index.html` importe `public/style.css` importe `public/theme.css`'],
+      'requêtes : path html', got)
+got = len(mapper.call_edges(m))
+check(got == 10,
+      "requêtes : graphe d'appels", got)
+got = m["meta"]["stack"]["summary"]
+check(got == 'Python 81% · JavaScript 14% · CSS 3% · Express · React · Flask · requests',
+      'requêtes : stack', got)
+got = m["meta"]["entries"]
+check(got == [['server/index.js', 'package.json'], ['outils/tache.py', '__main__'], ['public/index.html', 'page']],
+      "requêtes : points d'entrée", got)
+got = m["cycles"]
+check(got == [['outils/cycle_a.py', 'outils/cycle_b.py']],
+      'requêtes : cycles', got)
+got = {k: files["docs/rapport.docx"].get(k) for k in ("title", "headings")}
+check(got == {'title': 'Rapport annuel', 'headings': ['## Résultats']},
+      'requêtes : Word', got)
+got = files["donnees/budget.xlsx"].get("sheets")
+check(got == ['Janvier', 'Février'],
+      'requêtes : Excel', got)
+got = {k: files["docs/fiche.pdf"].get(k) for k in ("title", "doc")}
+check(got == {'title': 'Fiche produit', 'doc': '1 page(s)'},
+      'requêtes : PDF', got)
+got = files["donnees/ventes.csv"].get("doc")
+check(got == '2 lignes · colonnes : date,produit,montant',
+      'requêtes : CSV', got)
+got = files["secrets.json"].get("sensitive")
+check(got == True,
+      'requêtes : fichier sensible', got)
+got = files["media/logo.png"].get("lang")
+check(got == 'asset',
+      'requêtes : image', got)
+got = files["server/index.js"].get("routes")
+check(got == ['GET /api/produits'],
+      'requêtes : routes JS', got)
+got = files["outils/tache.py"].get("routes")
+check(got == ['ANY /rapport → rapport'],
+      'requêtes : routes Flask', got)
+got = files["outils/tache.py"].get("why")
+check(got == [[22, 'POURQUOI', 'le serveur limite les envois']],
+      'requêtes : raisons notées', got)
+got = files["server/index.js"].get("todos")
+check(got == [[7, 'TODO', 'brancher le paiement']],
+      'requêtes : TODO', got)
+got = [x for x in (F and (mapper.PROJECTS_DIR / m["meta"]["pid"] / "MAP.md").read_text(encoding="utf-8").splitlines()) if x.startswith("## ")]
+check(got == ['## Structure', "## Fichiers clés (centralité dans le graphe d'imports/liens)", "## Modules (communautés d'imports)", '## Routes / endpoints (2)', "## Variables d'environnement (noms uniquement)", "## Documents (4, plus récents d'abord)", '## Données (2)', '## Récemment modifiés', "## Points d'attention", '## Utiliser cette carte'],
+      'requêtes : sections de MAP.md', got)
+digest = (mapper.PROJECTS_DIR / m["meta"]["pid"] / "DIGEST.md").read_text(encoding="utf-8").splitlines()[0]
+check(digest.startswith("**🗺️ Carte du dossier** (") and digest.endswith(") : 22 fichiers — 12 code, 4 docs, 5 données, 1 médias."), "requêtes : DIGEST.md", digest)
+got = [r["key"] for r in mapper.search_files(m["meta"]["pid"], "total du panier", 3)]
+check(got == ['server/prix.js'],
+      'requêtes : recherche', got)
+
 # ----------------------------------------------------------------------------------------- fin
 from brainkit.common import remove_tree  # noqa: E402
 
