@@ -984,7 +984,9 @@ def cmd_export(a):
         return
     from . import vues
     with vues.lock():  # après la régénération en arrière-plan en cours, jamais en même temps qu'elle
-        idx.export(Brain.load())
+        b = Brain.load()
+        b.freeze_neighbors()  # lecture seule : voisins indexés une fois (0,7 s → quelques ms à 3 000 souvenirs)
+        idx.export(b)
     print(f"✓ {EXPORT_FILE}")
 
 
