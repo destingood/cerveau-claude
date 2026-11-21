@@ -358,6 +358,26 @@ def compact_recall(brain, st, data, cfg, proj):
     return "\n".join(lines), shown
 
 
+def config_warning() -> str:
+    """Réglages faux dans config.json (écrits à la main, ou avant que `brain config` ne vérifie) : chaque lecture les
+    remplace par leur défaut (common.load_config), et l'utilisateur l'apprend une fois — de nouveau seulement si la
+    liste change. Rien à lire ni à écrire quand tout va bien."""
+    from . import common
+    if not common.CONFIG_ISSUES:
+        return ""
+    line = common.config_issues_line()
+    sig = json.dumps([[k, w] for k, _, w in common.CONFIG_ISSUES], ensure_ascii=False)
+    mark = STATE_DIR / "config-signale.json"
+    if (read_json(mark, {}) or {}).get("sig") == sig:
+        return ""
+    try:
+        write_json(mark, {"sig": sig, "le": now_iso()})
+    except OSError:
+        return ""  # dossier en lecture seule : mieux vaut se taire que le redire à chaque session
+    log(line)
+    return line
+
+
 def on_session_start(data, cfg):
     from . import filesearch, importer
     sid = data.get("session_id")
@@ -369,6 +389,9 @@ def on_session_start(data, cfg):
     except Exception as exc:
         log(f"import auto-memory : {exc!r}")
     too_big = importer.too_big_line(big) or None  # fichier trop gros ignoré : dit une fois, à l'utilisateur (0 token)
+    bad_cfg = config_warning()  # réglage faux dans config.json : le défaut sert, dit une fois à l'utilisateur
+    if bad_cfg:
+        too_big = f"{too_big}\n{bad_cfg}" if too_big else bad_cfg
     try:  # cerveau commun : les nouveautés des amis avant de construire l'index (attente brève si la dernière est vieille)
         from . import commun
         commun.maybe_pull(wait=4)

@@ -252,133 +252,244 @@ def _run_cli(argv):
             code = cli.main(argv) or 0
         except SystemExit as exc:
             code = exc.code if isinstance(exc.code, int) else 1
-        except Exception as exc:  # jamais de plantage du serveur
+        except Exception as exc:  # jamais de plantage du serveur, jamais de trace Python dans un résultat
             code = 1
-            print(f"erreur : {exc!r}")
+            print(_internal(exc, argv[0] if argv else "?"))
     text, warn = buf.getvalue().strip(), err.getvalue().strip()
-    if warn:  # erreurs (✗ …) et avertissements (🔒 secret masqué…) utiles au modèle
-        text = f"{text}\n{warn}".strip()
-    return text or ("erreur" if code else "(rien)"), bool(code)
+    if warn:  # erreurs (✗ …) et avertissements (🔒 secret masqué…) utiles au modèle ; pas l'aide de la ligne de commande
+        lines = [x for x in warn.splitlines() if not x.startswith(("utilisation : ", "  aide : `brain", " " * 6))]
+        text = f"{text}\n" + "\n".join(lines)
+    text = text.strip()
+    return text or (f"échec sans message (code {code})" if code else "(rien)"), bool(code)
+
+
+def _internal(exc, where) -> str:
+    """Erreur inattendue → une phrase en français (le détail, trace comprise, va au journal du cerveau)."""
+    import traceback
+    try:
+        from .common import LOG_FILE, log
+        log(f"serveur MCP ({where}) : {exc!r}\n{traceback.format_exc()}")
+        detail = f" ; détail dans {LOG_FILE}"
+    except Exception:
+        detail = ""
+    return f"✗ erreur inattendue du cerveau ({type(exc).__name__}) pendant {where}{detail} — `brain doctor` pour le diagnostic"
+
+
+class Bad(ValueError):
+    """Argument d'outil refusé : le message (en français) part tel quel dans le résultat, isError vrai."""
+
+
+def _kind(v) -> str:
+    return {list: "une liste", dict: "un objet", bool: "vrai/faux"}.get(type(v), type(v).__name__)
+
+
+def _txt(args, key, required=False, missing=None):
+    """Argument texte : absent ou vide → None (ou refus s'il est obligatoire : `missing`, sinon « argument manquant ») ;
+    nombre accepté ; liste, objet → refus."""
+    v = args.get(key)
+    if v is None or (isinstance(v, str) and not v.strip()):
+        if required:
+            raise Bad(missing or f"argument manquant : « {key} » (texte)")
+        return None
+    if isinstance(v, bool) or not isinstance(v, (str, int, float)):
+        raise Bad(f"« {key} » : texte attendu, pas {_kind(v)}")
+    return str(v)
+
+
+def _int(args, key, lo, hi, default=None, clamp=False):
+    v = args.get(key)
+    if v is None or v == "":
+        return default
+    try:
+        if isinstance(v, bool) or (isinstance(v, float) and v != int(v)):
+            raise ValueError
+        n = int(v)
+    except (TypeError, ValueError):
+        raise Bad(f"« {key} » : nombre entier attendu ({lo} à {hi}), pas {json.dumps(v, ensure_ascii=False)[:40]}") from None
+    if clamp:
+        return max(lo, min(n, hi))
+    if not lo <= n <= hi:
+        raise Bad(f"« {key} » : {n} hors limites, de {lo} à {hi}")
+    return n
+
+
+def _num(args, key):
+    v = args.get(key)
+    if v is None or v == "":
+        return None
+    if isinstance(v, bool) or not isinstance(v, (int, float, str)):
+        raise Bad(f"« {key} » : nombre attendu, pas {_kind(v)}")
+    try:
+        float(str(v).replace(",", "."))
+    except ValueError:
+        raise Bad(f"« {key} » : nombre attendu, pas « {str(v)[:40]} »") from None
+    return str(v)
+
+
+def _flag(args, key) -> bool:
+    v = args.get(key)
+    if v is None or isinstance(v, bool):
+        return bool(v)
+    if isinstance(v, str) and v.strip().lower() in ("true", "false", "oui", "non", "1", "0", ""):
+        return v.strip().lower() in ("true", "oui", "1")
+    if isinstance(v, int):
+        return bool(v)
+    raise Bad(f"« {key} » : vrai ou faux attendu (true/false), pas {json.dumps(v, ensure_ascii=False)[:40]}")
+
+
+def _choice(args, key, options):
+    v = _txt(args, key)
+    if v is not None and v not in options:
+        raise Bad(f"« {key} » : « {v} » inconnu — au choix : {', '.join(options)}")
+    return v
+
+
+def _opt(argv, flag, value):
+    """Option collée à sa valeur (« --title=-rf ») : une valeur qui commence par « - » n'est jamais prise pour une
+    option (avant : « unrecognized arguments » d'argparse, en anglais, dans le résultat)."""
+    if value is not None:
+        argv.append(f"{flag}={value}")
 
 
 def call_tool(name, args):
     """Un appel d'outil → (texte, erreur ?). Un outil d'un groupe désactivé répond comment l'activer ; tout résultat est
-    borné (bounded)."""
-    args = args if isinstance(args, dict) else {}
+    borné (bounded). Arguments vérifiés (type, obligatoires, bornes) : un refus dit en français ce qui ne va pas."""
+    if not isinstance(name, str) or not name:
+        return "nom d'outil manquant (« name » dans params)", True
+    if args is not None and not isinstance(args, dict):
+        return f"« arguments » : objet JSON attendu, pas {_kind(args)}", True
+    args = args or {}
+    if not any(t["name"] == name for t in TOOLS):
+        return f"outil inconnu : {name} — outils de ce serveur : {', '.join(t['name'] for t in tools())}", True
     group = group_of(name)
     if group and group not in groups():
         return (f"outil {name} désactivé sur ce serveur : `brain config mcp.groupes '[\"{group}\"]'` l'ajoute à la liste "
                 "(les outils de la mémoire sont toujours là)"), True
-    return bounded(name, args, lambda: _call(name, args))
+    try:
+        _int(args, "page", 1, 10 ** 6)
+    except Bad as exc:
+        return f"✗ {exc}", True
+
+    def run():
+        try:
+            return _call(name, args)
+        except Bad as exc:
+            return f"✗ {exc}", True
+        except Exception as exc:
+            return _internal(exc, name), True
+    return bounded(name, args, run)
 
 
 def _call(name, args):
     if name == "memory_search":
-        try:
-            k = max(1, min(int(args.get("limit") or 6), 30))
-        except (TypeError, ValueError):
-            k = 6
-        argv = ["q", str(args.get("query", "")), "-k", str(k), "--no-files"]
-        if args.get("project"):
-            argv += ["-p", str(args["project"])]
-        return _run_cli(argv)
+        argv = ["q", "-k", str(_int(args, "limit", 1, 30, 6, clamp=True)), "--no-files"]
+        _opt(argv, "--project", _txt(args, "project"))
+        return _run_cli(argv + ["--", _txt(args, "query", required=True)])
     if name == "memory_add":
-        argv = ["add", "-t", str(args.get("type", "fact")), "-T", str(args.get("title", "")), "-b", str(args.get("body", ""))]
-        argv += ["-p", str(args["project"])] if args.get("project") else ["-p", "none"]
-        if args.get("due"):
-            argv += ["--due", str(args["due"])]
-        if args.get("replaces"):
-            argv += ["--replaces", str(args["replaces"])]
-        if args.get("keys"):
-            argv += ["--keys", str(args["keys"])]
-        for key in ("resume", "sources", "commun"):
-            if args.get(key):
-                argv += [f"--{key}", str(args[key])]
-        argv += ["--source", str(args.get("source") or "mcp")]
+        argv = ["add", f"--type={_choice(args, 'type', TYPES) or 'fact'}", f"--title={_txt(args, 'title', True, 'titre vide : « title » est obligatoire (court)')}",
+                f"--body={_txt(args, 'body', required=True)}", f"--project={_txt(args, 'project') or 'none'}"]
+        for key in ("due", "replaces", "keys", "resume", "sources"):
+            _opt(argv, f"--{key}", _txt(args, key))
+        _opt(argv, "--commun", _choice(args, "commun", ("oui", "non", "auto")))
+        _opt(argv, "--source", _choice(args, "source", ("utilisateur", "verifie", "claude", "deduit")) or "mcp")
         return _run_cli(argv)
     if name == "memory_show":
-        return _run_cli(["show", str(args.get("id", ""))])
+        return _run_cli(["show", "--", _txt(args, "id", required=True)])
     if name == "memory_update":
-        nid = str(args.get("id", ""))
-        if args.get("done"):
-            return _run_cli(["done", nid])
-        if args.get("archive"):
-            return _run_cli(["rm", nid])
-        argv = ["edit", nid]
-        for key, flag in (("append", "-a"), ("body", "-b"), ("title", "-T"), ("importance", "-i"), ("due", "--due"),
-                          ("resume", "--resume"), ("sources", "--sources"), ("commun", "--commun")):
-            if args.get(key) not in (None, ""):
-                argv += [flag, str(args[key])]
-        if len(argv) == 2:
+        nid = _txt(args, "id", required=True)
+        if _flag(args, "done"):
+            return _run_cli(["done", "--", nid])
+        if _flag(args, "archive"):
+            return _run_cli(["rm", "--", nid])
+        argv = ["edit"]
+        for key in ("append", "body", "title", "due", "resume", "sources"):
+            _opt(argv, f"--{key}", _txt(args, key))
+        imp = _int(args, "importance", 1, 5)
+        _opt(argv, "--importance", None if imp is None else str(imp))
+        _opt(argv, "--commun", _choice(args, "commun", ("oui", "non", "auto")))
+        if len(argv) == 1:
             return "rien à modifier : donner append, body, title, importance, due, done ou archive", True
-        return _run_cli(argv)
+        return _run_cli(argv + ["--", nid])
     if name == "memory_todo":
         return _run_cli(["todo"])
     if name == "memory_context":
         import os
-        argv = ["context", "--cwd", str(args.get("folder") or os.path.expanduser("~"))]
-        text, err = _run_cli(argv)
+        text, err = _run_cli(["context", f"--cwd={_txt(args, 'folder') or os.path.expanduser('~')}"])
         return text.rsplit("\n--- injecté", 1)[0], err
     if name == "wiki_status":
         text, err = _run_cli(["wiki", "status"])
-        if args.get("schema") and not err:
+        if _flag(args, "schema") and not err:
             more, _ = _run_cli(["wiki", "schema"])
             text = f"{text}\n\n{more}"
         return text, err
     if name == "wiki_add_source":
         from . import wiki
+        title, text, url, fmt = (_txt(args, "title", required=True), _txt(args, "text", required=True),
+                                 _txt(args, "url"), _txt(args, "format"))
         try:
-            info = wiki.add_source(None, title=str(args.get("title") or "Source"), fmt=args.get("format"),
-                                   url=args.get("url"), text=str(args.get("text") or ""))
-            text = wiki.ingest_plan(info)
+            info = wiki.add_source(None, title=title, fmt=fmt, url=url, text=text)
+            out = wiki.ingest_plan(info)
             wiki.write_index()
-            return text, False
-        except Exception as exc:
+            return out, False
+        except OSError as exc:
+            from .common import oserror_fr
+            return f"✗ {oserror_fr(exc)}", True
+        except (RuntimeError, ValueError) as exc:
             return f"✗ {exc}", True
     if name == "boutique_etat":
-        if not args.get("boutique"):
+        shop = _txt(args, "boutique")
+        if not shop:
             return _run_cli(["boutique", "liste"])
-        return _run_cli(["boutique", "bilan", str(args["boutique"]), "--semaines", str(int(args.get("semaines") or 4))])
+        return _run_cli(["boutique", "bilan", f"--semaines={_int(args, 'semaines', 1, 520, 4)}", "--", shop])
     if name == "boutique_ajouter":
-        argv = ["boutique", "ajouter", str(args.get("nom", ""))]
-        for key, flag in (("url", "--url"), ("plateforme", "--plateforme"), ("chemin", "--chemin"), ("type", "--type"),
-                          ("marge_commande", "--marge-commande")):
-            if args.get(key) not in (None, ""):
-                argv += [flag, str(args[key])]
-        return _run_cli(argv)
+        argv = ["boutique", "ajouter"]
+        _opt(argv, "--url", _txt(args, "url"))
+        _opt(argv, "--plateforme", _txt(args, "plateforme"))
+        _opt(argv, "--chemin", _choice(args, "chemin", ("plateforme", "0euro")))
+        _opt(argv, "--type", _choice(args, "type", ("physique", "mode", "createur", "occasion", "niche", "prevente",
+                                                     "local", "numerique", "b2b")))
+        _opt(argv, "--marge-commande", _num(args, "marge_commande"))
+        return _run_cli(argv + ["--", _txt(args, "nom", required=True)])
     if name == "boutique_plan":
-        argv = ["boutique", "plan", str(args.get("boutique", ""))]
-        if args.get("debut"):
-            argv += ["--debut", str(args["debut"])]
-        if args.get("court"):
+        argv = ["boutique", "plan"]
+        _opt(argv, "--debut", _txt(args, "debut"))
+        if _flag(args, "court"):
             argv.append("--court")
-        return _run_cli(argv)
+        return _run_cli(argv + ["--", _txt(args, "boutique", required=True)])
     if name == "boutique_kpi":
-        argv = ["boutique", "kpi", str(args.get("boutique", ""))]
-        for key in ("sessions", "ajouts", "checkouts", "commandes", "ca", "heures", "marge", "semaine", "note"):
-            if args.get(key) not in (None, ""):
-                argv += [f"--{key}", str(args[key])]
-        for spec in args.get("canaux") or []:
-            argv += ["--canal", str(spec)]
-        return _run_cli(argv)
+        argv = ["boutique", "kpi"]
+        shop = _txt(args, "boutique", required=True)
+        for key in ("sessions", "commandes"):
+            if args.get(key) in (None, ""):
+                raise Bad(f"argument manquant : « {key} » (nombre)")
+        for key in ("sessions", "ajouts", "checkouts", "commandes", "ca", "heures", "marge"):
+            _opt(argv, f"--{key}", _num(args, key))
+        for key in ("semaine", "note"):
+            _opt(argv, f"--{key}", _txt(args, key))
+        canaux = args.get("canaux") or []
+        if not isinstance(canaux, list):
+            raise Bad("« canaux » : liste attendue, ex. [\"google:120:3\"]")
+        for spec in canaux:
+            _opt(argv, "--canal", str(spec))
+        return _run_cli(argv + ["--", shop])
     if name == "boutique_audit":
-        argv = ["boutique", "audit", str(args.get("boutique", ""))]
-        if args.get("conformite"):
+        argv = ["boutique", "audit"]
+        if _flag(args, "conformite"):
             argv.append("--conformite")
-        if args.get("vitesse"):
+        if _flag(args, "vitesse"):
             argv.append("--vitesse")
-        try:
-            pages = max(0, min(int(args.get("pages") or 0), 50))
-        except (TypeError, ValueError):
-            pages = 0
+        pages = _int(args, "pages", 0, 50, 0, clamp=True)
         if pages:
-            argv += ["--pages", str(pages)]
-        return _run_cli(argv)
+            argv.append(f"--pages={pages}")
+        return _run_cli(argv + ["--", _txt(args, "boutique", required=True)])
     if name == "wiki_lint":
         return _run_cli(["wiki", "lint"])
     if name == "wiki_log":
-        lines = [str(x) for x in (args.get("lines") or [])]
-        return _run_cli(["wiki", "log", str(args.get("operation") or "note"), str(args.get("title") or ""), *lines])
+        lines = args.get("lines") or []
+        if not isinstance(lines, list):
+            raise Bad("« lines » : liste de lignes attendue")
+        return _run_cli(["wiki", "log", "--", _txt(args, "operation") or "note", _txt(args, "title", required=True),
+                         *[str(x) for x in lines]])
     return f"outil inconnu : {name}", True
 
 
@@ -390,7 +501,7 @@ def handle(msg):
     try:
         if method == "initialize":
             from . import __version__
-            asked = (msg.get("params") or {}).get("protocolVersion")
+            asked = msg["params"].get("protocolVersion") if isinstance(msg.get("params"), dict) else None
             return {"jsonrpc": "2.0", "id": mid, "result": {
                 "protocolVersion": asked if asked in PROTOCOLS else PROTOCOLS[0],
                 "capabilities": {"tools": {"listChanged": False}, "prompts": {"listChanged": False}},
@@ -403,13 +514,16 @@ def handle(msg):
             return {"jsonrpc": "2.0", "id": mid, "result": {"tools": tools()}}
         if method == "tools/call":
             p = msg.get("params") or {}
+            if not isinstance(p, dict):
+                return {"jsonrpc": "2.0", "id": mid, "error": {"code": -32603, "message": "params : objet JSON attendu "
+                                                                                          "({\"name\": …, \"arguments\": {…}})"}}
             text, is_err = call_tool(p.get("name"), p.get("arguments"))
             return {"jsonrpc": "2.0", "id": mid, "result": {"content": [{"type": "text", "text": text or "(vide)"}],
                                                              "isError": is_err}}
         if method == "prompts/list":
             return {"jsonrpc": "2.0", "id": mid, "result": {"prompts": [PROMPT]}}
         if method == "prompts/get":
-            if (msg.get("params") or {}).get("name") != PROMPT["name"]:
+            if not isinstance(msg.get("params"), dict) or msg["params"].get("name") != PROMPT["name"]:
                 return {"jsonrpc": "2.0", "id": mid, "error": {"code": -32602, "message": "prompt inconnu"}}
             text, _ = call_tool("memory_context", {})
             return {"jsonrpc": "2.0", "id": mid, "result": {"description": PROMPT["description"], "messages": [
@@ -420,11 +534,13 @@ def handle(msg):
         if method == "resources/templates/list":
             return {"jsonrpc": "2.0", "id": mid, "result": {"resourceTemplates": []}}
         return {"jsonrpc": "2.0", "id": mid, "error": {"code": -32601, "message": f"méthode inconnue : {method}"}}
-    except Exception as exc:
-        return {"jsonrpc": "2.0", "id": mid, "error": {"code": -32603, "message": repr(exc)}}
+    except Exception as exc:  # jamais de trace ni de repr Python en anglais : une phrase, le détail au journal
+        return {"jsonrpc": "2.0", "id": mid, "error": {"code": -32603, "message": _internal(exc, str(method))}}
 
 
 def serve():
+    from . import common
+    common.LAZY = True  # comme les hooks : l'analyse du graphe en cache, même périmée, jamais recalculée pendant un appel
     out = sys.stdout.buffer
     for raw in sys.stdin.buffer:
         line = raw.decode("utf-8", "replace").strip()

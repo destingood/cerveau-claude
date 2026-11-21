@@ -33,8 +33,21 @@ HABITS = [
 ]
 
 
+_COUNTERS = ("input_tokens", "cache_read_input_tokens", "cache_creation_input_tokens")
+
+
+def _count(v) -> int:
+    return v if isinstance(v, int) and not isinstance(v, bool) and v >= 0 else 0
+
+
+def _counted(u, keys=_COUNTERS) -> bool:
+    """Ligne de transcript avec un vrai compteur ? (« input_tokens »: null, texte, compteur absent : ligne sautée — avant,
+    une seule ligne de ce genre faisait planter tout `brain tokens`)."""
+    return isinstance(u, dict) and any(isinstance(u.get(k), int) and not isinstance(u.get(k), bool) for k in keys)
+
+
 def _ctx(u) -> int:
-    return u.get("input_tokens", 0) + u.get("cache_read_input_tokens", 0) + u.get("cache_creation_input_tokens", 0)
+    return sum(_count(u.get(k)) for k in _COUNTERS) if isinstance(u, dict) else 0
 
 
 def _size(c):
@@ -102,7 +115,7 @@ def solo(path, tail=SOLO_TAIL) -> dict:
                         o = json.loads(raw)
                     except ValueError:
                         continue
-                    if o.get("type") == "system" and o.get("subtype") == "compact_boundary":
+                    if isinstance(o, dict) and o.get("type") == "system" and o.get("subtype") == "compact_boundary":
                         last = (order, info) if order else last
                         order, info = [], {}
                     continue
@@ -112,9 +125,11 @@ def solo(path, tail=SOLO_TAIL) -> dict:
                     o = json.loads(raw)
                 except ValueError:
                     continue
+                if not isinstance(o, dict):
+                    continue
                 m = o.get("message") if o.get("type") == "assistant" and not o.get("isSidechain") else None
                 mid = m.get("id") if isinstance(m, dict) else None
-                if not mid or not isinstance(m.get("usage"), dict):
+                if not mid or not _counted(m.get("usage")):
                     continue
                 if mid not in info:
                     order.append(mid)
@@ -235,6 +250,8 @@ def _scan_file(path, cpt, out):
                 o = json.loads(raw)
             except ValueError:
                 continue
+            if not isinstance(o, dict):
+                continue
             t = o.get("type")
             if marked and t in ("user", "attachment") and any(0 <= x.find(m) <= MARK_PREFIX
                                                               for x in _strings(o) for m in STOP_MARKS):
@@ -247,9 +264,10 @@ def _scan_file(path, cpt, out):
                 ev.append(("C",))
                 last_req, between = None, []
             elif t == "assistant":
-                m = o.get("message") or {}
+                m = o.get("message") if isinstance(o.get("message"), dict) else {}
                 u, mid = m.get("usage"), m.get("id")
-                p = per.setdefault(mid, [0, None, _ctx(u)]) if mid and isinstance(u, dict) else None
+                u = u if _counted(u) else None  # sans compteur : ni requête ni contexte comptés pour cette ligne
+                p = per.setdefault(mid, [0, None, _ctx(u)]) if mid and u else None
                 for b in m.get("content") or []:
                     if isinstance(b, dict) and b.get("type") == "tool_use":
                         calls[b.get("id")] = (b.get("name"), b.get("input") or {})
@@ -267,10 +285,10 @@ def _scan_file(path, cpt, out):
                     tok = c - last_req[0] - last_req[1]
                     if tok > 200:
                         out["ratios"].append(between[0] / tok)
-                last_req, between = (c, u.get("output_tokens", 0)), []
+                last_req, between = (c, _count(u.get("output_tokens"))), []
                 ev.append(("R", c))
             elif t == "user":
-                cont = (o.get("message") or {}).get("content")
+                cont = o["message"].get("content") if isinstance(o.get("message"), dict) else None
                 results = False
                 for b in cont if isinstance(cont, list) else []:
                     if isinstance(b, dict) and b.get("type") == "tool_result":
@@ -464,7 +482,7 @@ def _events(path, seen, sub) -> tuple:
                     continue
                 m = o.get("message") if isinstance(o, dict) and o.get("type") == "assistant" else None
                 u = m.get("usage") if isinstance(m, dict) else None
-                if not isinstance(u, dict):
+                if not _counted(u, _COUNTERS + ("output_tokens",)):  # compteurs absents ou illisibles : ligne sautée
                     continue
                 key = o.get("requestId") or m.get("id")
                 if key in mine:

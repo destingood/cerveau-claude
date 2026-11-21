@@ -12,8 +12,8 @@ from pathlib import Path
 from . import __version__
 from . import index as idx
 from . import journal, search
-from .common import (BRAIN_DIR, CLAUDE_HOME, CMD, CONFIG_FILE, EXPORT_FILE, GRAPH_FILE, INDEX_FILE, LOG_FILE, PROJECTS_DIR, REPORT_FILE, VIZ2D_FILE, VIZ_FILE, budget_chars, days_since, est_tokens, fmt_date,
-                     fold, load_config, log, now_iso, set_config, setup_io, short, slugify, update_config,
+from .common import (BRAIN_DIR, CLAUDE_HOME, CMD, CONFIG_FILE, EXPORT_FILE, GRAPH_FILE, INDEX_FILE, LOG_FILE, PROJECTS_DIR, REPORT_FILE, VIZ2D_FILE, VIZ_FILE, LockBusy, budget_chars, days_since, est_tokens, fmt_date, network_reason,
+                     fold, load_config, log, now_iso, oserror_fr, set_config, setup_io, short, slugify, update_config,
                      write_text)
 from .store import GLOBAL_REFS, TYPES, Brain, bump_hits, clean_tags, normalize_type, priority
 
@@ -21,6 +21,90 @@ from .store import GLOBAL_REFS, TYPES, Brain, bump_hits, clean_tags, normalize_t
 def die(msg, code=1):
     print(f"✗ {msg}", file=sys.stderr)
     sys.exit(code)
+
+
+# ================================================================================== argparse en français
+# Messages d'argparse traduits (il les passe tous par gettext, nommé « _ » dans son module) : plus de « error: the
+# following arguments are required » ni d'aide en anglais.
+_FR = {"usage: ": "utilisation : ", "positional arguments": "arguments", "options": "options",
+       "optional arguments": "options", "show this help message and exit": "afficher cette aide",
+       "subcommands": "sous-commandes", " (default: %(default)s)": " (défaut : %(default)s)",
+       "the following arguments are required: %s": "argument manquant : %s",
+       "unrecognized arguments: %s": "argument inattendu : %s",
+       "argument %(argument_name)s: %(message)s": "%(argument_name)s : %(message)s",
+       "expected one argument": "une valeur attendue après l'option",
+       "expected at least one argument": "au moins une valeur attendue",
+       "expected at most one argument": "au plus une valeur attendue",
+       "invalid choice: %(value)r (choose from %(choices)s)": "choix inconnu : %(value)r (au choix : %(choices)s)",
+       "invalid %(type)s value: %(value)r": "valeur illisible : %(value)r",
+       "ambiguous option: %(option)s could match %(matches)s": "option ambiguë : %(option)s peut être %(matches)s",
+       "not allowed with argument %s": "incompatible avec %s",
+       "one of the arguments %s is required": "un de ces arguments est obligatoire : %s",
+       "ignored explicit argument %r": "valeur %r ignorée",
+       "%(prog)s: error: %(message)s\n": "✗ %(prog)s : %(message)s\n"}
+# Noms des arguments sans option, tels qu'argparse les cite quand ils manquent.
+_ARG_FR = {"text": "texte", "target": "fichier ou symbole", "name": "nom", "file": "fichier", "new": "nouveau",
+           "old": "ancien", "event": "événement", "ref": "n° ou date", "a": "premier", "b": "second", "id": "id",
+           "key": "clé", "value": "valeur", "path": "dossier", "action": "action"}
+_FR_ON = False
+
+
+def _french_argparse():
+    global _FR_ON
+    if not _FR_ON:
+        _FR_ON = True
+        en = argparse._
+        argparse._ = lambda msg: _FR.get(msg, en(msg))
+
+
+class Parser(argparse.ArgumentParser):
+    """argparse en français ; une valeur qui commence par « - » (prise pour une option) : dire comment la donner."""
+
+    def error(self, message):
+        import re
+        if message.startswith("argument manquant : "):
+            names = [_ARG_FR.get(x.strip(), x.strip()) for x in message.split(" : ", 1)[1].split(",")]
+            message = f"argument manquant : {', '.join(names)}"
+        m = re.match(r"<commande> : choix inconnu : '([^']*)' \(au choix : (.*)\)$", message)
+        if m:  # commande mal tapée : la plus proche, pas la liste entière des 150 noms
+            import difflib
+            near = difflib.get_close_matches(m.group(1), re.findall(r"'([^']*)'", m.group(2)), n=3, cutoff=0.6)
+            message = f"commande inconnue : « {m.group(1)} »" + (f" — voulais-tu : {', '.join(near)} ?" if near else "")
+        args = sys.argv[1:]
+        opts = set(self._option_string_actions)
+        dash = [i for i, x in enumerate(args) if x.startswith("-") and len(x) > 1 and x != "--"
+                and x.split("=")[0] not in opts and not re.match(r"^-\d", x) and i > 0]
+        hint = ""
+        if dash and re.match(r"(argument manquant|argument inattendu|.* : une valeur attendue)", message):
+            i = dash[0]
+            if args[i - 1] in opts and args[i - 1].startswith("-"):  # valeur d'une option : collée avec « = »
+                fix = " ".join(args[:i - 1] + [f"{args[i - 1]}={args[i]}"] + args[i + 1:])
+            else:  # texte sans option : après « -- », tout est du texte
+                fix = " ".join(args[:i] + ["--"] + args[i:])
+            hint = f"\n  une valeur qui commence par « - » est prise pour une option ; écris : `brain {fix}`"
+        self.print_usage(sys.stderr)
+        self.exit(2, f"✗ {self.prog} : {message}{hint}\n  aide : `{self.prog} -h`\n")
+
+
+def _number(kind, lo=None, hi=None, example=None):
+    """Type d'argument : nombre (entier si kind is int) entre lo et hi, message en français sinon."""
+    span = (f"de {lo} à {hi}" if hi is not None else f"d'au moins {lo}") if lo is not None else ""
+
+    def parse(text):
+        try:
+            v = kind(str(text).replace(",", ".")) if kind is float else int(text)
+        except ValueError:
+            raise argparse.ArgumentTypeError(f"{'nombre entier' if kind is int else 'nombre'} attendu, pas « {text} »"
+                                             + (f" (ex. {example})" if example is not None else "")) from None
+        if v != v or (lo is not None and v < lo) or (hi is not None and v > hi):
+            raise argparse.ArgumentTypeError(f"« {text} » refusé : {'nombre entier' if kind is int else 'nombre'} {span} "
+                                             "attendu" + (f" (ex. {example})" if example is not None else ""))
+        return v
+    return parse
+
+
+def _positive(kind=int, example=5):
+    return _number(kind, 1 if kind is int else 0.01, None, example)
 
 
 def refresh_views(brain=None, wait=False):
@@ -122,8 +206,9 @@ def node_line(n, chars=110):
 
 # ================================================================================== mémoire
 def cmd_q(a):
-    from . import filesearch
+    from . import common, filesearch
     from .store import confidence
+    common.LAZY = True  # analyse du graphe : celle en cache, même périmée (refaite en arrière-plan), jamais 1 à 4 s ici
     text = " ".join(a.text)
     if a.at:
         from . import dates, history
@@ -301,6 +386,18 @@ def cmd_add(a):
     tags = a.tags or clean_tags(graph.concept_tags(f"{a.title}\n{body}"))
     created = None
     with Brain.edit() as b:
+        # Ids donnés vérifiés avant toute écriture : un souvenir mémorisé à moitié (sans le lien ou le remplacement
+        # voulus) laissait un doublon à côté de l'ancien, et l'appel répété (serveur MCP) en ajoutait d'autres.
+        if a.replaces and not b.get(a.replaces):
+            die(f"souvenir à remplacer introuvable : `{a.replaces}` — rien n'est mémorisé (l'id : `brain q \"…\"`, "
+                "ou sans --replaces)")
+        for spec in a.link or []:
+            if not b.get(spec.partition(":")[0]):
+                die(f"souvenir à relier introuvable : `{spec.partition(':')[0]}` — rien n'est mémorisé (l'id : "
+                    "`brain q \"…\"`, ou sans --link)")
+        if a.id and slugify(a.id, 40) in b.nodes:
+            die(f"l'id `{slugify(a.id, 40)}` est déjà pris ({b.nodes[slugify(a.id, 40)]['title']}) — rien n'est "
+                f"mémorisé : choisis-en un autre, ou modifie celui-là (`brain edit {slugify(a.id, 40)}`)")
         proj, explicit = project_arg(b, a.project, cwd)
         if not explicit:
             proj = None if ntype in ("user", "feedback") else b.project_for_path(cwd)
@@ -434,6 +531,9 @@ def cmd_edit(a):
             if n["type"] != "project":
                 die("--path ne s'applique qu'à un projet")
             n.setdefault("meta", {})["path"] = os.path.abspath(a.path)
+        if not fields and not a.path:  # avant : « ✓ modifié » sans rien changer
+            die(f"rien à modifier dans `{n['id']}` : donne -T titre, -b texte, -a ajout, -i importance, --due, --tags… "
+                f"(aide : `brain edit -h`)")
         if "body" in fields:
             (n.get("meta") or {}).pop("auto_body", None)
         try:
@@ -476,6 +576,8 @@ def cmd_link(a):
             die(f"introuvable : {a.a if not x else a.b}")
         if x["id"].startswith("c--") or y["id"].startswith("c--"):
             die("page d'un ami (cerveau commun) : pas de lien enregistré — cite-la dans ton texte ([[titre]])")
+        if x["id"] == y["id"]:
+            die(f"un souvenir ne se relie pas à lui-même (`{x['id']}`) : donne deux ids différents")
         ok = b.link(x["id"], y["id"], a.rel)
         print(f"✓ lien `{x['id']}` —{a.rel}→ `{y['id']}`" if ok else "(lien déjà présent)")
     refresh_views()
@@ -485,8 +587,12 @@ def cmd_unlink(a):
     with Brain.edit() as b:
         x, y = b.get(a.a), b.get(a.b)
         if not x or not y:
-            die("souvenir introuvable")
-        print(f"✓ {b.unlink(x['id'], y['id'], a.rel)} lien(s) retiré(s)")
+            die(f"souvenir introuvable : {a.a if not x else a.b}")
+        gone = b.unlink(x["id"], y["id"], a.rel)
+        if not gone:
+            die(f"aucun lien entre `{x['id']}` et `{y['id']}`" + (f" (relation « {a.rel} »)" if a.rel else "")
+                + f" : rien à retirer — liens du souvenir : `brain show {x['id']}`")
+        print(f"✓ {gone} lien(s) retiré(s)")
     refresh_views()
 
 
@@ -658,28 +764,38 @@ def cmd_map(a):
     print("  Ensuite : `brain files \"sujet\"` · `brain where <symbole>` · `brain explain <fichier>` · `brain impact <x>`")
 
 
+def _map_answer(lines, *misses):
+    """Réponse d'une commande de la carte : rien trouvé (première ligne d'un de ces débuts) → message et sortie 1."""
+    if not lines or lines[0].startswith(misses):
+        die(lines[0] if lines else "rien trouvé")
+    print("\n".join(lines))
+
+
 def cmd_where(a):
     from . import mapper
     _, m = map_for(a)
-    print("\n".join(mapper.where(m, a.name, a.n)) or f"« {a.name} » introuvable dans la carte (essaie `brain files`)")
+    _map_answer(mapper.where(m, a.name, a.n) or [f"« {a.name} » introuvable dans la carte (essaie `brain files`)"],
+                f"« {a.name} » introuvable")
 
 
 def cmd_deps(a):
     from . import mapper
     _, m = map_for(a)
-    print("\n".join(mapper.deps(m, a.file)))
+    _map_answer(mapper.deps(m, a.file), "aucun fichier ne correspond")
 
 
 def cmd_explain(a):
     from . import mapper
     _, m = map_for(a)
-    print("\n".join(mapper.explain(m, a.target)))
+    _map_answer(mapper.explain(m, a.target), "fichier introuvable", "rien trouvé pour")
 
 
 def cmd_impact(a):
     from . import mapper
     _, m = map_for(a)
     lines, code = mapper.impact(m, a.target, a.depth)
+    if code == 4:  # introuvable : un échec, dit comme les autres (code 4 gardé, mapper.impact le documente)
+        die("\n".join(lines), code)
     print("\n".join(lines))
     return code
 
@@ -703,7 +819,7 @@ def cmd_path(a):
         return
     from . import mapper
     _, m = map_for(a)
-    print("\n".join(mapper.path_between(m, a.a, a.b)))
+    _map_answer(mapper.path_between(m, a.a, a.b), "fichier introuvable")
 
 
 def cmd_files(a):
@@ -953,6 +1069,8 @@ def cmd_dream(a):
 
 
 def cmd_export(a):
+    if a.push and a.vault is None:  # avant : ignoré sans un mot, MEMOIRES.md écrit à la place
+        die("--push s'applique au coffre Obsidian : `brain export --vault --push` (ou --vault <dossier> --push)")
     if a.vault is not None:
         from . import vault, wikistore
         if wikistore.resolve()[0] != "classic":
@@ -1063,6 +1181,10 @@ def cmd_doctor(a):
         ok(True, f"index BRAIN.md : {len(text)} car. ≈ {est_tokens(text)} tokens")
     else:
         ok(False, "index BRAIN.md absent (→ brain index)")
+    from . import common as _common
+    load_config()
+    ok(not _common.CONFIG_ISSUES, "réglages (config.json) : " + (
+        "valeurs valides" if not _common.CONFIG_ISSUES else _common.config_issues_line().split(" — ", 1)[-1]))
     from . import wikistore
     mode, wroot = wikistore.resolve()
     if mode == "wiki":
@@ -1180,14 +1302,22 @@ def cmd_doctor(a):
 def cmd_backup(a):
     from . import backup
     if a.restore:
+        if not Path(a.restore).is_file():
+            die(f"archive introuvable : {a.restore} — les sauvegardes : `brain backup --list` (--to <dossier> pour un "
+                "autre dossier)")
         try:
             n = backup.restore(a.restore)
-        except Exception as exc:
-            die(f"restauration impossible : {exc}")
+        except OSError as exc:
+            die(f"restauration impossible : {oserror_fr(exc)}")
+        except Exception as exc:  # zip abîmé (BadZipFile, en anglais), archive sans graph.json…
+            die("restauration impossible : " + ("ce n'est pas une archive zip lisible" if type(exc).__name__ ==
+                                                "BadZipFile" else str(exc)))
         refresh_views()
         print(f"✓ cerveau restauré depuis {a.restore} ({n} nœuds) — l'état précédent est dans l'historique : `brain restore 1` pour annuler")
         return
     dest = a.to or backup.target_dir()
+    if a.to and Path(a.to).exists() and not Path(a.to).is_dir():
+        die(f"ce n'est pas un dossier : {a.to} — --to attend le dossier où ranger les sauvegardes")
     if a.list:
         items = backup.backups(dest)
         print(f"Sauvegardes dans {dest} ({len(items)}) :" if items else f"Aucune sauvegarde dans {dest}.")
@@ -1200,7 +1330,7 @@ def cmd_backup(a):
         if a.auto:
             log(f"sauvegarde auto : {exc!r}")
             return
-        die(str(exc))
+        die(f"sauvegarde impossible : {oserror_fr(exc)}" if isinstance(exc, OSError) else str(exc))
     if a.auto:
         log(f"sauvegarde auto : {path or 'déjà faite aujourd hui'}")
         return
@@ -1325,6 +1455,15 @@ def cmd_apprendre(a):
     elif act == "oublier":
         if len(args) != 2:
             die('usage : brain apprendre oublier <skill> "déclencheur"')
+        trig = (load_config().get("skills") or {}).get("triggers") or {}
+        if args[0] not in trig:  # ni déclencheur ajouté, ni skill connue : une faute dans le nom, rien à noter
+            from . import skills
+            names = {s["name"] for s in skills.index(os.getcwd(), load_config().get("skills") or {})}
+            if args[0] not in names:
+                import difflib
+                near = difflib.get_close_matches(args[0], sorted(names), n=3, cutoff=0.6)
+                die(f"skill inconnue : {args[0]}" + (f" — voulais-tu : {', '.join(near)} ?" if near else
+                                                     " (liste : `brain skill ls`)") + " ; rien n'est noté")
         print(apprendre.forget(args[0], args[1]))
     elif act in ("retours", "feedback"):
         print(apprendre.feedback_text(a.jours))
@@ -1336,6 +1475,11 @@ def cmd_echange(a):
     """Échange de skills et d'outils avec les amis (cerveau commun), et promotion vers le plugin."""
     from . import echange
     act, args = fold(a.action or "etat"), list(a.args)
+    said = []
+
+    def say(text):  # ce que la commande dit : un « ✗ » en tête est un échec (sortie 1)
+        said.append(str(text))
+        print(text)
 
     def need(usage):
         if not args:
@@ -1343,56 +1487,58 @@ def cmd_echange(a):
         return args[0]
 
     if act in ("etat", "status"):
-        print(echange.status())
+        say(echange.status())
     elif act in ("apercu", "preview"):
-        print(echange.preview())
+        say(echange.preview())
     elif act in ("oui", "non"):
-        print("\n".join(echange.consent(act)))
+        say("\n".join(echange.consent(act)))
     elif act == "recevoir":
-        print(echange.set_receiving(fold(need("recevoir oui|non"))))
+        say(echange.set_receiving(fold(need("recevoir oui|non"))))
     elif act == "declencheurs":
         if fold(need("declencheurs oui|non")) == "non":
-            print(echange.drop_triggers())
+            say(echange.drop_triggers())
         else:
-            print(echange.allow_triggers())
+            say(echange.allow_triggers())
     elif act in ("liste", "list"):
-        print(echange.listing())
+        say(echange.listing())
     elif act == "voir":
-        print(echange.show(need("voir <ami/nom>")))
+        say(echange.show(need("voir <ami/nom>")))
     elif act == "partager":
-        print(echange.share(need("partager <nom> [--non]"), on=not a.non))
+        say(echange.share(need("partager <nom> [--non]"), on=not a.non))
     elif act == "garder":
-        print(echange.keep(need("garder <nom> [--non]"), on=not a.non))
+        say(echange.keep(need("garder <nom> [--non]"), on=not a.non))
     elif act == "proposer":
-        print(echange.propose(need("proposer <nom> [--non]"), on=not a.non))
+        say(echange.propose(need("proposer <nom> [--non]"), on=not a.non))
     elif act == "adopter":
-        print("\n".join(echange.adopt(need("adopter <ami/nom> [--oui] [--scripts]"), oui=a.oui, scripts=a.scripts,
-                                      sig=a.empreinte)))
+        say("\n".join(echange.adopt(need("adopter <ami/nom> [--oui] [--scripts]"), oui=a.oui, scripts=a.scripts,
+                                    sig=a.empreinte)))
     elif act == "approuver":
-        print("\n".join(echange.approve(need("approuver <ami/nom> [--oui]"), oui=a.oui, sig=a.empreinte)))
+        say("\n".join(echange.approve(need("approuver <ami/nom> [--oui]"), oui=a.oui, sig=a.empreinte)))
     elif act == "propositions":
         rows = echange.proposals()
-        print(f"Skills du cerveau commun candidates au plugin ({len(rows)}) :" if rows else
-              "Aucune skill du cerveau commun n'est candidate au plugin pour l'instant (proposée par son auteur, ou suivie "
-              "par 2 membres ou 3 fois).")
+        say(f"Skills du cerveau commun candidates au plugin ({len(rows)}) :" if rows else
+            "Aucune skill du cerveau commun n'est candidate au plugin pour l'instant (proposée par son auteur, ou suivie "
+            "par 2 membres ou 3 fois).")
         for r in rows:
             why = "proposée par son auteur" if r["propose"] else f"suivie {r['suivies']} fois par {r['membres']} membre(s)"
-            print(f"- {r['ref']} — {why} · contrôle : {r['etat']}"
-                  + (f"\n    son auteur la décrit ainsi : « {echange.quote(r['resume'], 160)} »" if r["resume"] else ""))
+            say(f"- {r['ref']} — {why} · contrôle : {r['etat']}"
+                + (f"\n    son auteur la décrit ainsi : « {echange.quote(r['resume'], 160)} »" if r["resume"] else ""))
         if rows:
-            print("→ `brain echange promouvoir <ami/nom> --vers <arbre de développement>` (après l'avoir relue)")
+            say("→ `brain echange promouvoir <ami/nom> --vers <arbre de développement>` (après l'avoir relue)")
     elif act == "promouvoir":
-        print("\n".join(echange.promote(need("promouvoir <ami/nom> [--vers dossier] [--force]"), dest=a.vers, force=a.force)))
+        say("\n".join(echange.promote(need("promouvoir <ami/nom> [--vers dossier] [--force]"), dest=a.vers, force=a.force)))
     elif act in ("retours", "feedback"):
-        print(echange.feedback_all())
+        say(echange.feedback_all())
     elif act in ("sync", "synchro"):
-        print("\n".join(echange.sync(auto=a.auto)))
+        say("\n".join(echange.sync(auto=a.auto)))
     elif act == "index":  # tâche de fond lancée par les hooks quand l'index des skills reçues est périmé
         idx = echange.index(build=True)
-        print(f"✓ index des skills reçues : {len(idx.get('skills') or [])} skill(s) contrôlée(s)")
+        say(f"✓ index des skills reçues : {len(idx.get('skills') or [])} skill(s) contrôlée(s)")
     else:
         die("action inconnue : " + str(a.action) + " — etat, apercu, oui, non, recevoir, liste, voir, partager, garder, "
             "proposer, adopter, approuver, declencheurs, propositions, promouvoir, retours, sync")
+    first = next((x.strip() for x in "\n".join(said).splitlines() if x.strip()), "")
+    return 1 if first.startswith("✗") else 0
 
 
 def cmd_compact(a):
@@ -1401,7 +1547,10 @@ def cmd_compact(a):
         print(compact.discover_text())
         return 0
     if a.apprendre:
-        print(compact.learn_text(a.apprendre, [a.fichier] if a.fichier not in (None, "-") else (), a.enregistrer))
+        text = compact.learn_text(a.apprendre, [a.fichier] if a.fichier not in (None, "-") else (), a.enregistrer)
+        if text.startswith("Aucune sortie"):  # rien à apprendre : la commande n'a rien pu faire
+            die(text)
+        print(text)
         return 0
     if a.oublier:
         print(compact.forget_filter(a.oublier))
@@ -1467,7 +1616,9 @@ def cmd_prompts(a):
     elif words[:1] == ["get"] and len(words) == 2:
         print(promptlib.show(words[1]))
     elif words:
-        print(promptlib.report(" ".join(words), skills=a.skills, n=a.n))
+        text = promptlib.report(" ".join(words), skills=a.skills, n=a.n)
+        print(text)
+        return 1 if text.startswith("✗") else 0
     else:
         die('usage : brain prompts "sujet" | brain prompts get <id> | brain prompts --hook "message"')
 
@@ -1631,7 +1782,9 @@ def cmd_outils(a):
         if not found:
             print("Aucun connecteur branché ne se déclencherait sur ce message.")
     elif act == "scan":
-        n = int(args[0]) if args and args[0].isdigit() else 5
+        if args and not (args[0].isdigit() and int(args[0]) > 0):
+            die(f"nombre de transcripts à relire : entier d'au moins 1, pas « {args[0]} » (ex. `brain outils scan 5`)")
+        n = int(args[0]) if args else 5
         paths, t0 = outils.recent_transcripts(n), time.perf_counter()
         reg = outils.bootstrap(paths)
         live = [k for k, s in reg["servers"].items() if not outils.SKIP_RE.match(k) and outils.alive(s, None, fresh)]
@@ -1977,21 +2130,34 @@ def cmd_import(a):
 
 
 def cmd_config(a):
+    from . import common, reglages
     cfg = load_config()
     if not a.key:
         print(json.dumps(cfg, ensure_ascii=False, indent=1))
         print(f"(fichier : {CONFIG_FILE})")
+        if common.CONFIG_ISSUES:
+            print(common.config_issues_line())
         return
     if a.value is None:
-        cur = cfg
+        cur, seen = cfg, True
         for k in a.key.split("."):
+            seen = seen and isinstance(cur, dict) and k in cur
             cur = cur.get(k) if isinstance(cur, dict) else None
+        if not seen and not reglages.known(a.key):
+            die(reglages.unknown(a.key).replace(" ; rien n'est écrit", ""))
         print(json.dumps(cur, ensure_ascii=False))
+        bad = [x for x in common.CONFIG_ISSUES if x[0] == a.key or x[0].startswith(a.key + ".")]
+        if bad:
+            print(f"⚠ valeur écrite ignorée : {json.dumps(bad[0][1], ensure_ascii=False)} ({bad[0][2]} attendu) — "
+                  "le défaut ci-dessus sert à sa place")
         return
     try:
-        value = json.loads(a.value)
+        value, raw = json.loads(a.value), None
     except json.JSONDecodeError:
-        value = a.value
+        value = raw = a.value
+    value, err = reglages.check(a.key, value, raw)
+    if err:
+        die(err)
     set_config(a.key, value)
     print(f"✓ {a.key} = {json.dumps(value, ensure_ascii=False)}")
     if a.key == "style":  # le réglage de Claude Code suit tout de suite (posé, ou remis comme avant pour « off »)
@@ -2048,7 +2214,8 @@ def cmd_install(a):
 
 # ================================================================================== parseur
 def build_parser():
-    p = argparse.ArgumentParser(prog="brain", description="🧠 Cerveau persistant de Claude : mémoire en graphe + "
+    _french_argparse()
+    p = Parser(prog="brain", description="🧠 Cerveau persistant de Claude : mémoire en graphe + "
                                 "cartes de projets (façon graphify) + hooks d'injection automatique.",
                                 epilog=f"Exemples : {CMD} q \"shopify robots\" · {CMD} add -t learning -T \"…\" -b \"…\" · "
                                        f"{CMD} map . · {CMD} where login")
@@ -2062,7 +2229,7 @@ def build_parser():
 
     s = cmd("q", cmd_q, "chercher dans la mémoire (+ sessions passées et fichiers du projet courant)", ["query", "search", "cherche"])
     s.add_argument("text", nargs="+")
-    s.add_argument("-k", type=int, default=8, help="nombre de résultats")
+    s.add_argument("-k", type=_number(int, 1, 200, 8), default=8, help="nombre de résultats")
     s.add_argument("-p", "--project", help="projet (id/nom/chemin, « . » = courant)")
     s.add_argument("-t", "--type", help="types séparés par des virgules")
     s.add_argument("--only", action="store_true", help="seulement le projet")
@@ -2079,7 +2246,7 @@ def build_parser():
     s.add_argument("--body-file")
     s.add_argument("--tags", type=lambda v: clean_tags(v))
     s.add_argument("-p", "--project", help="projet (défaut : projet courant, sauf user/feedback) ; « none » = global")
-    s.add_argument("-i", "--importance", type=int, default=3, help="1 à 5 (défaut 3)")
+    s.add_argument("-i", "--importance", type=_number(int, 1, 5, 3), default=3, help="1 à 5 (défaut 3)")
     s.add_argument("--link", action="append", help="id[:relation] (répétable)")
     s.add_argument("--id")
     s.add_argument("--source", "--src", dest="source", default="claude",
@@ -2106,7 +2273,7 @@ def build_parser():
     s.add_argument("-t", "--type")
     s.add_argument("--tags", type=lambda v: clean_tags(v))
     s.add_argument("--add-tags")
-    s.add_argument("-i", "--importance", type=int)
+    s.add_argument("-i", "--importance", type=_number(int, 1, 5, 4), help="1 à 5")
     s.add_argument("-p", "--project")
     s.add_argument("--path", help="nouveau chemin (projets)")
     s.add_argument("--unarchive", action="store_true")
@@ -2127,7 +2294,7 @@ def build_parser():
     s.add_argument("b", nargs="?")
     s.add_argument("-r", "--rel", default="relates")
     s.add_argument("--suggest", action="store_true", help="lister les liens déduits du contenu")
-    s.add_argument("-n", type=int, default=12)
+    s.add_argument("-n", type=_positive(), default=12)
     s = cmd("unlink", cmd_unlink, "retirer un lien")
     s.add_argument("a")
     s.add_argument("b")
@@ -2139,7 +2306,7 @@ def build_parser():
     s = cmd("ls", cmd_ls, "lister", ["list"])
     s.add_argument("-t", "--type")
     s.add_argument("-p", "--project")
-    s.add_argument("-n", type=int, default=60)
+    s.add_argument("-n", type=_positive(int, 60), default=60)
     s.add_argument("--archived", action="store_true")
 
     s = cmd("proj", cmd_proj, "projets : ls | add <dossier> | show <id>", ["projects", "projet"])
@@ -2154,12 +2321,12 @@ def build_parser():
     s.add_argument("--full", action="store_true", help="tout ré-analyser (ignore le cache)")
     s.add_argument("--quiet", action="store_true")
     s.add_argument("--bg", action="store_true", help="en arrière-plan")
-    s.add_argument("--max-files", type=int)
+    s.add_argument("--max-files", type=_positive(int, 15000))
 
     s = cmd("where", cmd_where, "où est défini un symbole (fonction, classe, variable d'env, route)", ["ou"])
     s.add_argument("name")
     s.add_argument("-p", "--project")
-    s.add_argument("-n", type=int, default=30)
+    s.add_argument("-n", type=_positive(int, 30), default=30)
     s = cmd("deps", cmd_deps, "imports et importeurs d'un fichier")
     s.add_argument("file")
     s.add_argument("-p", "--project")
@@ -2168,7 +2335,7 @@ def build_parser():
     s.add_argument("-p", "--project")
     s = cmd("impact", cmd_impact, "ce qui dépend d'un fichier ou d'une fonction (avant de modifier)", ["impacts"])
     s.add_argument("target", help="fichier, symbole, ou fichier:symbole")
-    s.add_argument("-d", "--depth", type=int, default=2, help="niveaux d'appelants (1 à 5)")
+    s.add_argument("-d", "--depth", type=_number(int, 1, 5, 2), default=2, help="niveaux d'appelants (1 à 5)")
     s.add_argument("-p", "--project")
     s = cmd("path", cmd_path, "chemin entre deux souvenirs (graphe de mémoire) ou deux fichiers (imports)", ["chemin"])
     s.add_argument("a")
@@ -2177,7 +2344,7 @@ def build_parser():
     s = cmd("files", cmd_files, "trouver les fichiers liés à un sujet", ["fichiers"])
     s.add_argument("text", nargs="+")
     s.add_argument("-p", "--project")
-    s.add_argument("-n", type=int, default=10)
+    s.add_argument("-n", type=_positive(int, 10), default=10)
 
     s = cmd("index", cmd_index, "régénérer l'index BRAIN.md")
     s.add_argument("--print", action="store_true")
@@ -2190,7 +2357,7 @@ def build_parser():
     s.add_argument("--attendu", metavar="ID", help="souvenir attendu : pourquoi il n'est pas montré")
     s = cmd("journal", cmd_journal, "sessions passées (--backfill : importer l'historique)")
     s.add_argument("-p", "--project")
-    s.add_argument("-n", type=int, default=12)
+    s.add_argument("-n", type=_positive(int, 12), default=12)
     s.add_argument("--backfill", action="store_true")
     s.add_argument("-s", "--search", help="chercher dans le texte des sessions passées")
     s = cmd("todo", cmd_todo, "à-faire triés par échéance", ["taches"])
@@ -2213,18 +2380,18 @@ def build_parser():
     s = cmd("neurone", cmd_neurone, "neurone du rappel (appris sur tes échanges, local) : état, apprendre (récolte les "
             "30 derniers jours puis apprend), entrainer, off (règle fixe seule), auto", ["neurones", "neuronal"])
     s.add_argument("action", nargs="?", default="etat", choices=["etat", "apprendre", "entrainer", "off", "auto"])
-    s.add_argument("--jours", type=int, default=30, help="période récoltée par « apprendre » (défaut 30 jours)")
+    s.add_argument("--jours", type=_positive(int, 30), default=30, help="période récoltée par « apprendre » (défaut 30 jours)")
     s.add_argument("--quiet", action="store_true", help=argparse.SUPPRESS)
     s = cmd("tokens", cmd_tokens, "où partent les tokens : contexte relu, 1res requêtes, coût fixe au démarrage, relances du cerveau, "
             "habitudes coûteuses (transcripts)")
-    s.add_argument("--hours", type=float, default=48, help="période mesurée (défaut 48 h)")
+    s.add_argument("--hours", type=_positive(float, 48), default=48, help="période mesurée (défaut 48 h)")
     s.add_argument("--garde", action="store_true", help="garde de consommation : sessions qui mangent les dernières 24 h "
                    "(fait tout seul en arrière-plan toutes les 2 h)")
     s = cmd("optimize", cmd_optimize, "optimiser le cerveau (tokens d'abord) : coût réel de l'injection/du rappel/du "
             "corpus + ce qu'on peut alléger — --apply applique le sûr et réversible", ["optimise", "opti"])
     s.add_argument("--apply", action="store_true", help="appliquer les actions sûres et réversibles (ménage du corpus, rappel d'habitude, mode éco)")
     s.add_argument("--all", action="store_true", help="tout détailler, sans troncature")
-    s.add_argument("--hours", type=float, default=48, help="période mesurée pour l'habitude la plus coûteuse (défaut 48 h)")
+    s.add_argument("--hours", type=_positive(float, 48), default=48, help="période mesurée pour l'habitude la plus coûteuse (défaut 48 h)")
     s = cmd("eco", cmd_eco, "mode éco : moins de tokens sans rien perdre (sorties longues mises en fichier, résumé plus tôt, "
             "plugins inutilisés, skills, mémoire, cache) — --appliquer · --annuler · --poser ID · --cache auto", ["econome"])
     s.add_argument("--appliquer", action="store_true", help="écrire les leviers sûrs (bashOutputMaxChars, autoCompactWindow, "
@@ -2232,8 +2399,8 @@ def build_parser():
                    "~/.claude/settings.json (retour exact possible) ; fait tout seul au 1er démarrage")
     s.add_argument("--annuler", action="store_true", help="remettre exactement les réglages d'avant et couper l'application automatique")
     s.add_argument("--forcer", action="store_true", help="remplacer une valeur que tu avais déjà réglée toi-même")
-    s.add_argument("--sortie", type=int, help="bashOutputMaxChars, de 4000 à 128000 (défaut 10000)")
-    s.add_argument("--fenetre", type=int, help="autoCompactWindow en tokens, de 100000 à 1000000 (défaut 200000)")
+    s.add_argument("--sortie", type=_number(int, None, None, 10000), help="bashOutputMaxChars, de 4000 à 128000 (défaut 10000)")
+    s.add_argument("--fenetre", type=_number(int, None, None, 200000), help="autoCompactWindow en tokens, de 100000 à 1000000 (défaut 200000)")
     s.add_argument("--desactiver", nargs="+", metavar="nom@marketplace",
                    help="désactiver ces plugins inutilisés (après accord de l'utilisateur ; --annuler les réactive)")
     s.add_argument("--plugins-auto", nargs="?", const="on", choices=["on", "off"],
@@ -2262,7 +2429,7 @@ def build_parser():
     s.add_argument("--oublier", metavar="COMMANDE", help="retirer les filtres de cette commande (appris tout seuls ou "
                    "enregistrés) et ne plus en apprendre pour elle")
     s = cmd("history", cmd_history, "instantanés du cerveau (pour revenir en arrière) — --diff <n°|date>", ["historique"])
-    s.add_argument("-n", type=int, default=15)
+    s.add_argument("-n", type=_positive(int, 15), default=15)
     s.add_argument("--diff", help="ce qui a changé depuis un instantané (n°) ou une date")
     s = cmd("restore", cmd_restore, "restaurer un instantané (n° de `history` ou date) — réversible", ["restaurer"])
     s.add_argument("ref")
@@ -2278,8 +2445,8 @@ def build_parser():
             ["observe", "observations"])
     s.add_argument("text", nargs="*", help="une observation par argument ; 🔴/🟡/🟢 (ou !!!/!!/!) et « 14:20 » en tête au besoin")
     s.add_argument("-p", "--project", help="projet (défaut : projet courant) ; « none » = global")
-    s.add_argument("-n", type=int, default=15)
-    s.add_argument("--days", type=int, help="seulement les N derniers jours")
+    s.add_argument("-n", type=_positive(int, 15), default=15)
+    s.add_argument("--days", type=_positive(int, 7), help="seulement les N derniers jours")
     s = cmd("report", cmd_report, "rapport façon graphify : communautés, nœuds clés, liens surprenants, trous", ["rapport"])
     s.add_argument("--print", action="store_true", help="afficher le rapport complet")
     s.add_argument("--force", action="store_true", help="recalculer l'analyse")
@@ -2288,13 +2455,13 @@ def build_parser():
     s = cmd("vues", cmd_vues, "vues refaites après une écriture (BRAIN.md, MEMOIRES.md, cerveau.html) : tout de suite, "
             "ou --attendre celles en cours (elles se refont seules en arrière-plan)")
     s.add_argument("--attendre", action="store_true", help="attendre que les vues demandées soient refaites")
-    s.add_argument("--delai", type=float, default=120.0, help="--attendre : au plus tant de secondes (défaut 120)")
+    s.add_argument("--delai", type=_number(float, 0, None, 120), default=120.0, help="--attendre : au plus tant de secondes (défaut 120)")
     s.add_argument("--fond", action="store_true", help=argparse.SUPPRESS)
     s = cmd("prompts", cmd_prompts, "prompts.chat : chercher des prompts/skills (FR traduit), get <id> = texte "
             "complet, --hook \"message\" = ce que le rappel automatique injecterait", ["prompt", "promptschat"])
     s.add_argument("query", nargs="*")
     s.add_argument("--skills", action="store_true", help="chercher des skills plutôt que des prompts")
-    s.add_argument("-n", type=int, default=8)
+    s.add_argument("-n", type=_positive(int, 8), default=8)
     s.add_argument("--hook", metavar="MESSAGE", help="simuler le rappel automatique sur ce message")
     s = cmd("skill", cmd_skill, "skills perso et des plugins : ls (+ stats), test \"message\" (laquelle se "
             "déclencherait), check, new <nom> -d \"description\" [--body-file f], trig <nom> \"déclencheur\" … "
@@ -2316,9 +2483,9 @@ def build_parser():
     s.add_argument("--all", action="store_true", help="tout détailler, sans troncature")
     s.add_argument("--clean", action="store_true", help="lister les serveurs MCP orphelins (parent mort) ; --oui pour les fermer")
     s.add_argument("--oui", action="store_true", help="avec --clean : fermer vraiment les orphelins listés")
-    s.add_argument("--history", nargs="?", type=float, const=24, metavar="H",
+    s.add_argument("--history", nargs="?", type=_positive(float, 24), const=24, metavar="H",
                    help="historique des mesures de la veille sur H heures (défaut 24)")
-    s.add_argument("--seconds", type=float, default=2.0, help="durée de mesure du CPU/GPU (défaut 2 s)")
+    s.add_argument("--seconds", type=_number(float, 0.1, 60, 2), default=2.0, help="durée de mesure du CPU/GPU (défaut 2 s)")
     cmd("stats", cmd_stats, "statistiques")
     s = cmd("doctor", cmd_doctor, "diagnostic complet de l'installation (--fix : tout réparer)")
     s.add_argument("--fix", action="store_true", help="réinstaller, reconstruire, nettoyer et sauvegarder")
@@ -2332,7 +2499,7 @@ def build_parser():
     s.add_argument("--format", help="add : article, pdf, video, podcast, livre, note, conversation, donnees, image, document")
     s.add_argument("--author", "--auteur", dest="author", help="add : auteur")
     s.add_argument("--local", action="store_true", help="add : autoriser une adresse locale ou privée (127.0.0.1, réseau interne)")
-    s.add_argument("-n", type=int, default=12, help="nombre de lignes (lint, pending, log)")
+    s.add_argument("-n", type=_positive(int, 12), default=12, help="nombre de lignes (lint, pending, log)")
     s.add_argument("--log", action="store_true", help="lint : noter le passage au journal")
     s.add_argument("--no-migrate", action="store_true", help="init : ne pas migrer le cerveau classique")
     s.add_argument("--no-push", action="store_true", help="init/sync : ne pas envoyer sur GitHub")
@@ -2368,11 +2535,11 @@ def build_parser():
     s.add_argument("--canal", action="append", help="kpi : nom:sessions:commandes[:heures] (répétable)")
     s.add_argument("--semaine", help="kpi : une date de la semaine (défaut : la dernière semaine complète)")
     s.add_argument("--note", help="kpi : ce qui s'est passé (lancement, vidéo virale, rupture…)")
-    s.add_argument("--semaines", type=int, default=4, help="bilan : semaines affichées (défaut 4)")
+    s.add_argument("--semaines", type=_positive(int, 4), default=4, help="bilan : semaines affichées (défaut 4)")
     s.add_argument("--md", help="bilan : écrire aussi le bilan dans ce fichier Markdown")
-    s.add_argument("--timeout", type=float, default=20.0, help="audit : délai par requête (s)")
+    s.add_argument("--timeout", type=_number(float, 1, 300, 20), default=20.0, help="audit : délai par requête (s)")
     s.add_argument("--conformite", action="store_true", help="audit : pages légales et points de conformité")
-    s.add_argument("--pages", type=int, help="audit : nombre de pages du sitemap à lire (doublons, erreurs, noindex)")
+    s.add_argument("--pages", type=_number(int, 0, 50, 5), help="audit : nombre de pages du sitemap à lire (doublons, erreurs, noindex)")
     s.add_argument("--vitesse", action="store_true", help="audit : Core Web Vitals (PageSpeed Insights, mobile)")
     s.add_argument("--complet", action="store_true", help="audit : conformité + 10 pages + vitesse")
     s.add_argument("--rapport", help="audit : écrire aussi le rapport dans ce fichier Markdown")
@@ -2390,7 +2557,7 @@ def build_parser():
     s.add_argument("--non", action="store_true", help="projet : le rendre de nouveau privé")
     s.add_argument("--no-push", action="store_true", help="sync : récupérer seulement")
     s.add_argument("--auto", action="store_true", help=argparse.SUPPRESS)
-    s.add_argument("--delai", type=float, help=argparse.SUPPRESS)
+    s.add_argument("--delai", type=_number(float, 0), help=argparse.SUPPRESS)
     s = cmd("delegation", cmd_delegation, "délégation aux modèles moins chers (Haiku pour chercher et lire, Sonnet pour une "
             "modification cadrée) : état et économies — --mode auto|max|conseil|off · --modele eclaireur=sonnet",
             ["deleguer"])
@@ -2400,7 +2567,7 @@ def build_parser():
     s.add_argument("--modele", action="append", metavar="NOM=MODELE",
                    help="modèle d'un agent du cerveau (eclaireur=sonnet), ou d'un type intégré (Explore=off, "
                         "general-purpose=haiku) ; NOM=defaut pour revenir")
-    s.add_argument("--jours", type=int, default=7, help="période mesurée (défaut 7 jours)")
+    s.add_argument("--jours", type=_positive(int, 7), default=7, help="période mesurée (défaut 7 jours)")
     s = cmd("apprendre", cmd_apprendre, "ce que le cerveau apprend des sessions (erreurs résolues, déclencheurs manqués, "
             "méthodes répétées) : le dossier à trancher — --fait pour le clore · etat · skill <nom> -d \"…\" "
             "--body-file f · oublier <skill> \"déclencheur\" · retours", ["apprentissage"])
@@ -2413,7 +2580,7 @@ def build_parser():
     s.add_argument("--script", action="append", metavar="FICHIER",
                    help="skill : outil à joindre (copié dans scripts/ ; répétable). Chez un ami, il attend son accord")
     s.add_argument("--force", action="store_true", help="skill : remplacer une skill existante")
-    s.add_argument("--jours", type=int, default=14, help="retours : période (défaut 14 jours)")
+    s.add_argument("--jours", type=_positive(int, 14), default=14, help="retours : période (défaut 14 jours)")
     s.add_argument("--entretien", action="store_true", help=argparse.SUPPRESS)
     s = cmd("echange", cmd_echange, "échange de skills et d'outils avec les amis du cerveau commun (texte contrôlé, "
             "scripts sur accord) : etat · apercu · oui|non · liste · voir|adopter|approuver <ami/nom> · "
@@ -2434,7 +2601,7 @@ def build_parser():
     s = cmd("import", cmd_import, "importer la mémoire native de Claude Code (~/.claude/projects/*/memory)")
     s.add_argument("--force", action="store_true")
     s.add_argument("--dry-run", action="store_true")
-    s.add_argument("--max-ko", type=int, help="taille maximale d'un fichier importé, en Ko (défaut 64 ; 0 : sans limite)")
+    s.add_argument("--max-ko", type=_number(int, 0, None, 64), help="taille maximale d'un fichier importé, en Ko (défaut 64 ; 0 : sans limite)")
     s = cmd("config", cmd_config, "lire/modifier la configuration (ex : config recall.enabled false ; serveur MCP : "
             "config mcp.groupes '[\"wiki\", \"boutique\"]' ajoute ces outils aux 6 de la mémoire, "
             "config mcp.max_car 8000 borne chaque résultat)")
@@ -2491,7 +2658,7 @@ def main(argv=None):
         return args.func(args) or 0
     except KeyboardInterrupt:
         return 130
-    except TimeoutError as exc:
+    except LockBusy as exc:
         die(f"{exc} — une autre session écrit dans le cerveau, réessaie.")
     except WikiMissing as exc:  # wiki débranché ou déplacé : rien n'est écrit, le cache reste lisible
         die(str(exc))
@@ -2499,7 +2666,18 @@ def main(argv=None):
         die(str(exc))
     except RuntimeError as exc:  # graph.json illisible et rien pour le réparer… : un message, pas une trace Python
         die(f"{exc} — `brain doctor` pour le diagnostic, `brain history` pour revenir à un instantané.")
-    except OSError as exc:  # dossier en lecture seule, disque plein, fichier ouvert ailleurs
+    except OSError as exc:  # dossier en lecture seule, disque plein, fichier ouvert ailleurs… ou réseau coupé
+        net = network_reason(exc)
+        if net:
+            die(f"connexion impossible : {net} — vérifie le réseau (proxy, pare-feu), puis réessaie")
         where = exc.filename or "un fichier du cerveau"
-        die(f"accès impossible à {where} ({exc.strerror or exc}) — vérifie que le dossier du cerveau n'est ni en "
+        why = oserror_fr(exc).split(" : ", 1)[-1] if exc.filename else oserror_fr(exc)
+        die(f"accès impossible à {where} ({why}) — vérifie que le dossier du cerveau n'est ni en "
             "lecture seule ni plein, puis réessaie ; `brain doctor` pour le diagnostic.")
+    except Exception as exc:  # jamais une trace Python : le détail va au journal (BRAIN_DEBUG=1 : la trace, pour déboguer)
+        if os.environ.get("BRAIN_DEBUG") == "1":
+            raise
+        import traceback
+        log(f"commande {getattr(args, 'cmd', '?')} : {exc!r}\n{traceback.format_exc()}")
+        die(f"erreur inattendue dans `brain {getattr(args, 'cmd', '')}` ({type(exc).__name__} : {short(str(exc), 160)}) — "
+            f"rien d'autre n'a été touché ; détail dans {LOG_FILE} ; `brain doctor` pour le diagnostic.")
