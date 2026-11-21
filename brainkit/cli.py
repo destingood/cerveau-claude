@@ -934,6 +934,36 @@ def cmd_journal(a):
         print("(journal vide)")
 
 
+def cmd_regroupe(a):
+    """Doublons reformulés, souvenirs sans projet, sujets à réunir en fiche : montrer, puis appliquer ce qui est accepté
+    (regroupe.py)."""
+    from . import regroupe
+    if a.appliquer and a.ecarter:
+        die("--appliquer ou --ecarter, pas les deux à la fois", 2)
+    try:
+        if a.ecarter:
+            for line in regroupe.ecarter(a.ecarter):
+                print(f"✓ {line}")
+            return
+        if a.appliquer:
+            rep = regroupe.apply(a.appliquer)
+            for line in rep["done"]:
+                print(f"✓ {line}")
+            for line in rep["skipped"]:
+                print(f"· {line}")
+            if rep["done"]:
+                refresh_views()
+                print("Annuler : `brain restore 1` (instantané pris avant : "
+                      f"{rep['snap'].name if rep['snap'] else 'aucun, graph.json absent'})")
+            else:
+                sys.exit(1)
+            return
+        brain = Brain.load()
+        print(regroupe.show_text(brain, regroupe.propose(brain)))
+    except (ValueError, LookupError) as exc:
+        die(str(exc))
+
+
 def cmd_consolidate(a):
     from . import history
     from .privacy import find as find_secrets
@@ -988,19 +1018,7 @@ def cmd_consolidate(a):
                 actions.append(f"fusion : `{drop['id']}` → `{keep['id']}` (similarité {score})")
                 merged.add(drop["id"])
                 if not dry:
-                    if drop.get("body") and fold(drop["body"]) not in fold(keep.get("body", "")):
-                        keep["body"] = f"{keep.get('body', '')}\n{drop['body']}".strip()
-                    keep["tags"] = clean_tags(keep.get("tags", []) + drop.get("tags", []))
-                    keep["importance"] = max(keep.get("importance", 3), drop.get("importance", 3))
-                    keep["hits"] = keep.get("hits", 0) + drop.get("hits", 0)
-                    for e in b.edges:
-                        if e["from"] == drop["id"]:
-                            e["from"] = keep["id"]
-                        if e["to"] == drop["id"]:
-                            e["to"] = keep["id"]
-                    drop["status"] = "archived"
-                    drop.setdefault("meta", {})["merged_into"] = keep["id"]
-                    b.dirty = True
+                    b.merge(keep["id"], drop["id"])  # textes, liens, compteurs et dates des deux (store.Brain.merge)
                 if drop is n:
                     break
         for n in list(b.active(own=True)):
@@ -2382,6 +2400,10 @@ def build_parser():
     s = cmd("consolidate", cmd_consolidate, "fusionner les doublons, archiver l'obsolète et le remplacé, masquer les secrets")
     s.add_argument("--dry-run", action="store_true")
     s.add_argument("--auto", action="store_true", help=argparse.SUPPRESS)
+    s = cmd("regroupe", cmd_regroupe, "regrouper : doublons reformulés, souvenirs sans projet, sujets à réunir en fiche "
+                                      "— montre d'abord, applique ensuite ce que tu acceptes", ["regroup"])
+    s.add_argument("--appliquer", metavar="NUMEROS", help="appliquer ces numéros de la liste (1,3 · 2-4 · tout)")
+    s.add_argument("--ecarter", metavar="NUMEROS", help="ne plus proposer ces numéros de la liste")
     s = cmd("dream", cmd_dream, "rêve : entretien hors conversation (dossier REVE.md : conflits, doublons, corrections "
                                "entendues…) — --done pour le clore", ["reve"])
     s.add_argument("--done", action="store_true", help="marquer le rêve comme traité")
