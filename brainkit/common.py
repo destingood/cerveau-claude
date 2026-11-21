@@ -355,6 +355,13 @@ def set_config(dotted: str, value) -> dict:
         cur[keys[-1]] = value
     return update_config(change)
 
+def commun_member(cfg=None) -> bool:
+    """Membre du cerveau commun, d'après la configuration seule : faux, rien à charger à chaque hook (ni commun.py, ni
+    git, ni hashlib) ; vrai, commun.member() fait le contrôle complet (dossier du dépôt, session cloud)."""
+    c = (load_config() if cfg is None else cfg).get("commun")
+    return isinstance(c, dict) and c.get("etat") == "membre" and bool(c.get("nom"))
+
+
 def owner_name() -> str:
     """Prénom de l'utilisateur, réglage local (publish.owner) jamais publié : le wiki s'adresse à lui ; le graphe et
     l'index des skills ne le prennent pas pour un sujet. Vide s'il n'est pas réglé."""
