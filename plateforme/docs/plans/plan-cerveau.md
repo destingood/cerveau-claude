@@ -32,7 +32,8 @@ sauf les correctifs sûrs, faits tout de suite à ta demande.
    dans le journal d'audit, ce que Claude lui envoie : à corriger **avant** de le brancher.
 5. **Déjà fait** (§9) : étape 1 le 20/11, douze défauts, dont tous ceux qui faisaient perdre un souvenir
    sans le dire ; étape 2 le 20/11, la sécurité restante (8.25.0) ; étape 3 le 21/11, le rappel (8.26.0) :
-   le bon souvenir revient pour 58 questions sur 62, contre 33, sans faux rappel de plus.
+   le bon souvenir revient pour 58 questions sur 62, contre 33, sans faux rappel de plus ; étape 4 le 21/11, la
+   vitesse (8.27.0) : à 3 000 souvenirs, chaque hook sous 150 ms, `brain add` de 2,1 s à 0,17 s.
 6. **Attention, sous Windows.** `brain.exe`, la version Rust du cerveau, n'a pas changé depuis la
    8.18.2 du 10/11, et son code source n'est pas dans le dépôt. C'est lui qui exécute, sur ton PC, les
    hooks de session, le rappel, `done`, le verrou et le masquage des mots de passe. L'audit a mesuré
@@ -55,6 +56,7 @@ sauf les correctifs sûrs, faits tout de suite à ta demande.
 | 20/11 | Gênes : il oublie, il est lent, il consomme trop, des erreurs s'affichent | §4 |
 | 20/11 | Corriger le sûr tout de suite, le reste après ton GO | Étape 1 faite (PR des correctifs sûrs) |
 | 20/11 | « Continue le plan », puis « continue » | Étapes 2 (8.25.0) et 3 (8.26.0) faites |
+| 21/11 | Fusionner la 8.26.0 dès la CI verte ; étape suivante : la vitesse | 8.26.0 fusionnée ; étape 4 faite (8.27.0) |
 
 ## 2. Comment l'audit a été fait, et ses limites
 
@@ -115,22 +117,41 @@ par le vrai hook). Les chiffres de chaque ligne sont ceux mesurés après chaque
 Mesures sous Linux, médianes de 9 essais. Avec 300 souvenirs, chaque hook prend 30 à 65 ms. Avec 3 000 :
 65 à 160 ms. Avec 10 000 : jusqu'à 410 ms. Le reste du temps se perd dans les cas ci-dessous.
 
+**Après l'étape 4 (21/11)**, médianes de 5 essais, mêmes cerveaux de test (`scratchpad/vitesse/hooks_baseline.py`) :
+
+| Hook | 3 000 : avant → après | 10 000 : avant → après |
+|---|---|---|
+| Premier démarrage dans un nouveau dossier (le projet est créé) | 1 213 → 235 ms | 4 417 → 644 ms |
+| Démarrage juste après une écriture, avant la tâche de fond | 933 → 134 ms | 3 434 → 307 ms |
+| Démarrage de session | 180 → 89 ms | 380 → 167 ms |
+| Message avec rappel | 174 → 92 ms | 444 → 169 ms |
+| Question datée | 176 → 85 ms | 434 → 188 ms |
+| Message sans rappel | 75 → 34 ms | 150 → 39 ms |
+| Fin de réponse (Stop) | 77 → 38 ms | 130 → 47 ms |
+| Avant et après un résumé (compaction) | 142 → 32 ms, 34 → 26 ms | 375 → 45 ms, 35 → 26 ms |
+| Fin de session | 157 → 45 ms | 391 → 56 ms |
+| `brain add` | 2 108 → 165 ms | 11 462 → 460 ms |
+
 | Problème | Mesure | Correction | Effort | Étape |
 |---|---|---|---|---|
 | Consolidation de chaque jour : toutes les paires comparées, cerveau verrouillé | ✅ Plus de 8 min → 15 s à 3 000 souvenirs ; `brain optimize` 82 s → 3,8 s | Seulement les souvenirs écrits depuis le passage précédent ; mots découpés une fois | M | 1 |
-| Premier démarrage après un changement : analyse du graphe recalculée dans le hook | +1 s à 3 000, +4,2 s à 10 000 | La calculer en arrière-plan, utiliser la précédente | M | 4 |
-| `brain add` réécrit l'export et les deux visualisations | 2,3 s à 3 000, 13 s à 10 000 | Écrire le graphe seulement ; exports en arrière-plan | S-M | 4 |
-| Chaque rappel réécrit tout graph.json pour compter les rappels | −116 ms sur 387 à 10 000 | Compteurs dans un petit fichier à part | M | 4 |
-| Travail en double à chaque message (empreinte calculée deux fois, graphe lu deux fois) | −68 ms à 10 000 | Calculer une fois | S | 4 |
-| Index du démarrage reconstruit à chaque session de projet | −200 ms à 10 000 | Le garder tant que rien n'a changé | M | 4 |
-| Fin de session et résumé : visualisation et index refaits dans le hook | −120 à −350 ms | En arrière-plan (`async` pour les hooks qui ne décident rien) | S | 4 |
+| Premier démarrage après un changement : analyse du graphe recalculée dans le hook | +1 s à 3 000, +4,2 s à 10 000 | ✅ Jamais calculée dans un hook : l'analyse précédente sert, la tâche de fond des vues la refait (933 → 134 ms) | M | 4 |
+| `brain add` réécrit l'export et les deux visualisations | 2,3 s à 3 000, 13 s à 10 000 | ✅ Le graphe seulement ; les vues refaites en arrière-plan, une fois pour plusieurs ajouts ; mots des souvenirs gardés (2,1 s → 0,17 s) | S-M | 4 |
+| Chaque rappel réécrit tout graph.json pour compter les rappels | −116 ms sur 387 à 10 000 | ✅ Compteurs dans `state/compteurs.json`, repris à la prochaine écriture du graphe, jamais comptés deux fois | M | 4 |
+| Travail en double à chaque message (empreinte calculée deux fois, graphe lu deux fois) | −68 ms à 10 000 | ✅ Empreinte du fichier lue une fois ; index des souvenirs repris sans relire chaque souvenir, refait seulement pour ceux qui changent | S | 4 |
+| Index du démarrage reconstruit à chaque session de projet | −200 ms à 10 000 | ✅ Gardé tant que rien de ce qu'il montre ne change ; préparé par la tâche de fond pour les deux derniers projets | M | 4 |
+| Fin de session et résumé : visualisation et index refaits dans le hook | −120 à −350 ms | ✅ Laissés à la tâche de fond des vues ; PreCompact en `async` (documentation de Claude Code : hook non attendu, sortie ignorée) ; SessionEnd et PostCompact restent synchrones | S | 4 |
 | prompts.chat : un serveur lent tenait chaque message jusqu'à 40 s | ✅ Délai total | | S | 1 |
-| Import de la mémoire de Claude Code sans limite de taille | Un fichier de 63 Mo : 34 s et 788 Mo de mémoire | Ignorer les fichiers de plus de 64 Ko, avec un avertissement | S | 4 |
-| Le réflexe de skills relit chaque SKILL.md à chaque message | 60 ms (20 skills), 170 ms (800) | Garder les dates des fichiers | S | 4 |
-| Question datée (« la semaine dernière ») : le canal des dates ajouté à l'étape 3 lisait les dates de chaque souvenir | ✅ À 3 000 souvenirs, hook 107 → 276 ms, puis 124 → 166 ms une fois corrigé (le sujet d'abord) | Garder les dates de chaque souvenir avec l'index | S | 3, puis 4 |
-| Observations de fin de tâche cherchées à chaque message qui ne rappelle aucun souvenir (étape 3) | 6 ms (300 observations), 43 ms (2 000) | Garder leur index entre deux messages | S | 4 |
-| Modules chargés inutilement par chaque hook | −8 à −15 ms par hook | Imports à la demande | S | 4 |
-| Sous Windows, quatre hooks lancent `brain.exe` puis Python : deux démarrages | Non mesuré ici | Voir D2 (brain.exe) et le §11 | — | 4 |
+| Import de la mémoire de Claude Code sans limite de taille | Un fichier de 63 Mo : 34 s et 788 Mo de mémoire | ✅ Fichiers de plus de 64 Ko ignorés, une ligne le dit ; `brain import --max-ko 0` les prend quand même | S | 4 |
+| Le réflexe de skills relit chaque SKILL.md à chaque message | 60 ms (20 skills), 170 ms (800) | ✅ Catalogue gardé, relu seulement pour un fichier changé ; motif d'une skill compilé seulement si son nom est dans le message (800 skills : 69 → 23 ms) | S | 4 |
+| Question datée (« la semaine dernière ») : le canal des dates ajouté à l'étape 3 lisait les dates de chaque souvenir | ✅ À 3 000 souvenirs, hook 107 → 276 ms, puis 124 → 166 ms une fois corrigé (le sujet d'abord) | ✅ Dates de chaque souvenir gardées avec l'index (176 → 85 ms) | S | 3, puis 4 |
+| Observations de fin de tâche cherchées à chaque message qui ne rappelle aucun souvenir (étape 3) | 6 ms (300 observations), 43 ms (2 000) | ✅ Leur index gardé entre deux messages (2 000 : 41 → 6 ms) | S | 4 |
+| Modules chargés inutilement par chaque hook | −8 à −15 ms par hook | ✅ Modules et motifs chargés au premier usage ; `commun` seulement pour un membre (imports d'un message sans rappel : 50 → 29 ms) | S | 4 |
+| Sous Windows, quatre hooks lancent `brain.exe` puis Python : deux démarrages | Non mesuré ici | ✅ Python seul par défaut depuis la décision E12 | — | 2 |
+| Reste : premier démarrage dans un nouveau dossier (création du projet, carte, tâches de fond) | 235 ms à 3 000, une fois par dossier | Écrire le projet sans instantané de l'historique ; carte en arrière-plan | S | 8 |
+| Reste : graph.json lu en entier à chaque hook | 52 à 77 ms à 10 000 | Une copie marshal du graphe (30 ms, mais 3 à 8 Mo de plus) : seulement au-delà de 10 000 souvenirs | S | — |
+| Reste : la tâche de fond refait toutes les vues après chaque fin de session et chaque résumé | Quelques secondes de calcul en arrière-plan à 10 000 | Ne refaire que les vues dont les sources ont changé | S | 5 |
+| Reste : `brain q` et le serveur MCP calculent l'analyse sur place, une fois après un changement | 1 à 4 s | La prendre comme les hooks, même périmée | S | 6 |
 
 ### 4.3 Il consomme trop
 
@@ -326,9 +347,24 @@ fusionnée). Chaque correctif a un test qui échoue sans lui :
   `brain q` rate encore 3 questions ; le canal des dates n'a pas été essayé avec un neurone appris ; il coûte
   40 ms de plus par question datée à 3 000 souvenirs, et les observations jusqu'à 43 ms (à reprendre à l'étape 4).
 
-**Étape 4 — Vitesse** (§4.2).
-- Fin : à 3 000 souvenirs, aucun hook au-dessus de 150 ms, premier démarrage après un changement
-  compris ; `brain add` sous 300 ms.
+**Étape 4 — Vitesse** (§4.2) : **faite le 21/11** (PR #25, cerveau 8.27.0). Objectif : à 3 000 souvenirs, aucun
+hook au-dessus de 150 ms, premier démarrage après un changement compris ; `brain add` sous 300 ms.
+- Atteint : à 3 000 souvenirs, chaque hook prend de 26 à 92 ms, le démarrage juste après une écriture 134 ms
+  (933 avant) ; `brain add` 165 ms (2,1 s avant). À 10 000, les hooks courants sont sous 190 ms (307 ms juste
+  après une écriture) et `brain add` à 0,46 s.
+- Les écritures : le graphe seulement ; une tâche de fond refait l'index, l'export et les vues une fois les écritures
+  calmées ; les compteurs de rappel ne réécrivent plus graph.json.
+- Le démarrage : l'analyse du graphe n'est plus calculée dans un hook ; l'index du démarrage est gardé tant que rien
+  de ce qu'il montre ne change ; fin de session et résumé laissent le travail lourd à la tâche de fond.
+- Le message : index des souvenirs, catalogue des skills, dates citées et observations gardés d'un message à
+  l'autre ; modules chargés au premier usage. Le banc du rappel ne change pas (58/62, 2 faux rappels sur 38).
+- Tests : `test_ecriture`, `test_demarrage` et `test_vitesse_message` (63 vérifications) comptent le travail fait
+  au lieu de le chronométrer ; 51 sur 63 échouent sur l'ancien code, les 12 autres vérifient que ce qui doit rester
+  pareil le reste (exports identiques, aucun cache périmé servi).
+- Reste au-dessus de 150 ms : le tout premier démarrage dans un nouveau dossier (235 ms, une fois par dossier).
+  Autres restes au §4.2 (graphe lu en entier à 10 000, vues refaites après chaque session, `brain q` après un
+  changement). Le premier ajout après la mise à jour prend environ 1 s à 3 000 souvenirs (mots des souvenirs
+  gardés une fois pour toutes).
 
 **Étape 5 — Consommation** (§4.3) et regroupement des skills (§7.2).
 - Fin : injection du démarrage et outils MCP réduits d'un tiers ; la liste des skills du cerveau tient
@@ -487,10 +523,10 @@ S-3 `commun.py:545-579` (rep.) · S-4 `wiki.py:367-389, 405-430` (rep.) · S-5 `
 `commun.py:417-437` (rep.) · S-9 `wikistore.py:114-117` noms réservés Windows (rep.) · S-10
 `commun.py:622` (rep.) · S-11 `viz3d.py:8-20` (rep.) · S-12 un utilisateur sur deux PC (lu).
 
-**Mesures** — M-1 `graph.py:297-306, 474-492` · M-3 exports à l'ajout · M-5 `store.py:571-577` ·
-M-6 `search.py:227-247` · M-7 `index.py:295` · M-8 `hooks.py:1230-1241` · M-9 = A-5 · M-10
-`hooks.py:443` · M-11 = A-13 · M-12 `search.py:239-275` · M-13 `hooks.py:14-19` · M-14 `brain context`
-et `brain optimize` sous-estiment (rep.).
+**Mesures** — M-1 `graph.py:297-306, 474-492` (✅) · M-3 exports à l'ajout (✅) · M-5 `store.py:571-577` (✅) ·
+M-6 `search.py:227-247` (✅) · M-7 `index.py:295` (✅) · M-8 `hooks.py:1230-1241` (✅) · M-9 = A-5 · M-10
+`hooks.py:443` · M-11 = A-13 · M-12 `search.py:239-275` (✅) · M-13 `hooks.py:14-19` (✅) · M-14 `brain context`
+et `brain optimize` sous-estiment (rep.). Étape 4 : les ✅ du 21/11.
 
 **Skills** — K-1 descriptions hors budget · K-2 `skills.py:214-215` déclencheurs dans les descriptions
 · K-3 `skillListingMaxDescChars` · K-4 `skillOverrides` sans effet sur les skills d'un plugin · K-5
