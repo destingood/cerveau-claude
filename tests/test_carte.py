@@ -105,6 +105,10 @@ put(M, "requirements.txt", "flask==3.0\n-e ./outils/editable\n../voisin\nmonpaqu
     "git+https://exemple.test/x.git#egg=distant\n")
 put(M, "app/main.py", "import corelib\nfrom corelib import noyau\nimport plat\nimport coeur\nimport outil_local\n"
     "import soutien\nimport editable\nimport voisin\nimport monpaquet\nimport requests\nimport flask\nimport json\n")
+put(M, "libs/corelib/src/corelib/outils.py", "def aide():\n    pass\n")
+put(M, "services/paiement/stripe_api.py", "def payer():\n    pass\n")  # paquet espace de noms : sans __init__.py
+put(M, "app/usage.py", "from corelib.outils import aide\nfrom services.paiement.stripe_api import payer\n"
+    "from services import paiement\nimport services\nfrom app import main\nimport pydantic\n")
 m = carte(M)
 f = m["files"]
 web, py = f["apps/web/index.js"], f["app/main.py"]
@@ -123,6 +127,11 @@ check(f["requirements.txt"].get("deps") == ["flask", "distant"] and f["requireme
       f["requirements.txt"])
 check(f["package.json"].get("local") == ["@acme/utils", "commun", "lien"], "paquets locaux : package.json les note",
       f["package.json"].get("local"))
+use = f["app/usage.py"]
+check(use.get("out") == ["app/main.py", "libs/corelib/src/corelib/outils.py", "services/paiement/stripe_api.py"],
+      "paquets locaux : `from paquet.module import nom` résout le module", use.get("out"))
+check(use.get("ext") == ["pydantic"], "paquets locaux : `from paquet.module import nom` ne rend pas le paquet externe "
+      "(ni un paquet espace de noms sans __init__.py)", use.get("ext"))
 lines = mapper.deps(m, "apps/web/index.js")
 check(any(x.startswith("→ paquets externes : react") for x in lines) and not any("@acme" in x and "externes" in x for x in lines),
       "paquets locaux : `brain deps` ne les montre plus comme externes", lines)

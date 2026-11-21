@@ -1241,6 +1241,7 @@ class Resolver:
         self.py_roots = [""] + [d + "/" for d in ("src", "app", "lib", "backend", "server")
                                 if any(k.startswith(d + "/") for k in files)]
         self._locals()
+        self._py_roots_hit, self._py_rest, self._dirs = {}, {}, None
         self.aliases = self._aliases()
         self.alias_prefixes = tuple(a for a, _ in self.aliases)
 
@@ -1261,8 +1262,33 @@ class Resolver:
                     self.py_local.add(_py_name(f["title"]))
                 if d and f.get("lang") != "requirements":  # libs/x/pyproject.toml : libs/x/src/ et libs/x/ sont des racines
                     roots += [d + "/src/", d + "/"]
-        dirs = {k.rsplit("/", 1)[0] + "/" for k in self.files if "/" in k}
-        self.py_pkg_roots = [r for r in dict.fromkeys(roots) if any(x.startswith(r) for x in dirs)][:200]
+        # nom d'import de premier niveau → racines où il existe (x.py ou x/__init__.py) : une recherche directe, au lieu
+        # d'essayer chaque racine pour chaque import (+30 ms à chaque carte d'un dépôt à 40 paquets Python)
+        rootset, self.py_tops = set(roots), defaultdict(list)
+        for k in self.files if rootset else ():
+            if not k.endswith(".py"):
+                continue
+            parts = k.split("/")
+            for i in range(1, len(parts)):
+                prefix = "/".join(parts[:i]) + "/"
+                if prefix in rootset:
+                    top = parts[i][:-3] if i == len(parts) - 1 else parts[i]
+                    if prefix not in self.py_tops[top]:
+                        self.py_tops[top].append(prefix)
+        for top in self.py_tops:  # même ordre qu'avant : libs/x/src/ avant libs/x/
+            self.py_tops[top].sort(key=lambda r, order={r: i for i, r in enumerate(dict.fromkeys(roots))}: order[r])
+
+    def _py_is_local(self, top) -> bool:
+        """Un nom d'import de premier niveau est-il un paquet du dépôt ? Dossier du projet (même sans __init__.py :
+        paquet « espace de noms »), paquet d'un sous-projet, ou dépendance locale déclarée."""
+        if self._dirs is None:
+            self._dirs = set()
+            for k in self.files:
+                parts = k.split("/")[:-1]
+                for i in range(1, len(parts) + 1):
+                    self._dirs.add("/".join(parts[:i]))
+        return (top in self.py_tops or _py_name(top) in self.py_local
+                or any(root + top in self._dirs for root in self.py_roots))
 
     def has(self, p):
         if p in self.exact:
@@ -1353,22 +1379,27 @@ class Resolver:
             for _ in range(level - 1):
                 base = posixpath.dirname(base)
             return self._try_py(posixpath.join(base, *parts) if parts else base), None
-        parts = spec.split(".")
+        path = spec.replace(".", "/")
+        hit = self._py_roots_hit.get(spec, 0)  # ne dépend pas du fichier qui importe : calculé une fois par nom
+        if hit == 0:
+            hit = next((h for h in (self._try_py(root + path) for root in self.py_roots) if h), None)
+            self._py_roots_hit[spec] = hit
+        if hit:
+            return hit, None
         here = posixpath.dirname(rel)
-        for root in self.py_roots + ([here + "/"] if here else []):
-            hit = self._try_py(root + "/".join(parts))
-            if hit:
-                return hit, None
-        top = parts[0]
-        if top in STDLIB:
-            return None, None
-        for root in self.py_pkg_roots:  # paquets Python du dépôt (libs/x/src/x/…) : pas des paquets externes
-            hit = self._try_py(root + "/".join(parts))
-            if hit:
-                return hit, None
-        if _py_name(top) in self.py_local:
-            return None, None
-        return None, top
+        hit = self._try_py(here + "/" + path) if here else None
+        if hit:
+            return hit, None
+        res = self._py_rest.get(spec)
+        if res is None:
+            top = spec.split(".")[0]
+            if top in STDLIB:
+                res = (None, None)
+            else:  # paquets Python du dépôt (libs/x/src/x/…), puis paquets locaux hors du dépôt : pas externes
+                hit = next((h for h in (self._try_py(root + path) for root in self.py_tops.get(top, ())) if h), None)
+                res = (hit, None) if hit else (None, None) if self._py_is_local(top) else (None, top)
+            self._py_rest[spec] = res
+        return res
 
     def path(self, rel, spec):
         spec = urllib.parse.unquote(spec.split("#")[0].split("?")[0].strip())
@@ -1427,6 +1458,7 @@ def _py_name(name) -> str:
 
 def resolve(files):
     R = Resolver(files)
+    py_tops = set()  # premiers noms d'imports Python résolus vers un fichier du dépôt
     for rel, f in files.items():
         imps = f.get("imports") or []
         if not imps:
@@ -1454,12 +1486,23 @@ def resolve(files):
                 hit = pkg = None
             if hit and hit != rel:
                 out.append(hit)
+                if lang in ("python", "notebook") and not spec.startswith("."):
+                    py_tops.add(spec.split(".")[0])
             elif pkg:
                 ext.append(pkg)
         if out:
             f["out"] = sorted(set(out))
         if ext:
             f["ext"] = sorted(set(ext))
+    # `from pkg.mod import nom` note aussi pkg.mod.nom, qui n'est pas un fichier : son premier nom (pkg) passait pour un
+    # paquet externe alors que pkg.mod a été trouvé dans le dépôt. Un premier nom résolu quelque part est local partout.
+    for f in files.values():
+        if f.get("ext") and f.get("lang") in ("python", "notebook"):
+            kept = [e for e in f["ext"] if e not in py_tops]
+            if kept:
+                f["ext"] = kept
+            else:
+                del f["ext"]
     return files
 
 
