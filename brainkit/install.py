@@ -227,7 +227,7 @@ variables d'env, documents, cycles, TODO, fichiers sensibles jamais lus).
 | Communauté, centralité, concepts et liens déduits d'un souvenir | `show <id>` |
 | Fiche de synthèse d'une communauté (extractive, régénérée seulement quand un membre change) | `fiche [n°\\|mot\\|id]` |
 | Concepts repérés (outils, sujets, sigles, domaines, produits) et souvenirs liés | `concept [nom]` |
-| Vue 3D interactive (mémoire, concepts, chronologie, Maj+clic = chemin, cartes de projets) | `viz --open` → `cerveau.html` (`cerveau-2d.html` hors ligne) |
+| Vue 3D interactive (mémoire, concepts, chronologie, Maj+clic = chemin, cartes de projets) | `viz --open` → `cerveau.html`, hors ligne (`cerveau-2d.html` sans WebGL) |
 
 Liens **déduits** = similarité du contenu (raison : mots communs ; confiance forte/moyenne/faible), jamais écrits
 dans le graphe tant qu'ils ne sont pas confirmés par `link`. Analyse en cache (`state/analysis.json`), recalculée

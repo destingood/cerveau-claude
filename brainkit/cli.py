@@ -1119,7 +1119,7 @@ def cmd_viz(a):
     from . import viz, vues
     with vues.lock():  # après la régénération en arrière-plan en cours, jamais en même temps qu'elle
         path = viz.render(Brain.load())
-    print(f"✓ {path} (vue 3D) · {VIZ2D_FILE} (vue 2D, fonctionne hors ligne)")
+    print(f"✓ {path} (vue 3D) · {VIZ2D_FILE} (vue 2D, sans WebGL ; les deux marchent hors ligne)")
     if a.open:
         os.startfile(str(path)) if os.name == "nt" else print("(ouvre le fichier dans un navigateur)")
 
