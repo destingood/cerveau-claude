@@ -13,8 +13,8 @@ from . import __version__
 from . import index as idx
 from . import journal, search
 from .common import (BRAIN_DIR, CLAUDE_HOME, CMD, CONFIG_FILE, EXPORT_FILE, GRAPH_FILE, INDEX_FILE, LOG_FILE, PROJECTS_DIR, REPORT_FILE, VIZ2D_FILE, VIZ_FILE, LockBusy, budget_chars, days_since, est_tokens, fmt_date, network_reason,
-                     fold, load_config, log, now_iso, oserror_fr, set_config, setup_io, short, slugify, update_config,
-                     write_text)
+                     fold, load_config, log, now_iso, oserror_fr, set_config, setup_io, short, slugify, tell_user,
+                     update_config, write_text)
 from .store import GLOBAL_REFS, TYPES, Brain, bump_hits, clean_tags, normalize_type, priority
 
 
@@ -1333,10 +1333,15 @@ def cmd_backup(a):
             log(f"sauvegarde auto : {exc!r}")
             return
         die(f"sauvegarde impossible : {oserror_fr(exc)}" if isinstance(exc, OSError) else str(exc))
+    notice = "" if a.to else backup.home_notice(dest)  # dossier personnel faute de second disque : dit une fois
     if a.auto:
         log(f"sauvegarde auto : {path or 'déjà faite aujourd hui'}")
+        if notice:
+            tell_user("sauvegarde", notice)  # au démarrage suivant (la sauvegarde du jour tourne en arrière-plan)
         return
     print(f"✓ sauvegarde : {path} ({max(1, path.stat().st_size // 1024)} Ko) — restaurer : `brain backup --restore \"{path}\"`")
+    if notice:
+        print(notice)
 
 
 def cmd_todo(a):
@@ -2372,8 +2377,10 @@ def build_parser():
                                "entendues…) — --done pour le clore", ["reve"])
     s.add_argument("--done", action="store_true", help="marquer le rêve comme traité")
     s.add_argument("--no-apply", action="store_true", help="ne rien appliquer, seulement préparer le dossier")
-    s = cmd("backup", cmd_backup, "sauvegarde hors du disque système (D:, E:…) — --list, --restore <archive>", ["sauvegarde"])
-    s.add_argument("--to", help="dossier de sauvegarde (défaut : D:\\Sauvegardes-cerveau-Claude ou équivalent)")
+    s = cmd("backup", cmd_backup, "sauvegarde hors de ~/.claude (second disque, sinon dossier personnel) — --list, "
+                                  "--restore <archive>", ["sauvegarde"])
+    s.add_argument("--to", help="dossier de sauvegarde, pour cette fois (défaut : backup.dir, sinon D:\\Sauvegardes-cerveau-"
+                                "Claude ou un autre disque sous Windows, sinon ~/Sauvegardes-cerveau-Claude)")
     s.add_argument("--list", action="store_true")
     s.add_argument("--restore", help="archive .zip à restaurer")
     s.add_argument("--auto", action="store_true", help=argparse.SUPPRESS)

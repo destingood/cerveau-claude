@@ -157,6 +157,9 @@ outils, et tes boutiques suivies).
   observations anciennes condensées — et ce qui demande du jugement (corrections entendues, doublons, conflits,
   à-faire en retard) est tranché par Claude au démarrage suivant : ce qui est sûr est appliqué, un doute est laissé
   et cité, rien n'est inventé.
+- **Rien ne se perd** : une sauvegarde chaque jour, hors de `~/.claude` (sous Windows sur un second disque s'il y en a
+  un, sinon dans `~/Sauvegardes-cerveau-Claude` ; `brain config backup.dir <dossier>` pour en choisir un autre). Un
+  fichier de mémoire abîmé se répare seul, sans perdre ce qui s'y lit encore, et le cerveau te dit ce qu'il a repris.
 - **Le style concis** (`/output-style cerveau:concis`) : l'action d'abord, sans préambule ni récapitulatif. Il devient
   ton style par défaut, sauf si tu en avais déjà choisi un ; `brain config style off` pour revenir.
 - **La relecture sécurité** (skill `/cerveau:securite`) relit le code exposé (site, API, formulaire) avant de le livrer.

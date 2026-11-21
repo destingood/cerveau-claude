@@ -45,10 +45,11 @@ Ce que font les hooks du cerveau, et le sens de chaque ligne qu'ils ajoutent au 
   remplacés via `supersedes`, secrets) puis **rêve** (dates relatives rendues absolues, observations de plus de 7 jours
   condensées en un résumé par semaine et par projet, dossier `REVE.md` des points à trancher ; s'il y en a assez, une
   ligne 🌙 au démarrage propose de le confier à un sous-agent en arrière-plan :
-  `dream` → appliquer ce qui est sûr → `dream --done`), avec instantané pris avant, et sauvegarde hors du disque système
-  (`D:\Sauvegardes-cerveau-Claude` par défaut : une réinstallation de Windows n'efface plus le cerveau).
-- **Auto-réparation** : si graph.json est illisible, le cerveau repart du dernier instantané valide (ou de la
-  dernière sauvegarde) et garde le fichier abîmé à côté ; jamais d'écrasement par un graphe vide.
+  `dream` → appliquer ce qui est sûr → `dream --done`), avec instantané pris avant, et sauvegarde hors de ~/.claude
+  (second disque sous Windows, sinon `~/Sauvegardes-cerveau-Claude`, dit une fois ; réglage `backup.dir`).
+- **Auto-réparation** : si graph.json est illisible, le cerveau le refait depuis la version d'avant la dernière
+  écriture (ou un instantané, une sauvegarde), les écritures récentes et ce qui se lit encore du fichier abîmé, gardé à
+  côté ; il le dit au démarrage suivant ; jamais d'écrasement par un graphe vide.
 - **Sécurité** : clés, jetons et mots de passe sont masqués automatiquement à l'écriture ; chaque modification
   peut être annulée (`history` / `restore`).
 - La mémoire native de Claude Code (`~/.claude/projects/*/memory`) est importée automatiquement.

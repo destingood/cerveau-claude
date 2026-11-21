@@ -1,12 +1,15 @@
-"""Sauvegarde du cerveau hors du disque système, et réparation automatique.
+"""Sauvegarde quotidienne du cerveau, hors de ~/.claude.
 
 Le 14/10/2026, une réinstallation de Windows a effacé le disque C: : le cerveau (~/.claude/brain) y vit aussi.
-Une archive est donc écrite chaque jour (en fin de session, en arrière-plan) sur un autre disque (D:, E:…) :
-graphe, journal, configuration, suivi des boutiques, derniers instantanés, rapports et résumés de cartes. Les cartes complètes
-(map.json, search.json) ne sont pas copiées : elles se régénèrent avec `brain map`.
+Une archive est donc écrite chaque jour (en fin de session, en arrière-plan) : graphe, journal, configuration, suivi des
+boutiques, derniers instantanés, rapports et résumés de cartes. Les cartes complètes (map.json, search.json) ne sont
+pas copiées : elles se régénèrent avec `brain map`.
 
-Réparation : si graph.json est illisible (corrompu), le cerveau repart automatiquement du dernier instantané valide,
-puis de la dernière sauvegarde ; le fichier abîmé est gardé à côté (graph.corrupt-…json)."""
+Où (décision E7 du 21/11/2026) : `backup.dir` s'il est réglé ; sinon, sous Windows, le premier autre disque (D:, E:…) ;
+sinon (un seul disque, macOS, Linux) ~/Sauvegardes-cerveau-Claude, et l'utilisateur l'apprend une fois : une
+réinstallation du système peut effacer ce dossier. Avant, sans second disque, il n'y avait aucune sauvegarde.
+
+Réparation d'un graph.json abîmé : reparation.py (la dernière sauvegarde y sert de dernier recours)."""
 from __future__ import annotations
 
 import json
@@ -17,13 +20,17 @@ import time
 import zipfile
 from pathlib import Path
 
-from .common import BRAIN_DIR, CONFIG_FILE, GRAPH_FILE, INDEX_FILE, JOURNAL_FILE, PROJECTS_DIR, REPORT_FILE, load_config, log
+from .common import (BRAIN_DIR, CONFIG_FILE, GRAPH_FILE, INDEX_FILE, JOURNAL_FILE, PROJECTS_DIR, REPORT_FILE, STATE_DIR,
+                     load_config)
 
 FOLDER = "Sauvegardes-cerveau-Claude"
+HOME_SAID = STATE_DIR / "sauvegarde-perso-dite"  # le dossier personnel choisi faute de second disque a été annoncé
 
 
-def default_dir():
-    """Premier disque qui n'est pas celui du système, avec au moins 1 Go libre."""
+def second_disk():
+    """Windows : premier disque qui n'est pas celui du système, avec au moins 1 Go libre. Ailleurs : None."""
+    if os.name != "nt":
+        return None
     sysdrive = (os.environ.get("SystemDrive") or "C:").upper().rstrip("\\")
     for letter in string.ascii_uppercase[3:]:  # D: … Z:
         root = f"{letter}:\\"
@@ -37,10 +44,42 @@ def default_dir():
     return None
 
 
+def home_dir() -> Path:
+    """Sans second disque : ~/Sauvegardes-cerveau-Claude (hors de ~/.claude). Un cerveau rangé hors du dossier
+    personnel (BRAIN_HOME ailleurs) garde ses sauvegardes à côté de lui."""
+    home = Path.home()
+    try:
+        inside = BRAIN_DIR.resolve().is_relative_to(home.resolve())
+    except OSError:
+        inside = True
+    return home / FOLDER if inside else BRAIN_DIR.resolve().parent / FOLDER
+
+
+def default_dir():
+    return second_disk() or home_dir()
+
+
 def target_dir():
     cfg = load_config().get("backup", {})
     d = cfg.get("dir")
     return Path(d) if d else default_dir()
+
+
+def home_notice(dest):
+    """Première sauvegarde rangée dans le dossier personnel faute de second disque (ni `backup.dir` ni --to) : la phrase
+    à dire, une seule fois. → texte, ou "" (déjà dit, ou ce n'est pas le cas)."""
+    if not dest or (load_config().get("backup") or {}).get("dir") or HOME_SAID.exists():
+        return ""
+    try:
+        if Path(dest).resolve() != home_dir().resolve():
+            return ""
+        HOME_SAID.parent.mkdir(parents=True, exist_ok=True)
+        HOME_SAID.write_text(str(dest), encoding="utf-8")
+    except OSError:
+        return ""
+    return (f"💾 Sauvegarde du cerveau : faute de second disque, elle va chaque jour dans {dest}. Une réinstallation "
+            "du système peut effacer ce dossier : pour en choisir un autre (disque externe, dossier synchronisé), "
+            "`brain config backup.dir <dossier>` (ou `brain backup --to <dossier>` pour une fois).")
 
 
 def backups(dest=None):
@@ -54,8 +93,6 @@ def run(dest=None, force=False, keep=None):
     """Écrit une archive (une par jour sauf --force). → chemin de l'archive, ou None si rien à faire."""
     cfg = load_config().get("backup", {})
     dest = Path(dest) if dest else target_dir()
-    if not dest:
-        raise RuntimeError("aucun disque de sauvegarde trouvé (D:, E:…) — choisis un dossier : brain backup --to <dossier>")
     dest.mkdir(parents=True, exist_ok=True)
     today = time.strftime("%Y%m%d")
     if not force and any(p.name.startswith(f"cerveau-{today}") for p in backups(dest)):
@@ -118,26 +155,3 @@ def restore(zip_path):
                     out.parent.mkdir(parents=True, exist_ok=True)
                     out.write_bytes(z.read(rel))
     return len(graph.get("nodes", {}))
-
-
-def recover_graph():
-    """graph.json illisible → données du dernier instantané valide, sinon de la dernière sauvegarde. → dict ou None."""
-    from . import history
-    for snap in history.snapshots():
-        try:
-            data = history.load(snap)
-            if isinstance(data, dict) and isinstance(data.get("nodes"), dict):
-                log(f"RÉPARATION : graph.json illisible → repris de l'instantané {snap.name}")
-                return data
-        except Exception:
-            continue
-    for zp in backups():
-        try:
-            with zipfile.ZipFile(zp) as z:
-                data = json.loads(z.read("graph.json").decode("utf-8"))
-            if isinstance(data, dict) and isinstance(data.get("nodes"), dict):
-                log(f"RÉPARATION : graph.json illisible → repris de la sauvegarde {zp}")
-                return data
-        except Exception:
-            continue
-    return None
