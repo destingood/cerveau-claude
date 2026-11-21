@@ -313,8 +313,17 @@ def session_context(brain, cwd, cfg=None, session_id=None):
     limit = budget_chars(cfg["inject"], "max_tokens")
     if len(text) > limit:
         text = text[: limit - 1] + "…"
-    ids = sorted({i for i in ID_RE.findall(text) if i in brain.nodes} - set(previews))
+    ids = sorted({i for i in ID_RE.findall(text) if i in brain.nodes and _whole(brain.nodes[i], text)} - set(previews))
     return text, ids, proj
+
+
+def _whole(n, text) -> bool:
+    """Le souvenir est-il montré en entier dans l'injection (sa ligne porte tout son résumé) ? Coupé à 100-200 caractères
+    ou réduit à son titre (« … +N », échéance, ligne de projet), le rappel peut encore apporter le reste : avant, tout id
+    imprimé au démarrage était bloqué pour la session."""
+    body = concis((n.get("meta") or {}).get("resume") or n.get("body", ""))
+    mark = f"`{n['id']}`"
+    return not body or any(mark in ln and body in ln for ln in text.splitlines())
 
 
 def resume_delta(brain, since, cfg=None) -> str:

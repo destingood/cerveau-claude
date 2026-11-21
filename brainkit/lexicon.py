@@ -13,13 +13,13 @@ from .common import fold, stem, tokenize
 _GROUPS = """
 boutique shop store magasin ecommerce e-commerce
 commande order commandes
-vente ventes sale sales vendre
+vente ventes sale sales vendre vendu vendus
 achat achats purchase acheter buy
 produit produits product products
 client clients customer customers acheteur buyer
 panier cart checkout
 paiement payment payer
-livraison livraisons shipping expedition delivery colis transporteur
+livraison livraisons shipping expedition delivery colis transporteur port envoi envoie envoyer expedier expedie
 prix price tarif tarifs cout cost
 facture factures invoice invoices facturation
 remboursement refund retour retours return
@@ -53,6 +53,14 @@ traduction translate traduire
 video videos
 article articles blog guide guides
 theme themes template
+entreprise entreprises societe societes employeur employeurs groupe
+salaire salaires remuneration salarial salariale salary
+supprimer suppression effacer delete
+seuil threshold
+suiveur trailing
+annee annees annuel annuelle yearly year
+miniature miniatures thumbnail thumbnails vignette
+clic clics click clicks ctr
 """
 
 SYN: dict[str, set] = {}
@@ -128,16 +136,17 @@ def within_one(a: str, b: str) -> bool:
     return a[i:] == b[i + 1:]
 
 
-_SUFFIXES = ("issements", "issement", "ationnels", "ationnel", "ations", "ation", "itions", "ition", "ements", "ement",
-             "ments", "ment", "ances", "ance", "ences", "ence", "iques", "ique", "ables", "able", "euses", "euse",
-             "eurs", "eur", "ees", "ee", "es", "er", "ez", "e", "s")
+_SUFFIXES = ("issements", "issement", "ationnels", "ationnel", "cations", "cation", "ations", "ation", "itions", "ition",
+             "ements", "ement", "ments", "ment", "ances", "ance", "ences", "ence", "iques", "ique", "ables", "able",
+             "euses", "euse", "eurs", "eur", "ees", "ee", "es", "er", "ez", "e", "s")
 
 
 def root(token: str) -> str:
-    """Famille de mots : « réinstallation », « réinstallé », « réinstaller » → « reinstal »."""
+    """Famille de mots : « réinstallation », « réinstallé », « réinstaller » → « reinstal » ; « publication »,
+    « publié » → « publi » ; « refus », « refusé » → « refus » (le « s » après u, i, a reste, comme dans stem)."""
     s = fold(token)
     for suf in _SUFFIXES:
-        if s.endswith(suf) and len(s) - len(suf) >= 4:
+        if s.endswith(suf) and len(s) - len(suf) >= 4 and not (suf == "s" and s.endswith(("us", "is", "as"))):
             s = s[: -len(suf)]
             break
     if len(s) >= 5 and s[-1] == s[-2]:
@@ -148,4 +157,4 @@ def root(token: str) -> str:
 # Terminaisons d'une autre forme du même mot (« tester » → « test », « créer » → « crée », « réelle » → « réel »,
 # « loaded » → « load ») : seul un début de mot de 4 lettres suivi de l'une d'elles compte comme troncature
 # (« boutique » ne se réduit pas à « bout »).
-INFLEXIONS = frozenset(("e", "ee", "r", "er", "ez", "nt", "ent", "x", "le", "d", "ed", "ing"))
+INFLEXIONS = frozenset(("e", "ee", "r", "er", "ez", "nt", "ent", "x", "s", "le", "d", "ed", "ing"))

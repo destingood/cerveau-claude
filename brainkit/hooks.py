@@ -24,7 +24,8 @@ STOP_REASON = (
     "🧠 Cerveau — avant de conclure, en UN SEUL appel Bash (chaîné avec &&) : "
     f"`{CMD} obs \"🔴 …\" \"🟡 …\"` (3 à 5 observations datées), puis le durable dit par l'utilisateur (0 à 3 : "
     f"feedback, user, decision, fact, learning, reference, todo) : `{CMD} add -t <type> -T \"titre\" -b \"fait + pourquoi "
-    "+ comment l'appliquer\"` (`-p none` hors projet ; `edit <id>` corrige). Jamais de secret."
+    "+ comment l'appliquer\" --keys \"synonymes, mots d'une question qui le chercherait\"` (`-p none` hors projet ; "
+    "`edit <id>` corrige). Jamais de secret."
 )
 WIKI_REASON = (" Wiki : une réponse qui vaut d'être gardée (synthèse, comparaison, analyse) → page Analyses "
                f"(`{CMD} add -t analyse -T … -b - --resume …`) puis `{CMD} wiki log query \"…\"` ; une source lue ou "
@@ -68,8 +69,9 @@ RECALL_RX = re.compile(r"\b(tu te souviens|te rappelles|rappelle[- ]moi|on avait
 
 def recall_query(raw) -> str:
     """Message → requête de rappel : blocs collés et balises retirés, nombres sans valeur (« 12 fois 8 », « le 15/10 »,
-    « 2026 ») effacés. Partagé avec `brain bench` pour mesurer exactement ce que fait le hook."""
-    return NUM_NOISE.sub(" ", journal.clean_prompt(raw, 600))
+    « 2026 ») et mots de remplissage (« était », « déjà », search.FILLER) effacés. Partagé avec `brain bench` pour
+    mesurer exactement ce que fait le hook."""
+    return search.drop_filler(NUM_NOISE.sub(" ", journal.clean_prompt(raw, 600)))
 
 
 def context_query(raw, query) -> str:
@@ -373,7 +375,7 @@ def on_session_start(data, cfg):
     if source in ("compact", "clear"):
         # L'injection précédente et les rappels ont quitté le contexte : on repart de ce qui est visible maintenant
         # (avant : « déjà injectés » gardés, donc plus jamais rappelés après une compaction).
-        st["injected"], st["files"], st["recalled"] = sorted(ids), [], 0
+        st["injected"], st["files"], st["recalled"], st["recall_hist"] = sorted(ids), [], 0, []
         st["skills_hinted"] = []  # skills soufflées ou chargées d'office : sorties du contexte, à resservir
         st["outils_hinted"] = []  # connecteurs soufflés : idem
         from . import compact
@@ -837,6 +839,8 @@ def on_prompt(data, cfg):
 
 
 MEM_HEADER = "🧠 Souvenirs liés :"
+OBS_HEADER = "🗒️ Observation notée en fin de tâche :"
+OBS_SESSION_CAP = 6  # observations montrées au plus par session
 
 
 def memory_line(n, full=True, query=None) -> str:
@@ -861,7 +865,24 @@ def _rule_picks(found, injected, rc, accept, query=None) -> list:
 
 
 def pick_memories(brain, query, rc, project=None, injected=(), before=None, prev=(), raw=None, log_to=None) -> list:
-    """Souvenirs à injecter pour un message → [(souvenir, ligne)].
+    """Souvenirs à injecter pour un message → [(souvenir, ligne)] : ceux de la période d'une question datée d'abord
+    (search.dated_recall : « la semaine dernière », « le mois dernier », « hier »), puis ceux du texte (_text_picks)."""
+    picks = _text_picks(brain, query, rc, project, injected, before, prev, raw, log_to)
+    if before or not raw:  # rejeu du neurone : la règle du texte seule
+        return picks
+    try:
+        dated = [r["node"] for r in search.dated_recall(brain, journal.clean_prompt(raw, 600), query, project,
+                                                        limit=rc["max_items"]) if r["node"]["id"] not in injected]
+    except Exception as exc:
+        log(f"rappel daté : {exc!r}")
+        return picks
+    ids = {n["id"] for n in dated}
+    return ([(n, memory_line(n, query=query)) for n in dated] + [p for p in picks if p[0]["id"] not in ids])[:max(
+        rc["max_items"], len(picks))]
+
+
+def _text_picks(brain, query, rc, project=None, injected=(), before=None, prev=(), raw=None, log_to=None) -> list:
+    """Souvenirs du texte du message → [(souvenir, ligne)].
     Règle fixe (`recall.neurone` « off », ou neurone pas encore appris) : ceux que `accept_recall` laisse passer, en
     ligne complète. Neurone appris sur les échanges de cet utilisateur (neurone.py) : les meilleurs candidats classés
     par probabilité d'être utiles ; ligne complète si elle est forte (≥ neurone_haut), titre seul pour les autres que la
@@ -959,13 +980,27 @@ def recall_context(data, cfg, raw, saved="") -> str:
         lines.append(f"🧠 L'utilisateur fait appel à un souvenir : cherche avec `{CMD} q \"…\"` et `{CMD} journal`.")
     picks, logged, learn = [], [], False
     recalled = st.get("recalled", 0)
+    # Plafond glissant : au plus session_cap_items souvenirs sur les session_cap_window derniers messages tapés (celui-ci
+    # compris), puis le rappel reprend ; avant, plus rien après 12 souvenirs, et sans le dire. Une demande explicite
+    # (« tu te souviens… », « rappelle-moi… ») passe toujours.
+    typed = not journal.is_auto(raw)
+    window = max(1, int(rc.get("session_cap_window") or 1))
+    hist = (st.get("recall_hist") or [])[-(window - 1):] if window > 1 else []
+    asked = bool(RECALL_RX.search(own))
+    room = rc["session_cap_items"] - sum(hist)
     if tokenize(query):
         prev = st.get("prev_q") or []
-        if recalled < rc["session_cap_items"] or rc.get("neurone", "auto") != "off":
+        if room > 0 or asked or rc.get("neurone", "auto") != "off":
             picks = pick_memories(brain, query, rc, proj["id"] if proj else None, injected, prev=prev, raw=raw,
                                   log_to=logged)
-            if recalled >= rc["session_cap_items"]:
-                picks = []  # plafond de la session atteint : rien de plus à l'écran, mais l'apprentissage continue
+            if not asked:
+                if picks and room <= 0 and not st.get("cap_said"):
+                    lines.append(f"🧠 Rappel automatique en pause : {rc['session_cap_items']} souvenirs montrés sur les "
+                                 f"{window} derniers messages ; un souvenir précis : `{CMD} q \"…\"`.")
+                    st["cap_said"] = True
+                picks = picks[:max(0, room)]  # plafond atteint : rien de plus à l'écran, l'apprentissage continue
+        if room > 0:
+            st["cap_said"] = False
         # Messages tapés seulement (pas les avis automatiques) : contexte de la session et exemples pour le neurone
         if not journal.is_auto(raw):
             if rc.get("neurone", "auto") != "off":
@@ -986,6 +1021,17 @@ def recall_context(data, cfg, raw, saved="") -> str:
     if rc["files"] and proj and named in (None, proj["id"]) and tokenize(query)             and len(st.get("files", [])) < rc["session_cap_files"]:  # autre projet nommé : pas les fichiers d'ici
         from . import filesearch
         files = filesearch.recall_files(proj["id"], query, rc, exclude=set(st.get("files", [])))
+    # Aucun souvenir ne répond : l'observation notée en fin de tâche qui en parle (une par message, jamais deux fois la
+    # même dans la session) ; « on a fait quoi hier ? » n'a que des mots vides, mais une date.
+    obs, shown_obs = [], []
+    if not picks and not saved and len(st.get("obs_shown", [])) < OBS_SESSION_CAP \
+            and (tokenize(query) or search.DATED_RX.search(own)):
+        try:
+            from . import observations
+            obs = [(o, observations.line(o)) for o in observations.recall(
+                query, journal.clean_prompt(raw, 600), proj["id"] if proj else None, exclude=set(st.get("obs_shown", [])))]
+        except Exception as exc:
+            log(f"observations (rappel) : {exc!r}")
     # Lignes entières seulement, dans le budget (jamais une ligne coupée qu'on paierait sans pouvoir s'en servir) ;
     # seuls les éléments vraiment affichés sont marqués « déjà injectés ».
     budget = rc["max_chars"]
@@ -993,6 +1039,8 @@ def recall_context(data, cfg, raw, saved="") -> str:
     used = sum(len(x) + 1 for x in out)
     shown_mem, shown_files = [], []
     groups = [(MEM_HEADER, picks, shown_mem)]
+    if obs:
+        groups.append((OBS_HEADER, obs, shown_obs))
     if files:
         groups.append((f"📁 Fichiers liés (carte `{proj['id']}`) :",
                        [(f, f"- `{f['path']}` — {short(f['desc'], 100)}") for f in files], shown_files))
@@ -1023,8 +1071,10 @@ def recall_context(data, cfg, raw, saved="") -> str:
         out = sk_lines + out
     if pcline:  # la veille PC passe toujours, avant les souvenirs
         out = [pcline] + out
+    if typed:
+        st["recall_hist"] = (hist + [len(shown_mem)])[-window:]
     if not out:
-        if learn:  # rien à montrer, mais le contexte de la session et les candidats sont gardés
+        if learn or typed:  # rien à montrer, mais le contexte de la session, les candidats et le plafond sont gardés
             st["cwd"] = cwd
             save_state(sid, st)
         return ""
@@ -1033,6 +1083,9 @@ def recall_context(data, cfg, raw, saved="") -> str:
         st["skills_hinted"] = sorted(set(st.get("skills_hinted", [])) | set(sk_names))
     if shown_pl:
         st["prompts"] = st.get("prompts", []) + [p["id"] for p in shown_pl]
+    if shown_obs:
+        from .observations import key
+        st["obs_shown"] = st.get("obs_shown", []) + [key(o) for o in shown_obs]
     st["recalled"] = recalled + len(shown_mem)
     st["injected"] = sorted(injected | {n["id"] for n in shown_mem})
     st["files"] = sorted(set(st.get("files", [])) | {f["path"] for f in shown_files})
@@ -1176,8 +1229,10 @@ def diagnose(raw, cwd, cfg, shown_text="", expected=None) -> str:
     st = read_json(last, {}) or {} if last else {}
     if expected in st.get("injected", []):
         out.append("⚠ déjà montré dans la dernière session : le rappel ne répète pas un souvenir dans une session")
-    if st.get("recalled", 0) >= rc["session_cap_items"]:
-        out.append(f"⚠ dernière session : plafond de {rc['session_cap_items']} souvenirs atteint (recall.session_cap_items)")
+    window = max(1, int(rc.get("session_cap_window") or 1))
+    if sum((st.get("recall_hist") or [])[-window:]) >= rc["session_cap_items"]:
+        out.append(f"⚠ dernière session : plafond de {rc['session_cap_items']} souvenirs sur les {window} derniers messages "
+                   "atteint (recall.session_cap_items, recall.session_cap_window)")
     return "\n".join(out)
 
 
