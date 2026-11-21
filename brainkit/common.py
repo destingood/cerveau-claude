@@ -31,6 +31,7 @@ LOG_FILE = STATE_DIR / "brain.log"
 CMD = 'python "$HOME/.claude/brain/brain.py"'
 if PLUGIN and BRAIN_DIR != Path.home() / ".claude" / "brain":  # plugin avec un autre dossier Claude (CLAUDE_CONFIG_DIR)
     CMD = f'python "{BRAIN_DIR.as_posix()}/brain.py"'
+HOOK = None  # événement du hook en cours (posé par hooks._run) : le travail lourd n'y attend jamais, il part en arrière-plan
 
 # Mesuré le 16/10/2026 sur 427 paires de requêtes réelles (contexte n+1 − contexte n autour d'un seul gros résultat
 # d'outil) : 2,06 car./token en médiane ; Markdown FR 2,23, Python 2,27, sorties Bash 2,01. L'ancien 3,7 sous-estimait ×1,7.

@@ -254,6 +254,12 @@ EVENTS = [  # (événement, argument de `brain hook`, délai max en s, message d
     ("PostToolUse", "post-bash", 10, None, "Bash"),  # sorties de commandes compactes (compact.py)
     ("PreToolUse", "pre-agent", 5, None, "Agent"),  # sous-agent lancé sans modèle : le moins cher qui suffit (delegation.py)
 ]
+# Hooks lancés sans être attendus (`"async": true`, documentation de Claude Code, « Run hooks in the background ») : ceux
+# dont rien n'utilise la sortie et dont rien d'autre n'attend la fin. PreCompact seulement : il n'écrit rien (sa sortie
+# deviendrait une consigne du résumé), ne bloque jamais, et le résumé qu'il précède prend des secondes. PostCompact
+# reste attendu (le SessionStart qui suit relit l'état qu'il écrit) ; SessionEnd aussi (un hook en arrière-plan est
+# coupé quand la session se ferme, au moins en mode -p : le journal de la session serait perdu).
+ASYNC = ("pre-compact",)
 
 
 SKILL_MARK = ".cerveau"  # dans ~/.claude/skills/<nom>/ : skill métier posée par le cerveau (remplacée quand elle change,
@@ -391,6 +397,8 @@ def merged_settings(settings: dict, remove_only=False) -> dict:
             hook = {"type": "command", "command": f"{launcher()} hook {arg}", "timeout": timeout}
             if status:
                 hook["statusMessage"] = status
+            if arg in ASYNC:
+                hook["async"] = True
             entries.append({**({"matcher": matcher} if matcher else {}), "hooks": [hook]})
         if entries:
             hooks[event] = entries

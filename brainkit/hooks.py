@@ -196,6 +196,26 @@ def spawn_background(args) -> bool:
         return False
 
 
+REFRESH_MARK = STATE_DIR / "analyse-demandee"  # dernière demande de recalcul faite par un hook (analyse périmée)
+REFRESH_EVERY = 60  # s : au plus une demande par minute
+
+
+def refresh_later() -> bool:
+    """Analyse du graphe trouvée périmée dans un hook (qui ne la calcule jamais) : la tâche de fond des vues (vues.py)
+    la refait avec la vue 3D, puis l'index du démarrage des derniers projets. Au plus une demande par minute ; elle
+    compte même si la tâche est au travail (elle reprend les demandes arrivées entre-temps avant de rendre la main)."""
+    try:
+        if REFRESH_MARK.exists() and time.time() - REFRESH_MARK.stat().st_mtime < REFRESH_EVERY:
+            return False
+        REFRESH_MARK.parent.mkdir(parents=True, exist_ok=True)
+        REFRESH_MARK.write_text(now_iso(), encoding="utf-8")
+        from . import vues
+        return vues.request()
+    except Exception as exc:
+        log(f"recalcul en arrière-plan : {exc!r}")
+        return False
+
+
 def _project_path(proj):
     path = (proj.get("meta") or {}).get("path") if proj else None
     return path if path and os.path.isdir(path) else None
@@ -333,10 +353,12 @@ def on_session_start(data, cfg):
     sid = data.get("session_id")
     cwd = data.get("cwd") or os.getcwd()
     cleanup_states()
+    big = []
     try:
-        importer.sync()  # mémoire native de Claude Code → cerveau (seulement si elle a changé)
+        importer.sync(skipped=big)  # mémoire native de Claude Code → cerveau (seulement si elle a changé)
     except Exception as exc:
         log(f"import auto-memory : {exc!r}")
+    too_big = importer.too_big_line(big) or None  # fichier trop gros ignoré : dit une fois, à l'utilisateur (0 token)
     try:  # cerveau commun : les nouveautés des amis avant de construire l'index (attente brève si la dernière est vieille)
         from . import commun
         commun.maybe_pull(wait=4)
@@ -351,7 +373,7 @@ def on_session_start(data, cfg):
         if mapper.looks_like_project(cwd):
             with Brain.edit() as b:
                 b.ensure_project(cwd, source="auto")
-            brain = Brain.load()
+            brain = b  # tel qu'il vient d'être écrit : pas besoin de le relire (20 à 60 ms)
             proj = brain.project_for_path(cwd)
     path = _project_path(proj)
     if path and cfg["auto_map"]["enabled"] and filesearch.needs_refresh(proj["id"], cfg["auto_map"]["refresh_minutes"]):
@@ -402,8 +424,8 @@ def on_session_start(data, cfg):
         save_state(sid, st)
         if eco_line:
             text = f"{text}\n\n{eco_line}".strip()
-        if text:
-            emit("SessionStart", text)
+        if text or too_big:
+            emit("SessionStart", text, too_big)
         return
     text, ids, _ = idx.session_context(brain, cwd, cfg, session_id=sid)
     if source in ("compact", "clear"):
@@ -502,7 +524,7 @@ def on_session_start(data, cfg):
             install.sync_skills(quick=True)
         except Exception as exc:
             log(f"skills métier (démarrage) : {exc!r}")
-    emit("SessionStart", text)
+    emit("SessionStart", text, too_big)
 
 
 # ------------------------------------------------------------------------------------------ veille PC
@@ -1459,21 +1481,33 @@ def on_session_end(data, cfg, event="session-end"):
         except Exception as exc:
             log(f"skills (usage) : {exc!r}")
     save_state(sid, st)
-    brain = Brain.load()
-    proj = brain.project_for_path(tx.get("cwd") or data.get("cwd") or st.get("cwd") or "")
+    from . import wikistore
+    # Le projet du dossier suffit (project_of : sans relire graph.json s'il n'a pas changé) ; le wiki, lui, lit le cerveau
+    brain = Brain.load() if event == "session-end" and wikistore.resolve()[0] != "classic" else None
+    pid = project_of(tx.get("cwd") or data.get("cwd") or st.get("cwd") or "", brain)
     if cfg["journal"]["enabled"]:
-        journal.upsert(sid, tx, proj["id"] if proj else None, cfg["journal"]["keep"])
-    path = _project_path(proj)
-    if event == "session-end" and path and tx.get("edits") and cfg["auto_map"]["enabled"]:
-        spawn_background(["map", path, "-p", proj["id"], "--quiet"])
+        journal.upsert(sid, tx, pid, cfg["journal"]["keep"])
+    if event == "session-end" and pid and tx.get("edits") and cfg["auto_map"]["enabled"]:
+        brain = brain or Brain.load()
+        path = _project_path(brain.nodes.get(pid))
+        if path:
+            spawn_background(["map", path, "-p", pid, "--quiet"])
     if event == "session-end":  # entretien et sauvegarde automatiques, une fois par jour (en arrière-plan)
         for args in daily_due(cfg):
             spawn_background(args)
-    brain = Brain.load()
-    idx.rebuild(brain, cfg)
-    if event == "session-end" and (brain.data.get("wiki") or {}).get("root") and not brain.data["wiki"].get("missing"):
+    # BRAIN.md, vues 3D et 2D (avec l'analyse du graphe à jour) et index du démarrage de ce projet, prêts pour la session
+    # suivante ou celle d'après la compaction : la tâche de fond des vues (vues.py) — avant, 120 à 350 ms dans le hook.
+    # Demandées même si d'autres sont en cours : celles-là ont pu lire le journal avant cette session.
+    try:
+        from . import vues
+        vues.request()
+    except Exception as exc:
+        log(f"vues ({event}) : {exc!r}")
+    if event == "session-end" and brain is not None and (brain.data.get("wiki") or {}).get("root") \
+            and not brain.data["wiki"].get("missing"):
         try:  # wiki : index.md, entrée « session » au journal, puis commit + pull + push en arrière-plan
             from . import wiki
+            proj = brain.nodes.get(pid) if pid else None
             wiki.session_close(brain, proj["title"] if proj else None)
             if _auto_sync(brain, cfg):
                 spawn_background(["wiki", "sync", "--auto"])
@@ -1486,13 +1520,6 @@ def on_session_end(data, cfg, event="session-end"):
                 commun.spawn(["commun", "sync", "--auto"])
         except Exception as exc:
             log(f"commun fin de session : {exc!r}")
-    if event == "session-end":
-        try:  # visualisation 3D et analyse du graphe gardées à jour sans y penser
-            from . import viz
-            if viz.is_stale():
-                viz.render(brain)
-        except Exception as exc:
-            log(f"viz fin de session : {exc!r}")
 
 
 # ------------------------------------------------------------------------------------------ PostCompact
@@ -1571,6 +1598,8 @@ def _run(event, data) -> int:
             log(f"hook {event} : installation illisible {exc!r}")
             return 0
     t0 = time.time()
+    from . import common
+    outer, common.HOOK = common.HOOK, event  # dans le hook : l'analyse du graphe n'est jamais calculée sur place
     try:
         handler = HANDLERS.get(event)
         if handler:
@@ -1589,6 +1618,7 @@ def _run(event, data) -> int:
             except Exception:
                 pass
     finally:
+        common.HOOK = outer
         elapsed = time.time() - t0
         if elapsed > 2:
             log(f"hook {event} lent : {elapsed:.2f}s")

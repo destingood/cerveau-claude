@@ -1,5 +1,7 @@
 """Vues du cerveau refaites en arrière-plan : index injecté (BRAIN.md), export lisible (MEMOIRES.md), vues 3D et 2D
-(cerveau.html, cerveau-2d.html, avec l'analyse du graphe) et mots des souvenirs (mots.py).
+(cerveau.html, cerveau-2d.html, avec l'analyse du graphe), mots des souvenirs (mots.py), fiches de synthèse et index du
+démarrage des derniers projets (index.prebuild). Les hooks la demandent aussi (fin de session, compaction, analyse
+trouvée périmée) : eux ne calculent jamais l'analyse.
 
 Une écriture (`brain add`, `edit`, `rm`…) n'écrit plus que le graphe et demande ces vues (request) : une tâche détachée
 les refait une fois les écritures calmées, si bien que plusieurs `add` à la suite ne coûtent qu'une régénération. Avant,
@@ -87,7 +89,7 @@ def _sources_ns() -> int:
 def regenerate() -> None:
     """Toutes les vues, d'après le graphe tel qu'il est maintenant, chacune à part (l'une qui échoue n'empêche pas les
     autres). Le cerveau lu n'est pas modifié : ses voisins sont indexés une fois pour l'export."""
-    from . import index, mots, viz
+    from . import fiches, index, mots, viz
     from .store import Brain
     stamp = _sources_ns()
     try:
@@ -103,7 +105,9 @@ def regenerate() -> None:
             os.utime(INDEX_FILE, ns=(stamp, stamp))
 
     for name, step in (("index", brain_md), ("mots", lambda: mots.rebuild(b)), ("export", lambda: index.export(b)),
-                       ("vue 3D", lambda: viz.render(b))):
+                       ("vue 3D", lambda: viz.render(b)),  # (avec l'analyse du graphe, refaite si besoin)
+                       ("fiches", lambda: fiches.ensure(b)),  # fiches de synthèse : jamais faites dans un rappel
+                       ("démarrage", lambda: index.prebuild(b))):  # index des derniers projets, analyse à jour
         if not BRAIN_DIR.is_dir():  # cerveau effacé entre-temps (dossier de test) : surtout ne pas le recréer
             return
         try:

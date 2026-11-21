@@ -21,10 +21,22 @@ _RULES = [(re.compile(p, re.I), r) for p, r in (
     (r"\bpar exemple\b", "p. ex."), (r"\b(?:environ|approximativement|à peu près) (?=\d)", "≈ "),
     (r"\*\*|__", ""),  # gras Markdown : rien à lire de plus sur une ligne de résumé
 )]
+# Les mots dont chaque règle a besoin : un texte qui n'en contient aucun (le cas courant) n'en passe aucune, et on évite
+# seize lectures du texte (l'index du démarrage résume des centaines de souvenirs). Comparés sans la casse, comme les
+# règles (re.I) : « ı » et « İ », les deux seules lettres que re.I prend pour un « i » sans que casefold() le dise,
+# font passer toutes les règles.
+_RULE_WORDS = ("afin", "dans le but", "de manière", "de façon", "en ce qui concerne", "il est", "en mesure",
+               "heure actuelle", "au jour d", "un certain nombre", "un grand nombre", "par exemple", "environ",
+               "approximativement", "à peu près", "**", "__", "\u0131", "i\u0307")
 # Remplissage retiré (avec sa virgule) ; « vraiment » et compagnie restent après une négation (« pas vraiment »).
 _FILLER = re.compile(r"(^|[.!?;:]\s+|[\s(«])(?:(?:en fait|en effet|tout simplement|bien sûr|bien entendu|évidemment|"
                      r"il faut savoir que|il (?:convient|est important) de noter que|il est à noter que)\b"
                      r"|(?<!pas )(?<!plus )(?:vraiment|réellement|littéralement|tout à fait)\b),?\s*(\w?)", re.I)
+
+
+def _any_rule(s) -> bool:
+    low = s.casefold()
+    return any(w in low for w in _RULE_WORDS)
 
 
 def _drop(m):
@@ -47,10 +59,12 @@ def concis(text) -> str:
     s = " ".join(str(text or "").split())
     if not s:
         return ""
-    for rx, rep in _RULES:
-        s = rx.sub(_keep_case(rep), s)
+    if _any_rule(s):
+        for rx, rep in _RULES:
+            s = rx.sub(_keep_case(rep), s)
     s = _FILLER.sub(_drop, s)
-    s = re.sub(r"(?<=\w) ([,.])(?=\s|$)", r"\1", s)  # « c'est vraiment. » → « c'est . » → « c'est. »
+    if " ," in s or " ." in s:
+        s = re.sub(r"(?<=\w) ([,.])(?=\s|$)", r"\1", s)  # « c'est vraiment. » → « c'est . » → « c'est. »
     return " ".join(s.split())
 
 
