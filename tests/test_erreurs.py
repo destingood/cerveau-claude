@@ -17,7 +17,9 @@ import tempfile
 import time
 from pathlib import Path
 
-TMP = Path(tempfile.mkdtemp(prefix="cerveau-erreurs-test-"))
+# Chemin réel : sous macOS, /var/folders/… est un lien vers /private/var/folders/…, que voit la commande lancée dans
+# un projet (son dossier courant) ; enregistré sous l'autre nom, le projet n'y était pas reconnu.
+TMP = Path(tempfile.mkdtemp(prefix="cerveau-erreurs-test-")).resolve()
 CODE = Path(__file__).resolve().parent.parent
 OK, FAIL = [], []
 for k in ("BRAIN_WIKI", "CLAUDE_CODE_REMOTE", "CERVEAU_CLOUD", "BRAIN_IMPL", "BRAIN_PLUS", "BRAIN_DEBUG"):
