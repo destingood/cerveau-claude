@@ -7,7 +7,8 @@ en CI) : on compte ce qui est fait (empreinte du savoir, index reconstruit, cerv
   les mêmes résultats que l'index construit en mémoire ;
 - message : empreinte du savoir calculée au plus une fois ; « ok merci » ne lit pas le cerveau ;
 - question datée : les dates citées par les souvenirs gardées d'un hook à l'autre, relues si la date d'écriture change ;
-- fin de tour : graph.json lu une seule fois, puis plus du tout pour le journal tant qu'il n'a pas changé ;
+- fin de tour : graph.json lu une seule fois, puis plus du tout pour le journal tant qu'il n'a pas changé (nouvelle
+  session dans le même dossier comprise) ;
 - réflexe des skills : un SKILL.md inchangé n'est pas relu, un SKILL.md modifié est vu (seul lui est relu), même réécrit
   dans le même tic d'horloge ; aucune expression compilée par skill à chaque message ;
 - observations de fin de tâche : l'index n'est pas refait à chaque message, il voit une observation ajoutée ;
@@ -212,6 +213,11 @@ s2 = stop()
 entry = json.loads((TMP / "brain" / "journal" / "sessions.json").read_text(encoding="utf-8"))["sessions"].get(sid) or {}
 check(s2.get("loads") == 0 and entry.get("project") == "boutique",
       "fin de tour suivante, graph.json inchangé : projet du journal repris sans relire le cerveau", (s2, entry))
+sid = f"vitesse-fin-autre-{SID[0]}"  # autre session, même dossier : son premier tour non plus
+s3 = stop()
+entry = json.loads((TMP / "brain" / "journal" / "sessions.json").read_text(encoding="utf-8"))["sessions"].get(sid) or {}
+check(s3.get("loads") == 0 and entry.get("project") == "boutique",
+      "nouvelle session dans le même dossier : son premier journal sans relire le cerveau", (s3, entry))
 
 # ------------------------------------------------------------------ 4. réflexe des skills
 SK = TMP / "claude" / "skills"

@@ -349,13 +349,14 @@ def knowledge_sig(brain) -> str:
     from .common import STATE_DIR, read_json, write_json
     stamp, key = getattr(brain, "stamp", None), STATE_DIR / "memidx.key"
     known = read_json(key, None) if stamp else None
-    if isinstance(known, dict) and known.get("stamp") == stamp and isinstance(known.get("sig"), str):
+    if isinstance(known, dict) and known.get("stamp") == stamp and known.get("tag") == MEMIDX_TAG \
+            and isinstance(known.get("sig"), str):
         sig = known["sig"]
     else:
         sig = _mem_sig(brain)
         if stamp:
             try:
-                write_json(key, {"stamp": stamp, "sig": sig}, indent=None)
+                write_json(key, {"tag": MEMIDX_TAG, "stamp": stamp, "sig": sig}, indent=None)
             except OSError:
                 pass
     try:

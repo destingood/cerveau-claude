@@ -1117,8 +1117,8 @@ def recall_context(data, cfg, raw, saved="") -> str:
         out = sk_lines + out
     if pcline:  # la veille PC passe toujours, avant les souvenirs
         out = [pcline] + out
-    if brain is not None and brain.stamp and cwd:  # le journal de fin de tour n'aura pas à relire le cerveau (project_of)
-        st["proj_of"] = [cwd, brain.stamp, proj["id"] if proj else None]
+    if brain is not None:  # le journal de fin de tour n'aura pas à relire le cerveau (project_of)
+        note_project(brain, cwd, proj["id"] if proj else None)
     if typed:
         st["recall_hist"] = (hist + [len(shown_mem)])[-window:]
     if not out:
@@ -1355,22 +1355,41 @@ def after_turn(st, scan, sid):
 
 
 # ------------------------------------------------------------------------------------------ Stop
-def project_of(cwd, st, brain=None):
+DIRS_FILE = STATE_DIR / "dossiers.json"  # {"stamp": empreinte de graph.json, "dirs": {dossier: id du projet ou null}}
+
+
+def project_of(cwd, brain=None):
     """Id du projet du dossier `cwd` (ou None), pour le journal de fin de tour. Sans cerveau déjà lu par le hook : repris
-    de l'état de la session tant que graph.json est le même fichier, octet pour octet (store.graph_stamp lit le fichier
-    sans analyser le JSON : 4 ms au lieu de 60 à 10 000 souvenirs) ; sinon cherché dans le cerveau, et gardé."""
+    de state/dossiers.json tant que graph.json est le même fichier, octet pour octet (store.graph_stamp lit le fichier
+    sans analyser le JSON : 4 ms au lieu de 60 à 10 000 souvenirs) ; sinon cherché dans le cerveau, et noté."""
     if brain is None:
-        hit = st.get("proj_of")
-        if isinstance(hit, list) and len(hit) == 3 and hit[0] == cwd and hit[1]:
+        known = read_json(DIRS_FILE, None)
+        dirs = known.get("dirs") if isinstance(known, dict) else None
+        if isinstance(dirs, dict) and cwd in dirs and known.get("stamp"):
             from .store import graph_stamp
-            if hit[1] == graph_stamp():
-                return hit[2]
+            if known["stamp"] == graph_stamp():
+                return dirs[cwd]
         brain = Brain.load()
     proj = brain.project_for_path(cwd) if cwd else None  # (projets seulement : des compteurs écrits depuis n'y changent rien)
     pid = proj["id"] if proj else None
-    if brain.stamp:  # (graph.json lu tel quel : sinon rien à garder)
-        st["proj_of"] = [cwd, brain.stamp, pid]
+    note_project(brain, cwd, pid)
     return pid
+
+
+def note_project(brain, cwd, pid) -> None:
+    """Projet trouvé pour `cwd` dans un cerveau lu tel quel (brain.stamp) : noté pour la fin de tour (project_of)."""
+    if not cwd or not getattr(brain, "stamp", None):
+        return
+    try:
+        known = read_json(DIRS_FILE, None)
+        dirs = known.get("dirs") if isinstance(known, dict) and known.get("stamp") == brain.stamp else None
+        dirs = dict(dirs) if isinstance(dirs, dict) else {}
+        if cwd in dirs and dirs[cwd] == pid:
+            return
+        dirs[cwd] = pid
+        write_json(DIRS_FILE, {"stamp": brain.stamp, "dirs": dict(list(dirs.items())[-50:])}, indent=None)
+    except OSError as exc:
+        log(f"projet du dossier : {exc!r}")
 
 
 def unsaved_durable(tx, st) -> list:
@@ -1399,7 +1418,7 @@ def on_stop(data, cfg):
         except Exception as exc:
             log(f"skills (usage) : {exc!r}")
     if cfg["journal"]["enabled"] and time.time() - st.get("journal_at", 0) > 60:
-        pid = project_of(tx.get("cwd") or data.get("cwd") or st.get("cwd") or "", st, brain)
+        pid = project_of(tx.get("cwd") or data.get("cwd") or st.get("cwd") or "", brain)
         journal.upsert(sid, tx, pid, cfg["journal"]["keep"])
         st["journal_at"] = time.time()
     cands = []
