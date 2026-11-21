@@ -48,6 +48,7 @@ côté de ce SKILL.md : les lire (Read) seulement quand la tâche s'y rapporte.
 | `references/commun.md` | cerveau commun avec les amis, délégation, apprentissage, échange de skills |
 | `references/boutique.md` | boutiques suivies (skill e-commerce) : plan, chiffres de la semaine, audits, panels |
 | `references/entretien.md` | journal, mode éco, sorties compactes, PC, skills, connecteurs, serveur MCP, Obsidian, réglages |
+| `references/reglages.md` | chaque réglage du cerveau : ce qu'il fait, son défaut, ses bornes, quand le changer |
 
 ## Ce qui arrive tout seul
 - **Démarrage** : index du cerveau (profil, règles, projets, échéances ⏰) et fiche du projet courant ; un dossier de
@@ -96,7 +97,8 @@ Carte complète : `~/.claude/brain/projects/<id>/MAP.md`.
 - **Mode éco** : `eco` (état) · `eco --appliquer` · `eco --annuler` · `eco --poser ID` / `eco --retirer ID` (sur accord)
   · `eco --cache auto|5m|1h|off` · `eco --desactiver nom@marketplace` (demander d'abord) · `eco --plugins-auto [on|off]`
   · `eco --plugins` (sur accord).
-- **Réglages** : `config <clé> [valeur]` (ex. `config recall.enabled false`) ; serveur MCP : les 6 outils de la mémoire,
+- **Réglages** : `config <clé> [valeur]` (ex. `config recall.enabled false`) ; à quoi sert un réglage :
+  `config --page <clé ou section>` (tout : `references/reglages.md`) ; serveur MCP : les 6 outils de la mémoire,
   plus le wiki et les boutiques avec `config mcp.groupes '["wiki", "boutique"]'`.
 """
 
@@ -339,7 +341,7 @@ Journal, mode éco, sorties compactes, PC, skills, connecteurs, serveur MCP, Obs
 `skill` skills perso et des plugins actifs (+ combien de fois soufflées et chargées) · `skill test "message"` laquelle se déclencherait · `skill check` contrôle (déclencheurs, liens, longueur) · `skill new <nom> -d "À utiliser quand… « … » Ne pas utiliser pour…" --body-file f` créer · `skill trig plugin:skill "déclencheur" …` déclencheurs en français pour une skill de plugin ou du compte claude.ai ·
 `outils` connecteurs et serveurs MCP vus (état, outils, phrases) · `outils test "message"` lequel se déclencherait · `outils trig <connecteur> "phrase" …` phrases françaises pour un connecteur · `outils scan` relire tout de suite les derniers transcripts · `config outils.enabled false` coupe ·
 `viz --open` vue 3D (`~/.claude/brain/cerveau.html`, régénérée en fin de session) · `export` (MEMOIRES.md lisible) ·
-`config recall.enabled false` · `config skills.paste auto|propose|off` · `install` réparer.
+`config recall.enabled false` · `config skills.paste auto|propose|off` · `config --page [clé]` chaque réglage expliqué (la page entière : `reglages.md`, à côté de ce fichier) · `install` réparer.
 
 ## Ailleurs que dans l'onglet Code
 | But | Commande |
@@ -358,20 +360,27 @@ def write_brain_skill(folder: Path, write=None) -> list:
     folder = Path(folder)
     write(folder / "SKILL.md", SKILL)
     out = [folder / "SKILL.md"]
-    refs = folder / "references"
-    for name, text in SKILL_REFS.items():
+    refs, every = folder / "references", all_refs()
+    for name, text in every.items():
         write(refs / name, text)
         out.append(refs / name)
     for old in refs.glob("*.md"):
-        if old.name not in SKILL_REFS:
+        if old.name not in every:
             old.unlink()
     return out
+
+
+def all_refs() -> dict:
+    """SKILL_REFS plus la page des réglages (reglages_doc), faite seulement ici : à l'installation de la skill et à la
+    publication, jamais au démarrage d'une session (qui importe ce module)."""
+    from . import reglages_doc
+    return {**SKILL_REFS, "reglages.md": reglages_doc.page()}
 
 
 def remove_brain_skill(folder: Path) -> None:
     """Désinstallation : SKILL.md et references/ du cerveau retirés (rien d'autre dans le dossier n'est touché)."""
     folder = Path(folder)
-    for f in [folder / "SKILL.md"] + [folder / "references" / name for name in SKILL_REFS]:
+    for f in [folder / "SKILL.md"] + [folder / "references" / name for name in [*SKILL_REFS, "reglages.md"]]:
         if f.exists():
             f.unlink()
     for d in (folder / "references", folder):
@@ -630,7 +639,7 @@ def run(dry=False, uninstall=False):
         write_brain_skill(skill_path.parent)
         print(f"✓ hooks ({', '.join(e for e, *_ in EVENTS)}) → {settings_path}")
         print(f"✓ bloc « cerveau » → {claude_md}")
-        print(f"✓ skill /brain → {skill_path} (et {len(SKILL_REFS)} fichiers de référence)")
+        print(f"✓ skill /brain → {skill_path} (et {len(SKILL_REFS) + 1} fichiers de référence)")
         for line in sync_skills() + sync_agents():
             print(line)
         print("→ hooks actifs tout de suite, même dans les sessions ouvertes ; l'injection de démarrage et CLAUDE.md "

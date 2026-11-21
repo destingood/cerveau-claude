@@ -463,11 +463,13 @@ def build_parser():
             "config mcp.groupes '[\"wiki\", \"boutique\"]' ajoute ces outils aux 6 de la mémoire, "
             "config mcp.max_car 8000 borne chaque résultat)")
     s.description = ("Lire ou modifier la configuration du cerveau (config.json). Sans clé : tout. Valeur en JSON ou en "
-                     "texte. Serveur MCP : les 6 outils de la mémoire sont listés par défaut ; `config mcp.groupes "
+                     "texte. `config --page [clé]` : à quoi sert chaque réglage, son défaut et ses bornes. Serveur MCP : les 6 outils de la mémoire sont listés par défaut ; `config mcp.groupes "
                      "'[\"wiki\", \"boutique\"]'` (ou \"tout\") ajoute ceux du wiki et des boutiques ; `config mcp.max_car "
                      "8000` : un résultat plus long est coupé en pages (la suite avec « page: 2 »).")
     s.add_argument("key", nargs="?", help="clé à points, ex : recall.enabled, mcp.groupes")
     s.add_argument("value", nargs="?", help="nouvelle valeur (JSON ou texte)")
+    s.add_argument("--page", action="store_true", help="chaque réglage expliqué (défaut, bornes, quand le changer) ; "
+                   "avec une clé ou une section : seulement celle-là")
     s = cmd("hook", cmd_hook, "point d'entrée des hooks Claude Code (usage interne)")
     s.add_argument("event", choices=["session-start", "prompt", "stop", "pre-compact", "post-compact", "session-end",
                                      "post-bash", "pre-agent"])
