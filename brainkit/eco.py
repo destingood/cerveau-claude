@@ -39,11 +39,10 @@ import json
 import os
 import re
 import shutil
-import time
 from pathlib import Path
 
-from .common import CHARS_PER_TOKEN, CLAUDE_HOME, CMD, CODE_DIR, PLUGIN, days_since, load_config, log, now_iso, \
-    read_json, set_config, update_config, write_json
+from .common import CLAUDE_HOME, CMD, CODE_DIR, PLUGIN, load_config, log, now_iso, \
+    set_config, update_config, write_json
 
 OUT_KEY, WIN_KEY = "bashOutputMaxChars", "autoCompactWindow"
 OUT_RANGE, WIN_RANGE = (4000, 128000), (100000, 1000000)
@@ -728,285 +727,6 @@ def fix_app_connectors() -> str:
             "leurs appels sans les sortir du contexte ; pour les retirer vraiment : bouton + → Connecteurs dans l'app")
 
 
-# ------------------------------------------------------------------------------------------ plugins inutilisés
-def installed_plugins() -> dict:
-    """{« nom@marketplace » : [entrées]} d'après plugins/installed_plugins.json de Claude Code (vide s'il manque)."""
-    data = read_json(CLAUDE_HOME / "plugins" / "installed_plugins.json", {}) or {}
-    plugins = data.get("plugins") if isinstance(data, dict) else None
-    out = {}
-    for key, entries in (plugins.items() if isinstance(plugins, dict) else ()):
-        entries = [entries] if isinstance(entries, dict) else entries
-        out[str(key)] = [e for e in entries if isinstance(e, dict)] if isinstance(entries, list) else []
-    return out
-
-
-def _recent(entries) -> bool:
-    return bool(entries) and min(days_since(e.get("installedAt")) for e in entries) < RECENT_DAYS
-
-
-_COMMAND = re.compile(rb"<command-name>/?([^<\s\\]+)</command-name>")
-_TOOL_USE = re.compile(rb'"type":\s*"tool_use",\s*(?:"id":\s*"[^"]*",\s*)?"name":\s*"([^"]+)"')
-_SCANS = {}  # une seule lecture des transcripts par commande (et par nombre de jours)
-
-
-def _refs_in(raw, refs):
-    """Une ligne d'assistant qui appelle Skill ou un agent : ajoute à `refs` la skill (input.skill) ou l'agent
-    (input.subagent_type) appelé."""
-    try:
-        o = json.loads(raw)
-    except ValueError:
-        return
-    msg = o.get("message") if isinstance(o, dict) else None
-    blocks = msg.get("content") if isinstance(msg, dict) else None
-    for b in blocks if isinstance(blocks, list) else ():
-        if not isinstance(b, dict) or b.get("type") != "tool_use":
-            continue
-        name, inp = b.get("name"), b.get("input")
-        inp = inp if isinstance(inp, dict) else {}
-        ref = inp.get("skill") if name == "Skill" else inp.get("subagent_type") if name in ("Task", "Agent") else None
-        if ref:
-            refs.add(str(ref))
-
-
-def _attachment(raw):
-    try:
-        o = json.loads(raw)
-    except ValueError:
-        return {}
-    a = o.get("attachment") if isinstance(o, dict) else None
-    return a if isinstance(a, dict) else {}
-
-
-def _deferred_in(a, names):
-    """Annonce d'outils différés (deferred_tools_delta) : met à jour l'ensemble `names` des outils annoncés."""
-    for key in ("removedNames", "addedNames", "readdedNames"):
-        vals = a.get(key)
-        for n in vals if isinstance(vals, list) else ():
-            if isinstance(n, str):
-                (names.discard if key == "removedNames" else names.add)(n)
-
-
-def _scan_all(days=UNUSED_DAYS) -> dict:
-    """Une seule lecture des transcripts des `days` derniers jours (gardée pour les appels suivants) → {"tools": outils
-    appelés, "refs": skills et agents appelés, "commands": commandes tapées par l'utilisateur, "listing": dernière liste
-    de skills de la conversation principale, "deferred": outils différés annoncés dans la dernière session principale}."""
-    if days in _SCANS:
-        return _SCANS[days]
-    root = CLAUDE_HOME / "projects"
-    cut = time.time() - days * 86400
-    files = []
-    for f in root.rglob("*.jsonl") if root.is_dir() else ():
-        try:
-            m = f.stat().st_mtime
-        except OSError:
-            continue
-        if m >= cut:
-            files.append((m, f))
-    files.sort(key=lambda x: x[0], reverse=True)
-    tools, refs, commands = set(), set(), set()
-    listing, deferred = None, None
-    for _, f in files:
-        main = "subagents" not in f.parts
-        try:
-            fh = open(f, "rb")
-        except OSError:
-            continue
-        found, names = None, None
-        with fh:
-            for raw in fh:
-                if b'"tool_use"' in raw:
-                    tools.update(h.group(1).decode("utf-8", "replace") for h in _TOOL_USE.finditer(raw))
-                    if b'"Skill"' in raw or b"subagent_type" in raw:
-                        _refs_in(raw, refs)
-                if b"<command-name>/" in raw:  # commande tapée par l'utilisateur (« /plugin:commande »)
-                    commands.update(h.group(1).decode("utf-8", "replace") for h in _COMMAND.finditer(raw))
-                if not main:
-                    continue
-                if listing is None and b'"skill_listing"' in raw:
-                    a = _attachment(raw)
-                    if a.get("type") == "skill_listing" and isinstance(a.get("content"), str) \
-                            and (a.get("isInitial") is not False or found is None):
-                        found = a["content"]
-                if deferred is None and b'"deferred_tools_delta"' in raw:
-                    a = _attachment(raw)
-                    if a.get("type") == "deferred_tools_delta":
-                        names = set() if names is None else names
-                        _deferred_in(a, names)
-        if listing is None and found is not None:
-            listing = found
-        if deferred is None and names is not None:
-            deferred = names
-    res = {"tools": tools, "refs": refs, "commands": commands, "listing": listing or "",
-           "deferred": sorted(deferred or ())}
-    _SCANS[days] = res
-    return res
-
-
-def _scan(names, days=UNUSED_DAYS):
-    """→ (plugins utilisés parmi `names` — et « anthropic-skills » si une skill de claude.ai a servi —, dernière liste
-    de skills vue). Utilisé : une de ses skills, un de ses agents, une de ses commandes ou un de ses outils MCP a servi."""
-    s = _scan_all(days)
-    used = set()
-    for n in set(names) | {CLAUDE_AI}:
-        pre = (f"mcp__plugin_{n}_", f"mcp__plugin_{re.sub('[^A-Za-z0-9_-]', '_', n)}_")
-        if any(r.startswith(f"{n}:") for r in s["refs"] | s["commands"]) or any(t.startswith(pre) for t in s["tools"]):
-            used.add(n)
-    return used, s["listing"]
-
-
-def _weight(listing, name) -> int:
-    """Caractères des lignes de la liste de skills qui reviennent à ce plugin (« - nom:skill : description »)."""
-    chars, mine = 0, False
-    for line in listing.split("\n"):
-        if line.startswith("- "):
-            mine = line.startswith(f"- {name}:")
-        if mine:
-            chars += len(line) + 1
-    return chars
-
-
-def _audit(settings, days=UNUSED_DAYS, cpt=CHARS_PER_TOKEN, ai=False) -> tuple:
-    """→ ([(« nom@marketplace », tokens)] des plugins actifs sans aucun usage depuis `days` jours, du plus lourd au plus
-    léger ; tokens des skills claude.ai listées dont aucune n'a servi, ou None). Jamais le cerveau lui-même ; poids = leurs
-    lignes dans la dernière liste de skills. `ai` : chercher aussi les skills claude.ai (sinon, sans plugin candidat, les
-    transcripts ne sont pas parcourus)."""
-    enabled = settings.get("enabledPlugins") if isinstance(settings.get("enabledPlugins"), dict) else {}
-    cands = {key: key.partition("@")[0] for key, entries in installed_plugins().items()
-             if key.partition("@")[0] != OWN_PLUGIN and enabled.get(key) is not False and not _recent(entries)}
-    if not cands and not ai:
-        return [], None
-    used, listing = _scan(set(cands.values()), days)
-    rows = [(key, _weight(listing, name) / cpt) for key, name in cands.items() if name not in used]
-    rows.sort(key=lambda r: (-r[1], r[0]))
-    chars = _weight(listing, CLAUDE_AI)
-    return rows, (chars / cpt if ai and chars and CLAUDE_AI not in used else None)
-
-
-def unused_plugins(settings=None, days=UNUSED_DAYS, cpt=CHARS_PER_TOKEN) -> list:
-    """[(« nom@marketplace », tokens estimés par session)] des plugins actifs sans aucun usage depuis `days` jours."""
-    if settings is None:
-        settings, err = read_settings()
-        if err:
-            return []
-    return _audit(settings, days, cpt)[0]
-
-
-def synced_plugins() -> dict:
-    """{nom: dossier} des plugins synchronisés depuis le compte claude.ai (plugins/synced/<compte>/<nom>). Claude Code les
-    charge sans les inscrire dans installed_plugins.json, et ni enabledPlugins ni skillOverrides ne les retirent (essai
-    du 21/10/2026) : seule l'app le peut."""
-    root = CLAUDE_HOME / "plugins" / "synced"
-    out = {}
-    for meta in sorted(root.glob("*/*.meta.json")) if root.is_dir() else ():
-        name = meta.name[:-len(".meta.json")]
-        if name != OWN_PLUGIN and (meta.parent / name).is_dir():
-            out.setdefault(name, meta.parent / name)
-    return out
-
-
-def _mcp_count(folder) -> int:
-    data = read_json(folder / ".mcp.json", {}) or {}
-    servers = data.get("mcpServers", data) if isinstance(data, dict) else None
-    return len(servers) if isinstance(servers, dict) else 0
-
-
-def unused_synced(days=UNUSED_DAYS, cpt=CHARS_PER_TOKEN) -> list:
-    """[(nom, tokens de skills listées, serveurs MCP)] des plugins du compte claude.ai sans aucun usage depuis `days`
-    jours (skill, commande, agent ou outil MCP), du plus lourd au plus léger."""
-    synced = synced_plugins()
-    if not synced:
-        return []
-    used, listing = _scan(set(synced), days)
-    rows = [(n, _weight(listing, n) / cpt, _mcp_count(d)) for n, d in synced.items() if n not in used]
-    rows.sort(key=lambda r: (-r[1], -r[2], r[0]))
-    return rows
-
-
-def _disable(keys) -> tuple:
-    """enabledPlugins à false pour ces plugins (avec retour). → (ok, {clé: False posée}, lignes)."""
-    installed = installed_plugins()
-    wants, lignes = [], []
-    for given in keys:
-        found = [k for k in installed if k == given] or \
-                [k for k in installed if "@" not in given and k.partition("@")[0] == given]
-        if len(found) != 1:
-            lignes.append(f"✗ {given} : " + ("plugin inconnu" if not found else "plusieurs marketplaces, précise nom@marketplace")
-                          + f" (liste : `{CMD} eco`)")
-        elif found[0].partition("@")[0] == OWN_PLUGIN:
-            lignes.append(f"✗ {found[0]} : c'est le cerveau lui-même, je ne le désactive jamais")
-        elif ("plugin", found[0], False) not in wants:
-            wants.append(("plugin", found[0], False))
-    ok, posees, more = commit(wants)
-    return ok and not any(x.startswith("✗") for x in lignes), posees, lignes + more
-
-
-def disable(keys) -> tuple:
-    """`--desactiver nom@marketplace …` : enabledPlugins à false (avec retour). → (code, texte)."""
-    ok, posees, lignes = _disable(keys)
-    if posees:
-        lignes.append(f"→ pris en compte au prochain démarrage de Claude Code · retour : `{CMD} eco --annuler`")
-    return (0 if ok else 1), "\n".join(lignes)
-
-
-def auto_plugins(force=False, apply=False) -> str:
-    """Veille des plugins inutilisés (`eco.plugins_auto`), au plus une fois par jour sauf `force`. Elle PROPOSE seulement
-    (décision de l'utilisateur) : une annonce, dite une fois, liste les plugins dont aucune skill n'a servi depuis 30 jours
-    et les skills claude.ai (`syncClaudeAiSkills`) si aucune n'a servi, avec la commande qui les coupe. `apply` (commande
-    `--plugins`) les désactive pour de bon, comme `--desactiver`. Seuls les plugins qui listent des skills sont concernés :
-    sans skill, ils agissent peut-être par hooks. Copie de sécurité et retour par `--annuler` ; la valeur de l'utilisateur
-    est respectée. → l'annonce (gardée dans eco.annonce pour le prochain démarrage), ou ''."""
-    if not force and days_since((load_config().get("eco") or {}).get("plugins_vus_le")) < 1:
-        return ""
-    settings, err = read_settings()
-    if err:
-        log(f"éco (veille des plugins) : {err}")
-        return ""
-    rows, ai = _audit(settings, ai=True)
-    rows = [r for r in rows if r[1] > 0]
-    if not apply:
-        return _propose_plugins(rows, ai if SYNC_KEY not in settings else None)  # valeur de l'utilisateur : respectée
-    gone, saved = [], 0.0
-    if rows:
-        _, posees, _ = _disable([k for k, _ in rows])
-        gone = [k for k, t in rows if k in posees]
-        saved = sum(t for k, t in rows if k in posees)
-    skills = False
-    if ai:
-        _, posees, _ = commit([("cle", SYNC_KEY, False)])
-        skills = SYNC_KEY in posees
-        saved += ai if skills else 0
-    set_config("eco.plugins_vus_le", now_iso())
-    parts = ([f"{len(gone)} plugin(s) inutilisé(s) depuis {UNUSED_DAYS} jours désactivé(s) ({', '.join(gone)})"] if gone else []) \
-        + (["skills claude.ai non chargées"] if skills else [])
-    if not parts:
-        return ""
-    if saved:
-        parts.append(f"≈{_tok(saved)} tokens de moins par session")
-    line = f"⚡ Mode éco : {' · '.join(parts)} · retour : `{CMD} eco --annuler`"
-    set_config("eco.propose", "")  # fait : une nouvelle proposition pourra venir
-    return line
-
-
-def _propose_plugins(rows, ai) -> str:
-    """La proposition (rien n'est désactivé) : une annonce courte, gardée une seule fois pour ce même lot."""
-    set_config("eco.plugins_vus_le", now_iso())
-    keys = [k for k, _ in rows] + ([SYNC_KEY] if ai else [])
-    sig = ",".join(sorted(keys))
-    if not keys or sig == (load_config().get("eco") or {}).get("propose"):
-        set_config("eco.propose", sig)
-        return ""
-    saved = sum(t for _, t in rows) + (ai or 0)
-    parts = ([f"{len(rows)} plugin(s) sans usage depuis {UNUSED_DAYS} jours ({', '.join(k for k, _ in rows)})"] if rows else []) \
-        + (["les skills claude.ai (aucune n'a servi)"] if ai else [])
-    line = f"⚡ Mode éco : je te propose de désactiver {' et '.join(parts)}"
-    if saved:
-        line += f" · ≈{_tok(saved)} tokens de moins par session"
-    line += f" · pour le faire : `{CMD} eco --plugins` (retour : `{CMD} eco --annuler`)"
-    set_config("eco.propose", sig)
-    _announce(line)
-    return line
-
-
 def _announce(line):
     """Garde une annonce pour le prochain démarrage (montrée une fois), à la suite de celles qui attendent déjà."""
     def change(cfg):
@@ -1037,31 +757,6 @@ def start(cfg=None) -> str:
     return "\n".join(x for x in (auto_start(cfg), fix_app_connectors(), take_annonce(cfg)) if x)
 
 
-def watch_plugins(mode) -> tuple:
-    """`--plugins-auto [on|off]` → (code, texte) : « on » active la veille et la lance tout de suite."""
-    if mode == "off":
-        set_config("eco.plugins_auto", False)
-        return 0, f"✓ veille quotidienne des plugins coupée (ce qui est déjà désactivé le reste : `{CMD} eco --annuler`)"
-    settings, err = read_settings()
-    if err:
-        return 1, f"⚠ {err}"
-    set_config("eco.plugins_auto", True)
-    note = auto_plugins(force=True)
-    return 0, f"{note}\n→ rien n'est désactivé tant que tu ne lances pas `{CMD} eco --plugins`" if note else \
-        "✓ veille quotidienne des plugins activée : rien à proposer pour l'instant"
-
-
-def apply_plugins() -> tuple:
-    """`--plugins` → (code, texte) : désactive maintenant les plugins et skills claude.ai proposés par la veille."""
-    settings, err = read_settings()
-    if err:
-        return 1, f"⚠ {err}"
-    note = auto_plugins(force=True, apply=True)
-    if not note:
-        return 0, "✓ rien à désactiver : tous les plugins ont servi ces 30 derniers jours"
-    return 0, f"{note}\n→ pris en compte au prochain démarrage de Claude Code"
-
-
 # ------------------------------------------------------------------------------------------ sur accord : propositions
 PROPOSALS = {
     "outils": "outils intégrés jamais utilisés depuis 30 j retirés du contexte (règles de refus)",
@@ -1090,201 +785,39 @@ def _app_connector(rule) -> bool:
     return rule.startswith("mcp__") and bool(_UUID.match(rule[5:]))
 
 
-def _idle_servers(scan, deny) -> dict:
-    """Serveurs MCP différés jamais appelés → {serveur: [outils]} (ni ceux de KEEP_SERVERS, ni ceux déjà refusés)."""
-    servers = {}
-    for name in scan["deferred"]:
-        server = name[5:].partition("__")[0] if name.startswith("mcp__") else ""
-        if server and not server.startswith(KEEP_SERVERS) and f"mcp__{server}" not in deny:
-            servers.setdefault(server, []).append(name)
-    return {s: v for s, v in servers.items() if not any(t.startswith(f"mcp__{s}__") for t in scan["tools"])}
+# ------------------------------------------------------------------------------------------ le reste
+# Plugins inutilisés (eco_plugins) et leviers sur accord avec le cache adaptatif (eco_propositions) : découpés
+# (étape 8 du plan : aucun fichier de plus de 1 000 lignes). Les anciens noms restent joignables ici
+# (eco.unused_plugins, eco._SCANS…), chargés au premier usage.
+_PARTS = {
+    "eco_plugins": (
+        "installed_plugins", "_recent", "_COMMAND", "_TOOL_USE", "_SCANS", "_refs_in", "_attachment", "_deferred_in",
+        "_scan_all", "_scan", "_weight", "_audit", "unused_plugins", "synced_plugins", "_mcp_count", "unused_synced",
+        "_disable", "disable", "auto_plugins", "_propose_plugins", "watch_plugins", "apply_plugins",
+    ),
+    "eco_propositions": (
+        "_idle_servers", "_servers_detail", "proposals", "pose_proposals", "_pct", "cache_auto", "_cache_line",
+        "set_cache",
+    ),
+}
+_WHERE = {name: part for part, names in _PARTS.items() for name in names}
 
 
-def _servers_detail(servers) -> tuple:
-    """→ (tokens de leurs noms différés, « serveur (n outils), … »)."""
-    tok = sum(len(n) + 1 for v in servers.values() for n in v) / CHARS_PER_TOKEN
-    return tok, ", ".join(f"{_server(s)} ({len(v)} outils)" for s, v in sorted(servers.items(), key=lambda x: (-len(x[1]), x[0])))
-
-
-def proposals(settings=None, days=UNUSED_DAYS) -> list:
-    """Leviers posés seulement sur accord de l'utilisateur, avec ce qu'il reste à poser → [(id, wants, tokens de moins
-    à chaque requête ou None, détail)]. Rien pour un levier déjà posé ou réglé par l'utilisateur."""
-    if settings is None:
-        settings, err = read_settings()
-        if err:
-            return []
-    scan = _scan_all(days)
-    used = scan["tools"]
-    deny = _get(settings, DENY)
-    deny = deny if isinstance(deny, list) else []
-    out = []
-    rules = [r for r in TOOL_WEIGHTS if r not in deny and not _protected(r)
-             and not any(t == r or t.startswith(f"{r}__") for t in used)]
-    if rules:
-        out.append(("outils", [("refus", r, True) for r in rules], sum(TOOL_WEIGHTS[r] for r in rules),
-                    ", ".join(rules)))
-    servers = {s: v for s, v in _idle_servers(scan, deny).items() if not _UUID.match(s)}
-    if servers:
-        tok, detail = _servers_detail(servers)
-        out.append(("connecteurs", [("refus", f"mcp__{s}", True) for s in sorted(servers)], tok, detail))
-    for pid, key, value, gain in (("git", "includeGitInstructions", False, GIT_TOKENS),
-                                  ("effort", "maxEffortLevel", "high", None),
-                                  ("lecture", "env.CLAUDE_CODE_FILE_READ_MAX_OUTPUT_TOKENS", "12000", None),
-                                  ("sous-agents", "env.CLAUDE_CODE_SUBAGENT_MODEL", "sonnet", None)):
-        if _get(settings, key) is ABSENT and not (key.startswith("env.") and os.environ.get(key[4:])):
-            out.append((pid, [("cle", key, value)], gain, PROPOSALS[pid]))
-    return out
-
-
-def pose_proposals(ids) -> tuple:
-    """`--poser ID…` (après accord de l'utilisateur) : pose ces leviers, avec retour (`--retirer ID…`). → (code, texte)."""
-    ids = list(dict.fromkeys(ids))
-    bad = [i for i in ids if i not in PROPOSALS]
-    if bad:
-        return 1, f"✗ proposition inconnue : {', '.join(bad)} (au choix : {', '.join(PROPOSALS)})"
-    settings, err = read_settings()
-    if err:
-        return 1, f"⚠ {err}"
-    avail = {pid: wants for pid, wants, _, _ in proposals(settings)}
-    wants, owner, lignes = [], {}, []
-    for i in ids:
-        if i not in avail:
-            lignes.append(f"✓ {i} : rien à poser (déjà posé, réglé par toi, ou plus rien d'inutilisé)")
-        for w in avail.get(i, ()):
-            wants.append(w)
-            owner[w[1]] = i
-    ok, posees, more = commit(wants)
-    lignes += more
-    known = (load_config().get("eco") or {}).get("propositions")
-    known = known if isinstance(known, dict) else {}
-    done = []
-    for i in ids:
-        names = {n for n in posees if owner.get(n) == i}
-        if names:
-            old = known.get(i) if isinstance(known.get(i), list) else []
-            set_config(f"eco.propositions.{i}", sorted(set(old) | names))
-            done.append(i)
-    if done:
-        lignes.append(f"→ pris en compte au prochain démarrage de Claude Code · retour : `{CMD} eco --retirer {' '.join(done)}`")
-    return (0 if ok else 1), "\n".join(lignes)
-
-
-# ------------------------------------------------------------------------------------------ cache adaptatif
-def _pct(x) -> str:
-    return f"{x * 100:.1f} %".replace(".", ",")
-
-
-def cache_auto() -> str:
-    """Cache adaptatif (eco.cache « auto », une fois par jour en arrière-plan) : simule un cache de 5 min et de 1 h sur
-    les pauses réelles des 7 derniers jours (`tokens.weigh`) et pose `promptCacheTtl` quand le gain est net (5 % du poids
-    total pour le poser, 2 % pour changer une valeur que le cerveau avait posée). Jamais sur une valeur de l'utilisateur,
-    ni quand une variable d'environnement du cache est réglée. → l'annonce (gardée pour le prochain démarrage), ou ''."""
-    set_config("eco.cache_vu_le", now_iso())
-    cfg = load_config()
-    eco = cfg.get("eco") or {}
-    if not eco.get("auto", True) or (eco.get("cache") or "auto") != "auto":
-        return ""
-    settings, err = read_settings()
-    if err:
-        log(f"éco (cache) : {err}")
-        return ""
-    cur = _get(settings, CACHE_KEY)
-    mine = cur is not ABSENT and _same(_section(cfg, "pose")["cles"].get(CACHE_KEY, ABSENT), cur)
-    if any(_env_value(settings, e) for e in CACHE_ENVS) or (cur is not ABSENT and not mine):
-        return ""
-    from . import tokens
-    b = tokens.weigh(CACHE_DAYS * 24)
-    sim, total = b.get("ttl") or {}, b.get("total") or 0
-    if (sim.get("reqs") or 0) < CACHE_MIN_REQS or not total or not all(c in sim for c in CACHE_CHOICES):
-        return ""
-    ref = cur if cur in CACHE_CHOICES else sim.get("regime") if sim.get("regime") in CACHE_CHOICES else "1h"
-    best = min(CACHE_CHOICES, key=lambda c: (sim[c], c != ref))
-    gain = (sim[ref] - sim[best]) / total
-    set_config("eco.bilan", {"le": now_iso(), "regime": ref, "meilleur": best, "gain": round(gain, 4),
-                             "fenetre": b.get("fenetre")})
-    if best == ref or gain < (CACHE_GAIN_SWITCH if mine else CACHE_GAIN_NEW):
-        return ""
-    ok, posees, lignes = commit([("cle", CACHE_KEY, best)])
-    if not ok or CACHE_KEY not in posees:
-        log("éco (cache) : " + " | ".join(lignes))
-        return ""
-    line = (f"⚡ Mode éco : cache gardé {_ttl(best)} (simulé sur tes pauses des {CACHE_DAYS} derniers jours : "
-            f"−{_pct(gain)} du poids des tokens) · retour : `{CMD} eco --cache off`")
-    _announce(line)
-    return line
-
-
-def _cache_line(eco, settings, waiting=False) -> str:
-    """La ligne « cache » de `brain eco` ; `waiting` : dire quand la simulation manque encore de requêtes."""
-    cur = _get(settings, CACHE_KEY)
-    head = f"  {CACHE_KEY} : " + ("non réglé (Claude Code : 1 h pour la conversation, 5 min pour le reste)"
-                                 if cur is ABSENT else _ttl(cur))
-    mode = eco.get("cache") or "auto"
-    envs = [e for e in CACHE_ENVS if _env_value(settings, e)]
-    mine = cur is not ABSENT and _same(((eco.get("pose") or {}).get("cles") or {}).get(CACHE_KEY, ABSENT), cur)
-    if envs:
-        return head + f" · réglé par variable d'environnement ({', '.join(envs)}) : cache adaptatif en pause"
-    if mode == "off":
-        return head + f" · cache adaptatif coupé (`{CMD} eco --cache auto` pour le reprendre)"
-    if mode in CACHE_CHOICES:
-        return head + f" · fixé par toi (`{CMD} eco --cache auto` pour le choix automatique)"
-    if not eco.get("auto", True):
-        return head + " · cache adaptatif en pause (mode éco annulé)"
-    if cur is not ABSENT and not mine:
-        return head + " · réglé par toi, gardé (cache adaptatif en pause)"
-    b = eco.get("bilan") if isinstance(eco.get("bilan"), dict) else None
-    if not b:
-        return head + f" · cache adaptatif : simulation chaque jour sur tes pauses des {CACHE_DAYS} derniers jours" + (
-            f" — pas encore assez de requêtes (≥ {CACHE_MIN_REQS} sur {CACHE_DAYS} jours)" if waiting else "")
-    try:
-        g = float(b.get("gain") or 0)
-    except (TypeError, ValueError):
-        g = 0.0
-    if b.get("meilleur") == b.get("regime"):
-        verdict = f"{_ttl(b.get('regime'))} est le meilleur"
-    elif cur is not ABSENT and _same(cur, b.get("meilleur")):
-        verdict = f"{_ttl(cur)} posé, −{_pct(g)} du poids des tokens"
-    else:
-        verdict = f"{_ttl(b.get('meilleur'))} ferait gagner {_pct(g)} (posé à partir de {CACHE_GAIN_NEW * 100:.0f} %)"
-    return head + f" · cache adaptatif, simulé le {str(b.get('le'))[:10]} sur {CACHE_DAYS} j : {verdict}"
-
-
-def set_cache(mode) -> tuple:
-    """`--cache auto|5m|1h|off` → (code, texte). auto : cache adaptatif (par défaut) ; 5m / 1h : valeur fixée par
-    l'utilisateur ; off : cache adaptatif coupé et état d'avant rétabli."""
-    settings, err = read_settings()
-    if err:
-        return 1, f"⚠ {err}"
-    envs = [f"{e}={_env_value(settings, e)}" for e in CACHE_ENVS if _env_value(settings, e)]
-    lignes = [f"⚠ {', '.join(envs)} (variable d'environnement) : c'est elle qui décide du cache"] if envs else []
-    if mode in CACHE_CHOICES:
-        ok, _, more = commit([("cle", CACHE_KEY, mode)], force=True)
-        if not ok:
-            return 1, "\n".join(lignes + more)
-        set_config("eco.cache", mode)
-        return 0, "\n".join(lignes + more + [f"✓ cache fixé à {_ttl(mode)} : plus de choix automatique "
-                                             f"(`{CMD} eco --cache auto` pour le reprendre)"])
-    if mode == "off":
-        ok, more = _restore(only={CACHE_KEY})
-        if not ok:
-            return 1, "\n".join(more)
-        set_config("eco.cache", "off")
-        _unset("eco.bilan")
-        return 0, "\n".join(more + [f"✓ cache adaptatif coupé (`{CMD} eco --cache auto` pour le reprendre)"])
-    set_config("eco.cache", "auto")
-    eco = load_config().get("eco") or {}
-    if not eco.get("auto", True):
-        return 0, "\n".join(lignes + [f"⚠ mode éco annulé : le cache adaptatif reprendra avec `{CMD} eco --appliquer`"])
-    note = cache_auto()
-    settings, _ = read_settings()
-    tail = _cache_line(load_config().get("eco") or {}, settings or {}, waiting=not note).strip()
-    return 0, "\n".join(lignes + ([note] if note else []) + [f"✓ cache adaptatif actif · {tail}"])
+def __getattr__(name):
+    """Nom déplacé dans eco_plugins ou eco_propositions : chargé au premier usage."""
+    part = _WHERE.get(name)
+    if part is None:
+        raise AttributeError(f"module {__name__!r} has no attribute {name!r}")
+    import importlib
+    return getattr(importlib.import_module(f"{__package__}.{part}"), name)
 
 
 # ------------------------------------------------------------------------------------------ état et commande
 def status(cfg=None) -> str:
     """`brain eco` sans option : réglages actuels, ce que le mode éco poserait, ce qui l'emporte, plugins inutilisés,
     leviers sur accord avec leur gain estimé."""
+    from .eco_plugins import _scan_all, unused_plugins, unused_synced
+    from .eco_propositions import _cache_line, _idle_servers, _servers_detail, proposals
     cfg = cfg or load_config()
     eco = cfg.get("eco") or {}
     L = ["⚡ Mode éco — moins de tokens à chaque requête, rien de perdu (réglages officiels de Claude Code)"]
@@ -1370,6 +903,8 @@ def status(cfg=None) -> str:
 def run(appliquer=False, annuler=False, forcer=False, sortie=None, fenetre=None, desactiver=None, plugins_auto=None,
         poser=None, retirer=None, cache=None, refuser=None, rendre=None, plugins=False) -> tuple:
     """Point d'entrée de `brain eco` → (code de sortie, texte)."""
+    from .eco_plugins import apply_plugins, disable, watch_plugins
+    from .eco_propositions import pose_proposals, set_cache
     if appliquer and annuler:
         return 1, "✗ --appliquer et --annuler ensemble : choisis l'un des deux"
     if annuler:
