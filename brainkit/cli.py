@@ -1098,7 +1098,10 @@ def cmd_export(a):
             print(f"  🗄 archivé (note supprimée du coffre) : « {title} » — annuler : {CMD} edit {nid} --unarchive")
         for title, fields in rep["conflicts"]:
             print(f"  ⚠ conflit sur « {title} » ({', '.join(fields)}) : modifié des deux côtés, la version du cerveau "
-                  f"(plus récente) est gardée")
+                  f"(plus récente) est gardée, celle d'Obsidian mise à part dans Conflits/")
+        for title, fields in rep.get("replaced") or []:
+            print(f"  ⚠ conflit sur « {title} » ({', '.join(fields)}) : modifié des deux côtés, la note d'Obsidian "
+                  f"(plus récente) est gardée, la version du cerveau mise à part dans Conflits/")
         for title, other in rep["duplicates"]:
             print(f"  ≈ « {title} » ressemble à « {other} » : laissé dans « À trier »")
         for line in rep["kept"]:

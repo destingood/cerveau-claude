@@ -259,5 +259,50 @@ check(synced_ok(code2, out2) and "✓ push" in out2 and "Sans GitHub" in github_
 code, out = brain("pc2", "wiki", "status")
 check("ratée" not in out, "état du wiki : plus d'échec signalé après une synchro réussie", out)
 
+# ------------------------------------------------------------------ 7. coffre Obsidian (cerveau classique) : rien de perdu
+V = TMP / "coffre"
+for t, b in (("Note Bateau", "corps bateau"), ("Note Girafe", "corps girafe"), ("Note Violon", "corps violon"),
+             ("Note Pomme", "corps pomme"), ("Note Lune", "corps lune")):
+    brain("pc3", "add", "-t", "learning", "-T", t, "-b", b, "-p", "none")
+code, out = brain("pc3", "export", "--vault", V)
+check(code == 0, "coffre exporté", out)
+files = {p.stem: p for p in V.rglob("Note *.md")}
+
+
+def edit_note(name, old, new):
+    p = files[name]
+    p.write_text(p.read_text(encoding="utf-8").replace(old, new), encoding="utf-8")
+
+
+brain("pc3", "edit", "note-bateau", "-b", "corps bateau, modifié dans le cerveau")
+time.sleep(1.2)
+edit_note("Note Bateau", "corps bateau", "corps bateau, modifié dans Obsidian")  # Obsidian après le cerveau
+edit_note("Note Girafe", "corps girafe", "corps girafe, modifié dans Obsidian")
+time.sleep(1.2)
+brain("pc3", "edit", "note-girafe", "-b", "corps girafe, modifié dans le cerveau")  # le cerveau après Obsidian
+edit_note("Note Violon", "corps violon", "corps violon, modifié sur l'autre PC")
+brain("pc3", "edit", "note-violon", "-b", "corps violon, modifié dans le cerveau")
+os.utime(files["Note Violon"], (time.time() + 3600, time.time() + 3600))  # horloge de l'autre PC en avance d'une heure
+edit_note("Note Pomme", "corps pomme", "corps pomme, modifié dans Obsidian seulement")
+brain("pc3", "edit", "note-lune", "-b", "corps lune, modifié dans le cerveau seulement")
+code, out = brain("pc3", "export", "--vault", V)
+n3 = nodes("pc3")
+kept = "\n".join(p.read_text(encoding="utf-8") for p in (V / "Conflits").glob("*.md")) if (V / "Conflits").is_dir() else ""
+vault_text = "\n".join(p.read_text(encoding="utf-8") for p in V.rglob("Note *.md"))
+everywhere = "\n".join(b for bodies in n3.values() for b in bodies) + "\n" + kept + "\n" + vault_text
+for t in ("corps bateau, modifié dans le cerveau", "corps bateau, modifié dans Obsidian",
+          "corps girafe, modifié dans le cerveau", "corps girafe, modifié dans Obsidian",
+          "corps violon, modifié dans le cerveau", "corps violon, modifié sur l'autre PC"):
+    check(t in everywhere, f"coffre : « {t} » n'est pas perdu", (n3, kept))
+check("corps bateau, modifié dans le cerveau" in kept and "Bateau" in out and "conflit" in out,
+      "coffre : Obsidian plus récent → sa version en place, celle du cerveau gardée dans Conflits/ et signalée",
+      out + "\n" + kept)
+check("corps violon, modifié dans le cerveau" in kept or "corps violon, modifié sur l'autre PC" in kept,
+      "coffre : horloge de l'autre PC en avance → l'autre version gardée quand même dans Conflits/", out + "\n" + kept)
+check(n3.get("Note Pomme") == ["corps pomme, modifié dans Obsidian seulement"]
+      and n3.get("Note Lune") == ["corps lune, modifié dans le cerveau seulement"]
+      and "pomme" not in kept and "lune" not in kept,
+      "coffre : un seul côté modifié → comme avant, sans copie de conflit", (n3.get("Note Pomme"), n3.get("Note Lune")))
+
 print(f"{len(OK)} vérifications OK, {len(FAIL)} échec(s)")
 sys.exit(1 if FAIL else 0)
