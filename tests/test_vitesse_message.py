@@ -71,14 +71,19 @@ sys.path.insert(0, sys.argv[1])
 from brainkit.common import setup_io
 setup_io()
 from brainkit import search, store
-n = {"sig": 0, "build": 0, "loads": 0, "spans": 0}
+n = {"sig": 0, "build": 0, "loads": 0, "spans": 0, "fields": 0}
 sig, build, init, spans = search._mem_sig, search._build_memory_index, store.Brain.__init__, search._month_spans
+amis = search.faux_amis  # (appelé une fois par champ découpé quand l'index est construit)
 def _sig(b):
     n["sig"] += 1
     return sig(b)
-def _build(b, archived=False):
+def _build(b, archived=False, **kw):
     n["build"] += 1
-    return build(b, archived)
+    return build(b, archived, **kw)
+def _amis(text):
+    n["fields"] += 1
+    return amis(text)
+search.faux_amis = _amis
 def _init(self, data=None):
     n["loads"] += data is None
     init(self, data)
@@ -127,6 +132,8 @@ with Brain.edit() as b:
 n3, ctx3 = hook("prompt", {"prompt": "délai du fournisseur Tokoname pour les théières kyusu ?"})
 check(n3.get("build") == 1 and new in ids_in(ctx3), "souvenir ajouté : index reconstruit, le nouveau souvenir rappelé",
       (n3, ctx3[:400]))
+check(n1.get("fields", 0) >= 12 and 0 < n3.get("fields", 99) <= 2,
+      "index refait après un ajout : seuls les champs du nouveau souvenir sont redécoupés", (n1, n3))
 hook("prompt", {"prompt": NOWHERE})  # (l'empreinte de graph.json tel qu'il est maintenant est notée)
 raw = GRAPH_FILE.read_bytes()
 st = os.stat(GRAPH_FILE)
@@ -159,6 +166,21 @@ queries = ["transporteur colis", "théme shopify", "matcha prix", "fournisseur",
            "Colissimo suivi client", "céramique bols octobre", "inteligence", "kyusu", "vert matcha boutique"]
 diff = [q for q in queries if built.search(q, 80) != kept.search(q, 80)]
 check(not diff, "index relu de memidx.bin : mêmes résultats (scores, ordre, mots trouvés) que l'index construit", diff)
+# Refait en reprenant les mots des souvenirs inchangés : le même index qu'entièrement refait.
+try:
+    words = {}
+    search._build_memory_index(b, reuse={}, keep=words)
+    b2 = Brain.load()
+    b2.nodes[new]["body"] += " Livraison express possible en dix jours."
+    b2.nodes.pop(next(i for i, x in b2.nodes.items() if x["title"].startswith("Newsletter")))
+    again = search._build_memory_index(b2, reuse=words, keep={})
+    fresh = search._build_memory_index(b2)
+    diff = [q for q in queries + ["livraison express", "dix jours"] if again.search(q, 80) != fresh.search(q, 80)]
+    same = again.keys == fresh.keys and dict(again.df) == dict(fresh.df) and again.lens == fresh.lens
+except TypeError as exc:
+    diff, same = [repr(exc)], False
+check(same and not diff, "index refait en reprenant les mots des souvenirs inchangés : identique à un index refait en entier",
+      diff)
 
 # ------------------------------------------------------------------ 2. question datée : dates des souvenirs gardées
 DATED = "qu'est-ce que le fournisseur a livré la semaine dernière ?"

@@ -39,18 +39,24 @@ class Index:
     def __init__(self, docs=()):
         self.keys, self.tfs, self.named = [], [], {}
         for key, fields in docs:
-            tf, nm = Counter(), Counter()
-            for text, weight in fields:
-                if text:
-                    for tok in tokenize(text):
-                        tf[tok] += weight
-                    for tok in faux_amis(text):  # faux amis (« Microsoft Store ») : occurrences ignorées par les synonymes
-                        nm[tok] += weight
+            tf, nm = self.doc(fields)
             if nm:
                 self.named[len(self.keys)] = dict(nm)
             self.keys.append(key)
             self.tfs.append(tf)
         self._finalize()
+
+    @staticmethod
+    def doc(fields) -> tuple:
+        """Champs d'un document [(texte, poids)] → (fréquences pondérées de ses mots, de ses faux amis) : Counter."""
+        tf, nm = Counter(), Counter()
+        for text, weight in fields:
+            if text:
+                for tok in tokenize(text):
+                    tf[tok] += weight
+                for tok in faux_amis(text):  # faux amis (« Microsoft Store ») : occurrences ignorées par les synonymes
+                    nm[tok] += weight
+        return tf, nm
 
     @classmethod
     def from_tfs(cls, keys, tfs):
@@ -137,8 +143,15 @@ class Index:
     def packed(self) -> dict:
         """{mot: (n° des documents, fréquences)} en octets (voir _pk) : l'index des souvenirs tel que memidx.bin le garde."""
         from array import array
-        return {tok: (array("I", docs).tobytes(), array("d", [self.tfs[i][tok] for i in docs]).tobytes())
-                for tok, docs in self.post.items()}
+        vals = {}
+        for tf in self.tfs:  # (dans l'ordre des documents, comme post)
+            for tok, f in tf.items():
+                got = vals.get(tok)
+                if got is None:
+                    vals[tok] = [f]
+                else:
+                    got.append(f)
+        return {tok: (array("I", docs).tobytes(), array("d", vals[tok]).tobytes()) for tok, docs in self.post.items()}
 
     def _finalize(self):
         self.lens = [sum(tf.values()) or 1.0 for tf in self.tfs]
@@ -388,7 +401,18 @@ def memory_index(brain, include_archived=False, use_cache=True) -> Index:
             return idx
     except Exception:
         pass
-    idx = _build_memory_index(brain, False)
+    # Savoir changé : l'index est refait, mais un souvenir dont les champs n'ont pas bougé n'est pas redécoupé (ses mots
+    # sont gardés à côté, dans memidx-docs.bin). Avant, chaque ajout faisait tout redécouper au message suivant :
+    # 250 ms à 3 000 souvenirs, 1,2 s à 10 000.
+    words = path.with_name(DOCS_FILE)
+    try:
+        with open(words, "rb") as fh:
+            got = marshal.loads(fh.read())
+        reuse = got["docs"] if isinstance(got, dict) and got.get("tag") == MEMIDX_TAG else {}
+    except Exception:
+        reuse = {}
+    keep = {}
+    idx = _build_memory_index(brain, False, reuse=reuse, keep=keep)
     ph, dl, rt = idx._fuzzy_maps()
     idx.sig = sig  # (même savoir : les dates citées par les souvenirs se gardent avec lui, voir _cited)
     _LOADED[str(path)] = (sig, idx)
@@ -397,24 +421,46 @@ def memory_index(brain, include_archived=False, use_cache=True) -> Index:
                 "df": dict(idx.df), "pre": dict(idx.by_prefix), "phon": ph, "del": dl, "root": rt,
                 "tri": idx._tri_maps(), "named": idx.named}
         path.parent.mkdir(parents=True, exist_ok=True)
-        tmp = path.with_name(f"memidx.{os.getpid()}.tmp")
-        with open(tmp, "wb") as fh:
-            fh.write(marshal.dumps(blob))
-        os.replace(tmp, path)
+        for target, data in ((path, blob), (words, {"tag": MEMIDX_TAG, "docs": keep})):
+            tmp = target.with_name(f"{target.name}.{os.getpid()}.tmp")
+            with open(tmp, "wb") as fh:
+                fh.write(marshal.dumps(data))
+            os.replace(tmp, target)
     except Exception:
         pass
     return idx
 
 
-def _build_memory_index(brain, include_archived=False) -> Index:
-    docs = []
+DOCS_FILE = "memidx-docs.bin"  # mots de chaque souvenir indexé : {id: (empreinte de ses champs, fréquences, faux amis)}
+
+
+def _build_memory_index(brain, include_archived=False, reuse=None, keep=None) -> Index:
+    """Index des souvenirs (titre, étiquettes, mots-clés, contenu). `reuse` : {id: (empreinte des champs, fréquences, faux
+    amis)} d'un index précédent — un souvenir aux champs inchangés n'est pas redécoupé, l'index est le même ; `keep` :
+    rempli de même pour le suivant."""
+    keys, tfs, named = [], [], {}
     for n in brain.nodes.values():
         if not include_archived and n.get("status", "active") != "active":
             continue
-        keys = (n.get("meta") or {}).get("keys") or ""  # mots-clés, synonymes, questions types donnés à l'écriture
-        docs.append((n["id"], [(n["title"], 3.0), (" ".join(n.get("tags") or []), 2.2), (keys, 1.6),
-                               (n.get("body", ""), 1.0)]))
-    idx = Index(docs)
+        meta_keys = (n.get("meta") or {}).get("keys") or ""  # mots-clés, synonymes, questions types donnés à l'écriture
+        fields = [(n["title"], 3.0), (" ".join(n.get("tags") or []), 2.2), (meta_keys, 1.6), (n.get("body", ""), 1.0)]
+        fp = hit = None
+        if reuse is not None or keep is not None:
+            fp = hashlib.sha1("".join(f"{len(t)}:{t}" for t, _ in fields).encode("utf-8", "surrogatepass")).digest()
+            hit = (reuse or {}).get(n["id"])
+        if hit is not None and hit[0] == fp:
+            tf, nm = hit[1], hit[2]
+        else:
+            tf, nm = Index.doc(fields)
+            tf, nm = dict(tf), dict(nm)
+        if keep is not None:
+            keep[n["id"]] = (fp, tf, nm)
+        if nm:
+            named[len(keys)] = nm
+        keys.append(n["id"])
+        tfs.append(tf)
+    idx = Index.from_tfs(keys, tfs)
+    idx.named = named
     idx.subword = True
     return idx
 
