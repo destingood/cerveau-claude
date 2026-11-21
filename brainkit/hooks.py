@@ -302,10 +302,12 @@ def on_session_start(data, cfg):
     sid = data.get("session_id")
     cwd = data.get("cwd") or os.getcwd()
     cleanup_states()
+    big = []
     try:
-        importer.sync()  # mémoire native de Claude Code → cerveau (seulement si elle a changé)
+        importer.sync(skipped=big)  # mémoire native de Claude Code → cerveau (seulement si elle a changé)
     except Exception as exc:
         log(f"import auto-memory : {exc!r}")
+    too_big = importer.too_big_line(big) or None  # fichier trop gros ignoré : dit une fois, à l'utilisateur (0 token)
     try:  # cerveau commun : les nouveautés des amis avant de construire l'index (attente brève si la dernière est vieille)
         from . import commun
         commun.maybe_pull(wait=4)
@@ -371,8 +373,8 @@ def on_session_start(data, cfg):
         save_state(sid, st)
         if eco_line:
             text = f"{text}\n\n{eco_line}".strip()
-        if text:
-            emit("SessionStart", text)
+        if text or too_big:
+            emit("SessionStart", text, too_big)
         return
     text, ids, _ = idx.session_context(brain, cwd, cfg, session_id=sid)
     if source in ("compact", "clear"):
@@ -471,7 +473,7 @@ def on_session_start(data, cfg):
             install.sync_skills(quick=True)
         except Exception as exc:
             log(f"skills métier (démarrage) : {exc!r}")
-    emit("SessionStart", text)
+    emit("SessionStart", text, too_big)
 
 
 # ------------------------------------------------------------------------------------------ veille PC

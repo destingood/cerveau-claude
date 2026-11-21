@@ -1931,8 +1931,12 @@ def cmd_commun(a):
 
 def cmd_import(a):
     from . import importer
-    rep = importer.sync(force=a.force, dry=a.dry_run)
-    if not rep:
+    big, max_kb = [], importer.MAX_KB if a.max_ko is None else a.max_ko
+    rep = importer.sync(force=a.force, dry=a.dry_run, max_kb=max_kb, skipped=big)
+    for path, size in big:
+        print(f"⚠ ignoré, fichier de {round(size / 1024)} Ko (plus de {max_kb} Ko) : {path} — "
+              f"pour l'importer quand même : `brain import --max-ko 0`")
+    if not rep and not big:
         print("✓ mémoire native déjà synchronisée")
     for item in rep:
         print("- " + " ".join(str(x) for x in item))
@@ -2396,6 +2400,7 @@ def build_parser():
     s = cmd("import", cmd_import, "importer la mémoire native de Claude Code (~/.claude/projects/*/memory)")
     s.add_argument("--force", action="store_true")
     s.add_argument("--dry-run", action="store_true")
+    s.add_argument("--max-ko", type=int, help="taille maximale d'un fichier importé, en Ko (défaut 64 ; 0 : sans limite)")
     s = cmd("config", cmd_config, "lire/modifier la configuration (ex : config recall.enabled false)")
     s.add_argument("key", nargs="?")
     s.add_argument("value", nargs="?")
