@@ -251,8 +251,15 @@ def _has(term, toks) -> bool:
     return all(w in toks for w in tokenize(term, keep_stop=True))
 
 
-# Écriture non latine (arabe, cyrillique, CJK…) : le modèle ne servira pas tel quel à un francophone.
-FOREIGN_RX = re.compile(r"[\u0400-\u04ff\u0590-\u06ff\u0e00-\u0e7f\u3040-\u30ff\u4e00-\u9fff\uac00-\ud7af]")
+# Écriture non latine (arabe, cyrillique, CJK…) : le modèle ne servira pas tel quel à un francophone. Compilée au premier
+# usage (rank) : 1,3 ms à chaque message sinon, ce module étant chargé par le hook même quand rien n'est cherché.
+_FOREIGN = []
+
+
+def _foreign(text) -> bool:
+    if not _FOREIGN:
+        _FOREIGN.append(re.compile(r"[\u0400-\u04ff\u0590-\u06ff\u0e00-\u0e7f\u3040-\u30ff\u4e00-\u9fff\uac00-\ud7af]"))
+    return bool(_FOREIGN[0].search(text))
 
 
 def rank(items, terms, hint=None, strict=True, need=None) -> list:
@@ -276,7 +283,7 @@ def rank(items, terms, hint=None, strict=True, need=None) -> list:
         # un terme spécifique dans le titre pèse 3, un générique (« store », « marketing »…) 1 seul
         score = (sum(1 if t in GENERIC else 3 for t in t_hits) + sum(1 for t in terms if _has(t, rest))
                  + (1 if hint and p["type"] == hint else 0) + 2 * len(t_hits) / max(1, len(title))
-                 - (3 if FOREIGN_RX.search(p["title"] + p["description"]) else 0))
+                 - (3 if _foreign(p["title"] + p["description"]) else 0))
         out.append((score + min(p["votes"], 50) / 50, p))
     out.sort(key=lambda x: -x[0])
     return [p for _, p in out]

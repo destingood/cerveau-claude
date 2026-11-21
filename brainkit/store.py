@@ -9,8 +9,8 @@ import re
 import sys
 import time
 
-from .common import (BRAIN_DIR, GRAPH_FILE, STATE_DIR, FileLock, clean_label, days_since, fold, jaccard, log, norm_path,
-                     now_iso, path_within, read_json, slugify, tokenize, write_json)
+from .common import (BRAIN_DIR, GRAPH_FILE, STATE_DIR, FileLock, clean_label, commun_member, days_since, fold, jaccard,
+                     log, norm_path, now_iso, path_within, read_json, slugify, tokenize, write_json)
 
 TYPES = {
     "user": "Profil",
@@ -140,26 +140,36 @@ def load_graph():
     s'il est corrompu, et ne renvoie JAMAIS un graphe vide à la place d'un fichier existant mais illisible
     (sinon la prochaine écriture effacerait tout le cerveau).
     Mode wiki : les pages du wiki font foi, graph.json n'en est que le cache (reconstruit s'il est abîmé)."""
+    return _load_graph()[0]
+
+
+def _load_graph():
+    """load_graph() → (données, empreinte du fichier lu : taille, date, n° de fichier et CRC de ses octets). L'empreinte
+    dit à elle seule ce que contient le cerveau, tant qu'il n'est pas modifié en mémoire (voir Brain.stamp) : None
+    quand les données ne sont pas graph.json lu tel quel (wiki, réparation, fichier absent)."""
     from . import wikistore
     mode, root = wikistore.resolve()
     if mode == "wiki":
-        return wikistore.load(root)
+        return wikistore.load(root), None
     if mode == "missing":
-        return wikistore.load_missing(root)
+        return wikistore.load_missing(root), None
     if not GRAPH_FILE.exists():
-        return None
+        return None, None
     last = None
     for attempt in range(10):
         try:
-            with open(GRAPH_FILE, encoding="utf-8") as fh:
-                data = json.load(fh)
+            with open(GRAPH_FILE, "rb") as fh:
+                raw = fh.read()
+                st = os.fstat(fh.fileno())  # le fichier lu, même si un autre processus le remplace entre-temps
+            data = json.loads(raw.decode("utf-8"))
             if not (isinstance(data, dict) and isinstance(data.get("nodes"), dict)):
                 # JSON valide mais pas un cerveau ({"nodes": []}, null, []…) : réparé comme un fichier abîmé. Avant,
                 # le cerveau repartait vide et la première écriture remplaçait le fichier, sans aucune copie.
                 raise ValueError("graph.json n'a pas la forme d'un cerveau")
             if data.pop("wiki", None) is not None:
                 log("wiki débranché (config wiki.path vide) : le cerveau repart en classique depuis son dernier cache")
-            return data
+                return data, None
+            return data, _stamp(raw, st)
         except ValueError:  # JSON abîmé : réparation depuis un instantané ou une sauvegarde
             from .backup import recover_graph
             data = recover_graph()
@@ -170,11 +180,31 @@ def load_graph():
             except OSError:
                 pass
             write_json(GRAPH_FILE, data)
-            return data
+            return data, None
         except OSError as exc:  # verrou passager
             last = exc
             time.sleep(0.03 * (attempt + 1))
     raise RuntimeError(f"graph.json inaccessible : {last!r}")
+
+
+def _stamp(raw, st) -> str:
+    """Empreinte d'un graph.json lu : taille, date, n° de fichier, et CRC de ses octets (deux écritures de même taille
+    dans le même tic d'horloge du disque restent distinctes)."""
+    import zlib
+    return f"{len(raw)}:{st.st_mtime_ns}:{st.st_ino}:{zlib.crc32(raw):08x}"
+
+
+def graph_stamp():
+    """Empreinte de graph.json tel qu'il est sur le disque, comme Brain.stamp, sans analyser le JSON (quelques ms au lieu
+    de 15 à 60) ; None hors cerveau classique (wiki : les pages font foi) ou s'il est illisible."""
+    from . import wikistore
+    if wikistore.resolve()[0] != "classic":
+        return None
+    try:
+        with open(GRAPH_FILE, "rb") as fh:
+            return _stamp(fh.read(), os.fstat(fh.fileno()))
+    except OSError:
+        return None
 
 
 class ReadOnly(RuntimeError):
@@ -210,10 +240,11 @@ def replace_all(data):
 class Brain:
     def __init__(self, data=None):
         loaded = data is None
+        stamp = None
         if loaded:
-            data = load_graph()
+            data, stamp = _load_graph()
         if not isinstance(data, dict) or not isinstance(data.get("nodes"), dict):
-            data = {"version": 1, "created": now_iso(), "nodes": {}, "edges": []}
+            data, stamp = {"version": 1, "created": now_iso(), "nodes": {}, "edges": []}, None
         data.setdefault("edges", [])
         self.data = data
         self.dirty = False
@@ -225,13 +256,34 @@ class Brain:
                 self._counted = _fold_counters(self.data)
             except Exception as exc:
                 log(f"compteurs : {exc!r}")
-        if loaded:  # cerveau commun : les pages des amis entrent dans le graphe, en lecture seule
+        if loaded and commun_member():  # cerveau commun : les pages des amis entrent dans le graphe, en lecture seule
             from . import commun
             try:
                 commun.merge_foreign(self.data)
             except Exception as exc:
                 from .common import log as _log
                 _log(f"commun : pages des amis : {exc!r}")
+        else:  # (non-membre : commun.py n'est pas chargé)
+            self.stamp = stamp
+
+    # Empreinte de graph.json tel qu'il a été lu (_load_graph), tant que ce cerveau n'est pas modifié : l'index des
+    # souvenirs (search.memory_index) et le projet d'un dossier (hooks.project_of) s'en servent pour ne pas tout relire
+    # à chaque message. Toute modification passe par `dirty = True` (méthodes ci-dessous, et le code qui touche aux
+    # nœuds directement, pour qu'ils soient enregistrés) : l'empreinte et ce qui en découle tombent alors. None : rien à
+    # reprendre (cerveau construit en mémoire, wiki, pages d'amis, modifié). Les compteurs de rappel en attente
+    # (compteurs.json, appliqués à la lecture) n'y entrent pas : ni l'index ni les projets n'en dépendent.
+    # _memsig : l'empreinte du savoir, calculée une fois pour ce cerveau.
+    stamp = _memsig = None
+
+    @property
+    def dirty(self) -> bool:
+        return self._dirty
+
+    @dirty.setter
+    def dirty(self, value):
+        self._dirty = value
+        if value:
+            self.stamp = self._memsig = None
 
     @classmethod
     def load(cls):
