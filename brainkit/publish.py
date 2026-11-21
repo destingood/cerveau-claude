@@ -698,11 +698,12 @@ def run(dest=None, owner=None, repo=None, push=False, check=True) -> int:
         return 0
     from . import gitmsg
 
-    def git(*args, timeout=120):
-        """git -C <dépôt> … → (code, sortie) ; jamais d'exception (git absent, délai dépassé)."""
+    def git(*args, timeout=120, interactive=False):
+        """git -C <dépôt> … → (code, sortie) ; jamais d'exception (git absent, délai dépassé). interactive : l'envoi
+        peut demander une connexion à GitHub dans le terminal (git la lit au clavier, pas dans sa sortie)."""
+        quiet = {} if interactive else {"stdin": subprocess.DEVNULL, "env": {**os.environ, "GIT_TERMINAL_PROMPT": "0"}}
         try:
-            r = subprocess.run(["git", "-C", str(dest), *args], capture_output=True, timeout=timeout,
-                               stdin=subprocess.DEVNULL, env={**os.environ, "GIT_TERMINAL_PROMPT": "0"})
+            r = subprocess.run(["git", "-C", str(dest), *args], capture_output=True, timeout=timeout, **quiet)
             return r.returncode, (r.stdout + r.stderr).decode("utf-8", "replace").strip()
         except subprocess.TimeoutExpired:
             return 124, f"timed out after {timeout} s"
@@ -730,7 +731,7 @@ def run(dest=None, owner=None, repo=None, push=False, check=True) -> int:
                 return 1
         print(f"✓ commit et tag {tag} prêts")
     if push:
-        code, out = git("push", "--follow-tags", "origin", "HEAD", timeout=300)
+        code, out = git("push", "--follow-tags", "origin", "HEAD", timeout=300, interactive=True)
         print("✓ publié : les amis recevront la mise à jour au prochain démarrage de Claude Code" if code == 0
               else "✗ " + gitmsg.explain(out, code, "envoi sur GitHub") + " ; le commit et le tag restent prêts, "
               "`brain publish --push` les renverra")
