@@ -39,7 +39,9 @@ def refresh_views(brain=None, wait=False):
         log(f"refresh_views (wiki) : {exc!r}")
     try:
         from . import vues
-        if wait or not vues.request():  # lancement en arrière-plan impossible : comme avant, tout de suite
+        if wait:  # réparation : toutes, tout de suite
+            vues.run_now(force=True)
+        elif not vues.request():  # lancement en arrière-plan impossible : comme avant, tout de suite
             vues.run_now()
     except Exception as exc:
         log(f"refresh_views : {exc!r}")
@@ -1010,7 +1012,7 @@ def cmd_vues(a):
         done = vues.wait(a.delai)
         print("✓ vues à jour" if done else f"✗ vues toujours en cours après {a.delai:g} s")
         return 0 if done else 1
-    vues.run_now()
+    vues.run_now(force=True)  # à la main : toutes, même celles dont rien n'a changé
     print(f"✓ vues refaites : {INDEX_FILE.name}, {EXPORT_FILE.name}, {VIZ_FILE.name}, {VIZ2D_FILE.name}")
     return 0
 
