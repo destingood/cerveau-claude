@@ -560,14 +560,9 @@ def _pull(path, me) -> str:
 def _unstick(path) -> None:
     """Un git interrompu (PC éteint, processus tué) ne bloque pas les synchronisations suivantes : verrous de git
     abandonnés retirés, rebase inachevé abandonné. Appelé sous GIT_LOCK : aucun autre git du cerveau ne tourne."""
-    import time
+    from . import gitmsg
     g = Path(path) / ".git"
-    for name in ("index.lock", "HEAD.lock", "ORIG_HEAD.lock"):
-        try:
-            if time.time() - (g / name).stat().st_mtime > 120:
-                (g / name).unlink()
-        except OSError:
-            pass
+    gitmsg.clear_stale_locks(path, 120)
     if (g / "rebase-merge").exists() or (g / "rebase-apply").exists():
         git(path, "rebase", "--abort", timeout=30)
 
