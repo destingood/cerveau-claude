@@ -76,6 +76,13 @@ DEFAUT: dict[str, list[str]] = {
     "small-business:contract-review": ["relis ce contrat", "relis le contrat", "analyse ce contrat", "accord de confidentialité"],
     "small-business:proposal-builder": ["crée un devis", "rédige un devis", "devis client", "proposition commerciale"],
     "small-business:cash-flow-snapshot": ["trésorerie"],
+    # Anciennes skills humanizer et vercel du cerveau, retirées au regroupement des skills (décision E8 : les plugins
+    # Humanizer et Vercel les fournissent) : leurs phrases mènent aux skills de ces plugins, quand ils sont installés
+    "humanizer:humanizer": ["humanizer", "humanise ce texte", "humanise mon texte", "rends ce texte plus humain",
+                            "sonne trop IA", "on dirait de l'IA", "enlève le style IA", "tics d'IA"],
+    "vercel:deploy": ["déploie sur vercel", "déployer sur vercel", "mets en ligne sur vercel"],
+    "vercel:react-best-practices": ["bonnes pratiques react", "performances react", "performance react"],
+    "vercel:vercel-cli": ["skills vercel", "optimise vercel", "facture vercel", "projet vercel"],
     # Lecture (Kindle)
     "kindle-companion:book-summary": ["résumé du livre", "résume ce livre", "résume le livre"],
     "kindle-companion:book-recommendations": ["recommande-moi un livre", "quel livre lire", "livre à lire"],
