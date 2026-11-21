@@ -1,6 +1,12 @@
 ---
 name: public-apis
-description: "Trouver une API gratuite qui répond encore, dans public-apis (github.com/public-apis/public-apis, licence MIT) : 2 245 API publiques en 51 catégories et 30 serveurs MCP, cherchées hors-ligne avec les filtres sans clé, HTTPS et CORS, puis vérifiées en ligne avant d'être conseillées. À utiliser quand l'utilisateur dit « trouve une API gratuite pour… », « une API sans clé », « quelle API pour… », « une API météo », « API de taux de change », « API d'adresses », « API entreprise française », « API crypto », « API de films », « des données gratuites pour mon site ou mon app », « public-apis », « un serveur MCP pour… », ou quand un projet a besoin d'une source de données externe. Ne pas utiliser pour l'API cachée d'un site qui n'en publie pas : cerveau:reverse-api-engineer — ni pour extraire les données d'une page : cerveau:scrapegraph."
+description: "Trouver une API publique gratuite qui répond encore (2 245 API, 30 serveurs MCP) : recherche hors ligne, filtres sans clé, HTTPS, CORS, vérification en ligne avant de la conseiller."
+metadata:
+  triggers: >-
+    « trouve une API gratuite pour… » « une API sans clé » « quelle API pour… » « une API météo »
+    « API de taux de change » « API d'adresses » « API entreprise française » « API crypto » « API de films »
+    « des données gratuites pour mon site ou mon app » « public-apis » « un serveur MCP pour… » Ne pas utiliser pour
+    l'API cachée d'un site qui n'en publie pas : cerveau:web — ni pour extraire les données d'une page : cerveau:web.
 ---
 
 # Public APIs — une API gratuite qui répond encore

@@ -10,6 +10,9 @@ réversibles (`brain eco --annuler`) :
   vers 967 k par défaut) ;
 - `skillListingBudgetFraction` : la liste des skills est plafonnée à 0,5 % du contexte (1 % par défaut) ; au-delà, Claude
   Code retire d'abord les descriptions des skills les MOINS utilisées — tous les noms restent ;
+- `skillListingMaxDescChars` (décision E2) : chaque description de skill est coupée à 250 caractères dans cette liste
+  (1 536 par défaut) — plus de skills y gardent leur description ; pas posé si l'utilisateur a réglé lui-même la place
+  de la liste (`skillListingBudgetFraction`) ;
 - `autoMemoryEnabled` false : la mémoire automatique de Claude Code double le cerveau (consignes relues à chaque
   requête) ; coupée seulement quand tout ce qu'elle contient est importé dans le cerveau ;
 - `promptCacheTtl` (cache adaptatif, chaque jour en arrière-plan) : 5 min ou 1 h d'après une simulation sur les pauses
@@ -53,9 +56,12 @@ OWN_PLUGIN = "cerveau"  # jamais proposé : c'est ce plugin-ci
 CLAUDE_AI = "anthropic-skills"  # préfixe des skills de claude.ai synchronisées dans Claude Code
 SYNC_KEY = "syncClaudeAiSkills"  # le réglage (documenté) qui coupe cette synchronisation
 ABSENT = object()      # « clé absente » (jamais écrit dans un fichier)
-LEVIERS = 3            # version des leviers posés tout seuls : une installation plus ancienne reçoit les nouveaux, une fois
+LEVIERS = 4            # version des leviers posés tout seuls : une installation plus ancienne reçoit les nouveaux, une fois
 STYLE_KEY, STYLE_OFF = "outputStyle", ("off", "non", "aucun", "none", "")  # style de réponse par défaut (/output-style)
 SKILLS_KEY, SKILLS_FRACTION = "skillListingBudgetFraction", 0.005
+# Documentation de Claude Code (Skills › « Skill descriptions are cut short », et le schéma des réglages) : entier > 0,
+# 1 536 par défaut, plafond par skill du texte description + when_to_use dans la liste vue à chaque tour.
+DESC_KEY, DESC_CHARS = "skillListingMaxDescChars", 250
 MEMORY_KEY, MEMORY_ENV = "autoMemoryEnabled", "CLAUDE_CODE_DISABLE_AUTO_MEMORY"
 CACHE_KEY, CACHE_CHOICES = "promptCacheTtl", ("5m", "1h")
 CACHE_ENVS = ("FORCE_PROMPT_CACHING_5M", "CLAUDE_CODE_PROMPT_CACHE_TTL", "ENABLE_PROMPT_CACHING_1H")
@@ -385,9 +391,9 @@ def _memory_lever(settings, force=False) -> tuple:
 
 
 def apply_eco(out=None, win=None, force=False, cfg=None, nouveaux=False) -> tuple:
-    """Pose les leviers automatiques : bashOutputMaxChars, autoCompactWindow, skillListingBudgetFraction et
-    autoMemoryEnabled false (quand tout est importé dans le cerveau). `nouveaux` : seulement ceux venus après la 1re
-    version (installation qui avait déjà le mode éco). Une variable d'environnement de l'utilisateur
+    """Pose les leviers automatiques : bashOutputMaxChars, autoCompactWindow, skillListingBudgetFraction,
+    skillListingMaxDescChars et autoMemoryEnabled false (quand tout est importé dans le cerveau). `nouveaux` : seulement
+    ceux venus après la 1re version (installation qui avait déjà le mode éco). Une variable d'environnement de l'utilisateur
     (BASH_MAX_OUTPUT_LENGTH, CLAUDE_CODE_AUTO_COMPACT_WINDOW, CLAUDE_CODE_DISABLE_AUTO_MEMORY) compte comme une valeur à
     lui. → (ok, {clé: valeur posée}, lignes)."""
     cfg = cfg or load_config()
@@ -407,6 +413,9 @@ def apply_eco(out=None, win=None, force=False, cfg=None, nouveaux=False) -> tupl
         else:
             wants.append(("cle", key, value))
     wants.append(("cle", SKILLS_KEY, SKILLS_FRACTION))
+    frac, frac_mine = _get(settings, SKILLS_KEY), _section(cfg, "pose")["cles"].get(SKILLS_KEY, ABSENT)
+    if frac is ABSENT or _same(frac, SKILLS_FRACTION) or _same(frac, frac_mine):  # place de la liste réglée par
+        wants.append(("cle", DESC_KEY, DESC_CHARS))  # l'utilisateur : la liste reste comme il l'a voulue
     style, cur = wanted_style(cfg), settings.get(STYLE_KEY)
     if style and (cur in (None, style) or _same(_section(cfg, "pose")["cles"].get(STYLE_KEY, ABSENT), cur)):
         wants.append(("cle", STYLE_KEY, style))  # jamais à la place d'un style choisi par l'utilisateur, même --forcer
@@ -441,6 +450,8 @@ def summary(posees) -> str:
     if SKILLS_KEY in posees:
         parts.append(f"liste des skills plafonnée à {_val(SKILLS_KEY, posees[SKILLS_KEY])} du contexte "
                      "(descriptions des moins utilisées retirées, noms gardés)")
+    if DESC_KEY in posees:
+        parts.append(f"descriptions des skills coupées à {_n(posees[DESC_KEY])} caractères dans cette liste")
     if posees.get(MEMORY_KEY) is False:
         parts.append("mémoire auto de Claude Code coupée (le cerveau la remplace, tout y est importé)")
     if CACHE_KEY in posees:
@@ -1292,6 +1303,8 @@ def status(cfg=None) -> str:
             (WIN_KEY, t_win, "fenêtre du modèle, ≈ 967 k pour 1 M", "conversation résumée plus tôt"),
             (SKILLS_KEY, SKILLS_FRACTION, "1 %", "liste des skills plafonnée : au-delà, descriptions des moins "
                                                 "utilisées retirées, noms gardés"),
+            (DESC_KEY, DESC_CHARS, "1 536", "chaque description de skill coupée dans la liste : plus de skills y "
+                                            "gardent la leur"),
             (MEMORY_KEY, False, "true", "mémoire auto de Claude Code coupée, le cerveau la remplace ; posé quand tout "
                                         "y est importé")):
         cur = _get(settings, key)

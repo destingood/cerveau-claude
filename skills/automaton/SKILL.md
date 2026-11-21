@@ -1,9 +1,18 @@
 ---
 name: automaton
-description: "Automaton pour le cerveau : faire tourner l'agent autonome de Conway Research (github.com/Conway-Research/automaton, licence MIT : boucle d'agent avec son portefeuille Ethereum, crédits Conway, réplication) dans un conteneur Docker, avec le modèle Ollama du PC, gratuit et coupé de tout paiement : le construire, le configurer, le lancer, le surveiller, l'arrêter. À utiliser quand l'utilisateur dit « automaton », « installe automaton », « lance automaton », « arrête automaton », « agent autonome Conway », « crédits Conway », « Conway Research », « l'agent qui se réplique », « l'agent qui paie ses propres serveurs ». Ne pas utiliser pour automatiser une tâche (n8n, scripts, tâches planifiées), pour le jeu de la vie, ni pour un assistant IA ordinaire (Claude, OmniRoute)."
+description: "Faire tourner l'agent autonome Automaton de Conway Research dans Docker, avec le modèle Ollama du PC, coupé de tout paiement : construire, configurer, lancer, surveiller, arrêter. Sur demande : /cerveau:automaton."
+disable-model-invocation: true
+metadata:
+  triggers: >-
+    « automaton » « installe automaton » « lance automaton » « arrête automaton » « agent autonome Conway »
+    « crédits Conway » « Conway Research » « l'agent qui se réplique » « l'agent qui paie ses propres serveurs » Ne pas
+    utiliser pour automatiser une tâche (n8n, scripts, tâches planifiées), pour le jeu de la vie, ni pour un assistant
+    IA ordinaire (Claude, OmniRoute).
 ---
 
 # Automaton — l'agent autonome de Conway Research, dans Docker, en local et sans argent
+
+Source : Automaton de Conway Research (github.com/Conway-Research/automaton, licence MIT).
 
 Automaton (v0.2.1, licence MIT) est un agent qui tourne en boucle (penser, agir, observer) avec son propre
 portefeuille Ethereum (réseau Base, USDC) : il doit payer ses calculs en crédits Conway pour « survivre », peut

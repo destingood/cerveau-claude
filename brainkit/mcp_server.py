@@ -17,14 +17,15 @@ TYPES = ["user", "feedback", "project", "decision", "fact", "learning", "referen
 
 # Descriptions courtes (v8.13) : chaque client relit la liste des outils à chaque appel ; les commandes en disent
 # le détail dans leur réponse.
+PAGE = {"type": "integer", "description": "suite d'un résultat coupé"}  # outils de lecture : la suite d'un long résultat
 TOOLS = [
     {"name": "memory_search",
      "description": "Chercher dans la mémoire de l'utilisateur (souvenirs, observations, sessions passées) ; tolère "
                     "fautes et synonymes. AVANT de lui redemander une information.",
      "inputSchema": {"type": "object", "properties": {
          "query": {"type": "string", "description": "mots clés ou question"},
-         "limit": {"type": "integer", "description": "défaut 6"},
-         "project": {"type": "string", "description": "id ou nom de projet"}},
+         "limit": {"type": "integer", "description": "défaut 6, 30 au plus"},
+         "project": {"type": "string", "description": "id ou nom de projet"}, "page": PAGE},
          "required": ["query"]}},
     {"name": "memory_add",
      "description": "Mémoriser un fait durable (préférence, correction, décision, état d'un travail, piège résolu, "
@@ -45,7 +46,7 @@ TOOLS = [
          "required": ["type", "title", "body"]}},
     {"name": "memory_show",
      "description": "Un souvenir en entier, avec ses liens.",
-     "inputSchema": {"type": "object", "properties": {"id": {"type": "string"}}, "required": ["id"]}},
+     "inputSchema": {"type": "object", "properties": {"id": {"type": "string"}, "page": PAGE}, "required": ["id"]}},
     {"name": "memory_update",
      "description": "Corriger ou compléter un souvenir ; done : à-faire terminé ; archive : souvenir devenu faux.",
      "inputSchema": {"type": "object", "properties": {
@@ -63,11 +64,12 @@ TOOLS = [
          "required": ["id"]}},
     {"name": "memory_todo",
      "description": "À-faire triés par échéance.",
-     "inputSchema": {"type": "object", "properties": {}}},
+     "inputSchema": {"type": "object", "properties": {"page": PAGE}}},
     {"name": "memory_context",
      "description": "Ce que le cerveau sait d'emblée (profil, règles, projets, échéances ; fiche du projet si folder). "
                     "En début de conversation.",
-     "inputSchema": {"type": "object", "properties": {"folder": {"type": "string", "description": "dossier du projet"}}}},
+     "inputSchema": {"type": "object", "properties": {"folder": {"type": "string", "description": "dossier du projet"},
+                                                      "page": PAGE}}},
     {"name": "wiki_status",
      "description": "État du wiki : pages par type, sources à ingérer, git, journal.",
      "inputSchema": {"type": "object", "properties": {"schema": {"type": "boolean", "description": "avec sa méthode complète"}}}},
@@ -134,8 +136,110 @@ TOOLS += [
          "required": ["boutique"]}},
 ]
 
+# Groupes d'outils (décision du 21/11) : la mémoire toujours ; le wiki et les boutiques seulement si la configuration
+# les ajoute (`brain config mcp.groupes '["wiki", "boutique"]'`) — 15 outils listés à chaque requête, c'était 6 600
+# caractères relus par chaque client, Claude Code compris (le plugin déclare ce serveur).
+GROUPS = {"memory_": "memoire", "wiki_": "wiki", "boutique_": "boutique"}
+EXTRA = ("wiki", "boutique")
+ALL = ("tout", "tous", "all")
+MAX_CHARS = 8000  # défaut de mcp.max_car : au-delà, le résultat est coupé en pages
+READ_ONLY = {"memory_search", "memory_show", "memory_todo", "memory_context", "wiki_status", "wiki_lint", "boutique_etat"}
+_PAGES = {}  # (outil, arguments sans « page ») → résultat complet du dernier appel coupé (le serveur vit toute la session)
+_PAGES_KEEP = 8
+
 PROMPT = {"name": "contexte", "description": "Injecter ce que le cerveau sait de moi (profil, règles, projets, "
                                             "échéances) au début de la conversation."}
+
+
+def _cfg() -> dict:
+    try:
+        from .common import load_config
+        c = load_config().get("mcp")
+        return c if isinstance(c, dict) else {}
+    except Exception:
+        return {}
+
+
+def groups(cfg=None) -> list:
+    """Groupes d'outils listés : « memoire », plus ceux de mcp.groupes (liste, ou texte « wiki,boutique » ; « tout »)."""
+    cfg = _cfg() if cfg is None else cfg
+    want = cfg.get("groupes") or []
+    if isinstance(want, str):
+        want = [w for w in want.replace(";", ",").split(",")]
+    want = {str(w).strip().lower() for w in want if isinstance(w, (str, int))} if isinstance(want, (list, tuple)) else set()
+    extra = list(EXTRA) if want & set(ALL) else [g for g in EXTRA if g in want]
+    return ["memoire", *extra]
+
+
+def group_of(name) -> str:
+    return next((g for prefix, g in GROUPS.items() if str(name).startswith(prefix)), "")
+
+
+def tools(cfg=None) -> list:
+    """La liste rendue par tools/list : les outils des groupes actifs seulement."""
+    active = groups(cfg)
+    return [t for t in TOOLS if group_of(t["name"]) in active]
+
+
+def _limit(cfg=None) -> int:
+    cfg = _cfg() if cfg is None else cfg
+    v = cfg.get("max_car", MAX_CHARS)
+    return max(1000, v) if isinstance(v, int) and not isinstance(v, bool) else MAX_CHARS
+
+
+def pages_of(text, limit) -> list:
+    """Le texte en pages d'au plus `limit` caractères, coupées entre deux lignes (une ligne plus longue qu'une page est
+    coupée elle-même)."""
+    out, cur = [], ""
+    for line in str(text).split("\n"):
+        while len(line) > limit:
+            if cur:
+                out.append(cur)
+                cur = ""
+            out.append(line[:limit])
+            line = line[limit:]
+        if cur and len(cur) + 1 + len(line) > limit:
+            out.append(cur)
+            cur = line
+        else:
+            cur = f"{cur}\n{line}" if cur else line
+    if cur or not out:
+        out.append(cur)
+    return out
+
+
+def bounded(name, args, run, limit=None):
+    """Résultat d'un outil borné à `limit` caractères (mcp.max_car) : page `args["page"]` d'un résultat plus long, avec
+    en fin de page ce qui reste et comment demander la suite. La suite d'un outil qui écrit (memory_add…) vient du
+    résultat gardé, jamais d'un second appel : rien n'est écrit deux fois."""
+    limit = limit or _limit()
+    try:
+        page = max(1, int(args.get("page") or 1))
+    except (TypeError, ValueError):
+        page = 1
+    key = (name, json.dumps({k: v for k, v in args.items() if k != "page"}, sort_keys=True, ensure_ascii=False,
+                            default=str))
+    if page > 1 and key in _PAGES:
+        text, err = _PAGES[key]
+    elif page > 1 and name not in READ_ONLY:
+        return (f"page {page} : le résultat de {name} n'est plus gardé ; relancer l'outil sans « page » (il écrit : "
+                "vérifier d'abord avec memory_search que ce n'est pas déjà fait)"), True
+    else:
+        text, err = run()
+    parts = pages_of(text, limit)
+    if len(parts) > 1:
+        _PAGES.pop(key, None)
+        _PAGES[key] = (text, err)
+        while len(_PAGES) > _PAGES_KEEP:
+            _PAGES.pop(next(iter(_PAGES)))
+    if page > len(parts):
+        return f"page {page} : ce résultat n'a que {len(parts)} page(s)", True
+    out = parts[page - 1]
+    if page < len(parts):
+        rest = sum(len(x) + 1 for x in parts[page:])
+        out += (f"\n… page {page}/{len(parts)} — encore {rest} caractères : rappeler {name} avec les mêmes arguments "
+                f"et page: {page + 1}")
+    return out, err
 
 
 def _run_cli(argv):
@@ -158,9 +262,23 @@ def _run_cli(argv):
 
 
 def call_tool(name, args):
-    args = args or {}
+    """Un appel d'outil → (texte, erreur ?). Un outil d'un groupe désactivé répond comment l'activer ; tout résultat est
+    borné (bounded)."""
+    args = args if isinstance(args, dict) else {}
+    group = group_of(name)
+    if group and group not in groups():
+        return (f"outil {name} désactivé sur ce serveur : `brain config mcp.groupes '[\"{group}\"]'` l'ajoute à la liste "
+                "(les outils de la mémoire sont toujours là)"), True
+    return bounded(name, args, lambda: _call(name, args))
+
+
+def _call(name, args):
     if name == "memory_search":
-        argv = ["q", str(args.get("query", "")), "-k", str(int(args.get("limit") or 6)), "--no-files"]
+        try:
+            k = max(1, min(int(args.get("limit") or 6), 30))
+        except (TypeError, ValueError):
+            k = 6
+        argv = ["q", str(args.get("query", "")), "-k", str(k), "--no-files"]
         if args.get("project"):
             argv += ["-p", str(args["project"])]
         return _run_cli(argv)
@@ -282,7 +400,7 @@ def handle(msg):
         if method == "ping":
             return {"jsonrpc": "2.0", "id": mid, "result": {}}
         if method == "tools/list":
-            return {"jsonrpc": "2.0", "id": mid, "result": {"tools": TOOLS}}
+            return {"jsonrpc": "2.0", "id": mid, "result": {"tools": tools()}}
         if method == "tools/call":
             p = msg.get("params") or {}
             text, is_err = call_tool(p.get("name"), p.get("arguments"))

@@ -376,7 +376,7 @@ check(code == 1 and "Liste suspecte" in out and not list(HOME.rglob("apis.json")
       "public-apis : liste deux fois plus courte que l'index embarqué refusée, rien d'écrit", out)
 
 # ================================================================== uiverse : galaxy.py sur une copie locale factice
-GX = "uiverse/scripts/galaxy.py"
+GX = "composants/uiverse/scripts/galaxy.py"
 code, out = run(GX)
 code2, out2 = run(GX, "search", "button")
 check(code == 0 and "galaxy.py search" in out and code2 == 1 and "Galaxy absente" in out2,
@@ -412,7 +412,7 @@ check(code == 1 and "Rien d'écrit" in out and (WORK / "index.html").read_text(e
       "galaxy : preview n'écrase pas une page qui n'est pas un ancien aperçu", out)
 
 # ================================================================== scrapegraph : sgai.py (bibliothèque absente en CI)
-SG = "scrapegraph/scripts/sgai.py"
+SG = "web/scrapegraph/scripts/sgai.py"
 code, out = run(SG, "--help")
 check(code == 0 and "--search N" in out and "prompt" in out, "scrapegraph : --help", out)
 code, out = run(SG, "liste les prix")

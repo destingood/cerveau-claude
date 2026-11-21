@@ -1,6 +1,11 @@
 ---
 name: obsidian
-description: "Syntaxe Obsidian pour le wiki du cerveau : propriétés (frontmatter), liens [[…]], intégrations ![[…]], encadrés (callouts, dont [!contradiction]), surlignage, commentaires, références de bloc, maths, Mermaid ; fichiers Bases (.base : filtres, formules, vues table, cartes, liste, kanban) et Canvas (.canvas, JSON Canvas 1.0 : cartes, groupes, flèches, couleurs). À utiliser quand l'utilisateur demande « fais une base », « ajoute une vue au tableau de bord », « un kanban dans Obsidian », « fais un canvas », « carte visuelle », « un encadré », « comment on écrit … dans Obsidian », « intègre cette page », « corrige les propriétés », ou pour vérifier une page avant de l'écrire. Pas pour ingérer une source (brain wiki add), ni pour une recherche web (skill recherche)."
+description: "Syntaxe Obsidian du wiki du cerveau : propriétés, liens [[…]], intégrations, encadrés, Mermaid, fichiers Bases (.base : vues, kanban) et Canvas (.canvas). Pas pour ingérer une source ni chercher sur le web."
+metadata:
+  triggers: >-
+    « fais une base » « ajoute une vue au tableau de bord » « un kanban dans Obsidian » « fais un canvas »
+    « carte visuelle » « un encadré » « comment on écrit … dans Obsidian » « intègre cette page »
+    « corrige les propriétés » Ne pas utiliser pour « base de données ».
 ---
 
 # Obsidian — écrire juste dans le coffre du cerveau

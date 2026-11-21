@@ -1779,13 +1779,18 @@ def build_search(files) -> dict:
 
 
 # =============================================================================================== orchestration
+# Vrais marqueurs d'un projet : dépôt git, fichier de build ou de dépendances. README.md et CLAUDE.md n'en sont plus
+# (audit du 20/11 : un dossier qui ne contenait qu'un README devenait un projet, recartographié toutes les 10 min).
 MARKERS = {".git", "package.json", "pyproject.toml", "requirements.txt", "setup.py", "cargo.toml", "go.mod",
-           "composer.json", "gemfile", "pom.xml", "build.gradle", "claude.md", "readme.md", "index.html",
-           "manifest.json", "dockerfile", "docker-compose.yml", "makefile", "deno.json", "pubspec.yaml"}
+           "composer.json", "gemfile", "pom.xml", "build.gradle", "manifest.json", "dockerfile", "docker-compose.yml",
+           "makefile", "deno.json", "pubspec.yaml"}
+DOCS_MIN = 3  # sans marqueur ni fichier source : dossier de documents à partir de 3 fichiers lisibles
 
 
 def looks_like_project(path) -> bool:
-    """Dossier « projet » (code ou documents), pas un dossier système/perso trop large."""
+    """Dossier « projet », pas un dossier système/perso trop large : un vrai marqueur (MARKERS, .sln, .csproj), un
+    fichier source (Python, JavaScript, HTML…), ou au moins DOCS_MIN documents ou données. Un README seul (ou avec un
+    CLAUDE.md) ne suffit pas."""
     try:
         p = norm_path(path)
         if not os.path.isdir(p) or is_scratch(p):
@@ -1805,7 +1810,9 @@ def looks_like_project(path) -> bool:
     low = {e.lower() for e in entries}
     if low & MARKERS or any(e.endswith((".sln", ".csproj")) for e in low):
         return True
-    return sum(1 for e in low if os.path.splitext(e)[1] in LANG_BY_EXT) >= 3
+    if any(LANG_BY_EXT.get(os.path.splitext(e)[1]) in CODE or SPECIAL_FILES.get(e) in CODE for e in low):
+        return True  # un fichier source
+    return sum(1 for e in low if os.path.splitext(e)[1] in LANG_BY_EXT) >= DOCS_MIN
 
 
 def map_project(path=None, project=None, quiet=False, full=False, max_files=None):

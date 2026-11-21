@@ -71,8 +71,9 @@ def _skills_and_shops(ids: set, comms: list, prs: dict, projects: dict = None) -
         hub = f"skill:{name}"
         hubs[name] = hub
         label = SKILL_LABELS.get(name, name)
-        mods = sorted((src / "references").glob("*.md")) if (src / "references").is_dir() else []
-        tools = sorted((src / "scripts").glob("*.py")) if (src / "scripts").is_dir() else []
+        # (skill regroupée — design, web… — : ses fiches <outil>/fiche.md, leurs références et leurs scripts aussi)
+        mods = sorted(src.glob("references/*.md")) + sorted(src.glob("*/fiche.md")) + sorted(src.glob("*/references/*.md"))
+        tools = sorted(src.glob("scripts/*.py")) + sorted(src.glob("*/scripts/*.py"))
         _, intro = _first(src / "SKILL.md")
         cmd = f"/cerveau:{name}" if PLUGIN else f"/{name}"
         node(hub, "skill", f"{label} ({cmd})",
@@ -81,7 +82,9 @@ def _skills_and_shops(ids: set, comms: list, prs: dict, projects: dict = None) -
         members = [hub]
         for path in mods + tools:
             title, para = _first(path)
-            nid = f"skill:{name}:{path.name}"
+            # references/x.md, scripts/x.py ; sinon <outil>/fiche.md ou <outil>/references/… d'une skill regroupée
+            top_level = path.parent.parent == src and path.parent.name in ("references", "scripts")
+            nid = f"skill:{name}:{path.name if top_level else path.relative_to(src).as_posix()}"
             node(nid, "skill", ("Outil · " if path.suffix == ".py" else "") + title, para, pr=top * 0.15,
                  tags=("skill", name), c=cid)
             edges.append({"s": nid, "t": hub, "r": "part_of"})
