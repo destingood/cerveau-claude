@@ -62,6 +62,8 @@ class Parser(argparse.ArgumentParser):
 
     def error(self, message):
         import re
+        # Python 3.10 et 3.11 ne passent pas « argument X: … » par la traduction (ArgumentError.__str__), les suivants si
+        message = re.sub(r"^argument (\S+): ", r"\1 : ", message)
         if message.startswith("argument manquant : "):
             names = [_ARG_FR.get(x.strip(), x.strip()) for x in message.split(" : ", 1)[1].split(",")]
             message = f"argument manquant : {', '.join(names)}"
