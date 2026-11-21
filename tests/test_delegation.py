@@ -413,8 +413,12 @@ check(not {"Edit", "Write", "NotebookEdit"} & {t.strip() for t in meta["tools"].
       "éclaireur : aucun outil d'écriture de fichier")
 hooks_json = json.loads((CODE / "hooks" / "hooks.json").read_text(encoding="utf-8"))["hooks"]
 pre = hooks_json.get("PreToolUse") or [{}]
-check(pre[0].get("matcher") == "Agent" and pre[0]["hooks"][0]["args"][-2:] == ["hook", "pre-agent"]
-      and pre[0]["hooks"][0]["command"] == "python",
+from brainkit import lanceur  # noqa: E402
+
+# Décision E1 (étape 6) : plus `python` en forme exec (absent sur macOS et beaucoup de Linux), mais le lanceur
+# python3 → python → py, la même commande exacte que construit lanceur.commande_plugin (brain.py hook pre-agent).
+check(pre[0].get("matcher") == "Agent" and pre[0]["hooks"][0]["command"] == lanceur.commande_plugin("pre-agent")
+      and '"" hook pre-agent;' in pre[0]["hooks"][0]["command"] and "args" not in pre[0]["hooks"][0],
       "hooks.json : hook PreToolUse sur l'outil Agent → brain.py hook pre-agent", pre)
 from brainkit import publish  # noqa: E402
 

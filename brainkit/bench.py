@@ -14,6 +14,7 @@ import json
 import math
 import os
 import re
+import shlex
 import statistics
 import subprocess
 import sys
@@ -140,10 +141,16 @@ def natural_questions(timeout=180):
 
 
 def _hook_cmd():
+    """Le début de la commande du hook de chaque message de settings.json (cerveau classique), à compléter par
+    « hook <événement> » et à lancer dans un shell : forme exec (lanceur.hook_classique) ou chaîne d'avant la 8.29."""
+    from .lanceur import est_du_cerveau
     try:
         hooks = json.loads((CLAUDE_HOME / "settings.json").read_text(encoding="utf-8")).get("hooks", {})
-        cmd = hooks["UserPromptSubmit"][0]["hooks"][0]["command"]
-        return cmd.rsplit(" hook ", 1)[0]
+        h = next(x for e in hooks["UserPromptSubmit"] for x in e["hooks"] if est_du_cerveau(x))
+        if h.get("args"):
+            parts = [h["command"], *h["args"][:-2]]  # sans « hook <événement> »
+            return subprocess.list2cmdline(parts) if os.name == "nt" else " ".join(shlex.quote(p) for p in parts)
+        return h["command"].rsplit(" hook ", 1)[0]
     except Exception:
         return f'"{sys.executable}" -I -S "{BRAIN_PY}"'
 

@@ -307,9 +307,9 @@ invite tes amis (Settings → Collaborators → Add people), puis rejoins-le le 
 
 ## Prérequis
 
-**Python 3.10 ou plus, et la commande `python`** : les hooks du plugin la lancent ; sans elle, rien n'est enregistré, sans aucune erreur visible.
-- macOS : `mkdir -p ~/.local/bin && ln -sf "$(command -v python3)" ~/.local/bin/python`, puis redémarre Claude Code · Debian/Ubuntu : `sudo apt install python-is-python3` · Windows : réinstalle Python depuis python.org en cochant « Add python.exe to PATH ».
-- **Vérifier que le cerveau enregistre**, après ton premier message : `python ~/.claude/brain/brain.py doctor` puis `python ~/.claude/brain/brain.py journal` (macOS sans `python` : `python3`) ; si ce fichier n'existe pas, les hooks ne tournent pas : diagnostic direct avec `python3 "$(ls -d ~/.claude/plugins/cache/*/cerveau/*/ | tail -1)brain.py" doctor`.
+**Python 3.10 ou plus** : les hooks du plugin le trouvent seuls (`python3`, puis `python`, puis `py`, en sautant un Python plus ancien) ; s'il n'y en a aucun, Claude Code affiche au démarrage et à chaque message « 🧠 cerveau en pause : … » avec quoi installer : python.org (Windows : coche « Add python.exe to PATH ») ou, sur macOS, `brew install python`.
+- **Le serveur MCP** (les outils de la mémoire dans Claude Code) lance la commande `python` : macOS : `mkdir -p ~/.local/bin && ln -sf "$(command -v python3)" ~/.local/bin/python`, puis redémarre Claude Code · Debian/Ubuntu : `sudo apt install python-is-python3` · ou, partout, `"env": {"CERVEAU_PYTHON": "/chemin/de/python3"}` dans `~/.claude/settings.json` (les hooks l'essaient alors en premier).
+- **Vérifier que le cerveau enregistre**, après ton premier message : `python ~/.claude/brain/brain.py doctor` (il dit quel Python lancent les hooks et le serveur MCP) puis `python ~/.claude/brain/brain.py journal` (macOS et Linux sans `python` : `python3`) ; si ce fichier n'existe pas, les hooks ne tournent pas : diagnostic direct avec `python3 "$(ls -d ~/.claude/plugins/cache/*/cerveau/*/ | tail -1)brain.py" doctor`.
 
 ## Désinstaller
 
