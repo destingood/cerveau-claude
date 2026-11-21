@@ -325,6 +325,16 @@ check(code == 0 and analysis_sig() == current, "brain report --force : l'analyse
       analysis_sig())
 vues.wait(120)  # la tâche des vues demandée par q finit avant d'effacer le dossier
 
+# Python trop ancien (avant 3.10) : une ligne en français et le code 1, jamais une trace (un vrai 3.9 si uv en a un)
+old = subprocess.run(["uv", "python", "find", "3.9"], capture_output=True, text=True) if shutil.which("uv") else None
+if old and old.returncode == 0 and old.stdout.strip():
+    r = subprocess.run([old.stdout.strip(), "-I", "-S", str(CODE / "brain.py"), "--version"], capture_output=True,
+                       timeout=60)
+    err = r.stderr.decode("utf-8", "replace")
+    check(r.returncode == 1 and "trop ancien" in err and "3.10" in err and "Traceback" not in err,
+          "Python 3.9 : une ligne en français (il faut 3.10 ou plus récent), code 1", (r.returncode, err[-300:]))
+else:
+    print("· Python 3.9 introuvable (uv python install 3.9) : cas du Python trop ancien sauté")
 from brainkit.common import remove_tree  # noqa: E402
 if not remove_tree(TMP, wait=60):
     print(f"(dossier pas effacé : {TMP})")

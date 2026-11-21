@@ -10,8 +10,6 @@ import os
 import sys
 
 if sys.version_info < (3, 10):  # avant tout import du cerveau, qui suppose Python 3.10 ou plus récent
-    if os.environ.get("CERVEAU_LANCEUR"):  # lancé par le lanceur des hooks : il essaie le Python suivant (lanceur.py)
-        sys.exit(97)  # lanceur.TROP_ANCIEN ; l'entrée du hook n'est pas lue, le suivant la reçoit entière
     sys.stderr.buffer.write(("🧠 cerveau : Python %d.%d est trop ancien, il faut Python 3.10 ou plus récent "
                              "(python.org ; README du cerveau, section « Prérequis »).\n" % sys.version_info[:2])
                             .encode("utf-8", "replace"))
