@@ -62,3 +62,27 @@ jobs:
             echo "::endgroup::"
           done
           exit $status
+
+  launcher:
+    # The hooks run through a launcher that tries python3, python, then py (plan step 6, decision E1).
+    # tests/test_lanceur.py checks it with fake interpreters in every job above; this job runs it on
+    # real ones, which only CI has: a real Python 3.9 that brain.py must refuse, Apple's
+    # /usr/bin/python3 on macOS (3.9.6, no `python`), and on Windows PowerShell 5.1 and 7 with no Git
+    # Bash on the hook's PATH (what Claude Code uses when Git Bash is not installed), then Git Bash.
+    name: Hook launcher on real interpreters (${{ matrix.os }})
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, macos-latest, windows-latest]
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+      - uses: astral-sh/setup-uv@v10.3.3
+        with:
+          python-version: "3.13"
+      - name: A Python 3.9 for the launcher to refuse
+        run: uv python install 3.9
+      - name: Hooks without `python`, with an old Python, and without Git Bash
+        run: uv run --no-project python tests/lanceur_ci.py

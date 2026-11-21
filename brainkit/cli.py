@@ -1172,7 +1172,7 @@ def cmd_doctor(a):
     if getattr(a, "fix", False):
         _doctor_fix()
     print(f"🧠 brain {__version__} — {BRAIN_DIR}")
-    ok(sys.version_info >= (3, 9), f"Python {sys.version.split()[0]} ({sys.executable})")
+    ok(sys.version_info >= (3, 10), f"Python {sys.version.split()[0]} ({sys.executable})")
     b = Brain.load()
     dangling = sum(1 for e in b.edges if e["from"] not in b.nodes or e["to"] not in b.nodes)
     ok((GRAPH_FILE.exists() or not b.nodes) and not dangling,  # cerveau neuf (ami) : pas encore de graph.json
@@ -1216,13 +1216,11 @@ def cmd_doctor(a):
         hooks = {}
     wanted = ("SessionStart", "UserPromptSubmit", "Stop", "PreCompact", "PostCompact", "SessionEnd", "PostToolUse")
     present = [ev for ev in wanted if "brain.py" in json.dumps(hooks.get(ev, []))]
-    import re as _re
-    exes = {m.group(1) for ev in wanted for h in hooks.get(ev, []) for x in h.get("hooks", [])
-            for m in [_re.match(r'^"([^"]+\.exe)"', x.get("command", ""))] if m}
-    missing = [e for e in exes if not os.path.exists(e)]
+    from . import lanceur
+    prefs = {lanceur.prefere(x) for ev in wanted for h in hooks.get(ev, []) if isinstance(h, dict)
+             for x in h.get("hooks", []) if lanceur.est_du_cerveau(x)}
     if not PLUGIN:
-        ok(not missing, "interpréteur des hooks : " + (", ".join(sorted(exes)) or "py -3")
-           + (" — INTROUVABLE (Python a changé de version ?) → brain install" if missing else ""))
+        _doctor_classic_python(ok, prefs)
         ok(len(present) == len(wanted), "hooks : " + (", ".join(present) or "aucun")
            + ("" if len(present) == len(wanted) else f" — manquants : {', '.join(e for e in wanted if e not in present)} (→ brain install)"))
         claude_md = CLAUDE_HOME / "CLAUDE.md"
@@ -1871,27 +1869,74 @@ def _doctor_plugin(ok):
             "" if auto else " : désactivées (→ /plugin › marketplaces › {0} › Enable auto-update)".format(name)))
 
 
+def _python_dit(r, want) -> str:
+    """Un essai du lanceur (lanceur.essai) en clair : « `python3` (/usr/bin/python3) : version 3.9.6 trop ancienne »."""
+    if r["raison"] == "introuvable":
+        return f"`{r['nom']}`, introuvable ici"
+    where = f"`{r['nom']}` ({r['exe']}) : "
+    if r["raison"] == "trop ancien":
+        return where + f"version {'.'.join(map(str, r['version']))} trop ancienne (il faut {want} ou plus)"
+    if r["raison"] == "ne se lance pas":
+        return where + "il ne se lance pas (alias du Microsoft Store ?)"
+    return where + f"sauté : {r['raison']}"
+
+
+def _doctor_classic_python(ok, prefs):
+    """Cerveau classique : l'interpréteur que lancent les hooks de settings.json. Forme exec avec le lanceur (macOS,
+    Linux) : il en trouve un autre si celui de `brain install` disparaît ; interpréteur direct (Windows) ou chaîne
+    d'avant la 8.29 : disparu, plus rien ne tourne."""
+    import shutil
+    from . import lanceur
+    if not prefs:
+        return  # pas de hooks du cerveau : la ligne « hooks : … manquants » le dit
+    want = ".".join(map(str, lanceur.PYTHON_MIN))
+    for exe, via in sorted(prefs):
+        if via:
+            best = lanceur.choisi(lanceur.essais(prefere=exe))
+            gone = "" if os.path.exists(exe) else f" (celui de `brain install`, {exe}, a disparu → brain install)"
+            ok(bool(best), "interpréteur des hooks : " + (f"{best['exe']} ({'.'.join(map(str, best['version']))})"
+               if best else f"aucun Python {want} ou plus récent → rien n'est enregistré, installe-le (python.org)")
+               + gone)
+        else:
+            there = bool(shutil.which(exe)) if not os.path.dirname(exe) else os.path.exists(exe)
+            ok(there, f"interpréteur des hooks : {exe}"
+               + ("" if there else " — INTROUVABLE (Python a changé de version ?) → brain install"))
+
+
 def _doctor_python(ok):
-    """Les hooks du plugin lancent la commande `python` : s'il manque (macOS, Linux : souvent seulement `python3`), rien
-    n'est enregistré, sans aucune erreur visible."""
-    from .plugin import PYTHON_MIN, hook_python
-    exe, ver = hook_python()
-    want = ".".join(map(str, PYTHON_MIN))
-    if exe and ver and ver >= PYTHON_MIN:
-        ok(True, f"commande `python` des hooks : {'.'.join(map(str, ver))} ({exe})")
+    """Le Python que lancent les hooks du plugin (lanceur.py, décision E1 : CERVEAU_PYTHON, python3, python, puis py) et
+    celui du serveur MCP (`python`, ou CERVEAU_PYTHON : forme exec, sans lanceur) ; la marche à suivre s'il en manque.
+    Sans Python utilisable, rien n'est enregistré, et Claude Code affiche « cerveau en pause » à chaque message."""
+    from . import lanceur
+    want = ".".join(map(str, lanceur.PYTHON_MIN))
+    rows = lanceur.essais()
+    best = lanceur.choisi(rows)
+    if best:
+        before = [_python_dit(r, want) for r in rows if r is not best and r["exe"]]
+        ok(True, f"commande `{best['nom']}` des hooks : {'.'.join(map(str, best['version']))} ({best['exe']})"
+           + (f" — ignorés avant lui : {' ; '.join(before)}" if before else ""))
+    else:
+        python = next(r for r in rows if r["nom"] == "python")
+        for r in rows:
+            if r["exe"] and r is not python:
+                ok(False, f"les hooks du plugin lancent {_python_dit(r, want)}")
+        ok(False, f"les hooks du plugin lancent {_python_dit(python, want)} → rien n'est enregistré automatiquement")
+        print(f"  → installe Python {want} ou plus récent : https://www.python.org/downloads/ (Windows : coche « Add "
+              "python.exe to PATH ») · macOS : brew install python · Debian/Ubuntu : sudo apt install python3 — puis "
+              "redémarre Claude Code")
+    name = os.environ.get("CERVEAU_PYTHON") or "python"
+    mcp = lanceur.essai(name, saute=False)
+    if not mcp["raison"]:
+        ok(True, f"serveur MCP : `{name}` {'.'.join(map(str, mcp['version']))} ({mcp['exe']})")
         return
-    effet = "→ rien n'est enregistré automatiquement"
-    if not exe:
-        ok(False, f"les hooks du plugin lancent `python`, introuvable ici {effet}")
-        print('  → macOS : mkdir -p ~/.local/bin && ln -sf "$(command -v python3)" ~/.local/bin/python  (puis redémarre Claude Code)')
-        print("  → Debian/Ubuntu : sudo apt install python-is-python3")
-        print("  → Windows : réinstalle Python depuis python.org en cochant « Add python.exe to PATH »")
-        return
-    ok(False, f"les hooks du plugin lancent `python` ({exe}) : "
-       + (f"version {'.'.join(map(str, ver))} trop ancienne (il faut {want} ou plus)" if ver
-          else "il ne se lance pas (alias du Microsoft Store ?)") + f" {effet}")
-    print(f"  → installe Python {want} ou plus récent (python.org), fais-le résoudre par `python` dans le PATH, "
-          "puis redémarre Claude Code")
+    ok(False, f"le serveur MCP du plugin lance {_python_dit(mcp, want)} → outils de la mémoire indisponibles dans "
+              f"Claude Code{' (les hooks, eux, tournent)' if best else ''}")
+    print('  → macOS : mkdir -p ~/.local/bin && ln -sf "$(command -v python3)" ~/.local/bin/python  (puis redémarre Claude Code)')
+    print("  → Debian/Ubuntu : sudo apt install python-is-python3")
+    print("  → Windows : réinstalle Python depuis python.org en cochant « Add python.exe to PATH »")
+    if best:
+        print(f'  → ou partout : "env": {{"CERVEAU_PYTHON": {json.dumps(best["exe"])}}} dans '
+              f"{CLAUDE_HOME / 'settings.json'}, puis redémarre Claude Code")
 
 
 def _doctor_journal(ok):

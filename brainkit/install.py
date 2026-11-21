@@ -511,35 +511,23 @@ def sync_agents(uninstall=False) -> list:
     return done
 
 
-def launcher() -> str:
-    """Commande des hooks. Python lancé directement (pas via le lanceur « py », qui crée un 2e processus) et en mode
-    isolé sans site (-I -S : le cerveau n'utilise que la bibliothèque standard) → ~30 ms de moins par hook.
-    Si Python change de version, `brain install` (ou `doctor --fix`) remet le bon chemin."""
-    script = str(BRAIN_PY).replace("\\", "/")
-    exe = sys.executable or ""
-    if exe and os.path.exists(exe) and "windowsapps" not in exe.lower() and not exe.lower().endswith("pythonw.exe"):
-        return f'"{exe.replace(chr(92), "/")}" -I -S "{script}"'
-    if os.name == "nt" and shutil.which("py"):
-        return f'py -3 "{script}"'
-    return f'"{exe.replace(chr(92), "/")}" "{script}"'
-
-
 def _is_ours(entry) -> bool:
-    return any("brain.py" in str(h.get("command", "")) and " hook " in str(h.get("command", ""))
-               for h in entry.get("hooks", []) if isinstance(h, dict))
+    """Une entrée de hooks du cerveau, quelle que soit sa forme (chaîne d'avant la 8.29, forme exec, polyglotte)."""
+    from .lanceur import est_du_cerveau
+    return any(est_du_cerveau(h) for h in entry.get("hooks", []))
 
 
 def merged_settings(settings: dict, remove_only=False) -> dict:
+    """Hooks du cerveau classique dans settings.json : ceux du plugin (mêmes événements, délais, messages, async), en
+    forme exec avec le lanceur de lanceur.py (hook_classique). Si Python change, le lanceur en trouve un autre ;
+    `brain install` (ou `doctor --fix`) remet l'interpréteur préféré."""
+    from .lanceur import hook_classique
     out = dict(settings)
     hooks = dict(out.get("hooks") or {})
     for event, arg, timeout, status, matcher in EVENTS:
         entries = [e for e in hooks.get(event, []) if not (isinstance(e, dict) and _is_ours(e))]
         if not remove_only:
-            hook = {"type": "command", "command": f"{launcher()} hook {arg}", "timeout": timeout}
-            if status:
-                hook["statusMessage"] = status
-            if arg in ASYNC:
-                hook["async"] = True
+            hook = hook_classique(BRAIN_PY.parent, arg, timeout, status, arg in ASYNC)
             entries.append({**({"matcher": matcher} if matcher else {}), "hooks": [hook]})
         if entries:
             hooks[event] = entries
