@@ -13,8 +13,8 @@ import re
 import sys
 from collections import Counter, defaultdict
 
-from .common import days_since, tokenize
-from .lexicon import INFLEXIONS, SYN, deletes, faux_amis, phon, root, within_one
+from .common import days_since, fold, tokenize
+from .lexicon import INFLEXIONS, SYN, deletes, faux_amis, other_sense, phon, root, within_one
 
 K1, B = 1.3, 0.7
 SUBWORD_W, SUBWORD_DICE, SUBWORD_TOP = 0.5, 0.6, 3
@@ -133,6 +133,13 @@ class Index:
     def expand(self, q):
         """→ [(variante, poids, idf retenu, synonyme ?)] : le mot, ses préfixes, ses troncatures, ses synonymes métier
         et, mot inconnu, ses rapprochements phonétiques ou fautes de frappe."""
+        return [x[:4] for x in self.variants(q)]
+
+    def variants(self, q, synonyms=True):
+        """expand(), et pour chaque variante son degré d'approximation : 0 telle quelle (le mot, un préfixe, une forme,
+        un synonyme), 1 approchée (prononciation, faute de frappe, même famille d'un mot absent de l'index), 2 sous-mots
+        (dernier recours : quelques trigrammes en commun). `synonyms` faux : sans les synonymes métier (mot employé dans
+        son autre sens, lexicon.other_sense)."""
         out = [(q, 1.0)] if q in self.df else []
         if len(q) >= 4:
             # Préfixe : mot de l'index qui commence par le mot tapé (« dropship » → « dropshipping »). Troncature : mot de
@@ -151,10 +158,18 @@ class Index:
             extra.sort(key=lambda x: (-x[1], len(x[0])))
             out += extra[:15]
         seen = {v for v, _ in out}
-        syn = [s for s in SYN.get(q, ()) if s in self.df and s not in seen]  # synonymes métier : toujours
+        syn = [s for s in SYN.get(q, ()) if s in self.df and s not in seen] if synonyms else []  # synonymes métier
         out += [(s, 0.8) for s in syn]
         seen.update(syn)
         strong = q in self.df or any(w >= 0.75 for _, w in out)
+        if strong and self.fuzzy and not self.code and len(q) >= 6:
+            # Mot connu : les autres mots de sa famille aussi (« surveille » → « surveillance », « publie » →
+            # « publication ») ; avant, la famille ne servait qu'aux mots absents de l'index.
+            fam = sorted((v for v in self._fuzzy_maps()[2].get(root(q), ()) if v != q and v not in seen),
+                         key=lambda v: (-self.df.get(v, 0), v))[:4]
+            out += [(v, 0.55) for v in fam]
+            seen.update(fam)
+        approx = []
         if not strong and self.fuzzy and len(q) >= 4:  # mot inconnu : prononciation, faute de frappe ou même famille
             ph, dl, rt = self._fuzzy_maps()  # (mots courts exclus : « mer » ≈ « met » ferait du bruit)
             cands = {v: 0.6 for v in ph.get(phon(q), ()) if v != q and v not in seen and len(v) >= 4}
@@ -167,26 +182,34 @@ class Index:
                 for v in rt.get(root(q), ()):
                     if v != q and v not in seen:
                         cands.setdefault(v, 0.55)
-            out += sorted(cands.items(), key=lambda kv: (-kv[1], -self.df.get(kv[0], 0)))[:6]
-        if not out and self.subword and len(q) >= 5 and not q.isdigit():  # dernier recours : les sous-mots, poids faible
-            out = [(v, SUBWORD_W) for v, _ in self.subwords(q)]
+            approx = sorted(cands.items(), key=lambda kv: (-kv[1], -self.df.get(kv[0], 0)))[:6]
+            out += approx
+        sub = not out and self.subword and len(q) >= 5 and not q.isdigit()
+        if sub:  # dernier recours : les sous-mots, poids faible
+            out = approx = [(v, SUBWORD_W) for v, _ in self.subwords(q)]
         # Un synonyme ne compte jamais plus que le mot demandé : sans plafond, le plus rare l'emporte (« boutique », dans
         # 7 souvenirs, cédait la tête à son synonyme « store », dans 3). Référence : le mot lui-même s'il est dans l'index ;
         # sinon les synonymes valent un seul terme, le plus courant d'entre eux (comme les synonymes de Lucene). Les formes
         # du mot (« commandées » pour « commande ») gardent leur poids : elles disent le même mot.
-        syn = set(syn)
+        syn, approx = set(syn), {v for v, _ in approx}
         ref = self.idf(q) if q in self.df else min(map(self.idf, syn)) if syn else 0.0
-        return [(v, w, min(self.idf(v), ref) if v in syn else self.idf(v), v in syn) for v, w in out]
+        level = 2 if sub else 1
+        return [(v, w, min(self.idf(v), ref) if v in syn else self.idf(v), v in syn, level if v in approx else 0)
+                for v, w in out]
 
     def search(self, query, limit=10):
-        """→ [{key, score, matched (nb de termes trouvés), midf (poids des termes trouvés), nq}]"""
+        """→ [{key, score, matched (nb de termes trouvés), strong (dont trouvés tels quels : mot, préfixe, forme,
+        synonyme ; pas une forme approchée), loose (dont trouvés par leurs sous-mots seulement), midf (poids des termes
+        trouvés), cov, nq, unknown (termes qu'aucun document ne contient tels quels), vars}]"""
         qterms = list(dict.fromkeys(tokenize(query)))
         if not qterms or not self.N:
             return []
-        exp = {q: self.expand(q) for q in qterms}
+        plain = other_sense(qterms)  # « le port 8080 » : pas les synonymes de la livraison
+        exp = {q: self.variants(q, synonyms=q not in plain) for q in qterms}
         unseen = math.log(1 + (self.N + 0.5) / 0.5)
-        qidf = {q: (max(e for _, _, e, _ in exp[q]) if exp[q] else unseen) for q in qterms}
+        qidf = {q: (max(x[2] for x in exp[q]) if exp[q] else unseen) for q in qterms}
         total = sum(qidf.values()) or 1.0
+        unknown = sum(1 for q in qterms if all(x[4] for x in exp[q]))
         cand = set()
         for q in qterms:
             for v, *_ in exp[q]:
@@ -198,29 +221,31 @@ class Index:
             tf, dl, nm = self.tfs[i], self.lens[i], nms.get(i)
             norm = K1 * (1 - B + B * dl / self.avgdl)
             score = midf = 0.0
-            matched = 0
+            matched = strong = loose = 0
             for q in qterms:
-                best = 0.0
-                for v, w, e, syn in exp[q]:
+                best, near = 0.0, 0
+                for v, w, e, syn, fz in exp[q]:
                     f = tf.get(v)
                     if f and syn and nm and v in nm:
                         f = f - nm[v] if f - nm[v] > 1e-6 else 0  # faux ami (« Microsoft Store ») : pas un synonyme
                     if f:
                         s = e * f * (K1 + 1) / (f + norm) * w
                         if s > best:
-                            best = s
+                            best, near = s, fz
                 if best > 0:
                     score += best
                     matched += 1
+                    strong += not near
+                    loose += near == 2
                     midf += qidf[q]
             if score > 0:
-                results.append({"key": self.keys[i], "score": score, "matched": matched,
-                                "midf": midf, "cov": midf / total, "nq": len(qterms), "vars": vs})
+                results.append({"key": self.keys[i], "score": score, "matched": matched, "strong": strong, "loose": loose,
+                                "midf": midf, "cov": midf / total, "nq": len(qterms), "unknown": unknown, "vars": vs})
         results.sort(key=lambda r: -r["score"])
         return results[:limit]
 
 
-MEMIDX_TAG = f"m5:{sys.version_info[0]}.{sys.version_info[1]}"
+MEMIDX_TAG = f"m6:{sys.version_info[0]}.{sys.version_info[1]}"  # m6 : stem() garde « refus », faux amis du port
 _LOADED = {}  # index des souvenirs déjà chargé dans ce processus : {fichier: (empreinte, index)}
 
 
@@ -539,13 +564,118 @@ def _fuse(brain, query, bm25, limit, project, types, include_archived, only_proj
     return out
 
 
+_MONTHS = ("janvier", "fevrier", "mars", "avril", "mai", "juin", "juillet", "aout", "septembre", "octobre", "novembre",
+           "decembre")
+_MONTH_IN_TEXT = re.compile(r"\b(" + "|".join(_MONTHS) + r")\b(?:\s+(?:de\s+|d')?(\d{4}))?")
+DATED_TOPIC = 3  # mots du sujet, au plus, d'une question datée : au-delà, la date n'est qu'un détail du message
+# Sans date chiffrée ni nom de mois, un texte ne cite aucune période : ni fold() ni analyse (dates_in, _month_spans).
+# Toujours plus large que ces deux-là, jamais plus étroit (abréviations « oct. », tirets longs que fold() redresse).
+_MAYBE_DATED = re.compile(r"\d[/\-–−]\d|\b(?:janv(?:ier)?|f[ée]v(?:r(?:ier)?)?|mars|avr(?:il)?|mai|juin|juil(?:let)?|"
+                          r"ao[uû]t|sept(?:embre)?|oct(?:obre)?|nov(?:embre)?|d[ée]c(?:embre)?)\b", re.I)
+
+
+def _month_spans(text, ref) -> list:
+    """Mois cités dans un texte (« Octobre 2026 : 6 480 € de ventes », « à lancer en janvier ») → [(1er, dernier jour)].
+    Sans année : l'occurrence la plus proche de `ref`, la date où le souvenir a été écrit."""
+    import datetime as _dt
+    out = []
+    for m in _MONTH_IN_TEXT.finditer(fold(text or "")):
+        mo = _MONTHS.index(m.group(1)) + 1
+        years = [int(m.group(2))] if m.group(2) else [ref.year - 1, ref.year, ref.year + 1]
+        y = min(years, key=lambda y: abs((_dt.date(y, mo, 15) - ref).days))
+        out.append((_dt.date(y, mo, 1), _dt.date(y + (mo == 12), mo % 12 + 1, 1) - _dt.timedelta(days=1)))
+    return out
+
+
+def _periods(n) -> tuple:
+    """→ (périodes dont parle le souvenir : jours et mois cités, échéance, fin de validité ; jours où il a été écrit)."""
+    import datetime as _dt
+    from . import dates
+
+    def day(raw):
+        try:
+            return _dt.date.fromisoformat(str(raw)[:10])
+        except (TypeError, ValueError):
+            return None
+
+    written = [d for d in (day(n.get("created")), day(n.get("updated"))) if d]
+    ref = written[0] if written else _dt.date.today()
+    text = f"{n.get('title', '')}\n{n.get('body', '')}"
+    about = [(d, d) for d in dates.dates_in(text, ref)] + _month_spans(text, ref) if _MAYBE_DATED.search(text) else []
+    meta = n.get("meta") or {}
+    about += [(d, d) for d in (day(meta.get(k)) for k in ("valid_to", "due", "done")) if d]
+    return about, written
+
+
+def undated(query) -> str:
+    """La question sans ses mots de date (« combien on a vendu le mois dernier » → « vendu »)."""
+    from .observations import _WHEN
+    return " ".join(t for t in tokenize(DATED_RX.sub(" ", query or "")) if t not in _WHEN and not t.isdigit())
+
+
+def dated_recall(brain, raw, query, project=None, today=None, limit=3, use_cache=True) -> list:
+    """Rappel d'une question datée courte (« qu'est-ce qui s'est passé la semaine dernière pour ma recherche d'emploi ? »,
+    « combien on a vendu le mois dernier ? », « qu'est-ce que j'ai noté hier sur la chaîne ? ») : le hook n'a pas le canal
+    des dates de `q`, et ses mots de date comptaient comme des mots que le souvenir ne contenait pas. → les souvenirs de
+    cette période (`raw` : le message, avec ses nombres) qui parlent du sujet (`query` sans les mots de date : un mot
+    trouvé tel quel dans le souvenir ou dans le titre de son projet) ; sans autre sujet que la date, ceux du projet
+    courant. Un souvenir parle des dates qu'il cite (jour, mois, échéance), sinon de celle où il a été écrit : ceux qui
+    citent la période passent d'abord, et un souvenir écrit pendant la période mais qui en cite une autre (le chiffre de
+    septembre noté début octobre) ne répond pas à « le mois dernier ». → [résultat (via « date »)]"""
+    from . import dates
+    rng = dates.query_range(raw, today)
+    if not rng:
+        return []
+    start, end = rng
+    topic = undated(query)
+    terms = list(dict.fromkeys(tokenize(topic)))
+    if len(terms) > DATED_TOPIC:
+        return []
+    idx = memory_index(brain, use_cache=use_cache)
+    hits = {r["key"]: r for r in idx.search(topic, limit=10 ** 6)} if terms else {}
+    forms = {t: {t} | {v for v, _, _, _, approx in idx.variants(t) if not approx} for t in terms}
+    pos = {k: i for i, k in enumerate(idx.keys)}
+    span = (end - start).days + 2  # un mois cité ne dit rien d'un jour (« en novembre » n'est pas « hier »)
+    mid = start + (end - start) / 2
+    cands, homes = [], {}
+    for n in brain.active():
+        if n["type"] == "project":
+            continue
+        # Le sujet d'abord, les dates ensuite : le premier tri ne coûte que des recherches dans l'index (avant : les dates
+        # de chacun des 3 000 souvenirs analysées, 170 ms de plus par question datée).
+        if terms:  # la moitié au moins des mots du sujet, dans le souvenir ou dans le titre de son projet
+            tf = idx.tfs[pos[n["id"]]] if n["id"] in pos else {}
+            pid = n.get("project")
+            if pid not in homes:
+                home = brain.nodes.get(pid) if pid else None
+                homes[pid] = set(tokenize(home["title"])) if home else set()
+            title = homes[pid]
+            if 2 * sum(1 for fs in forms.values() if any(f in tf or f in title for f in fs)) < len(terms):
+                continue
+        elif project and n.get("project") != project:
+            continue
+        about, written = _periods(n)
+        cited = [a + (b - a) / 2 for a, b in about if a <= end and b >= start and (b - a).days <= span]
+        when = [d for d in written if start <= d <= end]
+        if not cited and not when:
+            continue
+        own = hits.get(n["id"])
+        cands.append((not cited, bool(about) and not cited, -(own["score"] if own else 0.0), n.get("project") != project,
+                      min(abs((d - mid).days) for d in cited or when), n["id"], own, n))
+    if any(not c[0] for c in cands):
+        cands = [c for c in cands if not c[1]]
+    cands.sort(key=lambda c: c[:6])
+    return [dict(c[6] or {"key": c[7]["id"], "score": 0.0, "matched": 0, "nq": len(terms)}, node=c[7], via="date")
+            for c in cands[:limit]]
+
+
 LONG_BODY, LONG_COV = 400, 0.62
 NEAR = 12  # mots : au-delà, deux termes du message ne parlent plus de la même chose dans le souvenir
 
 
-def _near(node, vs, window=NEAR) -> bool:
+def _near(node, vs, window=NEAR, strict=False) -> bool:
     """Deux termes différents du message à moins de `window` mots l'un de l'autre dans le souvenir ? Vrai aussi quand
-    on ne retrouve pas deux termes (forme approchée hors texte) : dans le doute, la règle d'avant décide.
+    on ne retrouve pas deux termes (forme approchée hors texte) : dans le doute, la règle d'avant décide (`strict` : non).
     « qui a gagné la coupe du monde » ↛ « tout le monde » … 60 mots … « connecteurs coupés »."""
     last, found = {}, set()
     for i, t in enumerate(tokenize(f"{node['title']} {node.get('body') or ''}")):
@@ -555,7 +685,29 @@ def _near(node, vs, window=NEAR) -> bool:
                 if any(q2 != q and i - j <= window for q2, j in last.items()):
                     return True
                 last[q] = i
-    return len(found) < 2
+    return len(found) < 2 and not strict
+
+
+WORD = re.compile(r"[^\W\d_]+")
+
+# Mots d'un message qui ne disent rien de son sujet, retirés de la requête du rappel (pas de l'index) : avant, ils
+# comptaient comme des mots du message que le souvenir ne contenait pas (« mon ordi plante avec un écran bleu, c'était
+# quoi la solution déjà ? » : « était », « déjà »). Formes écrites, sans accents ; jamais une date (« hier », « mois »).
+FILLER = frozenset("""
+deja presque mieux pendant apres avant depuis ensuite puis enfin finalement souvent parfois vraiment absolument habitude
+actuellement moment suite cas genre dessus dessous quelque quelques plusieurs
+etait etaient etais serait seraient sera seront soit sois avaient aurait auraient aura
+peuvent pourrait pourrais pouvais pouvait voudrais voudrait voulais voulait sais sait savais savait savoir faudrait
+fallait vais va vas allait aller viens vient venais venait crois croit croyais pense pensais connais connait
+souviens souvient souvenais rappeler rappelle rappelles trouve trouves trouvait trouvais marchait marchaient
+marchent hesite hesites hesitais cherche cherches cherchais
+koi kel kelle pr pk pq bcp tjs dc ds ki jsp
+""".split())
+
+
+def drop_filler(text) -> str:
+    """Le message sans ses mots de remplissage (FILLER) : la requête du rappel automatique."""
+    return WORD.sub(lambda m: " " if fold(m.group()) in FILLER else m.group(), str(text or ""))
 
 
 def _head_hit(node, qterms) -> bool:
@@ -572,11 +724,55 @@ def accept_recall(r, min_cov, min_score=0.0, query=None) -> bool:
 
 def recall_refusal(r, min_cov, min_score=0.0, query=None) -> str:
     """Pourquoi le filtre du rappel écarte ce résultat ('' : accepté) : la règle d'`accept_recall` elle-même, donc
-    le diagnostic (`brain recall --pourquoi`) ne peut pas s'en écarter."""
+    le diagnostic (`brain recall --pourquoi`) ne peut pas s'en écarter. Un message long qui échoue à la règle
+    ordinaire passe encore par celle des messages longs (`_long_refusal`)."""
+    why = _short_refusal(r, min_cov, min_score, query)
+    if not why or query is None or r.get("node") is None or r["nq"] < LONG_NQ:
+        return why
+    other = _long_refusal(r, query)
+    return f"{why} ; message long : {other}" if other else ""
+
+
+# Règle des messages longs (LONG_NQ mots porteurs de sens ou plus). Un tel message décrit la situation avant de poser
+# sa question : la couverture d'un message court lui est hors de portée (avant, aucun des 6 messages de trois phrases du
+# banc d'essai ne rappelait rien, même quand le bon souvenir était classé premier). Le souvenir passe quand la preuve est
+# forte et ramassée : 2 mots du message trouvés tels quels (pas une forme approchée), proches l'un de l'autre, dont un
+# dans le titre ou les mots-clés, un score d'au moins LONG_SCORE, et un message qui parle surtout du monde du cerveau :
+# au plus 1 mot sur 3 qu'aucun souvenir ne contient tel quel (« Ma cousine passe un entretien d'embauche pour un poste
+# d'infirmière » n'est pas l'entretien de l'utilisateur, « une série sur Netflix » n'est pas sa série de vidéos).
+# Jamais une règle ni le profil : l'index du démarrage les montre déjà, et leurs mots de consigne (« proposer un plan »,
+# « expliquer simplement ») se retrouvent dans bien des demandes.
+LONG_NQ, LONG_SCORE = 5, 10.0
+AT_START = ("feedback", "user")
+
+
+def _long_refusal(r, query) -> str:
+    """Pourquoi la règle des messages longs écarte ce résultat ('' : accepté)."""
+    node, vs = r["node"], r.get("vars") or {}
+    if node["type"] in AT_START:
+        return "règle ou profil, déjà dans l'index du démarrage"
+    if r.get("strong", r["matched"]) < 2:
+        return "moins de 2 mots retrouvés tels quels"
+    if r["score"] < LONG_SCORE:
+        return f"score {r['score']} < {LONG_SCORE}"
+    if 3 * r.get("unknown", 0) > r["nq"]:
+        return f"{r['unknown']} mots sur {r['nq']} inconnus du cerveau : le message parle d'autre chose"
+    if not _head_hit(node, set(tokenize(query))):
+        return "ni le titre ni les mots-clés ne parlent du sujet"
+    if not _near(node, vs, strict=True):
+        return f"mots retrouvés à plus de {NEAR} mots l'un de l'autre"
+    return ""
+
+
+def _short_refusal(r, min_cov, min_score=0.0, query=None) -> str:
+    """La règle ordinaire : assez de mots du message, une bonne part de leur poids, un score suffisant."""
     nq = r["nq"]
     need = 1 if nq == 1 else 2 if nq <= 4 else 3
     if r["matched"] < need:
         return f"trop peu de mots du message retrouvés ({r['matched']}/{nq}, il en faut {need})"
+    if nq > 1 and r["matched"] - r.get("loose", 0) < need:  # « postulé » n'est pas « poste » : 3 trigrammes communs
+        return (f"trop peu de mots du message retrouvés ({r['matched'] - r.get('loose', 0)}/{nq} sans ceux qui ne "
+                f"ressemblent que par des morceaux, il en faut {need})")
     if r.get("cov", 0) < min_cov:
         return f"couverture {r.get('cov', 0):.3f} < min_cov {min_cov} : les mots retrouvés pèsent peu dans le message"
     if r["score"] < min_score:

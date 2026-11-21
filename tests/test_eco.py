@@ -521,7 +521,10 @@ check(hooks.last_context(TMP / "absent.jsonl") == 0 and hooks.last_context(None)
 
 # ------------------------------------------------------------------ 10. rappel de fin de tâche, optimize, réglages par défaut
 check("UN SEUL appel" in hooks.STOP_REASON and "&&" in hooks.STOP_REASON, "STOP_REASON : tout en UN SEUL appel Bash, chaîné avec &&")
-check(len(hooks.STOP_REASON) < 600, "STOP_REASON : environ moitié moins long qu'avant (< 600 caractères)", len(hooks.STOP_REASON))
+# Mesuré avec la commande d'une installation ordinaire : celle du test porte le chemin de son dossier temporaire, plus long
+# sous macOS et Windows (630 caractères en CI pour 496 ici), et la longueur ne dépendait plus que de ce chemin.
+STOP_TEXT = hooks.STOP_REASON.replace(hooks.CMD, 'python "$HOME/.claude/brain/brain.py"')
+check(len(STOP_TEXT) < 600, "STOP_REASON : environ moitié moins long qu'avant (< 600 caractères)", len(STOP_TEXT))
 check("doublons : `" not in hooks.STOP_REASON and "obs" in hooks.STOP_REASON and "add -t" in hooks.STOP_REASON,
       "STOP_REASON : plus d'étape « doublons » séparée, obs et add conservés")
 from brainkit import journal  # noqa: E402

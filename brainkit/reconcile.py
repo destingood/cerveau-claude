@@ -23,7 +23,7 @@ ON_RX = re.compile(r"\b(?:activ[ée]\w*|r[ée]activ[ée]\w*|actif|actifs|active|
 CUE_RX = re.compile(r"\b(?:d[ée]sormais|dor[ée]navant|maintenant|[àa] partir d(?:e|u|es|['’])|"
                     r"depuis (?:le|la|les|l['’]|que|ce|cette|qu['’])|n['’]est plus|ne \w+ plus|a remplac[ée]|"
                     r"remplac[ée](?:e|s|es)? par|au lieu d(?:e|u|es|['’])|pass[ée](?:e|s|es)? (?:[àa]|au|aux|en|sur|chez)|"
-                    r"passage (?:[àa]|au|aux|en)|chang[ée](?:e|s|es)?|modifi[ée](?:e|s|es)?|nouveaux?|nouvelles?|"
+                    r"passage (?:[àa]|au|aux|en)|passe(?:nt)? de [^.;\n]{1,40}? [àa] |chang[ée](?:e|s|es)?|modifi[ée](?:e|s|es)?|nouveaux?|nouvelles?|"
                     r"mis(?:e|es)? [àa] jour|actualis[ée](?:e|s|es)?|plus que)\b", re.I)
 _WORD = re.compile(r"[\wÀ-ÿ][\wÀ-ÿ'’.\-]*[\wÀ-ÿ]|[\wÀ-ÿ]")
 _SENT_START = re.compile(r"(?:^|[.!?:;]\s+|\n\s*[-*]?\s*)$")
@@ -31,6 +31,73 @@ _LEAD = {"le", "la", "les", "l", "un", "une", "des", "ce", "cet", "cette", "ces"
          "nous", "pour", "avec", "dans", "sur", "depuis", "chaque", "tout", "tous", "toute", "toutes", "si", "quand",
          "en", "au", "aux", "du", "de", "d", "mon", "ma", "mes", "son", "sa", "ses", "notre", "nos", "leur", "leurs",
          "apres", "avant", "pendant", "selon", "lors", "the", "a", "an"}
+
+
+# Repères de temps ou de rang : deux souvenirs qui n'ont pas les mêmes sont deux événements (la note 7 et la note 9,
+# la semaine 45 et la 46, septembre et octobre, 2025 et 2026), jamais une mise à jour de l'un par l'autre.
+_MONTHS = {"janvier": 1, "janv": 1, "fevrier": 2, "fevr": 2, "mars": 3, "avril": 4, "mai": 5, "juin": 6, "juillet": 7,
+           "juil": 7, "aout": 8, "septembre": 9, "sept": 9, "octobre": 10, "oct": 10, "novembre": 11, "nov": 11,
+           "decembre": 12, "dec": 12}
+_ORDINALS = {"premier": 1, "premiere": 1, "deuxieme": 2, "second": 2, "seconde": 2, "troisieme": 3, "quatrieme": 4,
+             "cinquieme": 5, "sixieme": 6, "septieme": 7, "huitieme": 8, "neuvieme": 9, "dixieme": 10}
+_DAYS = ("lundi", "mardi", "mercredi", "jeudi", "vendredi", "samedi", "dimanche")
+_MONTH_RX = re.compile(r"\b(" + "|".join(sorted(_MONTHS, key=len, reverse=True)) + r")\b\.?")
+_DATE_FOLD_RX = re.compile(r"\b(\d{1,2})/(\d{1,2})(?:/(\d{2,4}))?\b|\b(\d{4})-(\d{2})-(\d{2})\b|\b(\d{1,2}|1er) (" +
+                           "|".join(sorted(_MONTHS, key=len, reverse=True)) + r")\b")
+_YEAR_RX = re.compile(r"(?<![\d/-])(?:19|20)\d\d(?![\d/-])")
+_WEEK_RX = re.compile(r"\b(?:semaine|sem|week|wk)\b\.?\s*(?:n°|no\.?|#)?\s*(\d{1,2})\b|\bs(\d{1,2})\b")
+_QUARTER_RX = re.compile(r"\b[tq]([1-4])\b|\b(\d|" + "|".join(_ORDINALS) + r")\w*\s+trimestre\b|\btrimestre\s+(\d)\b")
+_RANK_RX = re.compile(r"(?:\bn°|\bno\.?|\bnumero|#)\s*(\d{1,3})\b|\b(\d{1,3})\s?(?:er|re|e|eme|nd|nde)\b|\b("
+                      + "|".join(_ORDINALS) + r")\b")
+_SERIES_RX = re.compile(r"\b(?:note|notes|episode|partie|chapitre|lecon|reunion|session|video|jour|etape|lot|sprint|tome|"
+                        r"volume|vol|point|bilan|rapport|compte rendu)s?\.?\s*(\d{1,3})\b|(?<![\d.,€$%])\b(\d{1,3})\s*$")
+# « depuis novembre », « à partir de… » : le repère de temps date alors le changement, il ne désigne pas un autre événement
+_START_RX = re.compile(r"\b(?:d[ée]sormais|dor[ée]navant|[àa] partir d|depuis|au lieu d|passe(?:nt)? de|n['’]est plus|"
+                       r"ne \w+ plus|a remplac[ée])", re.I)
+
+
+def _picks(m_list) -> set:
+    return {g for m in m_list for g in (m if isinstance(m, tuple) else (m,)) if g}
+
+
+def period_marks(text, title=False) -> dict:
+    """Repères de temps et de rang d'un texte, par sorte : {"date", "month", "year", "week", "quarter", "rank"} et, pour un
+    titre seulement, {"weekday", "series"} (un jour de semaine ou un numéro de série en plein texte n'est pas un repère)."""
+    t = fold(str(text or ""))
+    out = {
+        "date": {m.group(0) for m in _DATE_FOLD_RX.finditer(t)},
+        "month": {str(_MONTHS[m.group(1)]) for m in _MONTH_RX.finditer(t)},
+        "year": set(_YEAR_RX.findall(DATE_RX.sub(" ", t))) | {m.group(4) or m.group(3) for m in _DATE_FOLD_RX.finditer(t)
+                                                              if (m.group(4) or m.group(3))},
+        "week": _picks(_WEEK_RX.findall(t)),
+        "quarter": {str(_ORDINALS.get(x, x)) for x in _picks(_QUARTER_RX.findall(t))},
+        "rank": {str(_ORDINALS.get(x, x)).lstrip("0") for x in _picks(_RANK_RX.findall(t))},
+    }
+    if title:
+        out["weekday"] = {d for d in _DAYS if re.search(rf"\b{d}s?\b", t)}
+        out["series"] = {x.lstrip("0") for x in _picks(_SERIES_RX.findall(str(text or "").lower()))}
+    return {k: v for k, v in out.items() if v}
+
+
+def _differ(a, b) -> bool:
+    """Deux ensembles de repères qui ont chacun quelque chose que l'autre n'a pas (ni l'un ni l'autre n'est vide)."""
+    return bool(a - b and b - a)
+
+
+def other_event(o_title, o_body, n_title, n_body) -> bool:
+    """Le nouveau souvenir parle-t-il d'un autre jour, d'une autre semaine, d'un autre mois, d'une autre année ou d'un
+    autre numéro d'une série que l'ancien ? Dans les titres, tout repère qui diffère le dit. Dans les textes, une semaine,
+    un trimestre ou un rang (n°, 3e, deuxième) qui diffère aussi ; un mois, une année ou une date seulement si le nouveau
+    texte n'annonce pas un changement (« depuis novembre », « à partir du 20/11 » : la date est celle du changement)."""
+    ot, nt = period_marks(o_title, True), period_marks(n_title, True)
+    if any(_differ(ot.get(k, set()), nt.get(k, set())) for k in ("date", "month", "year", "week", "quarter", "rank",
+                                                               "weekday", "series")):
+        return True
+    ob, nb = period_marks(f"{o_title}\n{o_body}"), period_marks(f"{n_title}\n{n_body}")
+    if any(_differ(ob.get(k, set()), nb.get(k, set())) for k in ("week", "quarter", "rank")):
+        return True
+    return not _START_RX.search(f"{n_title}\n{n_body}") and any(
+        _differ(ob.get(k, set()), nb.get(k, set())) for k in ("date", "month", "year"))
 
 
 def entities(text) -> set:
@@ -82,8 +149,8 @@ def signals(old, title, body) -> dict:
     ot_ent, nt_ent = entities(o_title), entities(title)
     if ot_ent != nt_ent:
         sig["autre sujet"] = True  # une entité du titre change ou s'ajoute (Kyoto ≠ Osaka, « … en Belgique »)
-    if set(DATE_RX.findall(o_title)) != set(DATE_RX.findall(title)):
-        sig["autre événement"] = True  # « Audit du 15/10 » ≠ « Audit du 20/10 »
+    if set(DATE_RX.findall(o_title)) != set(DATE_RX.findall(title)) or other_event(o_title, o_body, title, body):
+        sig["autre événement"] = True  # « Audit du 15/10 » ≠ « Audit du 20/10 », note 7 ≠ note 9, semaine 45 ≠ 46
     (on, od), (nn, nd) = _nums(o_all), _nums(n_all)
     if (on - nn and nn - on) or (od and nd and od - nd and nd - od):
         sig["chiffres"] = True

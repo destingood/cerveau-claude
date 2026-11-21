@@ -20,7 +20,7 @@ OUTPUT_RX = re.compile(r"(^|/)(_out|out|dist|build|node_modules|vendor|\.cache|t
 DATA_EXT = (".json", ".csv", ".tsv", ".xml")
 CACHE_NAME = "search.idx"
 RECALL_NAME = "recall.idx"  # index allégé du rappel automatique : sans sauvegardes, exports, données brutes ni sorties
-TAG = f"1:{sys.version_info[0]}.{sys.version_info[1]}"  # le format marshal dépend de la version de Python
+TAG = f"2:{sys.version_info[0]}.{sys.version_info[1]}"  # format marshal, selon la version de Python ; 2 : stem() 8.26
 
 
 def _paths(pid, kind="full"):

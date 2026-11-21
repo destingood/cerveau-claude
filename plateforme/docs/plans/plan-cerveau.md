@@ -1,6 +1,6 @@
 # Plan du cerveau — le plan unique
 
-Date : 20/11/2026 · Remplace le plan v1 (`plan-parite-aladdin.md`) et le plan v2
+Date : 20/11/2026, mis à jour le 21/11 · Remplace le plan v1 (`plan-parite-aladdin.md`) et le plan v2
 (`plan-parite-aladdin-v2.md`), gardés en archive · Statut : **en cours** ; chaque étape attend ton GO,
 sauf les correctifs sûrs, faits tout de suite à ta demande.
 
@@ -30,8 +30,9 @@ sauf les correctifs sûrs, faits tout de suite à ta demande.
    était enregistré en clair ; des données personnelles passent dans le cerveau commun. Côté
    plateforme, le pont MCP (pas encore branché) laisse passer des chiffres inventés et garde en clair,
    dans le journal d'audit, ce que Claude lui envoie : à corriger **avant** de le brancher.
-5. **Déjà corrigé le 20/11** (§9, étape 1) : douze défauts, dont tous ceux qui faisaient perdre un
-   souvenir sans le dire, avec un test chacun.
+5. **Déjà fait** (§9) : étape 1 le 20/11, douze défauts, dont tous ceux qui faisaient perdre un souvenir
+   sans le dire ; étape 2 le 20/11, la sécurité restante (8.25.0) ; étape 3 le 21/11, le rappel (8.26.0) :
+   le bon souvenir revient pour 58 questions sur 62, contre 33, sans faux rappel de plus.
 6. **Attention, sous Windows.** `brain.exe`, la version Rust du cerveau, n'a pas changé depuis la
    8.18.2 du 10/11, et son code source n'est pas dans le dépôt. C'est lui qui exécute, sur ton PC, les
    hooks de session, le rappel, `done`, le verrou et le masquage des mots de passe. L'audit a mesuré
@@ -53,6 +54,7 @@ sauf les correctifs sûrs, faits tout de suite à ta demande.
 | 20/11 | Regrouper : souvenirs, skills, code et dépôts, plans et documents | §7 |
 | 20/11 | Gênes : il oublie, il est lent, il consomme trop, des erreurs s'affichent | §4 |
 | 20/11 | Corriger le sûr tout de suite, le reste après ton GO | Étape 1 faite (PR des correctifs sûrs) |
+| 20/11 | « Continue le plan », puis « continue » | Étapes 2 (8.25.0) et 3 (8.26.0) faites |
 
 ## 2. Comment l'audit a été fait, et ses limites
 
@@ -90,20 +92,23 @@ doivent rien rappeler. Le rappel automatique retrouve le bon souvenir dans 33 ca
 trompe jamais. `brain q` le classe dans ses trois premiers 52 fois sur 62. Dans 22 des 29 ratés, le bon
 souvenir était dans les trois premiers, et le filtre l'a écarté.
 
+**Après l'étape 3 (21/11)** : 58 sur 62 (94 %), toujours 2 faux rappels sur 38 pièges (`tests/test_rappel.py`,
+par le vrai hook). Les chiffres de chaque ligne sont ceux mesurés après chaque correction, l'une après l'autre.
+
 | Problème | Correction | Effort | Étape |
 |---|---|---|---|
-| Le filtre exige trop de mots du message : un message de trois phrases ne rappelle jamais rien | Plus de mots vides (était, déjà…) et une seconde voie d'acceptation ; mesuré : 44/62 au lieu de 33, pour 5 faux rappels sur 38 au lieu de 2 | M | 3 |
-| Au-delà de 12 souvenirs par session, plus aucun rappel, sans le dire | Budget glissant, et une ligne quand il est atteint | S | 3 |
+| Le filtre exige trop de mots du message : un message de trois phrases ne rappelle jamais rien | ✅ Mots de remplissage retirés (était, déjà…) ; seconde voie pour les messages de 5 mots ou plus, avec des garde-fous : 43/62, toujours 2 faux rappels sur 38 (sans garde-fous : 5) | M | 3 |
+| Au-delà de 12 souvenirs par session, plus aucun rappel, sans le dire | ✅ 12 souvenirs sur les 20 derniers messages, une ligne quand le rappel fait une pause ; « tu te souviens… » passe toujours | S | 3 |
 | La consolidation de chaque jour fusionnait deux souvenirs de deux projets au même titre | ✅ Même projet et même contenu exigés | S | 1 |
-| Ajouter « Note 9 » archive « Note 7 » : même titre, chiffres différents = « mise à jour » | Une autre semaine, un autre mois ou une autre date = un autre fait | S | 3 |
-| Au démarrage, 5 de tes 9 règles et préférences ne sont pas montrées (place manquante) | Toujours toutes les règles, au moins par leur titre | S | 3 |
-| « retiens / note… » enregistre des phrases qui n'en sont pas, des doublons et des infos sur des tiers | Déclencheur plus strict, anti-doublon par la recherche, message « enregistré » visible | M | 3 |
-| Le rappel de mémoriser n'arrive qu'après 15 appels d'outils : une conversation courte n'est jamais retenue | Le déclencher aussi sur les phrases durables, déjà repérées par le hook | S | 3 |
-| Questions de date (« la semaine dernière ») : rien par le hook | Canal des dates dans le hook, comme dans `brain q` | M | 3 |
-| Synonymes manquants ; racines des mots trop faibles (« refus » → « refu », « entreprise » trouve « entre ») | Liste de synonymes ; racines du français des deux côtés ; demander les mots-clés (`--keys`) au moment de mémoriser | M | 3 |
-| Les observations notées en fin de tâche ne sont jamais rappelées | Une ligne d'observation quand aucun souvenir ne passe | M | 3 |
-| Un souvenir montré coupé au démarrage reste bloqué toute la session | Bloquer seulement les lignes montrées en entier | S | 3 |
-| `brain bench` annonce 100 % là où des questions réelles donnent 53 % | Banc d'essai sur des questions naturelles, par le même chemin que le hook | M | 3 (en premier) |
+| Ajouter « Note 9 » archive « Note 7 » : même titre, chiffres différents = « mise à jour » | ✅ Une autre date, semaine, mois, année ou un autre numéro = un autre fait ; « le prix passe de 12 € à 14 € » reste une mise à jour | S | 3 |
+| Au démarrage, 5 de tes 9 règles et préférences ne sont pas montrées (place manquante) | ✅ Toutes les règles et tout le profil, au moins par leur titre | S | 3 |
+| « retiens / note… » enregistre des phrases qui n'en sont pas, des doublons et des infos sur des tiers | ✅ Ni « retiens-le », ni un ordre (« …, relance-le ») ; doublon reformulé reconnu ; rien de privé sur un tiers ; « n'oublie pas de… avant jeudi » devient un à-faire ; une ligne te dit ce qui a été retenu | M | 3 |
+| Le rappel de mémoriser n'arrive qu'après 15 appels d'outils : une conversation courte n'est jamais retenue | ✅ Seulement sur une phrase durable pas encore enregistrée, quel que soit le nombre d'appels (E3) | S | 2 |
+| Questions de date (« la semaine dernière ») : rien par le hook | ✅ Canal des dates dans le hook : 58/62 | M | 3 |
+| Synonymes manquants ; racines des mots trop faibles (« refus » → « refu », « entreprise » trouve « entre ») | ✅ Racines corrigées : 45/62 ; 8 groupes de synonymes, gardés seulement s'ils n'ajoutent aucun faux rappel, et `--keys` demandé au moment de mémoriser : 54/62 ; « port » ne vaut livraison que pour la boutique, pas pour un serveur | M | 3 |
+| Les observations notées en fin de tâche ne sont jamais rappelées | ✅ Une observation quand aucun souvenir ne passe (6 au plus par session) : 4 questions sur 4 qu'elles seules savent | M | 3 |
+| Un souvenir montré coupé au démarrage reste bloqué toute la session | ✅ Bloqué seulement s'il a été montré en entier | S | 3 |
+| `brain bench` annonce 100 % là où des questions réelles donnent 53 % | ✅ `tests/test_rappel.py` : 62 questions et 38 pièges, plus 8 messages longs et 16 pièges longs, par le vrai hook ; `brain bench` en donne le résultat | M | 3 (en premier) |
 
 ### 4.2 Il est lent
 
@@ -122,6 +127,8 @@ Mesures sous Linux, médianes de 9 essais. Avec 300 souvenirs, chaque hook prend
 | prompts.chat : un serveur lent tenait chaque message jusqu'à 40 s | ✅ Délai total | | S | 1 |
 | Import de la mémoire de Claude Code sans limite de taille | Un fichier de 63 Mo : 34 s et 788 Mo de mémoire | Ignorer les fichiers de plus de 64 Ko, avec un avertissement | S | 4 |
 | Le réflexe de skills relit chaque SKILL.md à chaque message | 60 ms (20 skills), 170 ms (800) | Garder les dates des fichiers | S | 4 |
+| Question datée (« la semaine dernière ») : le canal des dates ajouté à l'étape 3 lisait les dates de chaque souvenir | ✅ À 3 000 souvenirs, hook 107 → 276 ms, puis 124 → 166 ms une fois corrigé (le sujet d'abord) | Garder les dates de chaque souvenir avec l'index | S | 3, puis 4 |
+| Observations de fin de tâche cherchées à chaque message qui ne rappelle aucun souvenir (étape 3) | 6 ms (300 observations), 43 ms (2 000) | Garder leur index entre deux messages | S | 4 |
 | Modules chargés inutilement par chaque hook | −8 à −15 ms par hook | Imports à la demande | S | 4 |
 | Sous Windows, quatre hooks lancent `brain.exe` puis Python : deux démarrages | Non mesuré ici | Voir D2 (brain.exe) et le §11 | — | 4 |
 
@@ -304,10 +311,20 @@ fusionnée). Chaque correctif a un test qui échoue sans lui :
 - Reste : ce qui est déjà parti dans un dépôt commun reste dans son historique git (le réécrire, c'est ta décision) ;
   la capture de « retiens que… » sur des tiers passe à l'étape 3.
 
-**Étape 3 — Rappel** (§4.1) : d'abord le banc d'essai réaliste (62 questions et 38 pièges, par le
-chemin du hook), puis les corrections une à une, chacune mesurée.
-- Fin : au moins 70 % des questions retrouvent le bon souvenir, sans plus de faux rappels qu'aujourd'hui ;
-  toutes tes règles au démarrage ; « Note 9 » n'archive plus « Note 7 ».
+**Étape 3 — Rappel** (§4.1) : **faite le 21/11** (PR #24, cerveau 8.26.0). D'abord le banc d'essai réaliste
+(`tests/test_rappel.py`), puis les corrections une à une, chacune mesurée et testée :
+- le rappel automatique retrouve le bon souvenir pour 58 questions sur 62 (94 %, contre 33), toujours 2 faux
+  rappels sur 38 pièges (objectif : 70 %) ; messages de trois phrases : 8 sur 8, 1 faux rappel sur 16 ;
+- toutes tes règles et tout ton profil au démarrage, au moins par leur titre ;
+- « Note 9 » n'archive plus « Note 7 » : une autre date, semaine, année ou un autre numéro est un autre fait ;
+- « retiens que… » : déclencheur strict, doublon reformulé reconnu, rien de privé sur un tiers, une ligne
+  visible dit ce qui a été retenu ;
+- plafond glissant (12 souvenirs sur 20 messages, dit quand il est atteint), questions datées, observations de fin
+  de tâche, souvenirs coupés au démarrage de nouveau rappelables ; `brain bench` donne la mesure du banc d'essai.
+- Limites : les synonymes ont été choisis sur les ratés du banc d'essai, un nouveau jeu de questions ferait moins
+  bien ; sur 16 autres messages hors sujet essayés après coup, 2 rappellent un souvenir (déjà avant l'étape) ;
+  `brain q` rate encore 3 questions ; le canal des dates n'a pas été essayé avec un neurone appris ; il coûte
+  40 ms de plus par question datée à 3 000 souvenirs, et les observations jusqu'à 43 ms (à reprendre à l'étape 4).
 
 **Étape 4 — Vitesse** (§4.2).
 - Fin : à 3 000 souvenirs, aucun hook au-dessus de 150 ms, premier démarrage après un changement
@@ -429,15 +446,16 @@ Référence pour les sessions qui feront le travail. R = rappel, A = cœur et ho
 T = outils, S = partage, M = mesures, K = skills, G = pont MCP, P = plateforme. « rep. » = reproduit,
 « lu » = lu.
 
-**Rappel** — R-1 `search.py:573-583` filtre trop strict (rep.) · R-2 `hooks.py:847-851` plafond de 12
-(rep.) · R-3 `cli.py:835`, `store.py:343` fusion entre projets (rep., ✅) · R-4 `index.py:131-138,
-180-199` règles cachées (rep.) · R-5 `hooks.py:600-690`, `privacy.py:28-29` capture « retiens » (rep.,
-mot de passe ✅) · R-6 `hooks.py:1158-1164` rappel Stop après 15 appels (rep.) · R-7 `store.py:333-348`,
-`reconcile.py:107-123` doublons reformulés (rep.) · R-8 `cli.py:295-298` pas de regroupement (rep.) ·
-R-9 `hooks.py:759`, `search.py:451-470` dates (rep.) · R-10 `lexicon.py:13-56` synonymes (rep.) ·
-R-11 `common.py:418-421` racines (rep.) · R-12 `bench.py:47-118` banc trop facile (rep.) ·
-R-13 `reconcile.py:119-121`, `dream.py:72-78` chiffres différents = remplacement (rep.) · R-14
-observations jamais rappelées (rep.) · R-15 `hooks.py:377`, `index.py:302` (rep. en partie).
+**Rappel** — R-1 `search.py:573-583` filtre trop strict (rep., ✅) · R-2 `hooks.py:847-851` plafond de 12
+(rep., ✅) · R-3 `cli.py:835`, `store.py:343` fusion entre projets (rep., ✅) · R-4 `index.py:131-138,
+180-199` règles cachées (rep., ✅) · R-5 `hooks.py:600-690`, `privacy.py:28-29` capture « retiens » (rep.,
+✅) · R-6 `hooks.py:1158-1164` rappel Stop après 15 appels (rep., ✅ étape 2) · R-7 `store.py:333-348`,
+`reconcile.py:107-123` doublons reformulés (rep. ; ✅ pour « retiens… », pas encore pour `brain add`) · R-8
+`cli.py:295-298` pas de regroupement (rep.) · R-9 `hooks.py:759`, `search.py:451-470` dates (rep., ✅) ·
+R-10 `lexicon.py:13-56` synonymes (rep., ✅) · R-11 `common.py:418-421` racines (rep., ✅) · R-12
+`bench.py:47-118` banc trop facile (rep., ✅) · R-13 `reconcile.py:119-121`, `dream.py:72-78` chiffres
+différents = remplacement (rep., ✅) · R-14 observations jamais rappelées (rep., ✅) · R-15 `hooks.py:377`,
+`index.py:302` (rep. en partie, ✅).
 
 **Cœur et hooks** — A-1 `common.py:267-271` verrou repris (rep., ✅) · A-2 `hooks/hooks.json` `python`
 (rep.) · A-3 `history.py:44`, `backup.py:123-143` réparation ancienne (rep.) · A-4 `store.py:198-199`
