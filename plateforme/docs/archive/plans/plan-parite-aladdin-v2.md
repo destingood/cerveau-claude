@@ -293,7 +293,16 @@ PR de ce plan :
 ### Bloc C — Étendre (ordre selon D5)
 
 **Étape 9 — Finance au niveau Aladdin** (C16) : les étapes 3 à 6 de la v1, inchangées sur le fond
-- Données gratuites (OpenBB, yfinance, FRED) ; risque et performance complets (corrections C16,
+
+> **Note du 21/11/2026 : l'ADR-013 fait foi** (reconfirmé ce jour par l'utilisateur). Pas de yfinance :
+> les conditions de Yahoo interdisent la collecte automatisée (R15). OpenBB reste au backlog (son extension
+> Yahoo est sous AGPL-3.0). Sources : la BCE (change et taux), les exports CSV de l'utilisateur, puis une
+> API officielle qu'il choisit. FRED : conditions de son API relues le 21/11/2026 sur
+> fred.stlouisfed.org/docs/api/terms_of_use.html : clé gratuite (dans une variable d'environnement que
+> Claude Code ne lit jamais), mention obligatoire « This product uses the FRED® API but is not endorsed or
+> certified by the Federal Reserve Bank of St. Louis. », séries d'un tiers marquées « Copyright » limitées à
+> l'usage personnel. Utilisable sous ces conditions, par un ADR qui l'ajoute (R14).
+- Données gratuites (~~OpenBB, yfinance,~~ BCE, CSV, FRED : voir la note) ; risque et performance complets (corrections C16,
   facteurs, stress historiques, attribution) ; tes actifs (change, obligations et options avec
   QuantLib, crypto sur une plateforme agréée MiCA) ; courtier (D12) en lecture, puis 4 semaines de
   paper trading.

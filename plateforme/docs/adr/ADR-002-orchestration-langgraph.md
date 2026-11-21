@@ -1,8 +1,14 @@
 # ADR-002 — Orchestration : LangGraph plutôt que le Claude Agent SDK
 
-- Statut : accepté (l'utilisateur, 2026-10-18, décision D13 du plan de phase 1)
+- Statut : accepté (l'utilisateur, 2026-10-18, décision D13 du plan de phase 1) ; **modifié par
+  l'ADR-069** (2026-11-17, statut proposé)
 - Date : 2026-10-17
 - Phase : 0 (mise en œuvre en phase 1)
+
+> Note du 21/11/2026 : depuis le budget API fixé à 0 € (17/11/2026), l'ADR-069 fait de Claude Code le chef
+> d'orchestre, par le pont MCP `cerveau-plateforme`, sous la même gouvernance. Le graphe LangGraph décrit
+> ci-dessous reste en place, inchangé, pour le jour où un budget API existera (décision E9 du plan en
+> attente). Le texte de cet ADR n'est pas réécrit.
 
 ## Contexte
 L'orchestrateur exécute les 8 nœuds de la section 7.1. Il doit :

@@ -1,6 +1,8 @@
 # ADR-013 — Sources de données de marché : pas de yfinance, OpenBB reporté
 
-- Statut : **accepté par l'utilisateur le 18/10/2026** (plan de phase 2, D1, D2, D3, D5)
+- Statut : **accepté par l'utilisateur le 18/10/2026** (plan de phase 2, D1, D2, D3, D5) ; **reconfirmé
+  par l'utilisateur le 21/11/2026** (« Garder ADR-013 » : pas de yfinance, OpenBB reste au backlog), contre
+  l'étape 9 du plan v2 qui citait encore yfinance et OpenBB
 - Date : 2026-10-18
 - Phase : 2
 
