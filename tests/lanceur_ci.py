@@ -27,7 +27,8 @@ for d in ("claude", "brain", "home", "work"):
 SPEC = json.loads((CODE / "hooks" / "hooks.json").read_text(encoding="utf-8"))["hooks"]
 HOOK = {ev: SPEC[name][0]["hooks"][0]["command"] for ev, name in (("session-start", "SessionStart"),
                                                                    ("prompt", "UserPromptSubmit"),
-                                                                   ("pre-agent", "PreToolUse"))}
+                                                                   ("pre-agent", "PreToolUse"),
+                                                                   ("post-bash", "PostToolUse"))}
 SYS32 = os.path.join(os.environ.get("SystemRoot", r"C:\Windows"), "System32")
 
 
@@ -127,6 +128,36 @@ else:
         check(started(res), "Git Bash, vrai python.exe : le démarrage injecte le cerveau", res)
     else:
         print("· Git Bash introuvable : cas Git Bash sauté")
+
+
+# Coût du lanceur, pour information (aucune vérification : les machines de CI varient) : le hook le plus léger
+# (post-bash) lancé directement par Python, comme avant le lanceur, puis par chaque chemin du lanceur. Médiane de 9.
+def timed(argv, path):
+    import statistics
+    import time
+    out = []
+    for _ in range(9):
+        t = time.perf_counter()
+        run(argv, path, "post-bash")
+        out.append((time.perf_counter() - t) * 1000)
+    return statistics.median(out)
+
+
+direct = [NEW, "-I", "-S", str(CODE / "brain.py"), "hook", "post-bash"]
+here_path = os.path.dirname(NEW)
+times = [("Python lancé directement (avant)", timed(direct, os.environ.get("PATH", "")))]
+if not WIN:
+    times.append(("lanceur sous sh", timed(["/bin/sh", "-c", HOOK["post-bash"]], f"{here_path}:/usr/bin:/bin")))
+else:
+    bash = git_bash()
+    if bash:
+        times.append(("lanceur sous Git Bash", timed([bash, "-c", HOOK["post-bash"]], f"{here_path};{SYS32}")))
+    for exe in [p for p in (shutil.which("powershell"), shutil.which("pwsh")) if p]:
+        cmd = HOOK["post-bash"].replace("${CLAUDE_PLUGIN_ROOT}", "${env:CLAUDE_PLUGIN_ROOT}")
+        times.append((f"lanceur sous {Path(exe).stem}",
+                      timed([exe, "-NoProfile", "-NonInteractive", "-ExecutionPolicy", "Bypass", "-Command", cmd],
+                            f"{here_path};{SYS32}")))
+print("· temps du hook post-bash (médiane de 9) : " + " · ".join(f"{name} {ms:.0f} ms" for name, ms in times))
 
 if not FAIL and not OK:
     FAIL.append("aucun cas lancé")
