@@ -188,7 +188,9 @@ garde sa propre mémoire.
 - **Filtres appris** : `brain compact --decouvrir` repère le bruit qui revient dans les sorties de tes commandes et
   `brain compact --apprendre <commande> --enregistrer` en fait un filtre appliqué tout seul. L'entretien du jour le
   fait aussi de lui-même, annoncé une fois ; `brain compact --oublier <commande>` pour retirer un filtre.
-- **Texte injecté plus court** au démarrage, à chaque message et dans la liste des outils.
+- **Texte injecté plus court** au démarrage, à chaque message et dans la liste des outils : le serveur MCP du
+  cerveau ne liste que les 6 outils de la mémoire ; `brain config mcp.groupes '["wiki", "boutique"]'` ajoute ceux
+  du wiki et des boutiques (utile dans l'app Claude ou Cowork), et un résultat trop long arrive par pages.
 - **Skills chargées d'office** : `brain config skills.auto '["ma-skill"]'` et, dès qu'un message correspond à la skill,
   le cerveau glisse lui-même son contenu dans la conversation, sans attendre que Claude l'ouvre ; il la ressert
   après chaque résumé de la conversation.

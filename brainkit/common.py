@@ -94,6 +94,12 @@ DEFAULT_CONFIG = {
     # fait un filtre (`apprendre_auto`), annoncé une fois ; `brain compact --oublier "<commande>"` le retire pour de bon.
     "compact": {"enabled": True, "min_chars": 1500, "min_gain": 0.3, "min_saved": 600, "keep_days": 3, "max_files": 40,
                 "echantillons": True, "apprendre_auto": True},
+    # Serveur MCP (`brain mcp` : Claude Code par le plugin, l'app Claude, Cowork…) : chaque client relit la liste des
+    # outils à chaque requête. Par défaut, les 6 outils de la mémoire seulement (décision du 21/11) ; `groupes` en ajoute
+    # d'autres : "wiki" (wiki_status, wiki_add_source, wiki_lint, wiki_log), "boutique" (boutique_etat, _ajouter, _plan,
+    # _kpi, _audit), ou "tout" — `brain config mcp.groupes '["wiki", "boutique"]'`. `max_car` : un résultat plus long est
+    # coupé en pages (la fin dit comment demander la suite, `page: 2`).
+    "mcp": {"groupes": [], "max_car": 8000},
     # Cartographie automatique (en arrière-plan) des dossiers de projet.
     "auto_map": {"enabled": True, "refresh_minutes": 10},
     "map": {"max_files": 15000, "max_file_kb": 768},

@@ -2433,9 +2433,15 @@ def build_parser():
     s.add_argument("--force", action="store_true")
     s.add_argument("--dry-run", action="store_true")
     s.add_argument("--max-ko", type=int, help="taille maximale d'un fichier importé, en Ko (défaut 64 ; 0 : sans limite)")
-    s = cmd("config", cmd_config, "lire/modifier la configuration (ex : config recall.enabled false)")
-    s.add_argument("key", nargs="?")
-    s.add_argument("value", nargs="?")
+    s = cmd("config", cmd_config, "lire/modifier la configuration (ex : config recall.enabled false ; serveur MCP : "
+            "config mcp.groupes '[\"wiki\", \"boutique\"]' ajoute ces outils aux 6 de la mémoire, "
+            "config mcp.max_car 8000 borne chaque résultat)")
+    s.description = ("Lire ou modifier la configuration du cerveau (config.json). Sans clé : tout. Valeur en JSON ou en "
+                     "texte. Serveur MCP : les 6 outils de la mémoire sont listés par défaut ; `config mcp.groupes "
+                     "'[\"wiki\", \"boutique\"]'` (ou \"tout\") ajoute ceux du wiki et des boutiques ; `config mcp.max_car "
+                     "8000` : un résultat plus long est coupé en pages (la suite avec « page: 2 »).")
+    s.add_argument("key", nargs="?", help="clé à points, ex : recall.enabled, mcp.groupes")
+    s.add_argument("value", nargs="?", help="nouvelle valeur (JSON ou texte)")
     s = cmd("hook", cmd_hook, "point d'entrée des hooks Claude Code (usage interne)")
     s.add_argument("event", choices=["session-start", "prompt", "stop", "pre-compact", "post-compact", "session-end",
                                      "post-bash", "pre-agent"])

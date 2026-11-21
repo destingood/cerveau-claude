@@ -673,6 +673,17 @@ check(obsidian.setup(WIKI, force=True) == [] and page(obsidian.GUIDE) == mine,
       "Obsidian : mode d'emploi retouché à la main jamais réécrit")
 
 # ------------------------------------------------------------------ 11. MCP
+# Par défaut (décision du 21/11), seuls les outils de la mémoire sont listés ; `mcp.groupes` ajoute ceux du wiki.
+req = "\n".join(json.dumps(x) for x in (
+    {"jsonrpc": "2.0", "id": 1, "method": "initialize", "params": {"protocolVersion": "2024-11-05", "capabilities": {}}},
+    {"jsonrpc": "2.0", "id": 2, "method": "tools/list"})) + "\n"
+r = subprocess.run([sys.executable, "-I", "-S", str(CODE / "brain.py"), "mcp"], input=req.encode(), capture_output=True,
+                   cwd=str(WORK), env=os.environ.copy(), timeout=60)
+resp = [json.loads(x) for x in r.stdout.decode("utf-8").splitlines() if x.strip()]
+names = [t["name"] for t in resp[1]["result"]["tools"]] if len(resp) > 1 else []
+check(names and all(n.startswith("memory_") for n in names), "MCP par défaut : outils de la mémoire seulement", names)
+c, out = brain("config", "mcp.groupes", "wiki")
+check(c == 0, "MCP : `brain config mcp.groupes wiki` ajoute les outils du wiki", out)
 req = "\n".join(json.dumps(x) for x in (
     {"jsonrpc": "2.0", "id": 1, "method": "initialize", "params": {"protocolVersion": "2024-11-05", "capabilities": {}}},
     {"jsonrpc": "2.0", "id": 2, "method": "tools/list"},
