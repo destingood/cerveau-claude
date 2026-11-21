@@ -204,7 +204,7 @@ check(c == 0 and "⚡ Mode éco activé" in eco_line and "liste des skills plafo
       and "mises en fichier" not in eco_line and "résumée vers" not in eco_line,
       "valeurs de l'utilisateur déjà là : gardées, seuls les autres leviers sont posés et annoncés", out[-400:])
 check(W.settings() == {"bashOutputMaxChars": 20000, "autoCompactWindow": 300000, "skillListingBudgetFraction": 0.005,
-                       "autoMemoryEnabled": False, **STYLE} and W.config("eco.applique_le"),
+                       "skillListingMaxDescChars": 250, "autoMemoryEnabled": False, **STYLE} and W.config("eco.applique_le"),
       "valeurs de l'utilisateur gardées ; liste des skills et mémoire auto posées (rien à importer)", W.settings())
 c, msg, out = W.hook("session-start", "e2")
 check(c == 0 and "⚡ Mode éco" not in context_of(msg) and W.settings()["bashOutputMaxChars"] == 20000,
@@ -228,9 +228,9 @@ check(c == 0 and "⚡ Mode éco — nouveaux réglages" in eco_line and "liste d
       and "mémoire auto de Claude Code coupée" in eco_line and "mises en fichier" not in eco_line,
       "nouveaux leviers d'une version plus récente : posés une fois, annonce « nouveaux réglages »", out[-400:])
 check(W.settings() == {"bashOutputMaxChars": 10000, "autoCompactWindow": 200000, "skillListingBudgetFraction": 0.005,
-                       "autoMemoryEnabled": False, **STYLE} and W.config("eco.leviers") == 3
-      and W.config("eco.applique_le") == "2026-10-01T00:00:00",
-      "nouveaux leviers : posés, eco.leviers à 3, date d'application d'origine gardée", (W.settings(), W.config("eco")))
+                       "skillListingMaxDescChars": 250, "autoMemoryEnabled": False, **STYLE}
+      and W.config("eco.leviers") == 4 and W.config("eco.applique_le") == "2026-10-01T00:00:00",
+      "nouveaux leviers : posés, eco.leviers à 4, date d'application d'origine gardée", (W.settings(), W.config("eco")))
 c, msg, out = W.hook("session-start", "l2")
 check(c == 0 and "⚡ Mode éco" not in context_of(msg), "nouveaux leviers annoncés une seule fois", out[-300:])
 # cerveau classique (code dans le dossier des souvenirs, pas de .claude-plugin) : même ligne, ajoutée à l'injection

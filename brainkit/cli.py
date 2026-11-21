@@ -2226,8 +2226,8 @@ def build_parser():
     s = cmd("eco", cmd_eco, "mode éco : moins de tokens sans rien perdre (sorties longues mises en fichier, résumé plus tôt, "
             "plugins inutilisés, skills, mémoire, cache) — --appliquer · --annuler · --poser ID · --cache auto", ["econome"])
     s.add_argument("--appliquer", action="store_true", help="écrire les leviers sûrs (bashOutputMaxChars, autoCompactWindow, "
-                   "skillListingBudgetFraction, autoMemoryEnabled) dans ~/.claude/settings.json (retour exact "
-                   "possible) ; fait tout seul au 1er démarrage")
+                   "skillListingBudgetFraction, skillListingMaxDescChars, autoMemoryEnabled) dans "
+                   "~/.claude/settings.json (retour exact possible) ; fait tout seul au 1er démarrage")
     s.add_argument("--annuler", action="store_true", help="remettre exactement les réglages d'avant et couper l'application automatique")
     s.add_argument("--forcer", action="store_true", help="remplacer une valeur que tu avais déjà réglée toi-même")
     s.add_argument("--sortie", type=int, help="bashOutputMaxChars, de 4000 à 128000 (défaut 10000)")
