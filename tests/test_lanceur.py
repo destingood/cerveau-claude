@@ -26,7 +26,20 @@ for d in (TMP / "claude", TMP / "brain", TMP / "home", TMP / "work"):
 sys.path.insert(0, str(CODE))
 WIN = os.name == "nt"
 REAL = Path(sys.executable).as_posix()
-SH = shutil.which("sh") or ("/bin/sh" if not WIN else None)  # sous Windows : le sh de Git Bash, s'il est là
+
+
+def git_bash():
+    """Le Git Bash que Claude Code prendrait sous Windows (CLAUDE_CODE_GIT_BASH_PATH, Program Files, à côté de git)."""
+    found = [os.environ.get("CLAUDE_CODE_GIT_BASH_PATH"), r"C:\Program Files\Git\bin\bash.exe",
+             r"C:\Program Files (x86)\Git\bin\bash.exe"]
+    git = shutil.which("git")
+    if git:
+        found += [os.path.join(os.path.dirname(git), "..", "..", "bin", "bash.exe"),
+                  os.path.join(os.path.dirname(git), "..", "bin", "bash.exe")]
+    return next((p for p in found if p and os.path.isfile(p)), None) or shutil.which("sh")
+
+
+SH = git_bash() if WIN else "/bin/sh"  # le shell de Claude Code : sh -c (macOS, Linux), Git Bash (Windows)
 
 
 def check(cond, label, detail=""):
