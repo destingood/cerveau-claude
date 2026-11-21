@@ -19,6 +19,7 @@ from .common import CLAUDE_HOME, PLUGIN, load_config, oserror_fr, read_json, rem
 # CODE (remplacé par une mise à jour) vs DONNÉES (jamais touchées : graph.json, config.json, BRAIN.md, history/…).
 CODE_ROOT_FILES = ("brain.py",)
 CODE_DIRS = ("brainkit", "tests")
+ASSET_DIRS = ("brainkit/vue3d",)  # code qui n'est pas du .py : vue 3D (page.html, bibliothèques, licences)
 AGENTS_DIR = "agents"  # agents de délégation livrés avec le code (agents/<nom>.md), posés dans ~/.claude/agents par `install`
 SKILLS_DIR = "skills"  # skills métier livrées avec le code (skills/<nom>/, tous leurs fichiers : Markdown, scripts) ;
 # skills/brain n'en fait pas partie (écrite par `brain install` depuis install.SKILL)
@@ -26,7 +27,7 @@ SKILLS_DIR = "skills"  # skills métier livrées avec le code (skills/<nom>/, to
 
 def _code_files(root: Path) -> dict:
     """{chemin relatif POSIX -> Path absolu} de tout le CODE sous root : brain.py + brainkit/**.py + tests/**.py +
-    agents/*.md + skills/<nom>/** (jamais __pycache__ ni aucun fichier de données)."""
+    agents/*.md + skills/<nom>/** + brainkit/vue3d/* (jamais __pycache__ ni aucun fichier de données)."""
     out = {}
     for name in CODE_ROOT_FILES:
         p = root / name
@@ -37,6 +38,12 @@ def _code_files(root: Path) -> dict:
         if base.is_dir():
             for p in base.rglob("*.py"):
                 if "__pycache__" not in p.parts:
+                    out[p.relative_to(root).as_posix()] = p
+    for d in ASSET_DIRS:  # fichiers du code qui ne sont pas du Python (gabarit et bibliothèques de la vue 3D)
+        base = root / d
+        if base.is_dir():
+            for p in base.iterdir():
+                if p.is_file() and p.suffix not in (".pyc", ".tmp"):
                     out[p.relative_to(root).as_posix()] = p
     agents = root / AGENTS_DIR
     if agents.is_dir():

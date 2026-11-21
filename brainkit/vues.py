@@ -184,7 +184,7 @@ def regenerate(force=False) -> list:
     (index.prebuild). Une vue absente ou réécrite par quelqu'un d'autre est refaite. `force` : toutes, quoi qu'il en
     soit (`brain vues`, réparation). Le cerveau lu n'est pas modifié : ses voisins sont indexés une fois pour l'export.
     → noms des vues refaites."""
-    from . import fiches, graph, index, mots, viz
+    from . import fiches, graph, index, mots, viz, viz3d
     from .common import EXPORT_FILE, VIZ2D_FILE, VIZ_FILE
     from .store import Brain
     stamp = _sources_ns()
@@ -212,7 +212,7 @@ def regenerate(force=False) -> list:
         ("export", [EXPORT_FILE], [], lambda: [_code("index.py", "store.py", "common.py"), _today(), src.content()],
          lambda: index.export(b)),  # (sa date, et l'ordre des souvenirs, qui dépend de leur âge : refait chaque jour)
         ("vue 3D", [VIZ_FILE, VIZ2D_FILE], [graph.ANALYSIS_FILE],  # (avec l'analyse du graphe, refaite si besoin)
-         lambda: [_code("viz.py", "viz3d.py", "graph.py", "boutique.py"), src.content(), src.around_viz()],
+         lambda: [_code("viz.py", *viz3d.FILES, "graph.py", "boutique.py"), src.content(), src.around_viz()],
          lambda: viz.render(b)),
         ("fiches", [], [graph.ANALYSIS_FILE, fiches.FICHES_FILE],  # fiches de synthèse : jamais faites dans un rappel
          lambda: [_code("fiches.py", "graph.py"), src.content()], lambda: fiches.ensure(b)),

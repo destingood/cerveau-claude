@@ -37,7 +37,8 @@ sauf les correctifs sûrs, faits tout de suite à ta demande.
    la consommation (8.28.0) : 18 skills au lieu de 33, démarrage et outils MCP −30 % ; étape 6 le 21/11, les erreurs
    (8.29.0) : plus aucune trace Python ni message en anglais dans les 400 cas d'essai des commandes ; étape 7 le 21/11, ne plus
    perdre de souvenir (8.30.0) : un graph.json abîmé se répare avec les souvenirs des dernières minutes, et le wiki
-   sur deux PC ne se bloque plus au premier conflit.
+   sur deux PC ne se bloque plus au premier conflit ; étape 8 le 21/11, regrouper (8.31.0) : `brain regroupe` (doublons
+   reformulés, souvenirs sans projet, fiches), aucun fichier du code au-delà de 1 000 lignes, vue 3D sans site extérieur.
 6. **Attention, sous Windows.** `brain.exe`, la version Rust du cerveau, n'a pas changé depuis la
    8.18.2 du 10/11, et son code source n'est pas dans le dépôt. C'est lui qui exécute, sur ton PC, les
    hooks de session, le rappel, `done`, le verrou et le masquage des mots de passe. L'audit a mesuré
@@ -64,6 +65,7 @@ sauf les correctifs sûrs, faits tout de suite à ta demande.
 | 21/11 | Fusionner la 8.27.0 ; étape 5 ; regrouper les skills, E2, E8, outils MCP de la mémoire seulement | 8.27.0 fusionnée ; étape 5 faite (8.28.0) |
 | 21/11 | Garder l'injection du démarrage ; étape 6 ; E1 : pas de lanceur Python | 8.28.0 fusionnée ; étape 6 faite (8.29.0) |
 | 21/11 | Fusionner la 8.29.0 ; étape 7 ; E7 : sauvegarde dans ton dossier personnel | 8.29.0 fusionnée ; étape 7 faite (8.30.0) |
+| 21/11 | Fusionner la 8.30.0 ; étape 8 ; supprimer les 15 vieilles branches | 8.30.0 fusionnée ; étape 8 faite (8.31.0) ; branches : la session n'a pas le droit de les supprimer, la commande est au §11 |
 
 ## 2. Comment l'audit a été fait, et ses limites
 
@@ -216,7 +218,7 @@ les deux ensemble −30 %. Descriptions des skills listées : 29 758 → 4 180 c
 | `brain pc` (veille Windows) ferme sans demander tout processus orphelin de plus de 10 min dont la ligne de commande contient « mcp » ; `brain pc --clean` aussi | Signature précise ou simple liste par défaut (décision E5) | 2 |
 | Le mode éco désactive tout seul, une fois par jour, des plugins et des skills claude.ai jugés inutilisés | Sur ton accord seulement (décision E6) | 2 |
 | `settings.json` de Claude Code réécrit en entier sans le relire juste avant : une modification faite en même temps se perd | Relire et fusionner juste avant d'écrire | 2 |
-| La visualisation 3D charge des scripts de trois sites, sans contrôle d'intégrité | Les livrer avec le plugin | 8 |
+| La visualisation 3D charge des scripts de trois sites, sans contrôle d'intégrité | ✅ Livrés avec le plugin (licence MIT, empreintes SHA-256), dans la page : elle s'ouvre sans connexion | 8 |
 | Sans `commun.repo`, rejoindre le cerveau commun utilise le dépôt de l'auteur | À savoir avant de partager | — |
 
 ## 6. Ne plus perdre de souvenir
@@ -239,11 +241,12 @@ les deux ensemble −30 %. Descriptions des skills listées : 29 758 → 4 180 c
 
 - ✅ La consolidation ne fusionne plus deux projets (étape 1).
 - Les doublons reformulés ne sont jamais vus : les 7 paires plantées obtenaient 0,11 à 0,39 de
-  similarité, pour un seuil de 0,6 à 0,9. Chercher les candidats par l'index de recherche (M, étape 8).
-- 40 souvenirs sur 209 n'ont pas de projet. L'analyse du graphe en place en rattache déjà 4 sur 5 au
-  bon projet. Nouvelle commande `brain regroupe` : elle montre d'abord ce qu'elle ferait (doublons à
-  fusionner, souvenirs à rattacher à un projet, sujets à réunir en fiche), puis attend ton accord
-  (L, étape 8).
+  similarité, pour un seuil de 0,6 à 0,9. ✅ `brain regroupe` cherche les candidats par l'index de recherche : 6 paires
+  sur 7 trouvées, aucune fausse (étape 8).
+- 40 souvenirs sur 209 n'ont pas de projet. ✅ `brain regroupe` propose le projet quand deux indices concordent et
+  qu'aucun ne contredit : 4 sur 5 rattachés, aucun souvenir vraiment général rattaché à tort. Il propose aussi des
+  fiches (sujets cités par 3 à 12 petits souvenirs), montre d'abord, puis applique ce que tu choisis
+  (`--appliquer 1,3`), instantané pris avant (étape 8).
 
 ### 7.2 Les skills : de 33 à 18
 
@@ -270,14 +273,15 @@ ci-dessus sont faites.
 
 ### 7.3 Le code et les dépôts
 
-- Découper `cli.py` (2 416 lignes, une commande par module) et `mapper.py` (2 415 : parcours, langages,
-  requêtes), tests d'abord, sans changer le comportement ; puis `hooks.on_session_start`, la fonction
-  la plus complexe du plugin (L, étape 8).
-- Carte de projets, défauts reproduits : paquet local compté comme externe ; dossiers `build/`, `env/`,
-  `out/` ignorés à toute profondeur ; `exports.x =` non indexé ; un changement dans la même seconde
-  pas vu (S chacun, étape 8).
+- ✅ Découpés, tests d'abord, sans changer le comportement (étape 8) : `cli.py` (8 modules), `mapper.py` (7),
+  `wiki.py` (5), `hooks.py` (5), `eco.py`, `pc.py`, `commun.py` et `echange.py` (3 chacun), `skills.py` (2) ; aucun
+  fichier au-delà de 1 000 lignes. `hooks.on_session_start` se lit en sept étapes nommées.
+- ✅ Carte de projets (étape 8) : paquet local compté comme externe ; dossiers `build/`, `env/`, `out/` ignorés à toute
+  profondeur ; `exports.x =` non indexé ; un changement dans la même seconde pas vu. Sur ce dépôt, 2 839 liens au lieu
+  de 506.
 - Deux dépôts (D3) et les dossiers Fortnite à part (D11) : toujours en attente de tes dépôts privés.
-- 15 branches à supprimer : rien ne manque à `main` (ton accord, étape 8).
+- 15 branches à supprimer : rien ne manque à `main`. Ton accord le 21/11 ; la session n'a pas le droit de supprimer une
+  branche sur GitHub (refus 403) : la commande est au §11.
 - Plateforme : environ 6 000 lignes servent seulement au chef d'orchestre LangGraph, inutilisable à
   0 € (décision E9). 5 blocs dupliqués entre plugins (client HTTP, arguments Docker).
 
@@ -435,10 +439,24 @@ hook au-dessus de 150 ms, premier démarrage après un changement compris ; `bra
   faite juste avant qu'un graph.json s'abîme peut revenir si sa ligne d'écriture manque : un souvenir revenu plutôt
   qu'un souvenir perdu.
 
-**Étape 8 — Regrouper** : souvenirs (`brain regroupe`), code (`cli.py`, `mapper.py`), défauts de la
-carte de projets, branches (ton accord), visualisation 3D sans site extérieur, un journal du wiki par
-PC (reste de l'étape 7).
-- Fin : `brain regroupe` montre puis applique ; aucun fichier de plus de 1 000 lignes ; tests verts.
+**Étape 8 — Regrouper** : **faite le 21/11** (PR #29, cerveau 8.31.0).
+- `brain regroupe` (§7.1) : sur le monde de l'audit (209 souvenirs), 6 doublons reformulés sur 7, 4 rattachements sur 5,
+  4 fiches, aucune fausse proposition. Le souvenir gardé reçoit les textes, liens, compteurs et dates des deux ; l'autre
+  est archivé, son titre devient un mot-clé. 2,6 s à 10 000 souvenirs (6 s la première fois). `brain consolidate`
+  fusionne maintenant de la même façon.
+- Code (§7.3) : plus aucun fichier au-delà de 1 000 lignes (le plus gros : 997). Chaque découpage a d'abord été figé par
+  des tests : 240 commandes, 90 étapes de hooks et 253 sorties du wiki, du cerveau commun et de l'échange de skills,
+  identiques à l'octet avant et après. Hooks aussi rapides (ou un peu plus : `brain --version` 43 → 35 ms, démarrage
+  en mode wiki 137 → 129 ms).
+- Carte de projets : les quatre défauts corrigés ; la première carte après la mise à jour relit chaque fichier une fois.
+- Vue 3D : 3d-force-graph 1.80.0 et three 0.183.0 (MIT) dans la page, plus aucun site extérieur ; la page pèse 1,9 Mo.
+  Corrigé au passage : un souvenir contenant `<!--` puis `<script` pouvait casser la page.
+- Journal du wiki : un dossier par PC (`journal/<PC>/AAAA-MM.md`), les anciens mois rangés dans `journal/ancien/` ;
+  `brain q` et la page Cerveau d'Obsidian lisent les sessions de tous les PC.
+- Tests : `test_regroupe` (53), `test_carte` (64, dont 24 échouent sur la 8.30.0), `test_vue3d` (51),
+  `test_commandes` (471), `test_hooks_situations` (37), `test_decoupage` (43), `test_wiki_conflits` (60) ; 34 scripts.
+- Restes : 15 branches à supprimer de ton PC (§11) ; en mode wiki, la fin de session prend 356 ms (déjà le cas avant,
+  hors budget de 150 ms) ; les fiches ne viennent que des 40 plus gros sujets de l'analyse du graphe.
 
 **Étape 9 — Documents** (§7.4) : archives, backlog trié, ADR, README, page des réglages.
 - Fin : un seul plan, un backlog sans point mort, chaque réglage expliqué.
@@ -522,6 +540,13 @@ git --version
 ```
 
 Dans Claude Code : `/context` (ce que coûtent les skills et les outils) et `/doctor`.
+
+Les 15 vieilles branches (ton accord du 21/11 ; la session cloud n'a pas le droit de les supprimer), une seule commande,
+dans ton clone du dépôt :
+
+```powershell
+git push origin --delete cerveau-plateforme claude/clever-heisenberg-lgjfhn claude/compassionate-gauss-txr1ff claude/eloquent-lovelace-ds7vsi claude/gallant-einstein-itr2km claude/reverse-api-engineer claude/skill-rea claude/sleepy-brahmagupta-nqxaed claude/tender-hawking-0qf1id claude/upbeat-cerf-h65b5u claude/vibrant-bardeen-x40dsb claude/vibrant-pascal-chu3e3 claude/wizardly-goldberg-v4yxlu phase-7-mise-en-route plateforme-phase-6-p6
+```
 
 ## 12. Confiance et points à vérifier
 

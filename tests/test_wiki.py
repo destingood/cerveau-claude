@@ -129,10 +129,14 @@ check("[[Choix de l" not in page(files["relancer-fournisseur"]["path"]) and 'lie
 idx = page("index.md")
 check("[[Prix du gyokuro]]" in idx and "Prix du gyokuro (" not in idx, "index : pages actives seulement")
 check("migration" in page("log.md"), "journal : entrée de migration")
-j9 = page("journal/2026-09.md") if (WIKI / "journal/2026-09.md").is_file() else ""
+jfiles = sorted((WIKI / "journal").glob("*/2026-09.md"))  # un dossier par PC (8.31.0) : journal/<PC>/AAAA-MM.md
+j9 = jfiles[0].read_text(encoding="utf-8") if len(jfiles) == 1 else ""
 check("💬 11:30 « Refaire la fiche produit gyokuro »" in j9 and "🔴 11:00 Alex choisit Mondial Relay" in j9
-      and "jeudi 3 septembre" in j9, "historique : sessions et observations dans journal/2026-09.md", j9[:600])
-check("Première version du site en ligne" in page("journal/2026-08.md"), "historique : observations archivées par le rêve aussi")
+      and "jeudi 3 septembre" in j9, "historique : sessions et observations dans journal/<PC>/2026-09.md",
+      [str(x) for x in jfiles] or j9[:600])
+j8 = sorted((WIKI / "journal").glob("*/2026-08.md"))
+check(len(j8) == 1 and "Première version du site en ligne" in j8[0].read_text(encoding="utf-8"),
+      "historique : observations archivées par le rêve aussi")
 check("ghp_a1B2" not in j9, "historique : secrets masqués", j9)
 cs = json.loads(page(".claude/settings.json"))
 check(set(cs.get("hooks", {})) == {"SessionStart", "UserPromptSubmit", "Stop", "PreCompact", "PostCompact", "SessionEnd"}

@@ -183,6 +183,22 @@ def load() -> dict:
     return j
 
 
+def all_sessions() -> list:
+    """Sessions de ce PC, puis — en mode wiki — celles des autres PC, lues dans le journal du wiki (journal/<PC>/) :
+    `brain q` et la page Cerveau d'Obsidian voient tout ce qui s'est fait, sur n'importe quel PC."""
+    mine = list(load()["sessions"].values())
+    try:
+        from . import wikistore
+        mode, root = wikistore.resolve()
+        if mode == "wiki" and root:
+            from . import wiki
+            mine += wiki.other_sessions(root, known=mine)
+    except Exception as exc:  # le journal des autres PC ne doit jamais empêcher de lire celui-ci
+        from .common import log
+        log(f"journal des autres PC : {exc!r}")
+    return mine
+
+
 def summary_part(text, start="current work", stop=None, limit=1500) -> str:
     """Morceau d'un résumé de compaction : de la section `start` jusqu'à la section `stop` (exclue), sans blocs de
     code. Sans sections reconnues : la fin du résumé (là où il décrit le travail en cours)."""

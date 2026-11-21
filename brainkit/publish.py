@@ -142,7 +142,8 @@ Rien à faire : parle normalement à Claude. Pour aller plus loin :
 | « qu'est-ce que tu as appris ? », « partage cette skill avec mes amis », « qu'est-ce qui est parti sur un modèle moins cher ? » | montre ce qu'il a [appris de tes sessions](#le-cerveau-apprend-tout-seul), partage une skill avec ton accord, ou fait le point sur la [délégation](#moins-de-tokens) |
 
 Vue 3D de ta mémoire : `~/.claude/brain/cerveau.html` (souvenirs, projets, le cerveau e-commerce avec ses fiches et ses
-outils, et tes boutiques suivies).
+outils, et tes boutiques suivies). Elle marche hors ligne, sans aucun site extérieur : ses bibliothèques (3d-force-graph
+et three.js, sous licence MIT) sont livrées avec le plugin et intégrées à la page (`brainkit/vue3d/LICENCES.md`).
 
 ## Ce que fait le cerveau
 

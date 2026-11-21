@@ -654,6 +654,59 @@ class Brain:
         self.dirty = True
         return True
 
+    def merge(self, keep_id, drop_id):
+        """Doublon : `drop` fondu dans `keep` (consolidation, `brain regroupe`). Rien ne se perd : le texte de `drop`
+        s'ajoute s'il dit autre chose, son titre devient un mot-clé de `keep` (la recherche le retrouve sous ses deux
+        formulations), étiquettes, importance, compteurs de rappel et dates des deux sont gardés, ses liens passent à
+        `keep` ; `drop` est archivé (meta.merged_into), consultable. → keep"""
+        if keep_id == drop_id or keep_id not in self.nodes or drop_id not in self.nodes:
+            raise ValueError(f"fusion impossible : {keep_id} ← {drop_id}")
+        self._writable(keep_id)
+        self._writable(drop_id)
+        keep, drop = self.nodes[keep_id], self.nodes[drop_id]
+        if drop.get("body") and fold(drop["body"]) not in fold(keep.get("body", "")):
+            keep["body"] = f"{keep.get('body', '')}\n{drop['body']}".strip()
+        if fold(drop.get("title", "")) != fold(keep.get("title", "")):
+            meta = dict(keep.get("meta") or {})
+            keys = str(meta.get("keys") or "")
+            if fold(drop["title"]) not in fold(keys):
+                meta["keys"] = f"{keys} · {drop['title']}" if keys else drop["title"]
+            keep["meta"] = meta
+        keep["tags"] = clean_tags((keep.get("tags") or []) + (drop.get("tags") or []))
+        keep["importance"] = max(keep.get("importance", 3), drop.get("importance", 3))
+        for k in ("hits", "used"):
+            total = (keep.get(k) or 0) + (drop.get(k) or 0)
+            if total or k in keep:
+                keep[k] = total
+        for k in ("last_hit", "last_used"):
+            dates = [d for d in (keep.get(k), drop.get(k)) if d]
+            if dates:
+                keep[k] = max(dates)
+        created = [d for d in (keep.get("created"), drop.get("created")) if d]
+        if created:
+            keep["created"] = min(created)
+        seen = set()
+        for e in self.edges:
+            if e["from"] == drop_id:
+                e["from"] = keep_id
+            if e["to"] == drop_id:
+                e["to"] = keep_id
+        clean = []
+        for e in self.edges:  # liens devenus une boucle ou un doublon : retirés
+            key = (e["from"], e["to"], e["rel"])
+            if e["from"] == e["to"] or key in seen:
+                continue
+            seen.add(key)
+            clean.append(e)
+        self.data["edges"] = clean
+        ts = now_iso()
+        drop["status"] = "archived"
+        drop.setdefault("meta", {})["merged_into"] = keep_id
+        drop["updated"] = keep["updated"] = ts
+        self._adj = None
+        self.dirty = True
+        return keep
+
     def remove(self, nid, purge=False):
         self._writable(nid)
         if purge:
