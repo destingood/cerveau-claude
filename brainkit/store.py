@@ -9,8 +9,8 @@ import re
 import sys
 import time
 
-from .common import (BRAIN_DIR, GRAPH_FILE, FileLock, clean_label, days_since, fold, jaccard, log, norm_path, now_iso,
-                     path_within, slugify, tokenize, write_json)
+from .common import (BRAIN_DIR, GRAPH_FILE, STATE_DIR, FileLock, clean_label, days_since, fold, jaccard, log, norm_path,
+                     now_iso, path_within, read_json, slugify, tokenize, write_json)
 
 TYPES = {
     "user": "Profil",
@@ -49,6 +49,11 @@ TYPE_ALIASES = {
 }
 RELATIONS = ("relates", "part_of", "depends_on", "uses", "fixes", "supersedes", "contradicts", "about")
 LOCK_FILE = BRAIN_DIR / ".graph.lock"
+# Compteurs de rappel (montré, utilisé) en attente : un petit fichier à part, que chaque lecture du graphe applique et
+# que la prochaine écriture du graphe absorbe. Avant, chaque rappel réécrivait tout graph.json (−116 ms sur 387 à
+# 10 000 souvenirs) et rendait périmés l'index BRAIN.md et la vue 3D.
+COUNTERS_FILE = STATE_DIR / "compteurs.json"
+COUNTERS_LOCK = STATE_DIR / "compteurs.lock"
 WIKILINK = re.compile(r"\[\[([^\]|#\n]{1,80})(?:[|#][^\]\n]{0,300})?\]\]")  # cible ≤ 80, texte affiché libre
 GLOBAL_REFS = ("none", "aucun", "global", "-")
 
@@ -213,6 +218,12 @@ class Brain:
         self.data = data
         self.dirty = False
         self._sim_cache = None
+        self._counted = None
+        if loaded:  # compteurs de rappel en attente : chaque lecteur voit les mêmes nombres qu'avant
+            try:
+                self._counted = _fold_counters(self.data)
+            except Exception as exc:
+                log(f"compteurs : {exc!r}")
         if loaded:  # cerveau commun : les pages des amis entrent dans le graphe, en lecture seule
             from . import commun
             try:
@@ -239,6 +250,9 @@ class Brain:
         from . import history
         history.snapshot("auto")  # état d'avant la modification (au plus un toutes les 30 min)
         self.data["updated"] = now_iso()
+        counted = self._counted
+        if counted and counted[2]:  # compteurs en attente appliqués à la lecture : ce graphe les contient désormais
+            self.data["compteurs"] = {"id": counted[0], "n": counted[1]}
         data = self._own_data()
         if data.get("wiki"):  # mode wiki : les pages qui changent, puis le cache
             from . import wikistore
@@ -248,6 +262,9 @@ class Brain:
         else:
             write_json(GRAPH_FILE, data)
         self.dirty = False
+        if counted:  # … et quittent le fichier d'attente (un arrêt entre les deux ne compte rien deux fois)
+            self._counted = None
+            _settle_counters(counted[0], counted[1])
         if self.data.get("commun"):  # membre du cerveau commun : ma part publique part en arrière-plan si elle change
             from . import commun
             commun.after_save(data)
@@ -557,6 +574,15 @@ class Brain:
             if target and target["id"] != nid:
                 self.link(nid, target["id"], "relates")
 
+    def absorb_counters(self):
+        """Compteurs de rappel en attente écrits dans graph.json à la fin de cette modification, même si rien d'autre
+        ne change (entretien du jour : le fichier d'attente ne grossit pas sans fin)."""
+        if self._counted and self._counted[2]:
+            self.dirty = True
+        elif self._counted:  # lignes déjà contenues dans graph.json (arrêt avant le ménage) : seulement le ménage
+            _settle_counters(self._counted[0], self._counted[1])
+            self._counted = None
+
     def touch(self, ids):
         ts = now_iso()
         for i in ids:
@@ -583,21 +609,81 @@ def ensure_usage_baseline() -> bool:
         return False
 
 
+def _counters():
+    """Compteurs en attente : {"id": époque du fichier, "n": dernier numéro, "rows": [[n, "h"|"u", date, [ids]]]}.
+    None s'il n'y en a pas (ou fichier illisible)."""
+    c = read_json(COUNTERS_FILE, None)
+    if isinstance(c, dict) and c.get("id") and isinstance(c.get("n"), int) and isinstance(c.get("rows"), list):
+        return c
+    return None
+
+
+def _bump(kind, ids):
+    """Une ligne de plus dans le fichier d'attente, sous son propre verrou : un rappel n'attend plus le verrou du graphe
+    (tenu des secondes par une consolidation, et le compte se perdait) et ne réécrit plus graph.json."""
+    ids = [str(i) for i in ids or () if i and not _foreign(i)]  # les compteurs d'une page d'ami ne s'enregistrent pas
+    if not ids:
+        return
+    with FileLock(COUNTERS_LOCK, timeout=1.0, stale=10.0):
+        c = _counters() or {"id": f"{time.time_ns():x}-{os.getpid():x}", "n": 0, "rows": []}
+        c["n"] += 1
+        c["rows"].append([c["n"], kind, now_iso(), ids])
+        write_json(COUNTERS_FILE, c, indent=None)
+
+
+def _fold_counters(data):
+    """Compteurs en attente appliqués aux souvenirs lus, comme l'aurait fait chaque rappel en réécrivant graph.json.
+    graph.json note jusqu'où il les contient déjà (« compteurs » : époque et numéro) : rien n'est compté deux fois.
+    → (époque, numéro jusqu'où ce graphe les contient, lignes appliquées), ou None si rien n'est en attente."""
+    c = _counters()
+    if not c or not c["rows"]:
+        return None
+    mark = data.get("compteurs") if isinstance(data.get("compteurs"), dict) else {}
+    since = mark.get("n", 0) if mark.get("id") == c["id"] and isinstance(mark.get("n"), int) else 0
+    nodes, last, applied = data["nodes"], since, 0
+    for row in c["rows"]:
+        if not (isinstance(row, list) and len(row) == 4 and isinstance(row[0], int)) or row[0] <= since:
+            continue  # (déjà dans graph.json : arrêt entre son écriture et le ménage du fichier d'attente)
+        num, kind, ts, ids = row
+        for i in ids if isinstance(ids, list) else ():
+            n = nodes.get(i)
+            if not isinstance(n, dict) or _foreign(i):
+                continue
+            if kind == "h":
+                n["hits"] = (n.get("hits", 0) or 0) + 1
+                n["last_hit"] = ts
+            elif kind == "u":
+                n["used"] = (n.get("used", 0) or 0) + 1
+                n["last_used"] = ts
+        last, applied = max(last, num), applied + 1
+    return c["id"], last, applied
+
+
+def _settle_counters(epoch, num):
+    """Après l'écriture du graphe : les lignes qu'il contient désormais quittent le fichier d'attente (les plus
+    récentes, arrivées pendant l'écriture, restent pour la suivante)."""
+    try:
+        with FileLock(COUNTERS_LOCK, timeout=2.0, stale=10.0):
+            c = _counters()
+            if not c or c["id"] != epoch:
+                return
+            rows = [r for r in c["rows"] if isinstance(r, list) and r and isinstance(r[0], int) and r[0] > num]
+            if len(rows) != len(c["rows"]):
+                c["rows"] = rows
+                write_json(COUNTERS_FILE, c, indent=None)
+    except Exception as exc:
+        log(f"compteurs : {exc!r}")
+
+
 def bump_used(ids):
-    """Montré ≠ utilisé : compte les souvenirs réellement repris par Claude (réponse, commande, fichier écrit)."""
+    """Montré ≠ utilisé : compte les souvenirs réellement repris par Claude (réponse, commande, fichier écrit) — au
+    mieux, jamais bloquant."""
     if not ids:
         return
     try:
-        with Brain.edit(timeout=0.8) as b:
-            ts = now_iso()
-            for i in ids:
-                n = b.nodes.get(i)
-                if n and not _foreign(i):
-                    n["used"] = (n.get("used", 0) or 0) + 1
-                    n["last_used"] = ts
-                    b.dirty = True
-    except Exception:
-        pass
+        _bump("u", ids)
+    except Exception as exc:
+        log(f"compteurs (utilisés) : {exc!r}")
 
 
 def bump_hits(ids):
@@ -605,7 +691,6 @@ def bump_hits(ids):
     if not ids:
         return
     try:
-        with Brain.edit(timeout=0.8) as b:
-            b.touch(ids)
-    except Exception:
-        pass
+        _bump("h", ids)
+    except Exception as exc:
+        log(f"compteurs (rappels) : {exc!r}")

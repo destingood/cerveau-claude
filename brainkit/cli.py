@@ -813,6 +813,8 @@ def cmd_consolidate(a):
     if not dry:
         history.snapshot("avant-consolidation", force=True)
     with Brain.edit() as b:
+        if not dry:
+            b.absorb_counters()  # compteurs de rappel en attente : écrits dans graph.json au moins une fois par jour
         for n in list(b.active(own=True)):
             leaks = find_secrets(f"{n['title']}\n{n.get('body', '')}")
             if leaks:
