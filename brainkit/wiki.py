@@ -352,15 +352,18 @@ def _changes(root) -> list:
     return rows
 
 
-def _upstream(root):
+def _upstream(root, why=None):
     """→ arguments de `git pull` adaptés : la branche suivie, sinon la branche du même nom sur origin si elle existe,
-    sinon None (dépôt distant encore vide : rien à récupérer)."""
+    sinon None (dépôt distant encore vide : rien à récupérer). Dépôt injoignable (réseau, accès) : None aussi, et
+    `why` (liste) reçoit la sortie de git — avant, c'était pris pour un dépôt vide, sans un mot."""
     if git(root, "rev-parse", "--abbrev-ref", "--symbolic-full-name", "@{upstream}", timeout=10)[0] == 0:
         return ["pull", "--rebase", "--autostash"]
     code, branch = git(root, "rev-parse", "--abbrev-ref", "HEAD", timeout=10)
     if code or not branch or branch == "HEAD":
         return None
     code, heads = git(root, "ls-remote", "--heads", "origin", branch, timeout=60)
+    if code and why is not None:
+        why.append(heads or f"code {code}")
     return ["pull", "--rebase", "--autostash", "origin", branch] if code == 0 and heads.strip() else None
 
 
@@ -385,7 +388,8 @@ def commit(root, message=None) -> str:
     git(root, "add", "-A", timeout=60)
     code, out = git(root, "commit", "-q", "-m", message, timeout=60)
     if code:
-        return f"✗ commit : {short(out, 200)}"
+        from . import gitmsg
+        return "✗ " + gitmsg.explain(out, code, "commit") + " ; les pages restent telles quelles dans le dossier"
     return message
 
 
@@ -406,24 +410,41 @@ def sync(root=None, push=True, pull=True, auto=False) -> list:
             msg = commit(root)
             if msg:
                 out.append(("✗ " if msg.startswith("✗") else "✓ commit : ") + msg.lstrip("✗ "))
+            from . import gitmsg
             url = remote(root)
             st = read_json(SYNC_STATE, {}) or {}
-            how = _upstream(root) if url and pull else None
+            why = []
+            how = _upstream(root, why) if url and pull else None
+            if why:  # GitHub injoignable : rien n'est récupéré, et un envoi échouerait de même
+                out.append("✗ " + gitmsg.explain(why[0], what="pull") + " ; rien n'est perdu, les pages restent dans "
+                           "le dossier et partiront à la prochaine synchronisation")
+                st["pull_failed"] = now_iso()
+                push = False
             if how:
                 code, txt = git(root, *how, timeout=120)
-                if code:
+                if code and (gitmsg.is_conflict(txt) or (root / ".git" / "rebase-merge").exists()):
                     git(root, "rebase", "--abort", timeout=30)
                     st["conflict"] = now_iso()
-                    out.append(f"✗ pull : {short(txt, 240)} — rien n'est perdu (rebase annulé) ; à régler à la main dans "
-                               f"{root} (`git status`)")
+                    out.append(f"✗ pull : conflit, la même page modifiée ici et sur GitHub — rien n'est perdu (rebase "
+                               f"annulé) ; à régler à la main dans {root} (`git status`, puis `brain wiki sync`)"
+                               f" (git : « {short(gitmsg.first_error(txt), 160)} »)")
+                    push = False
+                elif code:  # réseau, accès… : pas un conflit (avant, il était noté comme tel au démarrage suivant)
+                    if (root / ".git" / "rebase-apply").exists():
+                        git(root, "rebase", "--abort", timeout=30)
+                    st["pull_failed"] = now_iso()
+                    out.append("✗ " + gitmsg.explain(txt, code, "pull") + " ; rien n'est perdu (pages gardées dans le "
+                               "dossier)")
                     push = False
                 else:
                     st.pop("conflict", None)
+                    st.pop("pull_failed", None)
                     out.append("✓ pull" + ("" if "up to date" in txt.lower() or "à jour" in txt.lower() else
                                           f" : {short(txt.splitlines()[-1] if txt else '', 120)}"))
             if url and push:
                 code, txt = git(root, "push", "-u", "origin", "HEAD", timeout=120)
-                out.append("✓ push" if code == 0 else f"✗ push : {short(txt, 240)}")
+                out.append("✓ push" if code == 0 else "✗ " + gitmsg.explain(txt, code, "push")
+                           + " ; les commits restent ici et partiront à la prochaine synchronisation")
             elif not url:
                 out.append("· pas d'adresse GitHub (origin) : historique local seulement — `git remote add origin <url>`")
             st["synced"] = now_iso()
@@ -454,7 +475,8 @@ def push_pending(root) -> str:
         return f"{ahead} commit(s) envoyé(s) sur GitHub (session ouverte : ni commit ni pull)"
     if re.search(r"rejected|fetch first|non-fast-forward", txt):
         return "en attente : GitHub a des nouveautés, récupérées à la prochaine synchro complète"
-    raise RuntimeError(f"push : {short(txt, 200)}")
+    from . import gitmsg
+    raise RuntimeError(gitmsg.explain(txt, code, "envoi du wiki"))
 
 
 # ------------------------------------------------------------------------------------------ index.md et log.md
@@ -1211,7 +1233,9 @@ def status(brain=None) -> str:
         lines.append(f"Git : {url or 'local (pas d origin)'}" + (f" · {len(rows)} fichier(s) non commités" if rows else "")
                      + (" · " + " · ".join(sync_bits) if sync_bits else "")
                      + (f" · dernière synchro {fmt_date(st_.get('synced'))}" if st_.get("synced") else "")
-                     + (" · ⚠ conflit à régler à la main" if st_.get("conflict") else ""))
+                     + (" · ⚠ conflit à régler à la main" if st_.get("conflict") else "")
+                     + (f" · ⚠ dernière récupération ratée le {fmt_date(st_['pull_failed'])} (GitHub injoignable : "
+                        "réseau ou accès)" if st_.get("pull_failed") else ""))
     else:
         lines.append("Git : pas de dépôt (historique et synchronisation absents) — `git init` dans le wiki")
     last = log_entries(root, 5)
@@ -1333,7 +1357,9 @@ def init(path, migrate=True, push=True) -> list:
             report.append(("" if msg.startswith("✗") else "✓ commit : ") + msg)
         if push and remote(root):
             code, txt = git(root, "push", "-u", "origin", "HEAD", timeout=120)
-            report.append("✓ push vers GitHub" if code == 0 else f"✗ push : {short(txt, 200)} (relance : `brain wiki sync`)")
+            from . import gitmsg
+            report.append("✓ push vers GitHub" if code == 0 else "✗ " + gitmsg.explain(txt, code, "push")
+                          + " ; le wiki est prêt ici (relance : `brain wiki sync`)")
     else:
         report.append("· pas de dépôt git : `git init` (ou clone ton dépôt GitHub privé) pour l'historique et la synchro")
     report.append(f"→ ouvre {root} dans Obsidian ; le schéma (à faire évoluer) : {root / SCHEMA_FILE}")

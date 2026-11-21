@@ -231,7 +231,9 @@ def fetch(queries, skills=False, limit=50, timeout=3.0, total=None) -> dict:
     if errors:
         log(f"prompts.chat : {len(errors)} recherche(s) en échec, ex. {errors[0]!r}")
         if not res:
-            raise RuntimeError(f"prompts.chat injoignable : {errors[0]}")
+            from .common import network_reason
+            raise RuntimeError(f"prompts.chat injoignable : {network_reason(errors[0]) or errors[0]} — vérifie le "
+                               "réseau, puis réessaie")
     return res
 
 
