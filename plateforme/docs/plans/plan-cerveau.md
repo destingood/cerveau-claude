@@ -1,7 +1,7 @@
 # Plan du cerveau — le plan unique
 
-Date : 20/11/2026, mis à jour le 21/11 · Remplace le plan v1 (`plan-parite-aladdin.md`) et le plan v2
-(`plan-parite-aladdin-v2.md`), gardés en archive · Statut : **en cours** ; chaque étape attend ton GO,
+Date : 20/11/2026, mis à jour le 23/11 · Remplace le plan v1 (`plan-parite-aladdin.md`) et le plan v2
+(`plan-parite-aladdin-v2.md`), gardés dans `docs/archive/plans/` · Statut : **en cours** ; chaque étape attend ton GO,
 sauf les correctifs sûrs, faits tout de suite à ta demande.
 
 ## 0. En bref
@@ -38,7 +38,8 @@ sauf les correctifs sûrs, faits tout de suite à ta demande.
    (8.29.0) : plus aucune trace Python ni message en anglais dans les 400 cas d'essai des commandes ; étape 7 le 21/11, ne plus
    perdre de souvenir (8.30.0) : un graph.json abîmé se répare avec les souvenirs des dernières minutes, et le wiki
    sur deux PC ne se bloque plus au premier conflit ; étape 8 le 21/11, regrouper (8.31.0) : `brain regroupe` (doublons
-   reformulés, souvenirs sans projet, fiches), aucun fichier du code au-delà de 1 000 lignes, vue 3D sans site extérieur.
+   reformulés, souvenirs sans projet, fiches), aucun fichier du code au-delà de 1 000 lignes, vue 3D sans site extérieur ;
+   étape 9 le 21/11, les documents (8.32.0) : un seul plan, backlog trié, chaque réglage expliqué.
 6. **Attention, sous Windows.** `brain.exe`, la version Rust du cerveau, n'a pas changé depuis la
    8.18.2 du 10/11, et son code source n'est pas dans le dépôt. C'est lui qui exécute, sur ton PC, les
    hooks de session, le rappel, `done`, le verrou et le masquage des mots de passe. L'audit a mesuré
@@ -66,6 +67,8 @@ sauf les correctifs sûrs, faits tout de suite à ta demande.
 | 21/11 | Garder l'injection du démarrage ; étape 6 ; E1 : pas de lanceur Python | 8.28.0 fusionnée ; étape 6 faite (8.29.0) |
 | 21/11 | Fusionner la 8.29.0 ; étape 7 ; E7 : sauvegarde dans ton dossier personnel | 8.29.0 fusionnée ; étape 7 faite (8.30.0) |
 | 21/11 | Fusionner la 8.30.0 ; étape 8 ; supprimer les 15 vieilles branches | 8.30.0 fusionnée ; étape 8 faite (8.31.0) ; branches : la session n'a pas le droit de les supprimer, la commande est au §11 |
+| 21/11 | Fusionner la 8.31.0 ; étape 9 ; garder l'ADR-013 (pas de yfinance) | 8.31.0 fusionnée ; étape 9 faite (8.32.0) |
+| 23/11 | Valider les 7 retraits R9 ; relire d'abord les autres ADR | ADR-021, 046, 050, 057, 060 et 068 acceptés ; 35 ADR à relire (`docs/adr/A-VALIDER.md`) |
 
 ## 2. Comment l'audit a été fait, et ses limites
 
@@ -287,18 +290,21 @@ ci-dessus sont faites.
 
 ### 7.4 Les plans et les documents
 
-- **Ce fichier est le seul plan à jour.** Les plans v1 et v2 sont gardés pour l'historique.
-- À faire (étape 9) :
-  - ranger les plans de phase et les comptes rendus dans `docs/archive/` ;
-  - au backlog, fermer les points devenus sans objet avec 0 € d'API (B20, B28, B31, B43, B44, B46,
-    B47, B51 à B53, B95, B104, B130, B258, B286 à B288, B294, B296) et ceux déjà faits (B14, B56) ;
-    fusionner les doublons (B297 à B299, B264/B265/B281, B282 à B284, B168/B182/B191) ;
-  - ADR : marquer ADR-002 comme modifié par ADR-069 ; trancher ADR-013 (« pas de yfinance ») contre
-    l'étape 9 du plan v2 ;
-  - réécrire la mission de `CLAUDE.md` (encore « orchestrateur LangGraph ») ;
+- **Ce fichier est le seul plan à jour.** Les plans v1 et v2, les plans de phase et les comptes rendus sont dans
+  `docs/archive/` (étape 9) ; les nouveaux comptes rendus vont toujours dans `docs/rapports/`.
+- ✅ Fait (étape 9) :
+  - backlog : 16 points fermés (14 sans objet avec 0 € d'API, B14 et B56 déjà faits), 8 fusionnés dans le plus petit
+    numéro (B297, B264, B282, B168) ; B43, B47, B95, B104 et B258 restent ouverts (ils valent encore pour le pont
+    MCP, ou attendent ta décision) ; chaque point ouvert nomme son étape suivante ou ce qui le bloque ;
+  - ADR : ADR-002 marqué modifié par ADR-069 ; ADR-013 fait foi (ta décision du 21/11), le plan v2 corrigé : BCE,
+    tes exports CSV, puis une API officielle que tu choisis ; FRED utilisable sous ses conditions (clé gratuite,
+    mention obligatoire, séries « Copyright » à usage personnel), par un ADR qui l'ajoutera ;
+  - mission de `CLAUDE.md` réécrite (Claude Code dirige par le pont MCP, LangGraph en place sans tourner) ; règles
+    et interdits inchangés ;
   - un vrai README pour la plateforme.
-- **Toi** : valider en une fois les 41 ADR « proposé », et les 5 retraits de cas d'évaluation
-  (ADR-021, 046, 050, 057, 060) que la règle R9 te réserve.
+- **Toi** : les 7 retraits R9 validés le 23/11 (ADR-021, 046, 050, 057, 060, 063 et 068). Restent 35 ADR
+  « proposé » à relire, une ligne chacun dans `docs/adr/A-VALIDER.md` : réponds en une fois (« tout validé », ou
+  les numéros à revoir).
 
 ## 8. Réglages
 
@@ -318,8 +324,9 @@ ci-dessus sont faites.
   rappel de plus sur 14. Décision E4, après le banc d'essai de l'étape 3.
 - **prompts.chat** est actif par défaut : une recherche sur internet à certains messages (« agis comme
   un expert… »). Décision E10.
-- **107 réglages, 99 sans explication** : `brain config` vérifiera les valeurs (étape 6) ; une page
-  générée les expliquera tous (étape 9).
+- **107 réglages, 99 sans explication** : `brain config` vérifie les valeurs (étape 6). ✅ Étape 9 : une page générée
+  depuis le code les explique tous (124 entrées, dont 17 tenues par le cerveau) : `brain config --page`, et
+  `skills/brain/references/reglages.md` que Claude lit à la demande.
 - `skillOverrides` ne s'applique pas aux skills d'un plugin (documentation de Claude Code) : pour celles
   du cerveau, seul l'en-tête de la skill compte.
 
@@ -458,8 +465,15 @@ hook au-dessus de 150 ms, premier démarrage après un changement compris ; `bra
 - Restes : 15 branches à supprimer de ton PC (§11) ; en mode wiki, la fin de session prend 356 ms (déjà le cas avant,
   hors budget de 150 ms) ; les fiches ne viennent que des 40 plus gros sujets de l'analyse du graphe.
 
-**Étape 9 — Documents** (§7.4) : archives, backlog trié, ADR, README, page des réglages.
-- Fin : un seul plan, un backlog sans point mort, chaque réglage expliqué.
+**Étape 9 — Documents** (§7.4) : **faite le 21/11** (PR #30, cerveau 8.32.0), avec tes décisions du 21/11 (ADR-013) et du
+23/11 (retraits R9).
+- Un seul plan à jour ; plans de phase, plans v1 et v2 et comptes rendus rangés dans `docs/archive/` (historique git
+  gardé).
+- Backlog sans point mort : 16 points fermés, 8 fusionnés, chaque point ouvert dit ce qui vient ensuite.
+- ADR-002 et ADR-013 mis à jour ; `CLAUDE.md` (mission seulement) et un README pour la plateforme.
+- Page des réglages : 123 réglages expliqués et 17 entrées tenues par le cerveau, générée depuis le code (aucune dérive
+  possible : `test_page_reglages`, 46 vérifications) ; `brain config --page [clé]`. Rien au démarrage de session.
+- Reste à toi : relire les 35 ADR de `docs/adr/A-VALIDER.md`.
 
 ### Bloc B — Unifier la plateforme (plan v2, étapes 2 et 4 à 8)
 
@@ -519,6 +533,9 @@ Amélioration continue, puis N3 domaine par domaine. N4 reste hors du plan.
 | E10 | prompts.chat actif par défaut | Le garder, maintenant que son texte est filtré ; le couper si tu ne t'en sers pas |
 | E11 | Fusionner la PR des correctifs sûrs et publier 8.24.0 | **Fait le 20/11** |
 | E12 | `brain.exe` (Rust 8.18.2) tant que son code source n'est pas dans le dépôt | **Tranché le 20/11 : Python partout, puis optimiser en Rust.** Fait : `brain.exe` ne tourne plus que sur demande (`BRAIN_IMPL=rust`), tous les correctifs valent sous Windows. Ensuite (D2) : tu ajoutes le code Rust au dépôt ; Claude y reporte les correctifs faits depuis la 8.18.2, l'optimise, et l'exe est construit en CI |
+| E13 | ADR-013 (« pas de yfinance ») contre l'étape 9 du plan v2 | **Tranché le 21/11 : l'ADR-013 fait foi**, le plan v2 corrigé (étape 9) |
+| E14 | Retraits de cas d'évaluation réservés par R9 | **Validés le 23/11** : ADR-021, 046, 050, 057, 060, 063 (le retrait) et 068 |
+| E15 | 35 ADR encore « proposé » | À relire dans `docs/adr/A-VALIDER.md` (ta réponse du 23/11 : relire d'abord) |
 
 Toujours ouvertes depuis le plan v2 : D4 (ton nom dans l'historique public), D5 (ordre des domaines),
 D6 (ta boutique), D7 (réseaux sociaux visés), D8 (canal des approbations), D9 (modèle local),

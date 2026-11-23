@@ -1,6 +1,6 @@
 ## Compte rendu de mise en route — Phase 7 — 2026-10-29
 
-Compte rendu de mise en route (plan : `docs/plans/phase-7-plan.md`, §12 point 10), au format de la
+Compte rendu de mise en route (plan : `docs/archive/plans/phase-7-plan.md`, §12 point 10), au format de la
 section 18. Le code de la phase 7 est livré ; le compte rendu de **fin** de phase arrivera au plus
 tôt quatre semaines après que l'utilisateur aura lancé la planification (critère de sortie du §17 : rapports
 générés automatiquement quatre semaines de suite, sans intervention).

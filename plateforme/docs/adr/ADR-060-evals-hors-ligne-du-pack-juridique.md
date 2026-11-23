@@ -1,7 +1,6 @@
 # ADR-060 — Évals hors ligne du pack Juridique FR et remplacement du cas `pack-juridique-absent`
 
-- Statut : **proposé** (R9 : retrait d'un cas existant ; l'utilisateur a choisi ce remplacement au plan de
-  P5, H11 ; à valider au compte rendu de P5)
+- Statut : **accepté par l'utilisateur le 23/11/2026** (R9 : le retrait validé à l'étape 9 du plan ; « proposé » jusque-là)
 - Date : 2026-10-27
 - Phase : 6 (P5)
 

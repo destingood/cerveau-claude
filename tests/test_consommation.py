@@ -218,7 +218,8 @@ check(len(install.SKILL) <= 7500, f"skill /brain : {len(install.SKILL)} caractè
       "avant)", len(install.SKILL))
 check(len(desc) <= 250, f"description de la skill /brain : {len(desc)} caractères, sous le plafond du mode éco (250)",
       desc)
-refs = getattr(install, "SKILL_REFS", {})
+# Tout ce que la skill livre dans references/ : SKILL_REFS, plus la page des réglages tirée du code (étape 9).
+refs = install.all_refs() if hasattr(install, "all_refs") else getattr(install, "SKILL_REFS", {})
 named = set(re.findall(r"references/([\w-]+\.md)", install.SKILL))
 check(refs and named == set(refs), "chaque fichier de référence est nommé par la skill, et seulement ceux-là",
       (sorted(named), sorted(refs)))

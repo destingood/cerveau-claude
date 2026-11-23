@@ -198,6 +198,10 @@ garde sa propre mémoire.
 - **Skills chargées d'office** : `brain config skills.auto '["ma-skill"]'` et, dès qu'un message correspond à la skill,
   le cerveau glisse lui-même son contenu dans la conversation, sans attendre que Claude l'ouvre ; il la ressert
   après chaque résumé de la conversation.
+- **Chaque réglage expliqué** dans [la page des réglages](skills/brain/references/reglages.md), tirée du code : ce
+  que fait chaque réglage, son défaut, ses bornes, quand le changer, et les réglages de Claude Code que pose le mode
+  éco. `brain config --page recall` en montre une section ; `brain config <clé> <valeur>` refuse une clé inconnue
+  ou une valeur hors bornes.
 - **Les bons outils, tout seuls** : quand un message parle de mails, d'agenda, d'un visuel Canva ou de la boutique, le
   cerveau souffle à Claude le connecteur branché qui convient et la recherche exacte qui charge ses outils en un seul
   appel, sans charger les autres. Les skills de tes plugins et de ton compte claude.ai se déclenchent sur des phrases

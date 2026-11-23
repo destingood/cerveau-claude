@@ -17,6 +17,7 @@ côté de ce SKILL.md : les lire (Read) seulement quand la tâche s'y rapporte.
 | `references/commun.md` | cerveau commun avec les amis, délégation, apprentissage, échange de skills |
 | `references/boutique.md` | boutiques suivies (skill e-commerce) : plan, chiffres de la semaine, audits, panels |
 | `references/entretien.md` | journal, mode éco, sorties compactes, PC, skills, connecteurs, serveur MCP, Obsidian, réglages |
+| `references/reglages.md` | chaque réglage du cerveau : ce qu'il fait, son défaut, ses bornes, quand le changer |
 
 ## Ce qui arrive tout seul
 - **Démarrage** : index du cerveau (profil, règles, projets, échéances ⏰) et fiche du projet courant ; un dossier de
@@ -65,5 +66,6 @@ Carte complète : `~/.claude/brain/projects/<id>/MAP.md`.
 - **Mode éco** : `eco` (état) · `eco --appliquer` · `eco --annuler` · `eco --poser ID` / `eco --retirer ID` (sur accord)
   · `eco --cache auto|5m|1h|off` · `eco --desactiver nom@marketplace` (demander d'abord) · `eco --plugins-auto [on|off]`
   · `eco --plugins` (sur accord).
-- **Réglages** : `config <clé> [valeur]` (ex. `config recall.enabled false`) ; serveur MCP : les 6 outils de la mémoire,
+- **Réglages** : `config <clé> [valeur]` (ex. `config recall.enabled false`) ; à quoi sert un réglage :
+  `config --page <clé ou section>` (tout : `references/reglages.md`) ; serveur MCP : les 6 outils de la mémoire,
   plus le wiki et les boutiques avec `config mcp.groupes '["wiki", "boutique"]'`.

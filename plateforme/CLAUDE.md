@@ -1,12 +1,16 @@
 # CERVEAU — consignes pour Claude Code
 
 Spécification complète : `docs/MEGA-PROMPT-CERVEAU.md` (ne pas l'importer avec `@` ; lire la section
-utile à la demande). Phase en cours : voir le dernier compte rendu de `docs/rapports/`.
+utile à la demande). Plan en cours : `docs/plans/plan-cerveau.md`, le seul à jour (anciens plans et
+comptes rendus : `docs/archive/`).
 
 ## Mission
 
 CERVEAU est la plateforme d'IA personnelle de l'utilisateur, inspirée d'Aladdin et d'Aladdin Copilot.
-Un orchestrateur superviseur (LangGraph) appelle des plugins MCP enregistrés et évalués.
+Budget API à 0 € (17/11/2026) : Claude Code, sur l'abonnement de l'utilisateur et avec le plugin
+« cerveau » (mémoire), dirige la plateforme par le pont MCP `cerveau-plateforme` (ADR-069, pas encore
+branché) ; il appelle des plugins MCP enregistrés et évalués. L'orchestrateur LangGraph reste en place,
+inchangé, sans tourner (le mettre de côté : décision E9 du plan, en attente).
 Une gouvernance déterministe (moteur de politique, Porte de risque, kill switch) filtre toute action.
 L'autonomie va de N0 (analyse) à N4 (exécution réelle) ; chaque niveau se gagne par les évals.
 Les domaines s'ajoutent en « packs » mesurés ; la finance reproduit les fonctions clés d'Aladdin.

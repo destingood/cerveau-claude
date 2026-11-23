@@ -12,7 +12,7 @@ Journal, mode éco, sorties compactes, PC, skills, connecteurs, serveur MCP, Obs
 `skill` skills perso et des plugins actifs (+ combien de fois soufflées et chargées) · `skill test "message"` laquelle se déclencherait · `skill check` contrôle (déclencheurs, liens, longueur) · `skill new <nom> -d "À utiliser quand… « … » Ne pas utiliser pour…" --body-file f` créer · `skill trig plugin:skill "déclencheur" …` déclencheurs en français pour une skill de plugin ou du compte claude.ai ·
 `outils` connecteurs et serveurs MCP vus (état, outils, phrases) · `outils test "message"` lequel se déclencherait · `outils trig <connecteur> "phrase" …` phrases françaises pour un connecteur · `outils scan` relire tout de suite les derniers transcripts · `config outils.enabled false` coupe ·
 `viz --open` vue 3D (`~/.claude/brain/cerveau.html`, régénérée en fin de session) · `export` (MEMOIRES.md lisible) ·
-`config recall.enabled false` · `config skills.paste auto|propose|off` · `install` réparer.
+`config recall.enabled false` · `config skills.paste auto|propose|off` · `config --page [clé]` chaque réglage expliqué (la page entière : `reglages.md`, à côté de ce fichier) · `install` réparer.
 
 ## Ailleurs que dans l'onglet Code
 | But | Commande |

@@ -13,6 +13,16 @@ from .common import CONFIG_FILE, load_config, set_config
 
 def cmd_config(a):
     from . import common, reglages
+    if getattr(a, "page", False):  # la page des réglages, ou le morceau d'une clé / d'une section
+        from . import reglages_doc
+        if a.value is not None:
+            die("--page s'emploie sans valeur : `brain config --page` ou `brain config --page <clé ou section>`", 2)
+        text = reglages_doc.page(a.key)
+        if not text:
+            die(reglages.unknown(a.key).replace(" ; rien n'est écrit", "").replace("`brain config`",
+                                                                                   "`brain config --page`"))
+        print(text, end="")
+        return
     cfg = load_config()
     if not a.key:
         print(json.dumps(cfg, ensure_ascii=False, indent=1))

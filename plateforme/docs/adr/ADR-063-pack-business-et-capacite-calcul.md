@@ -1,7 +1,7 @@
 # ADR-063 — Pack Business & commerce : capacité CALCUL, évals hors ligne, remplacement de `pack-business-absent`
 
 - Statut : **proposé** (élargissement de ce que la phase peut exécuter, décidé par l'utilisateur le
-  2026-10-29 ; à confirmer au compte rendu de P6)
+  2026-10-29 ; à confirmer au compte rendu de P6 ; le retrait R9 de `pack-business-absent` validé par l'utilisateur le 23/11/2026)
 - Date : 2026-10-29
 - Phase : 6 (P6, décisions I1, I4, I5, I8, I11)
 
