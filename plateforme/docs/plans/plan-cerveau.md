@@ -69,6 +69,7 @@ sauf les correctifs sûrs, faits tout de suite à ta demande.
 | 21/11 | Fusionner la 8.30.0 ; étape 8 ; supprimer les 15 vieilles branches | 8.30.0 fusionnée ; étape 8 faite (8.31.0) ; branches : la session n'a pas le droit de les supprimer, la commande est au §11 |
 | 21/11 | Fusionner la 8.31.0 ; étape 9 ; garder l'ADR-013 (pas de yfinance) | 8.31.0 fusionnée ; étape 9 faite (8.32.0) |
 | 23/11 | Valider les 7 retraits R9 ; relire d'abord les autres ADR | ADR-021, 046, 050, 057, 060 et 068 acceptés ; 35 ADR à relire (`docs/adr/A-VALIDER.md`) |
+| 23/11 | Fusionner la 8.32.0 ; puis les restes du plugin | 8.32.0 fusionnée ; restes faits (8.33.0) : fin de session wiki en 88 ms, `brain regroupe` complété |
 
 ## 2. Comment l'audit a été fait, et ses limites
 
@@ -462,8 +463,17 @@ hook au-dessus de 150 ms, premier démarrage après un changement compris ; `bra
   `brain q` et la page Cerveau d'Obsidian lisent les sessions de tous les PC.
 - Tests : `test_regroupe` (53), `test_carte` (64, dont 24 échouent sur la 8.30.0), `test_vue3d` (51),
   `test_commandes` (471), `test_hooks_situations` (37), `test_decoupage` (43), `test_wiki_conflits` (60) ; 34 scripts.
-- Restes : 15 branches à supprimer de ton PC (§11) ; en mode wiki, la fin de session prend 356 ms (déjà le cas avant,
-  hors budget de 150 ms) ; les fiches ne viennent que des 40 plus gros sujets de l'analyse du graphe.
+- Restes : 15 branches à supprimer de ton PC (§11). ✅ Faits le 23/11 (cerveau 8.33.0, ta demande « les restes du
+  plugin ») :
+  - en mode wiki, la fin de session passe de 364 à 88 ms (budget 150) : `index.md`, la page Cerveau d'Obsidian et sa
+    carte se refont en arrière-plan (presque tout le temps partait dans le contrôle complet du wiki de la page
+    Cerveau). Le journal de la session, la page du mois de ce PC et l'entrée de `log.md` restent écrits avant la fin
+    du hook ; les pages refaites suivent environ une seconde après ;
+  - `brain regroupe` propose des fiches pour tous les sujets de l'analyse, plus seulement les 40 plus gros ; il
+    retrouve la paire « Rythme de publication » / « Calendrier de sortie » (synonymes « rythme, cadence,
+    calendrier ») : 7 doublons plantés sur 7, toujours aucune fausse proposition. « Idée : kits de bricolage » reste
+    sans projet, exprès : un indice contraire existe (Shopify, cité par la boutique), et la note parle d'une autre
+    boutique.
 
 **Étape 9 — Documents** (§7.4) : **faite le 21/11** (PR #30, cerveau 8.32.0), avec tes décisions du 21/11 (ADR-013) et du
 23/11 (retraits R9).
