@@ -1,7 +1,6 @@
 # ADR-021 — Remplacement du cas de comportement `pack-finance-absent`
 
-- Statut : **proposé** (R9 : retrait d'un cas existant ; à valider par l'utilisateur au compte rendu de
-  phase)
+- Statut : **accepté par l'utilisateur le 23/11/2026** (R9 : le retrait validé à l'étape 9 du plan ; « proposé » jusque-là)
 - Date : 2026-10-18
 - Phase : 2
 

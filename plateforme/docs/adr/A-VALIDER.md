@@ -4,7 +4,10 @@ Liste préparée le 21/11/2026 (étape 9 du plan, `docs/plans/plan-cerveau.md`).
 toi de répondre, en une fois si tu veux (« tout validé », ou les numéros à refuser ou à revoir). Une fois ta
 réponse donnée, chaque ADR passe à « accepté » (ou « refusé ») avec la date, dans son propre fichier.
 
-## 1. Les 41 ADR encore « proposé »
+## 1. Les 35 ADR encore « proposé »
+
+41 le 21/11 ; le 23/11/2026, tu as validé les retraits R9 (section 2) : les ADR-021, 046, 050, 057, 060 et
+068 sont acceptés, l'ADR-063 reste ici pour le reste de sa décision.
 
 Le détail de chaque décision est dans son fichier (`docs/adr/ADR-NNN-….md`). Une ligne par ADR ici.
 
@@ -30,7 +33,6 @@ Le détail de chaque décision est dans son fichier (`docs/adr/ADR-NNN-….md`).
 | 020 | Conventions de la performance | Jours TARGET, livre rejoué chaque jour, rendement pondéré par le temps et attribution |
 | 022 | Capacité CALCUL du pack Finance | Le domaine `finance` reçoit les classes LECTURE et CALCUL ; aucune décision au-delà de `auto` |
 | 023 | Horloge et chiffres gelés des évals Finance | Horloge fixe pour les cas Finance, chiffres attendus gelés dans le golden set ; **à valider** |
-| 068 | Tolérance du solveur de la parité de risque | Solveur CLARABEL, tolérances à 1e-12 ; **une valeur attendue du golden change** (72,33 % → 72,32 %, R9) |
 
 ### Socle des packs et pack Recherche (phase 6)
 
@@ -59,14 +61,12 @@ Le détail de chaque décision est dans son fichier (`docs/adr/ADR-NNN-….md`).
 |---|---|---|
 | 055 | Plugin `cyber_cve` | NVD, KEV et EPSS en lecture, trois hôtes fixes en HTTPS, tri déterministe |
 | 056 | Copie figée d'ATT&CK | `cerveau cyber attack-fetch` lancé par toi seulement, index local, plugin `cyber_attack` |
-| 057 | Évals hors ligne du pack Cyber | Fixtures servies aux vrais serveurs sans réseau ; **remplace un cas d'éval** (tableau 2) |
 
 ### Pack Juridique FR (P5)
 
 | ADR | Titre | Décision en une ligne |
 |---|---|---|
 | 059 | Plugin `legifrance` (API PISTE) | API officielle, entrées fermées (identifiants, dates, fonds), lecture seule |
-| 060 | Évals hors ligne du pack Juridique FR | Fixtures PISTE sans réseau ni identifiants réels ; **remplace un cas d'éval** (tableau 2) |
 
 ### Pack Business (P6)
 
@@ -91,15 +91,9 @@ Le détail de chaque décision est dans son fichier (`docs/adr/ADR-NNN-….md`).
 |---|---|---|
 | 069 | Claude Code comme chef d'orchestre | Pont MCP `cerveau-plateforme` à cinq outils, sous la même gouvernance ; le graphe LangGraph reste en place (il modifie l'ADR-002) |
 
-### Cas d'évals remplacés (R9)
-
-| ADR | Titre | Décision en une ligne |
-|---|---|---|
-| 021 | Remplacement du cas `pack-finance-absent` | Voir le tableau 2 |
-| 046 | Remplacement du cas `pack-recherche-absent` | Voir le tableau 2 |
-| 050 | Remplacement du cas `pack-code-absent` | Voir le tableau 2 |
-
 ## 2. Les 5 retraits de cas d'évaluation (règle R9 : à toi seul)
+
+**Validés par toi le 23/11/2026**, avec le retrait de l'ADR-063 et la valeur du golden de l'ADR-068 (ci-dessous).
 
 Chaque cas vérifiait qu'une question d'un domaine sans pack retombait sur le pack généraliste, avec la note
 « … n'existe pas encore ». L'arrivée du pack rend sa prémisse fausse : il échoue par construction. Dans
