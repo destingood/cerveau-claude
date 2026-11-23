@@ -325,6 +325,9 @@ def session_end(who, sid, extra=None):
     subprocess.run([sys.executable, "-I", "-S", str(CODE / "brain.py"), "hook", "session-end"],
                    input=json.dumps({"session_id": sid, "cwd": str(TMP / who / "work")}).encode("utf-8"),
                    capture_output=True, cwd=str(TMP / who / "work"), env=e, timeout=240)
+    # page Cerveau, index.md et carte : refaits par la tâche de fond des vues ; on l'attend
+    subprocess.run([sys.executable, "-I", "-S", str(CODE / "brain.py"), "vues", "--attendre"], capture_output=True,
+                   cwd=str(TMP / who / "work"), env=e, timeout=240)
 
 
 add_session("pc1", "j-pc1-a", "2026-11-03T09:10:00", "Comparer les transporteurs du PC 1")

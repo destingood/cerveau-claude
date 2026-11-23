@@ -66,11 +66,46 @@ def _spawn() -> bool:
     return spawn_background(["vues", "--fond"])
 
 
-def request() -> bool:
-    """Après une écriture du graphe : les vues seront refaites en arrière-plan. → False si aucune tâche ne peut s'en
-    charger (lancement impossible) : à l'appelant de les refaire lui-même (run_now)."""
+def request(wiki=False) -> bool:
+    """Après une écriture du graphe : les vues seront refaites en arrière-plan. `wiki` (fin de session en mode wiki) :
+    aussi index.md, la page Cerveau et la carte du coffre (wiki.write_derived). → False si aucune tâche ne peut s'en
+    charger (lancement impossible) : à l'appelant de les refaire lui-même (run_now, wiki.write_derived)."""
+    if wiki:
+        try:
+            WIKI_MARK.parent.mkdir(parents=True, exist_ok=True)
+            WIKI_MARK.write_text(str(time.time_ns()), encoding="utf-8")
+        except OSError as exc:
+            log(f"vues : demande du wiki : {exc!r}")
+            return False
     _update(lambda s: s.update(n=s["n"] + 1, t=time.time()))
     return busy() or _spawn()  # une tâche au travail relit les demandes avant de rendre la main
+
+
+WIKI_MARK = STATE_DIR / "vues-wiki"  # posé par la fin de session en mode wiki : pages dérivées du wiki à refaire
+
+
+def _wiki_views(b, force=False) -> bool:
+    """Pages dérivées du wiki (index.md, page Cerveau, carte), si une fin de session les a demandées (WIKI_MARK) ou
+    `force`. La marque n'est retirée que si personne ne l'a reposée pendant le travail. → refaites ?"""
+    w = b.data.get("wiki") or {}
+    if not w.get("root") or w.get("missing"):
+        return False
+    try:
+        mark = WIKI_MARK.read_text(encoding="utf-8")
+    except OSError:
+        mark = None
+    if mark is None and not force:
+        return False
+    from . import wiki
+    wiki.write_derived(b, Path(w["root"]))
+    if mark is not None:
+        with FileLock(REQUEST_LOCK, timeout=2.0, stale=10.0, strict=False):
+            try:
+                if WIKI_MARK.read_text(encoding="utf-8") == mark:
+                    WIKI_MARK.unlink()
+            except OSError:
+                pass
+    return True
 
 
 def _sources_ns() -> int:
@@ -207,6 +242,7 @@ def regenerate(force=False) -> list:
     # (vue, fichiers écrits, fichiers dérivés lus après coup, empreinte des sources avant, étape)
     steps = (
         ("index", None, None, None, brain_md),
+        ("wiki", None, None, None, lambda: _wiki_views(b, force)),  # demandé par la fin de session (mode wiki)
         ("mots", [mots.MOTS_FILE, mots.TERMES_FILE], [],
          lambda: [_code("mots.py", "graph.py", "common.py"), src.words()], lambda: mots.rebuild(b)),
         ("export", [EXPORT_FILE], [], lambda: [_code("index.py", "store.py", "common.py"), _today(), src.content()],

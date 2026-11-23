@@ -184,21 +184,32 @@ def on_session_end(data, cfg, event="session-end"):
     if event == "session-end":  # entretien et sauvegarde automatiques, une fois par jour (en arrière-plan)
         for args in daily_due(cfg):
             h.spawn_background(args)
-    # BRAIN.md, vues 3D et 2D (avec l'analyse du graphe à jour) et index du démarrage de ce projet, prêts pour la session
-    # suivante ou celle d'après la compaction : la tâche de fond des vues (vues.py) — avant, 120 à 350 ms dans le hook.
-    # Demandées même si d'autres sont en cours : celles-là ont pu lire le journal avant cette session.
-    try:
-        from . import vues
-        vues.request()
-    except Exception as exc:
-        log(f"vues ({event}) : {exc!r}")
-    if event == "session-end" and brain is not None and (brain.data.get("wiki") or {}).get("root") \
-            and not brain.data["wiki"].get("missing"):
-        try:  # wiki : index.md, entrée « session » au journal, puis commit + pull + push en arrière-plan
+    in_wiki = event == "session-end" and brain is not None and bool((brain.data.get("wiki") or {}).get("root")) \
+        and not brain.data["wiki"].get("missing")
+    if in_wiki:
+        try:  # wiki : journal de ce PC et entrée « session » de log.md, sur le disque avant le commit qui suit (quelques ms)
             from . import wiki
             proj = brain.nodes.get(pid) if pid else None
-            wiki.session_close(brain, proj["title"] if proj else None)
-            if _auto_sync(brain, cfg):
+            wiki.session_close(brain, proj["title"] if proj else None, derived=False)
+        except Exception as exc:
+            log(f"wiki fin de session : {exc!r}")
+    # BRAIN.md, vues 3D et 2D (avec l'analyse du graphe à jour) et index du démarrage de ce projet, prêts pour la session
+    # suivante ou celle d'après la compaction : la tâche de fond des vues (vues.py) — avant, 120 à 350 ms dans le hook.
+    # En mode wiki, elle refait aussi index.md, la page Cerveau et la carte du coffre (avant : 250 à 300 ms dans le hook
+    # à 3 000 pages ; aucun n'est dans git, tous se refont à la fin de session suivante si le PC s'éteint avant).
+    # Demandées même si d'autres sont en cours : celles-là ont pu lire le journal avant cette session.
+    queued = False
+    try:
+        from . import vues
+        queued = vues.request(wiki=in_wiki)
+    except Exception as exc:
+        log(f"vues ({event}) : {exc!r}")
+    if in_wiki:
+        try:
+            if not queued:  # aucune tâche de fond possible : refaites ici, comme avant
+                from . import wiki
+                wiki.write_derived(brain)
+            if _auto_sync(brain, cfg):  # commit + pull + push en arrière-plan
                 h.spawn_background(["wiki", "sync", "--auto"])
         except Exception as exc:
             log(f"wiki fin de session : {exc!r}")

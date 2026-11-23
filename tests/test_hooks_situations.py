@@ -306,6 +306,56 @@ check("📚 Le cerveau vit dans le wiki" in ctx(o), "démarrage en mode wiki : l
 o, t = hook("session-start", {"session_id": "s7", "cwd": str(TMP / "wiki"), "source": "startup"}, cwd=TMP / "wiki")
 check("map" not in first(t), "démarrage dans le dossier du wiki : pas une carte de projet", t)
 
+# ------------------------------------------------------------------ 8. wiki : fin de session (après la 8.32.0)
+# Le hook ne garde que ce qui doit être sur le disque avant qu'il rende la main (journal de ce PC, entrée « session » de
+# log.md, avant le commit de la synchronisation) ; index.md, la page Cerveau et la carte du coffre (250 à 300 ms à 3 000
+# pages) passent à la tâche de fond des vues. Ici, la tâche est notée par le hook, puis lancée à la main.
+WIKI = TMP / "wiki"
+ident = ["-c", "user.name=Essai", "-c", "user.email=essai" + "@" + "exemple.invalid", "-c", "core.autocrlf=false"]
+for args in (["init", "-q", "-b", "main"], [*ident, "add", "-A"], [*ident, "commit", "-qm", "wiki d'essai"]):
+    subprocess.run(["git", "-C", str(WIKI), *args], capture_output=True, check=True)
+
+
+def cli(*args):
+    r = subprocess.run([sys.executable, "-I", "-S", str(PILOTE), str(CODE), *args], capture_output=True, cwd=str(SHOP),
+                       env=dict(os.environ, SPAWN_LOG=str(SPAWN)), timeout=300)
+    return r.returncode, r.stdout.decode("utf-8", "replace") + r.stderr.decode("utf-8", "replace")
+
+
+def wpage(name):
+    p = WIKI / name
+    return p.read_text(encoding="utf-8") if p.is_file() else ""
+
+
+code_, out_ = cli("add", "-t", "todo", "-T", "Relancer le torréfacteur de Shizuoka", "-b", "Avant la fin du mois.")
+check(code_ == 0, "mode wiki : un à-faire ajouté pendant la session", out_[-300:])
+mark = STATE_DIR / "vues-wiki"
+before = {n: wpage(n) for n in ("index.md", "Cerveau.md", "Carte du cerveau.canvas")}
+o, t = hook("session-end", {"session_id": "s8", "cwd": str(SHOP), "transcript_path": TP})
+check("session |" in wpage("log.md") and "Relancer le torréfacteur" in wpage("log.md"),
+      "fin de session en mode wiki : l'entrée « session » de log.md est écrite par le hook lui-même",
+      wpage("log.md")[-400:])
+check({n: wpage(n) for n in before} == before and mark.is_file() and ["vues", "--fond"] in t,
+      "fin de session en mode wiki : index.md, page Cerveau et carte laissés à la tâche des vues (demandée, marque posée)",
+      (t, mark.is_file()))
+code_, out_ = cli("vues", "--attendre")
+check(code_ == 0 and "Relancer le torréfacteur" in wpage("index.md") and "Relancer le torréfacteur" in wpage("Cerveau.md")
+      and wpage("Carte du cerveau.canvas") and not mark.exists(),
+      "tâche des vues : index.md, page Cerveau et carte du wiki refaits, marque retirée", out_[-300:])
+code_, out_ = cli("vues", "--attendre")
+check(code_ == 0 and not mark.exists(), "tâche des vues sans fin de session : les pages du wiki ne sont pas refaites")
+code_, out_ = cli("add", "-t", "todo", "-T", "Commander les sachets kraft", "-b", "Pour la boutique.")
+real_spawn = hooks.spawn_background
+hooks.spawn_background = lambda args: False  # aucune tâche de fond possible : le hook refait les pages lui-même
+from brainkit import hooks_fin  # noqa: E402
+hooks_fin.h.spawn_background = hooks.spawn_background
+with contextlib.redirect_stdout(io.StringIO()):
+    hooks.on_session_end({"session_id": "s8b", "cwd": str(SHOP)}, common.load_config())
+hooks.spawn_background = hooks_fin.h.spawn_background = real_spawn
+check("Commander les sachets kraft" in wpage("index.md") and "Commander les sachets kraft" in wpage("Cerveau.md"),
+      "fin de session en mode wiki sans tâche de fond possible : les pages refaites dans le hook, comme avant",
+      wpage("index.md")[-300:])
+
 print(f"\n{len(OK)} vérifications OK, {len(FAIL)} échec(s)")
 if FAIL:
     print(f"(dossier gardé : {TMP})")
