@@ -31,6 +31,7 @@ annonce annonces listing leboncoin
 image images photo photos visuel visuels picture
 mail email e-mail courriel gmail mails emails
 agenda calendrier calendar rdv rendez-vous reunion meeting
+rythme cadence calendrier
 pc ordinateur computer machine
 bios uefi
 jeton token tokens
@@ -63,6 +64,11 @@ miniature miniatures thumbnail thumbnails vignette
 clic clics click clicks ctr
 """
 
+# (Pas de commentaire dans _GROUPS : chaque mot d'une ligne y devient synonyme des autres.) « rythme cadence calendrier »
+# (23/11/2026) : le rythme de publication d'une chaîne, c'est son calendrier ; sans ce lien, `brain regroupe` ne voyait
+# pas que « Rythme de publication » et « Calendrier de sortie des vidéos » disent la même chose. « calendrier » reste
+# aussi avec « agenda » : un mot de deux lignes rejoint les deux groupes, « agenda » ne mène pas pour autant à « rythme ».
+# Banc d'essai du rappel (test_rappel) inchangé : 56/62 en premier, 58/62 dans les trois, mêmes faux rappels.
 SYN: dict[str, set] = {}
 for _line in _GROUPS.strip().splitlines():
     _keys = {stem(fold(w)) for w in _line.split() if len(fold(w)) >= 2}

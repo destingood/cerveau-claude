@@ -141,6 +141,12 @@ MONDE = [
      'Si pas de nouvelles au 27/11, relancer la DRH par email.', 3, 2, None),
     ('e21', 'fact', 'emploi', 'Salaire demandé',
      'Je demande entre 48 et 52 k€ brut par an ; plancher 45 k€.', 3, 90, 'e02'),
+    # « rythme » et « calendrier » sont synonymes (le rythme de publication, c'est son calendrier) ; ce seul mot en commun
+    # ne fait pas un doublon : même projet, même sorte, deux sujets
+    ('e30', 'fact', 'emploi', 'Rythme de travail souhaité',
+     'Quatre jours par semaine, télétravail le vendredi ; pas de déplacements fréquents.', 3, 40, None),
+    ('e31', 'fact', 'emploi', 'Calendrier des entretiens de décembre',
+     'Premier tour en visio le 3 décembre, puis un cas pratique à préparer pour le 10.', 3, 12, None),
     ('g01', 'user', None, 'Profil : Karim, 38 ans, Lyon',
      "Karim, 38 ans, vit à Lyon. Chargé de projet web en poste, tient à côté une boutique en ligne de thé japonais et une chaîne YouTube de bricolage. N'est pas développeur.", 5, 320, None),
     ('g02', 'feedback', None, 'Toujours répondre en français, sans jargon',
@@ -360,6 +366,11 @@ check(frozenset((ids["objectif-boutique"], ids["objectif-youtube"])) not in foun
       "« Objectif du mois » de la boutique et de la chaîne : même titre, même texte, deux projets — jamais proposé")
 check(frozenset((ids["b23"], ids["b24"])) not in found,
       "chiffre d'affaires de septembre et d'octobre : une série, pas un doublon")
+check(frozenset((ids["y01"], ids["y24"])) in found, "doublon reformulé proposé : « Rythme de publication » et "
+      "« Calendrier de sortie des vidéos » (rythme ≈ calendrier : la paire que l'étape 8 manquait)", out)
+check(frozenset((ids["e30"], ids["e31"])) not in found and not {ids["e30"], ids["e31"]} & {i for p in found for i in p},
+      "« Rythme de travail souhaité » et « Calendrier des entretiens » : un synonyme en commun ne fait pas un doublon",
+      [(node(a).get("title"), node(c).get("title")) for a, c in map(sorted, found)])
 check(not [it for it in items if it.get("kind") == "doublon"
            and {node(it["keep"]).get("type"), node(it["drop"]).get("type")} - {node(it["keep"]).get("type")}],
       "un doublon est toujours entre deux souvenirs de même sorte")
@@ -389,6 +400,34 @@ check(fiches, "au moins un sujet à réunir en fiche", out)
 check(all(len({node(i).get("project") for i in it["ids"]}) == 1 and len(it["ids"]) >= 3 for it in fiches),
       "une fiche réunit au moins trois souvenirs d'un même projet")
 check(all(n_ == k for k, n_ in enumerate((it["n"] for it in items), 1)), "les propositions sont numérotées 1, 2, 3…")
+
+
+# Un gros cerveau a des centaines de sujets ; l'analyse (lue par les hooks) n'en garde que les 40 plus cités, et un sujet
+# de 3 à 12 souvenirs n'y est presque jamais. Simulé ici : l'analyse ne garde que les 2 plus cités. Les fiches viennent
+# de tous les sujets (graph.concepts_all), l'analyse et ce qu'en voient les hooks ne changent pas.
+def fiches_hors_analyse():
+    from brainkit import regroupe
+    saved = (STATE_DIR / "regroupe.json").read_bytes()  # la liste montrée plus haut : les essais suivants l'appliquent
+    real = graph._concepts
+    graph._concepts = lambda nodes: real(nodes)[:2]
+    try:
+        kept = graph.ensure(Brain.load(), force=True).get("concepts", [])
+        got = [it for it in regroupe.propose(Brain.load()) if it["kind"] == "fiche"]
+    finally:
+        graph._concepts = real
+        graph.ensure(Brain.load(), force=True)
+        (STATE_DIR / "regroupe.json").write_bytes(saved)
+    want = {(it["key"], it["project"]) for it in fiches}
+    have = {(it["key"], it["project"]) for it in got}
+    return len(kept) == 2 and want and have == want, (len(kept), sorted(want), sorted(have))
+
+
+verify("un sujet hors des concepts que garde l'analyse est quand même proposé en fiche (tous les sujets, pas les 40 "
+       "plus cités)", fiches_hors_analyse)
+verify("l'analyse lue par les hooks garde ses 40 concepts au plus, les mêmes qu'avant",
+       lambda: (len(graph.ensure(Brain.load()).get("concepts", [])) <= 40
+                and graph._concepts(list(Brain.load().active())) == graph.concepts_all(list(Brain.load().active()))[:40],
+                len(graph.ensure(Brain.load()).get("concepts", []))))
 
 # ------------------------------------------------------------------------------------------ erreurs
 code, out = brain("regroupe", "--appliquer", str(len(items) + 5))
