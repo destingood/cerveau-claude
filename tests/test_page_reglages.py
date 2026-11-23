@@ -47,7 +47,9 @@ from brainkit.common import remove_tree  # noqa: E402
 def brain(*args, extra=()):
     r = subprocess.run([sys.executable, *extra, str(CODE / "brain.py"), *args], capture_output=True, cwd=str(TMP),
                        env=os.environ.copy(), timeout=120)
-    return r.returncode, r.stdout.decode("utf-8", "replace"), r.stderr.decode("utf-8", "replace")
+    # Windows : la sortie texte de Python écrit \r\n pour chaque \n ; la page, elle, n'a que des \n
+    return (r.returncode, r.stdout.decode("utf-8", "replace").replace("\r\n", "\n"),
+            r.stderr.decode("utf-8", "replace").replace("\r\n", "\n"))
 
 
 # ------------------------------------------------------------------ 1. une explication par réglage, pas une de trop
