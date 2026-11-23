@@ -261,17 +261,19 @@ def attachments(brain, near, an, idx, ecartes=frozenset()) -> list:
 
 
 # ------------------------------------------------------------------------------------------ 3. fiches
-def fiches(brain, an, near, ecartes=frozenset(), merged=frozenset()) -> list:
-    """Sujets à réunir en fiche : [{kind, key, label, project, ids}]. Sujet = un concept de l'analyse du graphe (nom,
-    sigle, sujet connu) cité par FICHE_MIN à FICHE_MAX souvenirs actifs d'un même projet (ou tous globaux), petits pour
-    la plupart, qui se retrouvent entre eux dans l'index, et pas déjà réunis dans une fiche. `merged` : souvenirs
-    qu'un doublon de la même liste fond dans un autre (ils n'y entrent pas : l'autre suffit)."""
+def fiches(brain, concepts, near, ecartes=frozenset(), merged=frozenset()) -> list:
+    """Sujets à réunir en fiche : [{kind, key, label, project, ids}]. Sujet = un concept (nom, sigle, sujet connu :
+    graph.concepts_all, tous, pas seulement les 40 plus cités que garde l'analyse — avant, un sujet de quelques
+    souvenirs n'était presque jamais vu dans un gros cerveau) cité par FICHE_MIN à FICHE_MAX souvenirs actifs d'un même
+    projet (ou tous globaux), petits pour la plupart, qui se retrouvent entre eux dans l'index, et pas déjà réunis dans
+    une fiche. `merged` : souvenirs qu'un doublon de la même liste fond dans un autre (ils n'y entrent pas : l'autre
+    suffit)."""
     done = {(n.get("meta") or {}).get("fiche") for n in brain.active(own=True)} - {None}
     titles = {p["id"]: {fold(w) for w in re.findall(r"[\wÀ-ÿ]+", p["title"])} for p in brain.projects()}
     every = set().union(*titles.values()) if titles else set()
     out = []
-    for c in (an or {}).get("concepts", []):
-        if c.get("kind") == "fichier" or c["key"] in done:
+    for c in concepts or []:
+        if c.get("kind") == "fichier" or c["key"] in done or not FICHE_MIN <= len(c["members"]):
             continue
         mem = [brain.nodes[i] for i in c["members"] if i in brain.nodes]
         mem = [m for m in mem if m.get("status", "active") == "active" and m["type"] not in ("project", "user")
@@ -350,7 +352,8 @@ def propose(brain=None) -> list:
     items = duplicates(brain, near, ecartes)
     used = {i for it in items for i in _ids(it)}
     items += [a for a in attachments(brain, near, an, idx, ecartes) if a["id"] not in used]
-    items += fiches(brain, an, near, ecartes, {it["drop"] for it in items if it["kind"] == "doublon"})
+    concepts = graph.concepts_all(list(brain.active()))  # tous les sujets, pas les 40 de l'analyse (0,75 s à 10 000)
+    items += fiches(brain, concepts, near, ecartes, {it["drop"] for it in items if it["kind"] == "doublon"})
     for k, it in enumerate(items, 1):
         it["n"] = k
         it["fp"] = _fp(brain, _ids(it) + ([it["project"]] if it.get("project") else []))
