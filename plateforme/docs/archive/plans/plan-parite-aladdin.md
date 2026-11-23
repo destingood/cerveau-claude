@@ -4,7 +4,7 @@
 > 20/11/2026. Gardé pour l'historique.
 
 Date : 17/11/2026 · Statut : **validé** le 17/11/2026 (« ok valide le plan, commence l'étape 0 ») ;
-décisions P2 à P9 encore ouvertes (§7). Étape 0 : `docs/rapports/etape-0-2026-11-17.md`.
+décisions P2 à P9 encore ouvertes (§7). Étape 0 : `docs/archive/rapports/etape-0-2026-11-17.md`.
 
 Périmètre choisi par l'utilisateur le 17/11/2026 : le plugin mémoire (`brainkit/`) **et** la plateforme
 (`plateforme/`) ; exécution jusqu'au niveau **N3** (ordre réel après son accord) ; actions et ETF en

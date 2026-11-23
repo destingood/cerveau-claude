@@ -4,7 +4,7 @@
 - Date : 2026-11-17
 - Numéro : ADR-061 à l'origine, renuméroté ADR-068 le 17/11/2026 ; ADR-061 était déjà pris par le
   calculateur business, arrivé avec la phase 7
-- Phase : plan de remise au vert, étape 0 (`docs/plans/plan-parite-aladdin.md`, C18)
+- Phase : plan de remise au vert, étape 0 (`docs/archive/plans/plan-parite-aladdin.md`, C18)
 
 ## Contexte
 Sous Linux (Python 3.12 par uv, skfolio 1.8.1, cvxpy 1.9.3, Clarabel), le golden Finance échouait

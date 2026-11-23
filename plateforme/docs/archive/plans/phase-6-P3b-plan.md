@@ -4,7 +4,7 @@ Date : 22/10/2026 · Statut : **validé** le 22/10/2026 (`GO P3b`, recommandatio
 compris la revue `risk-gate-auditor` de F7, le sixième outil de F8 au-delà de R13 et les bornes de
 F5).
 
-Complément au plan P3 (`docs/plans/phase-6-P3-plan.md`, §2 et E1). Tout ce qui n'est pas repris
+Complément au plan P3 (`docs/archive/plans/phase-6-P3-plan.md`, §2 et E1). Tout ce qui n'est pas repris
 ici suit le plan P3 et le plan de phase 6 : domaine `code` en N0 (D3), aucune mesure réelle sans ton
 accord (D5), revues dans la session (D9), jamais de push (D19).
 

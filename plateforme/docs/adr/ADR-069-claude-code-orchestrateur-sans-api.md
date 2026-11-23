@@ -2,7 +2,7 @@
 
 - Statut : proposé
 - Date : 2026-11-17
-- Phase : plan v2, étape 4 (`docs/plans/plan-parite-aladdin-v2.md`, C21)
+- Phase : plan v2, étape 4 (`docs/archive/plans/plan-parite-aladdin-v2.md`, C21)
 
 ## Contexte
 L'utilisateur a fixé le budget de l'API Anthropic à 0 € le 17/11/2026, en plus de son abonnement

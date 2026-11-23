@@ -3,7 +3,7 @@
 Date : 22/10/2026 · Statut : **validé** le 27/10/2026 (`GO P4`, recommandations G1 à G12 ; l'utilisateur
 lance lui-même `cerveau cyber attack-fetch`, G5).
 
-Complément au plan de phase 6 (`docs/plans/phase-6-plan.md`, §7, D20). Tout ce qui n'est pas repris
+Complément au plan de phase 6 (`docs/archive/plans/phase-6-plan.md`, §7, D20). Tout ce qui n'est pas repris
 ici suit ce plan : domaine `cyber` en N0 et `max_level` N1 (D3), seuil du golden 0,80 (D4), aucune
 mesure réelle sans ton accord et sans budgets (D5), revues dans la session (D9), avertissement R16
 vérifié par les comportements (D23), aucun lab ni scan actif (D20).

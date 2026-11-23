@@ -2,7 +2,7 @@
 
 Date : 29/10/2026 · Statut : **validé** le 29/10/2026 (`GO P6`, recommandations I1 à I12).
 
-Complément au plan de phase 6 (`docs/plans/phase-6-plan.md`, §7, D22). Tout ce qui n'est pas repris
+Complément au plan de phase 6 (`docs/archive/plans/phase-6-plan.md`, §7, D22). Tout ce qui n'est pas repris
 ici suit ce plan :
 - domaine `business` en N0, `max_level` N1 (D3, plafond déjà inscrit dans `core/config/loader.py:419`) ;
 - seuil du golden 0,80 (D4) ;
