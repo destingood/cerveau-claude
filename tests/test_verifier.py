@@ -185,7 +185,45 @@ check(chosen("plateforme/core/x.py") == {"test_decoupage.py"}, "un fichier de la
 check(not v.in_scope("plateforme/docs/plans/plan-cerveau.md") and v.in_scope("brainkit/store.py"),
       "plateforme/ est hors du périmètre du hook")
 
+# ------------------------------------------------------------------ grille de tri d'un échec (étape 19)
+write("brainkit/m.py", "VALUE = 41\n")
+code, data, raw = hook()
+check(data and data.get("decision") == "block" and "Tri de chaque échec" in data.get("reason", "")
+      and "test périmé" in data.get("reason", ""), "échec : la grille de tri (régression, instable, environnement, périmé)",
+      raw)
+write("brainkit/m.py", "VALUE = 1  # corrigé\n")
+hook()
+
+# ------------------------------------------------------------------ contrôle d'un CLAUDE.md avant écriture (étape 19)
+CHECK = CODE / ".claude" / "hooks" / "claude_md.py"
+
+
+def md_hook(tool, inp):
+    r = subprocess.run([sys.executable, str(CHECK)], input=json.dumps({"tool_name": tool, "tool_input": inp}),
+                       capture_output=True, text=True, encoding="utf-8", errors="replace", timeout=60)
+    return r.returncode, r.stderr
+
+
+bad = "# Projet\n\n## Tests\n## Règles\nLe dépôt est dans /home/alice/projets/site.\n"
+code, err = md_hook("Write", {"file_path": str(TMP / "CLAUDE.md"), "content": bad})
+check(code == 2 and "chemin absolu" in err and "section vide" in err, "CLAUDE.md avec un chemin absolu et une section vide : "
+      "écriture refusée, raisons dites", err)
+code, err = md_hook("Write", {"file_path": str(TMP / "CLAUDE.md"), "content": "# Projet\n\n## Tests\n`python tests/x.py`\n"})
+check(code == 0 and not err, "CLAUDE.md propre : écrit sans un mot", err)
+code, err = md_hook("Write", {"file_path": str(TMP / "notes.md"), "content": bad})
+check(code == 0 and not err, "un autre fichier n'est pas regardé", err)
+(TMP / "CLAUDE.md").write_text("# Projet\n\n## Tests\n`python tests/x.py`\n", encoding="utf-8")
+code, err = md_hook("Edit", {"file_path": str(TMP / "CLAUDE.md"), "old_string": "`python tests/x.py`",
+                             "new_string": "clé : sk-ant-" + "abcdefghijklmnopqrstuv"})
+check(code == 2 and "clé ou un jeton" in err, "Edit qui mettrait une clé dans un CLAUDE.md : refusé", err)
+for real in (CODE / "CLAUDE.md", CODE / "plateforme" / "CLAUDE.md"):
+    code, err = md_hook("Write", {"file_path": str(real), "content": real.read_text(encoding="utf-8")})
+    check(code == 0, f"{real.relative_to(CODE)} tel qu'il est : accepté (pas de faux positif)", err)
+
 settings = json.loads((CODE / ".claude" / "settings.json").read_text(encoding="utf-8"))
+pre = [h for g in settings.get("hooks", {}).get("PreToolUse", []) for h in g.get("hooks", [])]
+check(any("claude_md.py" in " ".join(h.get("args", [])) for h in pre), "le contrôle des CLAUDE.md est déclaré (PreToolUse)",
+      pre)
 stops = [h for g in settings.get("hooks", {}).get("Stop", []) for h in g.get("hooks", [])]
 check(any("verifier.py" in " ".join(h.get("args", [])) for h in stops), "le hook est déclaré dans .claude/settings.json (Stop)",
       stops)

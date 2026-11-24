@@ -886,7 +886,7 @@ non fait (pas demandé).
 Et deux pratiques : la description d'une skill dit quand s'en servir, jamais comment (à corriger dans les 18) ; un
 test de comportement par skill (sans la skill, puis avec). (S, M)
 
-**Étape 19 — Ce dépôt** (outillage, rien de livré).
+**Étape 19 — Ce dépôt** (outillage, rien de livré) : **points 1 et 2 faits le 24/11** ; le 3 attend ta décision.
 1. Grille de tri d'un test en échec (régression, instable, environnement, test périmé) proposée par le hook de
    vérification. (S, best-practices `test-triage`)
 2. Contrôle d'un `CLAUDE.md` avant écriture (chemins absolus, secrets, sections vides). (S)
@@ -894,6 +894,12 @@ test de comportement par skill (sans la skill, puis avec). (S, M)
    relatifs par rapport au dépôt, pas au dossier courant après un `cd` ; il a refusé à tort un `git clone` dans un
    dossier temporaire. Le corriger touche un garde-fou (règle du `CLAUDE.md` de la plateforme) : je ne le fais pas
    sans toi.
+
+- ✅ Fait le 24/11 : la grille de tri (régression, instable, environnement, test périmé) s'ajoute au renvoi du hook de
+  vérification quand un test échoue ; `.claude/hooks/claude_md.py`, nouveau hook PreToolUse (Edit|Write), refuse un
+  `CLAUDE.md` qui contiendrait un chemin absolu d'une machine, une valeur qui ressemble à une clé, ou une section vide
+  (aucun faux positif sur les deux `CLAUDE.md` du dépôt). Aucun interdit ni hook existant retiré. `test_verifier` :
+  40 vérifications.
 
 **Serveurs à brancher sur ton PC** (rien à coder, à ta demande) : Fetch (lire une offre d'emploi ou une fiche
 concurrente par morceaux), Time, Git, Filesystem en lecture seule sur le coffre Obsidian. Pas le serveur « memory » :

@@ -319,6 +319,12 @@ def main() -> None:
         parts.append("Lint (ruff F,E9, comme la CI) :\n" + tail(lint_out))
     for name, out in failed:
         parts.append(f"{name} — relancer : `python tests/{name}`\n" + tail(out))
+    if failed:  # grille de tri (d'après la skill test-triage de claude-code-best-practices, MIT)
+        parts.append("Tri de chaque échec avant de toucher au code : régression (tes changements l'ont cassé : "
+                     "`git diff main -- <fichiers du test>`), instable (relancé seul, il passe : chercher le minutage), "
+                     "environnement (outil, réseau ou système absents : le dire), test périmé (il vérifie un comportement "
+                     "voulu qui a changé exprès : `git log -5 --follow tests/<script>`, et le dire à l'utilisateur "
+                     "avant de le modifier).")
     parts.append("Corrige la cause, sans retirer ni affaiblir un test. Si l'échec ne vient pas de "
                  "tes changements, dis-le à l'utilisateur avec la sortie." + note)
     reason = "\n\n".join(parts)
