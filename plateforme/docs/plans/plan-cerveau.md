@@ -80,7 +80,7 @@ sauf les correctifs sûrs, faits tout de suite à ta demande.
 | 24/11 | « Go étape 11 » | Étape 11 faite (8.34.0) ; E19 et E21 appliquées telles que recommandées |
 | 24/11 | « Continue le plan » | Étapes 12 (8.35.0, piliers livrés après mesure) et 13 (8.36.0) faites : Bloc E terminé |
 | 24/11 | « Regarde chaque lien GitHub que je t'ai envoyé et mets dans le cerveau ce qui est utile » | Bloc F, étapes 14 à 19 ; tu as choisi les quatre groupes |
-| 24/11 | « Mets à jour et publie » | Étape 17 réunie et publiée (8.42.0) ; Bloc F fait, sauf ce qui est reporté et le point 3 de l'étape 19 |
+| 24/11 | « Mets à jour et publie » | Étape 17 réunie et publiée (8.42.0) ; Bloc F fait, sauf ce qui est reporté. Tes réponses : fusionner la PR une fois la CI verte ; le garde-fou shell (étape 19, point 3) reste tel quel |
 
 ## 2. Comment l'audit a été fait, et ses limites
 
@@ -931,14 +931,14 @@ test de comportement par skill (sans la skill, puis avec). (S, M)
   - Tests : `test_skills_regroupees` (252), `test_scripts_skills` (95) ; `test_vue3d` fait tourner le code de la
     8.33.0 sur les skills d'aujourd'hui, pour comparer le même cerveau des deux côtés.
 
-**Étape 19 — Ce dépôt** (outillage, rien de livré) : **points 1 et 2 faits le 24/11** ; le 3 attend ta décision.
+**Étape 19 — Ce dépôt** (outillage, rien de livré) : **faite le 24/11** (points 1 et 2 ; le 3 écarté par toi).
 1. Grille de tri d'un test en échec (régression, instable, environnement, test périmé) proposée par le hook de
    vérification. (S, best-practices `test-triage`)
 2. Contrôle d'un `CLAUDE.md` avant écriture (chemins absolus, secrets, sections vides). (S)
 3. À ta décision, pas à la mienne : le garde-fou des commandes de la plateforme (`guard_shell.py`) résout les chemins
    relatifs par rapport au dépôt, pas au dossier courant après un `cd` ; il a refusé à tort un `git clone` dans un
    dossier temporaire. Le corriger touche un garde-fou (règle du `CLAUDE.md` de la plateforme) : je ne le fais pas
-   sans toi.
+   sans toi. **Ta décision du 24/11 : le laisser tel quel** (plus strict que nécessaire, rien d'assoupli).
 
 - ✅ Fait le 24/11 : la grille de tri (régression, instable, environnement, test périmé) s'ajoute au renvoi du hook de
   vérification quand un test échoue ; `.claude/hooks/claude_md.py`, nouveau hook PreToolUse (Edit|Write), refuse un
