@@ -99,6 +99,66 @@ finally:
 check("__LIB_3D__" not in broken and "ForceGraph3D=" not in broken and "brain doctor" in broken,
       "bibliothèque absente : page faite quand même, avec le message qui dit quoi faire")
 
+# ---------------------------------------------------------------------------------------------- chronologie (étape 13)
+def page_data(path):
+    text = Path(path).read_text(encoding="utf-8")
+    start = text.index("const DATA = ") + len("const DATA = ")
+    return json.loads(text[start:text.index("</script>", start)].rstrip().rstrip(";"))
+
+
+with Brain.edit() as b:
+    ovh = b.add("decision", "Hébergement chez OVH", body="On héberge chez OVH.", nid="ovh",
+                meta={"valid_from": "2026-03-01", "domaine": ["infra"]})
+    scw = b.add("decision", "Hébergement chez Scaleway", body="On passe chez Scaleway.", nid="scw",
+                meta={"valid_from": "2026-06-01", "niveau": "vision"})
+    fac = b.add("fact", "Facture serveur de mai", body="Payée.", nid="facture")
+    b.supersede("scw", "ovh", why="OVH trop cher")
+    ovh["meta"]["valid_to"] = "2026-05-31"
+    ovh["created"], scw["created"] = "2026-03-01T09:00:00", "2026-06-01T09:00:00"
+    b.link("ovh", "facture")
+    b.unlink("ovh", "facture")
+    b.link("scw", "facture")
+    b.unlink("scw", "facture")
+    for e in b.data["ended_edges"]:
+        if e["from"] == "scw":
+            e["created"], e["ended"] = "2026-06-10", "2026-07-01"
+OLD_REF = "af568b4"  # main à la 8.33.0, avant l'étape 13
+v833 = TMP / "v833"
+arch = subprocess.run(["git", "-C", str(CODE), "archive", OLD_REF, "brain.py", "brainkit", "skills"], capture_output=True)
+if arch.returncode == 0:
+    v833.mkdir()
+    subprocess.run(["tar", "-x", "-C", str(v833)], input=arch.stdout, check=True)
+    r = subprocess.run([sys.executable, "-I", "-S", str(v833 / "brain.py"), "viz"], capture_output=True, env=os.environ.copy(),
+                       timeout=300)
+    old_data = page_data(viz.VIZ_FILE) if r.returncode == 0 else None
+    check(old_data is not None, "8.33.0 : sa vue du même cerveau est faite", r.stderr.decode("utf-8", "replace")[-500:])
+else:
+    old_data = None
+    check(False, f"code de la 8.33.0 ({OLD_REF}) introuvable dans l'historique git : `git fetch --unshallow`")
+chrono_path = viz.render()
+d = page_data(chrono_path)
+past = {n["id"]: n for n in d.get("past", [])}
+present = {n["id"]: n for n in d["nodes"]}
+check("ovh" in past and "ovh" not in present and past["ovh"].get("sb") == "scw" and past["ovh"].get("why") == "OVH trop cher"
+      and past["ovh"].get("vt") == "2026-05-31" and past["ovh"].get("dom") == "infra",
+      "données : le souvenir remplacé est dans le passé, avec fin, raison, remplaçant et domaine", past.get("ovh"))
+check(present.get("scw", {}).get("vf") == "2026-06-01" and present["scw"].get("niv") == "vision",
+      "données : le présent porte son début et son niveau corrigé", present.get("scw"))
+ended = [e for e in d.get("pastEdges", []) if e.get("e")]
+check(any(e["s"] == "scw" and e["t"] == "facture" and e["c"] == "2026-06-10" and e["e"] == "2026-07-01" for e in ended),
+      "données : un lien terminé, avec sa création et sa fin", d.get("pastEdges"))
+check(not any(e["s"] == "ovh" or e["t"] == "ovh" for e in d["edges"]) and not any(
+      e["s"] == "scw" and e["t"] == "facture" for e in d["edges"]), "données : DATA.edges ne garde que le présent")
+if old_data is not None:
+    check({n["id"] for n in old_data["nodes"]} == set(present),
+          "mêmes souvenirs qu'en 8.33.0 dans DATA.nodes (la vue 2D et le tableau ne voient que le présent)",
+          sorted({n["id"] for n in old_data["nodes"]} ^ set(present)))
+    check({(e["s"], e["t"], e["r"]) for e in old_data["edges"]} == {(e["s"], e["t"], e["r"]) for e in d["edges"]},
+          "mêmes liens qu'en 8.33.0 dans DATA.edges")
+    check(old_data.get("stats") == d.get("stats"), "mêmes compteurs qu'en 8.33.0", (old_data.get("stats"), d.get("stats")))
+check(len(json.dumps(d.get("past"))) + len(json.dumps(d.get("pastEdges"))) < 20_000,
+      "le passé pèse peu dans la page (quelques souvenirs ici)")
+
 # ---------------------------------------------------------------------------------------------- distribution
 files = selfupdate._code_files(CODE)
 for rel in ("brainkit/vue3d/page.html", "brainkit/vue3d/3d-force-graph.min.js", "brainkit/vue3d/three-fx.js",
@@ -139,6 +199,30 @@ else:
     check(not probe.get("fallbackShown"), "navigateur : pas de message « vue 3D indisponible »", probe.get("fallbackText"))
     check(not any("Multiple instances" in w for w in probe.get("warnings", [])),
           "navigateur : un seul three.js déclaré (pas d'avertissement)", probe.get("warnings"))
+
+if node and not os.environ.get("CERVEAU_SANS_NAVIGATEUR") and not (probe or {}).get("skip"):
+    try:
+        r = subprocess.run([node, str(CODE / "tests" / "vue3d_chronologie.js"), str(chrono_path)], capture_output=True,
+                           text=True, timeout=180, cwd=str(TMP))
+        ch = json.loads((r.stdout.strip().splitlines() or ["{}"])[-1])
+    except (OSError, subprocess.SubprocessError, ValueError) as exc:
+        ch = {"errors": [repr(exc)]}
+    check(not ch.get("errors"), "chronologie : aucune erreur", ch.get("errors"))
+    check(ch.get("todayExtra") == [] and ch.get("todayMissing") == [] and ch.get("todayPastLinks") == 0
+          and ch.get("todayLinks") == ch.get("presentLinks"),
+          "curseur à droite : exactement le présent (mêmes souvenirs et liens qu'en 8.33.0, rien du passé)", ch)
+    pc = ch.get("pastCase") or {}
+    check(pc.get("old") == "ovh" and pc.get("oldShown") and pc.get("replacement") == "scw" and not pc.get("replacementShown"),
+          "à une date passée : le souvenir remplacé depuis est visible, son remplaçant pas encore", pc)
+    check(ch.get("endedLink") == {"aliveBefore": True, "aliveAfter": False},
+          "un lien terminé : visible avant sa fin, plus après", ch.get("endedLink"))
+    check("dom" in (ch.get("layers") or []) and "heat" in (ch.get("layers") or []),
+          "couleurs « domaine » et « chaleur », et le bouton des couches", ch.get("layers"))
+    check(ch.get("layered") is True and ch.get("unlayered") is True,
+          "couches : chaque souvenir à la hauteur de son niveau, puis libéré", (ch.get("layered"), ch.get("unlayered")))
+    check(ch.get("legendDom") == "d:infra", "couleur « domaine » : le domaine écrit du souvenir", ch.get("legendDom"))
+    check(isinstance(ch.get("afterPlay"), dict) and ch.get("settled") == 0,
+          "lecture ▶ : jouée puis arrêtée sans erreur, plus aucun nœud en cours d'extinction ensuite", ch)
 
 for s in SKIP:
     print(f"· sauté : {s}")

@@ -210,6 +210,44 @@ def _wiki_path(root, files, nid):
     return str(root.joinpath(*rel.split("/"))) if rel else None
 
 
+PAST_MAX = 2000  # souvenirs archivés datés montrés par la chronologie, les plus récents d'abord
+
+
+def _time_fields(n) -> dict:
+    """Ce que la chronologie lit d'un souvenir (étape 13), seulement s'il le porte : début et fin écrits, raison de la
+    fin, remplaçant, domaine, niveau corrigé, dernier usage (couleur « chaleur »). Le reste se déduit dans la page."""
+    from . import temps
+    m = n.get("meta") or {}
+    out = {"vf": temps.day(m.get("valid_from")), "vt": temps.day(m.get("valid_to")), "why": m.get("end_reason"),
+           "sb": m.get("superseded_by"), "niv": temps.normalize_level(m.get("niveau")),
+           "dom": temps._first(m.get("domaine")), "lu": temps.day(n.get("last_used"))}
+    return {k: v for k, v in out.items() if v}
+
+
+def _past(brain, ids) -> tuple:
+    """Le passé, pour le curseur de la chronologie : les souvenirs archivés qui ont une fin (remplacés, échus), et les
+    liens qui ne sont plus (liens terminés, liens vers ces souvenirs). La page ne les montre qu'à une date passée :
+    curseur à droite, la vue est celle d'aujourd'hui. → (souvenirs, liens)."""
+    from . import temps
+    old = [n for n in brain.nodes.values() if n.get("status", "active") != "active" and not n["id"].startswith("c--")
+           and n["id"] not in ids and ((n.get("meta") or {}).get("valid_to") or (n.get("meta") or {}).get("superseded_by"))]
+    old.sort(key=lambda n: temps.valid_to(n) or "", reverse=True)
+    past = []
+    for n in old[:PAST_MAX]:
+        body = n.get("body", "")
+        past.append({"id": n["id"], "t": n["type"], "title": n["title"], "body": body if len(body) <= 600 else body[:599] + "…",
+                     "tags": n.get("tags", []), "p": n.get("project"), "imp": n.get("importance", 3),
+                     "upd": (n.get("updated") or "")[:10], "cre": (n.get("created") or "")[:10], "old": 1,
+                     **_time_fields(n)})
+    every = ids | {n["id"] for n in past}
+    pids = {n["id"] for n in past}
+    links = [{"s": e["from"], "t": e["to"], "r": e["rel"], **({"c": e["created"]} if e.get("created") else {})}
+             for e in brain.edges if (e["from"] in pids or e["to"] in pids) and e["from"] in every and e["to"] in every]
+    links += [{"s": e["from"], "t": e["to"], "r": e["rel"], "c": e.get("created"), "e": e.get("ended")}
+              for e in temps.ended(brain.data) if e.get("from") in every and e.get("to") in every]
+    return past, links
+
+
 def render(brain=None):
     from . import graph, wikistore
     from .viz3d import page
@@ -230,9 +268,11 @@ def render(brain=None):
                       "path": (n.get("meta") or {}).get("path") if n["type"] == "project" else None,
                       "wpath": _wiki_path(wroot, wfiles, n["id"]),
                       "c": comm.get(n["id"]), "pr": prs.get(n["id"], 0), "deg": deg.get(n["id"], 0),
-                      "cre": (n.get("created") or "")[:10]})
+                      "cre": (n.get("created") or "")[:10], **_time_fields(n)})
     ids = {n["id"] for n in nodes}
-    edges = [{"s": e["from"], "t": e["to"], "r": e["rel"]} for e in brain.edges if e["from"] in ids and e["to"] in ids]
+    edges = [{"s": e["from"], "t": e["to"], "r": e["rel"], **({"c": e["created"]} if e.get("created") else {})}
+             for e in brain.edges if e["from"] in ids and e["to"] in ids]
+    past, past_edges = _past(brain, ids)
     edges += [{"s": n["id"], "t": n["p"], "r": "part_of"} for n in nodes if n["p"] in ids and n["t"] != "project"]
     maps = [m for m in (_map_payload_cached(p) for p in brain.projects()) if m]
     comms = [{"id": c["id"], "label": c["label"], "size": c["size"], "project": c.get("project"), "words": c.get("words", []),
@@ -242,7 +282,8 @@ def render(brain=None):
     nodes += extra
     edges += extra_edges
     comms += extra_comms
-    data = {"generated": now_iso(), "nodes": nodes, "edges": edges, "maps": maps, "views": views,
+    data = {"generated": now_iso(), "nodes": nodes, "edges": edges, "past": past, "pastEdges": past_edges,
+            "maps": maps, "views": views,
             "inf": [e for e in an.get("inferred", []) if e["s"] in ids and e["t"] in ids],
             "comms": comms, "key": an.get("key", []),
             "concepts": [{"id": c["id"], "label": c["label"], "kind": c["kind"], "members": [i for i in c["members"] if i in ids]}

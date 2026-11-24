@@ -144,6 +144,10 @@ Rien à faire : parle normalement à Claude. Pour aller plus loin :
 Vue 3D de ta mémoire : `~/.claude/brain/cerveau.html` (souvenirs, projets, le cerveau e-commerce avec ses fiches et ses
 outils, et tes boutiques suivies). Elle marche hors ligne, sans aucun site extérieur : ses bibliothèques (3d-force-graph
 et three.js, sous licence MIT) sont livrées avec le plugin et intégrées à la page (`brainkit/vue3d/LICENCES.md`).
+Le curseur ▶ en bas rejoue ton cerveau dans le temps : à chaque date, les souvenirs vrais ce jour-là, ceux qui ont été
+remplacés depuis compris, s'allument et s'éteignent, et un remplacement passe en impulsion de l'ancien au nouveau.
+Couleurs par domaine ou par « chaleur » (dernier usage), et ☷ range les souvenirs en couches, de la vision en haut au
+détail en bas.
 
 ## Ce que fait le cerveau
 
