@@ -294,6 +294,45 @@ if node and not os.environ.get("CERVEAU_SANS_NAVIGATEUR") and not (probe or {}).
 else:
     SKIP.append("navigateur : vue 3D, suite (étape 17)")
 
+# ------------------------------------------------------------------------------------- vue 3D rangée en amas par projet
+AMAS_MIN = 4.5  # mesuré le 24/11 sur ce cerveau en pelote : 6,75 en amas, 2,71 en disposition libre
+check('id="grpBtn"' in tpl and "function clusterForce(" in tpl and 'store.get("brain3d-amas")' in tpl,
+      "gabarit : amas par projet branché (bouton ⊞, force d'amas, préférence gardée)")
+with Brain.edit() as b:  # quatre projets de huit souvenirs, liés entre eux et d'un projet à l'autre
+    for i, name in enumerate(("boutique", "chaine", "trading", "serveurs")):
+        b.add("project", f"Projet {name}", nid=f"p-{name}")
+        for j in range(8):
+            b.add("fact", f"Fait {j} du projet {name}", body=f"Détail {j} sur {name}.", project=f"p-{name}",
+                  nid=f"{name}-{j}")
+            if j:
+                b.link(f"{name}-{j}", f"{name}-{j - 1}")
+    names = ("boutique", "chaine", "trading", "serveurs")
+    for i, name in enumerate(names):  # une pelote : chaque souvenir lié aussi à un souvenir d'un autre projet
+        for j in range(8):
+            b.link(f"{name}-{j}", f"{names[(i + 1 + j % 3) % 4]}-{(j * 3 + i) % 8}")
+amas_path = viz.render()
+if node and not os.environ.get("CERVEAU_SANS_NAVIGATEUR") and not (probe or {}).get("skip"):
+    try:
+        r = subprocess.run([node, str(CODE / "tests" / "vue3d_amas.js"), str(amas_path)], capture_output=True,
+                           text=True, timeout=240, cwd=str(TMP))
+        am = json.loads((r.stdout.strip().splitlines() or ["{}"])[-1])
+    except (OSError, subprocess.SubprocessError, ValueError) as exc:
+        am = {"errors": [repr(exc)]}
+    print("· amas par projet :", {k: am.get(k) for k in ("opened", "free", "back")})
+    op, fr, bk = am.get("opened") or {}, am.get("free") or {}, am.get("back") or {}
+    check(not am.get("errors"), "amas : aucune erreur", am.get("errors"))
+    check(op.get("clusters") is True and op.get("pressed") == "true" and op.get("projects", 0) >= 4
+          and (op.get("ratio") or 0) >= AMAS_MIN,
+          f"à l'ouverture, un amas par projet : les projets sont {AMAS_MIN} fois plus loin l'un de l'autre que la taille "
+          "d'un amas", op)
+    check(fr.get("clusters") is False and fr.get("pressed") == "false" and (fr.get("ratio") or 0) < (op.get("ratio") or 0),
+          "⊞ : disposition libre, projets moins séparés", (fr, op))
+    check(am.get("reopened") == {"clusters": False, "pressed": "false"}, "disposition libre gardée à la réouverture",
+          am.get("reopened"))
+    check(bk.get("clusters") is True and (bk.get("ratio") or 0) >= AMAS_MIN, "touche G : les amas reviennent", bk)
+else:
+    SKIP.append("navigateur : amas par projet")
+
 for s in SKIP:
     print(f"· sauté : {s}")
 print(f"{len(OK)} vérifications OK, {len(FAIL)} échec(s)")

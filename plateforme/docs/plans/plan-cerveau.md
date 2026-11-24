@@ -81,6 +81,7 @@ sauf les correctifs sûrs, faits tout de suite à ta demande.
 | 24/11 | « Continue le plan » | Étapes 12 (8.35.0, piliers livrés après mesure) et 13 (8.36.0) faites : Bloc E terminé |
 | 24/11 | « Regarde chaque lien GitHub que je t'ai envoyé et mets dans le cerveau ce qui est utile » | Bloc F, étapes 14 à 19 ; tu as choisi les quatre groupes |
 | 24/11 | « Mets à jour et publie » | Étape 17 réunie et publiée (8.42.0) ; Bloc F fait, sauf ce qui est reporté. Tes réponses : fusionner la PR une fois la CI verte ; le garde-fou shell (étape 19, point 3) reste tel quel |
+| 24/11 | « L'organisation du cerveau est bordélique » | Étape 20 (8.43.0) : amas par projet à l'ouverture. Tes réponses : une grosse pelote, un amas par projet, 200 à 1 000 souvenirs |
 
 ## 2. Comment l'audit a été fait, et ses limites
 
@@ -951,6 +952,21 @@ concurrente par morceaux), Time, Git, Filesystem en lecture seule sur le coffre 
 il fait doublon avec le cerveau.
 
 **Ordre proposé** : 15 (protéger d'abord, petit et sûr), 14, 18, puis 16, 17, 19.
+
+**Étape 20 — La vue 3D rangée par projet** (ta remarque du 24/11 : « l'organisation du cerveau est bordélique »).
+**Faite le 24/11** (cerveau 8.43.0). Tes réponses : une grosse pelote, un amas par projet dès l'ouverture, 200 à
+1 000 souvenirs.
+- À l'ouverture, chaque projet a une place fixe (spirale de Fibonacci sur une sphère aplatie, les plus gros d'abord,
+  la même à chaque ouverture) et attire ses souvenirs. Un souvenir sans projet rejoint l'amas de sa communauté (au
+  moins 2 souvenirs) ; sinon, le centre. Les liens entre deux amas ne tirent plus qu'à 10 %, ceux des concepts à
+  30 % : ce sont eux qui faisaient la pelote.
+- ⊞ (touche G) revient à la disposition libre ; le choix est gardé d'une ouverture à l'autre. Désactivé sur une
+  carte de projet, comme les couches.
+- Mesure (`tests/vue3d_amas.js`, cerveau de test en pelote, 4 projets de 8 souvenirs liés d'un projet à l'autre) :
+  les projets sont 6,7 à 7,9 fois plus loin l'un de l'autre que la taille d'un amas, contre 2,5 à 2,8 en disposition
+  libre. Plancher du test : 4,5. Pas de mesure sur ton vrai cerveau : il est sur ton PC.
+- Au passage : le garde-fou shell de la plateforme a pris un script de mesure lancé par `node` pour le bot Discord et
+  l'a refusé ; non contourné, la mesure est passée dans le test de la vue 3D.
 
 ## 10. Décisions demandées
 

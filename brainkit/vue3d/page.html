@@ -171,6 +171,7 @@ box-shadow:0 0 30px var(--accent);animation:pulse 1.4s ease-in-out infinite}
   <button class="tog" id="lblBtn" aria-pressed="true" data-tip="Étiquettes" aria-label="Étiquettes">Aa</button>
   <button class="tog" id="rotBtn" aria-pressed="false" data-tip="Rotation continue · R" aria-label="Rotation">⟳</button>
   <button class="tog" id="orbBtn" aria-pressed="false" data-tip="Orbite (vidéo) : la caméra tourne seule · O" aria-label="Orbite (vidéo)">◎</button>
+  <button class="tog" id="grpBtn" aria-pressed="true" data-tip="Amas par projet : chaque projet à sa place · G" aria-label="Amas par projet">⊞</button>
   <button class="tog" id="layBtn" aria-pressed="false" data-tip="Couches : vision en haut, détail en bas" aria-label="Couches">☷</button>
   <button id="pinBtn" disabled data-tip="Nœuds posés à la main : glisser un nœud le fixe là" aria-label="Libérer les nœuds posés à la main">⚲</button>
   <button class="tog" id="fxBtn" aria-pressed="true" data-tip="Effets et animations · E" aria-label="Effets">✦</button>
@@ -216,6 +217,7 @@ const store = { get(k){ try { return localStorage.getItem(k); } catch (e) { retu
                 set(k, v){ try { localStorage.setItem(k, v); } catch (e) {} } };
 const reduceMotion = matchMedia("(prefers-reduced-motion: reduce)").matches;
 const st = {view: "mem", color: "comm", inf: true, labels: true, rotate: false, q: "", hidden: new Set(),
+            clusters: store.get("brain3d-amas") !== "off",  // amas par projet (par défaut) ou disposition libre
             sel: null, hover: null, focus: null, focusLabel: ""};
 const FX = {T: null, Bloom: null, on: store.get("brain3d-fx") !== "off", motion: !reduceMotion, bloom: null, stars: null,
             space: null, grid: null, radar: null, reticle: null, waves: [], geo: {}, tex: {}, pool: null, idleSpin: false,
@@ -691,6 +693,40 @@ function onVisibility(){
     if (!anim.raf) anim.raf = requestAnimationFrame(frame);
   }
 }
+function projKey(n){  // le projet d'un nœud (« » : sans projet)
+  if (!n) return "";
+  if (n.t === "project") return n.id;
+  return n.p && cur.byId.has(n.p) ? n.p : "";
+}
+function clusterKey(n){  // l'amas d'un nœud : son projet ; sans projet, sa communauté (si elle a au moins 2 souvenirs)
+  const k = projKey(n);
+  if (k || !n || n.kind !== "mem") return k;
+  const c = commById.get(n.c);
+  return c && c.size >= 2 ? "c:" + n.c : "";
+}
+function clusterAnchors(){  // amas : une place fixe par projet (et par groupe sans projet), sur une sphère aplatie, les plus gros d'abord
+  const size = new Map();
+  for (const n of cur.nodes) if (n.kind === "mem"){ const k = clusterKey(n); if (k) size.set(k, (size.get(k) || 0) + 1); }
+  const ps = [...size.keys()].sort((a, b) => size.get(b) - size.get(a) || (a < b ? -1 : 1)), out = new Map();
+  const R = 90 + 70 * Math.sqrt(ps.length);  // plus de projets, plus de place entre eux
+  ps.forEach((k, i) => {  // spirale de Fibonacci : places régulières, les mêmes à chaque ouverture
+    if (ps.length === 1){ out.set(k, {x: 0, y: 0, z: 0}); return; }
+    const y = 1 - 2 * (i + .5) / ps.length, r = Math.sqrt(1 - y * y), a = i * 2.399963;
+    out.set(k, {x: R * r * Math.cos(a), y: R * y * .55, z: R * r * Math.sin(a)});
+  });
+  return out;
+}
+function clusterForce(strength){  // chaque souvenir est attiré vers la place de son projet ; sans projet, vers le centre
+  let nodes = [], at = new Map();
+  const O = {x: 0, y: 0, z: 0};
+  const f = alpha => { for (const n of nodes){
+    const a = n.kind === "concept" ? O : at.get(clusterKey(n)) || O;
+    const k = strength * alpha * (n.t === "project" ? 4 : n.kind === "concept" ? .3 : 1);
+    n.vx += (a.x - n.x) * k; n.vy += (a.y - n.y) * k; n.vz += (a.z - (n.z || 0)) * k; } };
+  f.initialize = ns => { nodes = ns; at = clusterAnchors(); };
+  f.anchors = () => at;
+  return f;
+}
 function pullForce(strength){  // rappel doux vers le centre : les souvenirs isolés ne partent plus au loin
   let nodes = [], deg = new Map();
   const f = alpha => { for (const n of nodes){ const k = strength * alpha * ((deg.get(n.id) || 0) ? 1 : 4);
@@ -723,9 +759,13 @@ function forces(){
          if (link && link.strength) link.strength(l => {  // le passé (caché aujourd'hui) tient à peine : la vue d'aujourd'hui reste la même
            if (l.past) return .02;
            const a = cur.adj.get(idOf(l.source)), b = cur.adj.get(idOf(l.target));
-           return 1 / Math.max(1, Math.min(a ? a.size : 1, b ? b.size : 1)); });
+           const w = 1 / Math.max(1, Math.min(a ? a.size : 1, b ? b.size : 1));
+           if (!st.clusters) return w;
+           if (l.con) return w * .3;  // un concept relie plusieurs projets : il ne les ramène pas en pelote
+           const pa = clusterKey(cur.byId.get(idOf(l.source))), pb = clusterKey(cur.byId.get(idOf(l.target)));
+           return pa && pb && pa !== pb ? w * .1 : w; });  // lien entre deux amas : il ne tire presque plus
          if (charge){ charge.strength(n => n.old ? -12 : -190); charge.distanceMax && charge.distanceMax(280); } }  // de l'air entre les nœuds
-  G.d3Force("pull", pullForce(cur.map ? .02 : .03));
+  G.d3Force("pull", !cur.map && st.clusters ? clusterForce(.06) : pullForce(cur.map ? .02 : .03));
   G.d3Force("collide", collideForce(cur.map ? 2 : 6));
 }
 let redrawQueued = false;
@@ -1183,7 +1223,7 @@ function setView(v){
   const m = v === "mem" || g ? null : (DATA.maps || []).find(x => "map:" + x.pid === v);
   cur = m ? mapData(m) : memData();
   if (g && g.members){ st.groupFocus = new Set(g.members.filter(id => cur.byId.has(id))); st.focusLabel = g.label; computeFocus(); }
-  $("#color").disabled = !!m; $("#infBtn").disabled = !!m; $("#conBtn").disabled = !!m; $("#layBtn").disabled = !!m;
+  $("#color").disabled = !!m; $("#infBtn").disabled = !!m; $("#conBtn").disabled = !!m; $("#layBtn").disabled = !!m; $("#grpBtn").disabled = !!m;
   initTimeline();
   closePanel();
   if (G){ viewStart = performance.now();
@@ -1250,6 +1290,11 @@ function setUntil(i){
   }
   redraw();
 }
+function setClusters(on){  // amas par projet ⇄ disposition libre ; la préférence est gardée
+  st.clusters = !!on; store.set("brain3d-amas", st.clusters ? "on" : "off");
+  $("#grpBtn").setAttribute("aria-pressed", String(st.clusters));
+  if (G && !cur.map){ forces(); G.d3ReheatSimulation(); setTimeout(() => { if (!st.userMoved) G.zoomToFit(900, 80); }, 1800); }
+}
 function applyLayers(){  // couches : la hauteur d'un souvenir dit son niveau (vision en haut, détail en bas)
   for (const n of cur.nodes){
     if (st.layers && !cur.map && n.kind === "mem") n.fy = LEVEL_Y[levelOf(n)];
@@ -1278,6 +1323,8 @@ function controls(){
   };
   $("#lblBtn").onclick = e => { st.labels = !st.labels; e.currentTarget.setAttribute("aria-pressed", String(st.labels)); };
   $("#rotBtn").onclick = () => toggleRotate();
+  $("#grpBtn").onclick = () => setClusters(!st.clusters);
+  $("#grpBtn").setAttribute("aria-pressed", String(st.clusters));  // préférence gardée d'une ouverture à l'autre
   $("#layBtn").onclick = e => { st.layers = !st.layers; e.currentTarget.setAttribute("aria-pressed", String(st.layers)); applyLayers(); };
   $("#fxBtn").onclick = () => toggleFX();
   $("#orbBtn").onclick = () => setOrbit(!(st.orbit && st.orbit.target));
@@ -1305,6 +1352,7 @@ function controls(){
     else if (ev.key === "e" || ev.key === "E") toggleFX();
     else if (ev.key === "o" || ev.key === "O") $("#orbBtn").click();
     else if (ev.key === "l" || ev.key === "L") unpinAll();
+    else if (ev.key === "g" || ev.key === "G") $("#grpBtn").click();
     else if (ev.key === "f" || ev.key === "F") G && G.zoomToFit(900, 80);
   });
 }

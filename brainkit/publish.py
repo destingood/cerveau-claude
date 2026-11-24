@@ -150,7 +150,8 @@ Couleurs par domaine ou par « chaleur » (dernier usage), et ☷ range les souv
 détail en bas. Les liens typés ont une flèche qui dit leur sens et, au survol, leur type et leurs dates. Un nœud
 déplacé à la main reste où tu le poses (⚲ ou double-clic sur le fond pour tout libérer). Le bouton ◎ fait tourner la
 caméra seule autour du cerveau, pour filmer, sauf si ton système demande moins d'animations. L'animation s'arrête
-quand l'onglet est caché.
+quand l'onglet est caché. À l'ouverture, chaque projet forme son amas à sa place, et les souvenirs sans projet se
+regroupent par sujet ; ⊞ (touche G) revient à la disposition libre, et la vue s'en souvient.
 
 ## Ce que fait le cerveau
 
