@@ -8,7 +8,7 @@ projets de l'utilisateur. Plan unique, plugin compris : `plateforme/docs/plans/p
 
 - `brain.py` : lanceur. `brainkit/` : le moteur — `store.py` (graphe des souvenirs), `search.py` (rappel),
   `hooks*.py` (démarrage, message, fin), `mcp_server.py`, `viz.py` et `vue3d/` (vue 3D), `wiki*.py`, `dream.py`.
-- Livré aux utilisateurs : `hooks/`, `skills/` (18), `agents/` (3), `output-styles/`, `.claude-plugin/`.
+- Livré aux utilisateurs : `hooks/`, `skills/` (23), `agents/` (3), `output-styles/`, `.claude-plugin/`.
   Propre à ce dépôt, jamais livré : `.claude/` (interdits, hooks), `tests/`.
 
 ## Commandes

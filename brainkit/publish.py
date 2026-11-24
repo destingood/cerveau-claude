@@ -308,6 +308,12 @@ fournissent ; une fois ces plugins installés, « humanise ce texte », « on di
 
 | Tu dis… | Skill | Ce que fait Claude | D'après |
 |---|---|---|---|
+| « audite cette skill », « je peux installer cette skill ? » | `/cerveau:securite` (audit-skills) | lit une skill tierce sans rien lancer : « sûre », « à vérifier » ou « refusée », avec les raisons ; aussi dans `brain echange voir` | skill-security-auditor (Alireza Rezvani, MIT) |
+| « cuisine-moi sur ma boutique » | `/cerveau:cuisine-moi` (sur demande) | t'interroge par tours de questions numérotées, avec sa réponse conseillée à chaque fois, puis ne fait rien avant ton « oui » | grilling (Matt Pocock, MIT) |
+| « fais une passation » | `/cerveau:passation` (sur demande) | écrit le document pour reprendre ailleurs (état, décisions, fichiers, skills à charger), sans aucun secret | handoff (Matt Pocock, MIT) |
+| « tu as vraiment vérifié ? » | `/cerveau:preuve-avant-fini` | rien n'est annoncé fini sans la commande qui le prouve et sa sortie lue | verification-before-completion (Jesse Vincent, MIT) |
+| « mets ce tuto en pratique » | `/cerveau:apprendre-en-livrant` | une vidéo ou un cours devient une suite de petits projets à livrer | ship-learn-next (tapestry-skills, MIT) |
+| « range mes factures », « tableau pour mon comptable » | `/cerveau:factures-recus` | inventaire, lecture des factures électroniques, noms « AAAA-MM-JJ Fournisseur - Facture - Objet », copies classées, CSV pour Excel ; côté e-commerce, un tirage au sort équitable et vérifiable (`tirage.py`), côté carrière commerciale, le débrief d'un appel de vente (`appel.py`) | écrite pour le cerveau |
 | « branche perplexity », puis « cherche sur perplexity … » | `/cerveau:recherche` (perplexity) | recherche web filtrée par sites, langue, pays ou date, ou recherche approfondie avec sources, avec ton propre compte Perplexity | le serveur officiel de Perplexity |
 | « installe agent-reach », puis « lis ce tweet », « lis ce fil reddit », « sous-titres de cette vidéo YouTube » | `/cerveau:web` (agent-reach) | lit en lecture seule X/Twitter, Reddit, YouTube, LinkedIn, Instagram et d'autres, là où sa recherche web échoue | Agent Reach (Panniantong) |
 | « clone cette app », « ma version de X » | `/cerveau:replica` | refait ta propre version d'une app existante en 11 étapes, jusqu'à la fiche App Store et la mise en ligne | replica-skill (Jake Schincariol, MIT) |

@@ -872,7 +872,8 @@ non fait (pas demandé).
 3. Orbite automatique de la caméra, pour une capture vidéo YouTube. (S)
 4. L'animation se met en pause quand l'onglet est caché. (S)
 
-**Étape 18 — Six skills de plus** (toutes gratuites, sans clé ; réécrites en français, licence et auteur cités).
+**Étape 18 — Six skills de plus** (toutes gratuites, sans clé ; réécrites en français, licence et auteur cités). **Faite le 24/11**
+(cerveau 8.40.0). Détail après la liste.
 1. Auditeur de skills (MIT, bibliothèque standard) : avant d'installer ou de mettre à jour une skill tierce, un
    verdict « sûre / à vérifier / refusée » ; aussi branché sur l'échange de skills avec tes amis. (M)
 2. « Cuisine-moi » (grilling, M. Pocock) : Claude t'interroge question par question sur un projet (boutique, map,
@@ -885,6 +886,21 @@ non fait (pas demandé).
    carriere-commerciale.
 Et deux pratiques : la description d'une skill dit quand s'en servir, jamais comment (à corriger dans les 18) ; un
 test de comportement par skill (sans la skill, puis avec). (S, M)
+
+- ✅ Fait le 24/11 (cerveau 8.40.0), par un agent en parallèle puis repris sur la branche :
+  - L'auditeur de skills tierces est dans la skill securite (`brainkit/skills_audit.py`, 484 lignes ; script
+    `skills/securite/audit-skills/scripts/auditer.py`, codes 0, 1, 2) et dans `brain echange voir` (« audit : … »).
+    Il refuse les 6 skills piégées du test et aucune skill du plugin.
+  - Cinq skills nouvelles : cuisine-moi et passation (sur demande seulement, hors de la liste montrée au modèle),
+    preuve-avant-fini, apprendre-en-livrant, factures-recus (écrite pour le cerveau, avec la lecture des factures
+    électroniques Factur-X, CII, UBL ; obligation de réception au 01/09/2026 vérifiée sur economie.gouv.fr et
+    impots.gouv.fr). Le tirage au sort entre dans ecommerce, l'analyse d'un appel de vente dans
+    carriere-commerciale.
+  - Les descriptions des 22 skills hors brain disent « quand », plus « comment ». 23 skills, liste de 4 541
+    caractères (3 695 montrés au modèle), sous la limite de 5 000, inchangée.
+  - Pas fait : un test de comportement par skill (il faut un modèle pour le lancer).
+  - Tests : `test_skills_regroupees` (252), `test_scripts_skills` (95) ; `test_vue3d` fait tourner le code de la
+    8.33.0 sur les skills d'aujourd'hui, pour comparer le même cerveau des deux côtés.
 
 **Étape 19 — Ce dépôt** (outillage, rien de livré) : **points 1 et 2 faits le 24/11** ; le 3 attend ta décision.
 1. Grille de tri d'un test en échec (régression, instable, environnement, test périmé) proposée par le hook de
