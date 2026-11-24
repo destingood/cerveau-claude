@@ -53,7 +53,7 @@ sauf les correctifs sûrs, faits tout de suite à ta demande.
    par MCP et une vue 3D avec le temps. Le cerveau en a déjà la plus grande part : graphe à liens typés,
    « A remplace B » avec date de fin, PageRank, vue 3D avec curseur. Il reste quatre manques, donc quatre
    étapes (10 à 13) : les réglages Claude Code du dépôt, le temps dans le modèle de données, le rappel et
-   les piliers, la vue 3D rejouable. Étape 10 faite le 24/11, sur Opus 5.5 ; les étapes 11 à 13 attendent ton GO.
+   les piliers, la vue 3D rejouable. Étapes 10 et 11 faites le 24/11, sur Opus 5.5 (cerveau 8.34.0) ; les étapes 12 et 13 attendent ton GO.
 
 ## 1. Ce que tu as demandé
 
@@ -77,6 +77,7 @@ sauf les correctifs sûrs, faits tout de suite à ta demande.
 | 23/11 | Fusionner la 8.32.0 ; puis les restes du plugin | 8.32.0 fusionnée ; restes faits (8.33.0) : fin de session wiki en 88 ms, `brain regroupe` complété |
 | 24/11 | Synthèse « cerveau en 4D » (graphe daté, mémoire par MCP, vue 3D avec le temps) ; « fais le plan et passe à Opus 5.5 » | Bloc E, étapes 10 à 13. Tes réponses du 24/11 : les quatre manques, reprendre les idées de Graphiti et mem0 sans les installer, rappel lexical avec filtre par date, tu changes le modèle toi-même |
 | 24/11 | Passage sur Opus 5.5, « GO étape 10 » | Étape 10 faite : `CLAUDE.md` à la racine, hook de vérification en fin de tâche (E20 appliquée telle que recommandée) |
+| 24/11 | « Go étape 11 » | Étape 11 faite (8.34.0) ; E19 et E21 appliquées telles que recommandées |
 
 ## 2. Comment l'audit a été fait, et ses limites
 
@@ -618,7 +619,8 @@ synthèse est en place ; le plan ne traite que la colonne de droite.
     `CLAUDE.md`, moins de 200 lignes, une règle qui doit tenir passe par un hook ou un interdit (le `CLAUDE.md`
     n'est qu'un conseil), un hook Stop qui lance les tests. Le reste n'a pas été repris.
 
-**Étape 11 — Le temps dans le modèle de données** (cerveau 8.34.0)
+**Étape 11 — Le temps dans le modèle de données** (cerveau 8.34.0) : **faite le 24/11** (PR #32). Détail après le
+plan de l'étape.
 1. *Début et fin de validité.* `meta.valid_from` : le jour où le fait est devenu vrai ; absent, c'est la date
    d'enregistrement. `brain add --depuis 01/09`, `brain edit --depuis … --jusqu 31/12`. Une fin posée à l'avance
    laisse le souvenir actif jusque-là ; le rêve l'archive le lendemain. Dans le wiki : propriétés `debut` et `fin`.
@@ -644,6 +646,35 @@ synthèse est en place ; le plan ne traite que la colonne de droite.
   et la vue ; sur un cerveau d'essai, `brain q --at` répond pour une date vieille de six mois.
 - Risque principal : une lecture qui verrait un lien terminé fausserait le PageRank, les communautés et les
   fusions. Paré par `Brain.edges` filtré et par un test sur chaque module qui lit les liens.
+- ✅ Fait le 24/11 (cerveau 8.34.0), dans un nouveau module `brainkit/temps.py` (191 lignes) :
+  - *Le risque principal est écarté autrement, et plus sûrement.* Les liens terminés ne sont pas dans `edges` avec
+    une date de fin : ils sont dans une liste à part, `ended_edges`. `Brain.edges` reste la liste des liens vivants,
+    sans filtre ; ses 38 usages ne changent pas et ne peuvent pas voir un lien terminé. `graph.json` s'écrit en
+    entier : une 8.33.0 ignore cette liste et la garde (essayé avec le vrai code de la 8.33.0, tiré de git).
+  - Début et fin : `--depuis` (la date la plus proche, passée ou future : « depuis le 01/09 » dit le 24/11 est le
+    01/09 passé) et `--jusqu` sur `add` et `edit`. La fin est le dernier jour vrai, comprise : un souvenir est
+    valable du début à la fin incluse ; un lien, de sa création au jour où il est retiré. Une fin avant le début est
+    refusée avant toute écriture. Une fin passée posée par `edit` archive tout de suite ; l'entretien du jour archive
+    les autres le lendemain.
+  - Liens terminés : `brain unlink` et un `[[lien]]` retiré à la main d'une page du wiki (repéré en comparant avec le
+    cache, puis écrit dans la page à l'écriture suivante). Écart avec le plan : une fusion de doublons ne termine
+    pas de lien, elle reporte les liens de l'archivé sur le gardé ; ne disparaissent que les doublons et les boucles,
+    dont l'information reste dans le lien gardé. La suppression définitive emporte aussi les liens terminés.
+  - La raison : `--parce-que` sur `supersede` et `add --replaces`. Écart avec le plan : elle est gardée sur l'ancien
+    souvenir (`meta.end_reason`, propriété `raison_fin` du wiki) plutôt que sur le lien : c'est la raison de sa fin,
+    et elle fait l'aller-retour du wiki sans format nouveau. `brain show` donne la lignée et « valable du … au … ».
+  - Axes : `temps.axes` ; niveau déduit du type, `--niveau` le corrige. Domaine : le `--domaine` libre qui existait
+    déjà (pages du wiki) sert d'axe, posé sur le souvenir ou hérité de son projet (`brain edit <projet> --domaine
+    code`) ; pas d'option `brain proj --domaine`. La liste d'E19 est proposée dans l'aide, pas imposée.
+  - Le passé sans instantané : `brain q --at`, avant le premier des 60 instantanés, reconstruit d'après les dates et
+    le dit. `memory_search` reçoit `at` ; la liste des outils MCP reste à 3 204 caractères (des mots retirés
+    ailleurs). Corrigé au passage, un défaut ancien : `--at 15/10` visait le 15/10 de l'an prochain.
+  - Mode wiki : propriétés `debut`, `raison_fin`, `niveau`, `anciens_liens` (« relation · id · créé → retiré », en
+    texte : Obsidian ne les dessine pas comme des liens vivants). Le `CLAUDE.md` des wikis n'en parle pas : son texte
+    est tenu par une empreinte de `test_decoupage`, relevée avant le découpage, que je n'ai pas voulu changer ; elles
+    sont expliquées dans `references/memoire.md` de la skill /brain.
+  - Tests : nouveau `tests/test_temps.py` (49 vérifications), dont la 8.33.0 qui lit, écrit et garde un graphe
+    récent, et un cache du wiki refait depuis les seules pages. Les 37 scripts passent.
 
 **Étape 12 — Rappel et piliers** (cerveau 8.35.0, après l'étape 11)
 1. *Filtre par validité.* Le rappel automatique et `brain q` écartent un souvenir pas encore valable ou échu,
@@ -701,9 +732,9 @@ et se font dans l'ordre que tu veux.
 | E16 | Graphiti, mem0 ou une base de graphe pour le cerveau en 4D | **Tranché le 24/11 : reprendre leurs idées, ne rien installer** (Bloc E) |
 | E17 | Recherche par embeddings | **Tranché le 24/11 : le rappel reste lexical**, avec un filtre par validité en plus (étape 12) |
 | E18 | Modèle qui exécute le Bloc E | **Tranché le 24/11 : Opus 5.5**, tu changes le modèle de la session toi-même |
-| E19 | Liste des domaines, pour l'axe « domaine » (étape 11) | Sept domaines portés par le projet : code, business, contenu, finance, infra, recherche, perso. À toi de corriger la liste |
+| E19 | Liste des domaines, pour l'axe « domaine » (étape 11) | **Appliquée le 24/11 telle que recommandée**, proposée et non imposée (le `--domaine` libre existait déjà). Sept domaines portés par le projet : code, business, contenu, finance, infra, recherche, perso. À toi de corriger la liste |
 | E20 | Vérification en fin de tâche dans ce dépôt (étape 10) | **Appliquée le 24/11 telle que recommandée** (ton GO, sans autre consigne) : le lint et les tests des fichiers touchés ; tous les scripts (3 min 50 mesurées le 24/11 sous Linux) restent pour la CI. À changer si tu veux tout lancer |
-| E21 | Où garder un lien terminé en mode wiki (étape 11) | Dans une propriété `anciens_liens` de la page, pour qu'il survive à une reconstruction de `graph.json` |
+| E21 | Où garder un lien terminé en mode wiki (étape 11) | **Appliquée le 24/11 telle que recommandée.** Dans une propriété `anciens_liens` de la page, pour qu'il survive à une reconstruction de `graph.json` |
 
 Toujours ouvertes depuis le plan v2 : D4 (ton nom dans l'historique public), D5 (ordre des domaines),
 D6 (ta boutique), D7 (réseaux sociaux visés), D8 (canal des approbations), D9 (modèle local),
