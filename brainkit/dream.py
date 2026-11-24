@@ -165,6 +165,8 @@ def prepare(apply_safe=True):
     dups, conflicts = pairs(brain)
     rules = repeated_rules(brain)
     idle = unused(brain)[:6]
+    from .temps import to_review
+    review = to_review(brain)  # importants qui n'ont plus servi (étape 12) : trois au plus par jour
     why = no_why(brain)[:6]
     late = overdue(brain)
     try:
@@ -183,7 +185,7 @@ def prepare(apply_safe=True):
         except Exception as exc:
             from .common import log
             log(f"rêve : lint du wiki : {exc!r}")
-    items = len(heard) + len(dups) + len(conflicts) + len(rules) + len(idle) + len(why) + len(late) + len(red) \
+    items = len(heard) + len(dups) + len(conflicts) + len(rules) + len(idle) + len(review) + len(why) + len(late) + len(red) \
         + sum(len(r) for _, r in wiki_rows)
     lines = [f"# 🌙 Rêve du cerveau — {fmt_date(now_iso())}", "",
              f"_{items} point(s) demandant du jugement. Appliquer ce qui est sûr avec les commandes indiquées, demander "
@@ -212,6 +214,10 @@ def prepare(apply_safe=True):
         ("Montrés souvent, jamais utilisés",
          [f"`{n['id']}` ({short(n['title'], 70)}) — montré {shown_since(n)}× sans servir → titre plus précis, importance plus basse, "
           f"ou `rm` s'il est obsolète" for n in idle]),
+        ("À revoir (importants qui n'ont plus servi)",
+         [f"`{n['id']}` ({short(n['title'], 70)}) — rien depuis {d} j → toujours vrai : `edit {n['id']} --revu` "
+          f"(prochaine revue dans {min(480, 2 * int((n.get('meta') or {}).get('revue_delai') or 30))} j) ; sinon le corriger "
+          f"(`edit`) ou l'archiver (`rm`), en demandant à l'utilisateur en cas de doute" for d, n in review]),
         ("Décisions et règles sans « pourquoi »",
          [f"`{n['id']}` ({short(n['title'], 70)}) → `edit {n['id']} -a \"Pourquoi : …\"` si la raison est connue"
           for n in why]),

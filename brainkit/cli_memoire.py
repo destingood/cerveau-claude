@@ -76,10 +76,16 @@ def cmd_q(a):
         hidden = sum(1 for r in res if r["node"]["id"] in cited)
         res = [r for r in res if r["node"]["id"] not in cited]  # déjà lus dans la fiche : pas deux fois
     if res:
+        from . import temps
+        order, against = temps.contradictions(b.edges, [r["node"] for r in res])  # le plus récent devant (étape 12)
+        by_id = {r["node"]["id"]: r for r in res}
+        res = [by_id[n["id"]] for n in order]
         print(f"Souvenirs ({len(res)}" + (f", +{hidden} déjà dans la fiche" if hidden else "") + ") :")
         for i, r in enumerate(res, 1):
             n = r["node"]
             line = f"{i}. {node_line(n, 110 if fiche else 260)}"  # après une fiche : des renvois courts suffisent
+            if n["id"] in against:
+                line += f"  ⚠ contredit par `{against[n['id']]}`, plus récent"
             if n.get("project") and n["type"] != "project":
                 line += f" · projet {n['project']}"
             via = r.get("via") or ""
@@ -382,6 +388,9 @@ def cmd_edit(a):
             from . import temps
             if temps.expired({**n, "meta": fields["meta"], "status": "active"}) and not a.unarchive:
                 fields["status"] = "archived"  # fin déjà passée : archivé tout de suite, comme le ferait l'entretien
+        if a.revu:
+            from . import temps
+            fields["meta"] = temps.reviewed(fields.get("meta") or n.get("meta") or {})
         if a.path:
             if n["type"] != "project":
                 die("--path ne s'applique qu'à un projet")
@@ -395,7 +404,8 @@ def cmd_edit(a):
             b.update(n["id"], **fields)
         except ValueError as exc:
             die(str(exc))
-        print(f"✓ modifié `{n['id']}`")
+        print(f"✓ modifié `{n['id']}`" + (f" · relu : prochaine revue dans {fields['meta']['revue_delai']} j"
+                                          if a.revu else ""))
     refresh_views()
 
 

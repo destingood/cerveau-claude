@@ -144,6 +144,8 @@ def build_parser():
     s.add_argument("--depuis", help="vrai depuis cette date (« none » : depuis son enregistrement)")
     s.add_argument("--jusqu", help="vrai jusqu'à cette date incluse : archivé le lendemain (« none » pour l'enlever)")
     s.add_argument("--niveau", help="vision, architecture, procedure, detail (« none » : selon le type)")
+    s.add_argument("--revu", action="store_true", help="relu et toujours vrai : la prochaine revue du rêve recule "
+                                                       "(30, 60, 120… jours)")
 
     s = cmd("rm", cmd_rm, "archiver un souvenir (--purge = supprimer définitivement)", ["archive"])
     s.add_argument("id")

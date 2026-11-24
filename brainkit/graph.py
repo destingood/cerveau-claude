@@ -622,6 +622,9 @@ def expand(brain, an, hits, seen, limit=3, types=None):
         for m, factor, via in cands:
             if not m or m["id"] in seen or m.get("status", "active") != "active":
                 continue
+            from .search import valid_today
+            if not valid_today(m):  # échu ou pas encore commencé (étape 12) : pas plus rappelé par un voisin
+                continue
             if types and m["type"] not in types:
                 continue
             seen.add(m["id"])

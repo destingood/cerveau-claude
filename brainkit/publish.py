@@ -159,6 +159,10 @@ et three.js, sous licence MIT) sont livrées avec le plugin et intégrées à la
   donne la lignée (« Scaleway depuis le 24/11 ← OVH du 01/09 au 24/11, parce que trop cher »). Un lien retiré est
   daté, pas effacé. `brain q "…" --at 15/05` montre le cerveau tel qu'il était, même au-delà des instantanés. Chaque
   souvenir a aussi un domaine (celui de son projet) et un niveau (vision, architecture, procédure, détail).
+  Un souvenir échu n'est plus rappelé, même avant son archivage ; deux souvenirs qui se contredisent arrivent le plus
+  récent d'abord, l'autre marqué. Au démarrage, les souvenirs les plus reliés de ton projet passent devant (les
+  piliers). Et le rêve te ressort, trois au plus, les souvenirs importants qui ne servent plus, à revoir de plus en
+  plus rarement (30 jours, puis 60, 120…) tant qu'ils restent vrais.
 - **Le rêve** : l'entretien de ta mémoire se fait hors conversation, chaque jour — dates relatives rendues réelles,
   observations anciennes condensées — et ce qui demande du jugement (corrections entendues, doublons, conflits,
   à-faire en retard) est tranché par Claude au démarrage suivant : ce qui est sûr est appliqué, un doute est laissé

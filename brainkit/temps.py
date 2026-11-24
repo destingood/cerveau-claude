@@ -161,6 +161,63 @@ def lineage_line(chain) -> str:
     return " ← ".join(parts)
 
 
+# ------------------------------------------------------------------ souvenirs en conflit, revue espacée
+def _recency(n) -> tuple:
+    return valid_from(n) or "", str(n.get("updated") or "")
+
+
+def contradictions(edges, nodes) -> tuple:
+    """Souvenirs montrés ensemble et liés par `contradicts` (étape 12) : le plus récent passe juste devant l'autre, et
+    l'autre est noté. `nodes` dans l'ordre d'affichage → (même liste réordonnée, {id de l'ancien: id du récent})."""
+    pos = {n["id"]: i for i, n in enumerate(nodes)}
+    if len(pos) < 2:
+        return list(nodes), {}
+    notes, order = {}, list(nodes)
+    for e in edges:
+        if e.get("rel") != "contradicts" or e.get("from") not in pos or e.get("to") not in pos:
+            continue
+        a, b = nodes[pos[e["from"]]], nodes[pos[e["to"]]]
+        new, old = (a, b) if _recency(a) >= _recency(b) else (b, a)
+        notes[old["id"]] = new["id"]
+        i, j = order.index(new), order.index(old)
+        if i > j:  # le récent était après : il passe juste devant l'ancien
+            order.insert(j, order.pop(i))
+    return order, notes
+
+
+REVIEW_FIRST, REVIEW_MAX = 30, 480  # jours : première revue, puis le délai double à chaque « toujours vrai »
+
+
+def to_review(brain, limit=3, today=None) -> list:
+    """Souvenirs importants (4 ou 5) qui n'ont ni servi ni été revus depuis leur délai de revue : à revoir, façon
+    répétition espacée. → [(jours sans usage, souvenir)], les plus oubliés d'abord, `limit` au plus."""
+    import datetime as _dt
+    today = today or _dt.date.today()
+    out = []
+    for n in brain.active(own=True):
+        if (n.get("importance", 3) or 3) < 4 or n["type"] == "project":
+            continue
+        meta = n.get("meta") or {}
+        delay = int(meta.get("revue_delai") or REVIEW_FIRST)
+        last = max(day(meta.get("revu_le")) or "", day(n.get("last_used")) or "", day(n.get("updated")) or "")
+        if not last:
+            continue
+        idle = (today - _dt.date.fromisoformat(last)).days
+        if idle >= delay:
+            out.append((idle, n))
+    out.sort(key=lambda x: (-x[0], x[1]["id"]))
+    return out[:limit]
+
+
+def reviewed(meta, today=None) -> dict:
+    """« Toujours vrai » : la date de la revue est notée et le délai avant la suivante double (30, 60, 120… 480 j)."""
+    meta = dict(meta or {})
+    delay = int(meta.get("revue_delai") or REVIEW_FIRST)
+    meta["revu_le"] = today or now_iso()[:10]
+    meta["revue_delai"] = min(REVIEW_MAX, delay * 2)
+    return meta
+
+
 # ------------------------------------------------------------------ axes
 def normalize_level(value) -> str | None:
     v = fold(value or "").strip()

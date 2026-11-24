@@ -654,7 +654,8 @@ class Brain:
         self.link(new_id, old_id, "supersedes")
         old = self.nodes[old_id]
         meta = dict(old.get("meta") or {})
-        meta["valid_to"] = now_iso()[:10]
+        end = str(meta.get("valid_to") or "")[:10]
+        meta["valid_to"] = min(end, now_iso()[:10]) if end else now_iso()[:10]  # une fin déjà passée reste la sienne
         meta["superseded_by"] = new_id
         why = clean_label(self._guard(why)) if why else ""
         if why:

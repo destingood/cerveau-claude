@@ -142,6 +142,14 @@ check(line.index("`htz`") < line.index("`scw`") < line.index("`ovh`") and "parce
       "lignée dans show : du plus récent au plus ancien, avec dates et raisons", out)
 check(f"du {ago(120)[8:10]}/{ago(120)[5:7]}/{ago(120)[:4]}" in line, "lignée : le début de validité donné à l'ajout", line)
 
+brain("add", "-t", "fact", "-T", "Horaires de la boutique", "-b", "Ouverte de 9 h à 18 h.", "-p", "none",
+      "--depuis", ago(60), "--jusqu", ago(5), "--id", "horaires-hiver")
+brain("add", "-t", "fact", "-T", "Horaires d'été de la boutique", "-b", "Ouverte de 10 h à 20 h.", "-p", "none",
+      "--id", "horaires-ete", "--force")
+c, out = brain("supersede", "horaires-ete", "horaires-hiver")
+check(graph()["nodes"]["horaires-hiver"]["meta"]["valid_to"] == ago(5),
+      "supersede : une fin déjà écrite et passée reste la sienne (pas repoussée à aujourd'hui)", out)
+
 # ------------------------------------------------------------------ 5. liens terminés
 brain("link", "htz", "promo")
 c, out = brain("unlink", "htz", "promo")
@@ -289,6 +297,116 @@ check(any(e["from"] == "budget" and e["to"] == "scw" and e["ended"] == TODAY.iso
 brain("add", "-t", "fact", "-T", "Une autre note", "-b", "Rien de plus.", "-p", "none", home=WHOME)
 check("anciens_liens: [\"lie_a · scw ·" in wpage("Budget serveurs"),
       "… et écrit dans sa page à l'écriture suivante (il survit à une reconstruction du cache)", wpage("Budget serveurs"))
+
+# ------------------------------------------------------------------ 10. étape 12 : rappel selon la validité
+R = TMP / "brain-rappel"
+for args in (("add", "-t", "fact", "-T", "Tarif de la livraison express", "-b", "La livraison express coûte 12 euros.",
+              "-p", "none", "--depuis", ago(90), "--jusqu", ago(3), "--id", "express-ancien", "--force"),
+             ("add", "-t", "fact", "-T", "Tarif de la livraison express en janvier", "-b",
+              "La livraison express coûtera 9 euros.", "-p", "none", "--depuis", (TODAY + dt.timedelta(days=40)).isoformat(),
+              "--id", "express-futur", "--force"),
+             ("add", "-t", "fact", "-T", "Délai de la livraison express", "-b", "La livraison express arrive en 24 heures.",
+              "-p", "none", "--id", "express-delai", "--force")):
+    c, out = brain(*args, home=R)
+    check(c == 0, f"rappel : {args[4]} mémorisé", out)
+g = graph(R)  # l'entretien du jour a pu passer tout seul (cerveau neuf) : de nouveau actif, comme la veille de l'entretien
+g["nodes"]["express-ancien"]["status"] = "active"
+(R / "graph.json").write_text(json.dumps(g, ensure_ascii=False), encoding="utf-8")
+
+
+def loaded(home):
+    """Le cerveau d'un autre dossier, en mémoire (BRAIN_HOME n'est lu qu'à l'import de brainkit)."""
+    return Brain(graph(home))
+
+
+c, out = brain("q", "livraison express", "--no-files", home=R)
+check("express-delai" in out and "express-ancien" not in out and "express-futur" not in out,
+      "brain q : ni le souvenir échu (encore actif), ni celui qui ne commence que plus tard", out)
+c, out = brain("q", "livraison express", "--no-files", "--archived", home=R)
+check("express-ancien" in out and "express-futur" in out, "brain q --archived : les deux reviennent", out)
+from brainkit import search  # noqa: E402
+b = loaded(R)
+check(search.valid_today(b.nodes["express-delai"]) and not search.valid_today(b.nodes["express-ancien"])
+      and not search.valid_today(b.nodes["express-futur"]), "search.valid_today : vrai, échu, pas encore commencé")
+found = [r["node"]["id"] for r in search.search_memories(b, "livraison express", limit=10, expand=False, use_cache=False)]
+check("express-delai" in found and "express-ancien" not in found and "express-futur" not in found,
+      "rappel automatique (search_memories) : même filtre", found)
+
+# ------------------------------------------------------------------ 11. étape 12 : deux souvenirs qui se contredisent
+for args in (("add", "-t", "decision", "-T", "Emballage des colis en carton", "-b", "On emballe les colis en carton brun.",
+              "-p", "none", "--depuis", ago(40), "--id", "carton"),
+             ("add", "-t", "decision", "-T", "Emballage des colis en papier kraft", "-b",
+              "On emballe les colis en papier kraft.", "-p", "none", "--id", "kraft", "--force"),
+             ("link", "carton", "kraft", "-r", "contradicts")):
+    brain(*args, home=R)
+c, out = brain("q", "emballage des colis", "--no-files", home=R)
+rows = [x for x in out.splitlines() if "`carton`" in x or "`kraft`" in x]
+check(len(rows) == 2 and "`kraft`" in rows[0] and "contredit par `kraft`" in rows[1],
+      "brain q : le plus récent devant, l'ancien dit qui le contredit", out)
+from brainkit.hooks_rappel import conflicts_first  # noqa: E402
+b = loaded(R)
+picks = conflicts_first(b, [(b.nodes["carton"], "- carton `carton`"), (b.nodes["express-delai"], "- délai"),
+                            (b.nodes["kraft"], "- kraft `kraft`")])
+check([n["id"] for n, _ in picks] == ["kraft", "carton", "express-delai"] and "contredit par `kraft`" in picks[1][1],
+      "rappel automatique : le plus récent juste devant l'ancien, l'ancien noté", [(n["id"], ln) for n, ln in picks])
+one = conflicts_first(b, [(b.nodes["carton"], "- carton")])
+check(one == [(b.nodes["carton"], "- carton")], "un seul souvenir rappelé : rien ne change")
+
+# ------------------------------------------------------------------ 12. étape 12 : les importants qui ne servent plus
+g = graph(R)
+for nid, imp, idle, extra in (("vieux-pilier", 5, 70, {}), ("pilier-recent", 5, 5, {}), ("pas-important", 2, 200, {}),
+                              ("deja-revu", 4, 90, {"revu_le": ago(10), "revue_delai": 60})):
+    g["nodes"][nid] = {"id": nid, "type": "decision", "title": f"Décision {nid}", "body": "Une décision.", "tags": [],
+                       "project": None, "importance": imp, "created": ago(idle) + "T09:00:00",
+                       "updated": ago(idle) + "T09:00:00", "hits": 0, "source": "utilisateur", "status": "active",
+                       "meta": extra}
+(R / "graph.json").write_text(json.dumps(g, ensure_ascii=False), encoding="utf-8")
+b = loaded(R)
+ids = [n["id"] for _, n in temps.to_review(b)]
+check("vieux-pilier" in ids and not {"pilier-recent", "pas-important", "deja-revu"} & set(ids),
+      "à revoir : important et sans usage depuis plus que son délai ; ni le récent, ni le peu important, ni le revu", ids)
+check(len(temps.to_review(b, limit=3)) <= 3, "à revoir : trois au plus")
+c, out = brain("edit", "vieux-pilier", "--revu", home=R)
+m = graph(R)["nodes"]["vieux-pilier"]["meta"]
+check(c == 0 and m.get("revu_le") == TODAY.isoformat() and m.get("revue_delai") == 60 and "60 j" in out,
+      "edit --revu : date notée, délai doublé (30 → 60 j)", out + json.dumps(m))
+check(temps.reviewed({"revue_delai": 480})["revue_delai"] == 480, "délai de revue plafonné à 480 jours")
+check("vieux-pilier" not in [n["id"] for _, n in temps.to_review(loaded(R))], "revu : il sort de la liste")
+g = graph(R)
+g["nodes"]["oublie"] = dict(g["nodes"]["pilier-recent"], id="oublie", title="Décision oubliée",
+                            created=ago(120) + "T09:00:00", updated=ago(120) + "T09:00:00")
+(R / "graph.json").write_text(json.dumps(g, ensure_ascii=False), encoding="utf-8")
+c, text = brain("dream", "--no-apply", home=R)
+check("## À revoir (importants qui n'ont plus servi)" in text and "`oublie`" in text and "edit oublie --revu" in text,
+      "rêve : la section « À revoir », avec la commande pour confirmer", text[-900:])
+
+# ------------------------------------------------------------------ 13. étape 12 : les piliers au démarrage
+from brainkit import graph as gr2, index  # noqa: E402
+P = TMP / "brain-piliers"
+pg = {"version": 1, "created": ago(200) + "T09:00:00", "nodes": {}, "edges": []}
+pg["nodes"]["boutique"] = {"id": "boutique", "type": "project", "title": "Boutique", "body": "La boutique.", "tags": [],
+                           "project": None, "importance": 3, "created": ago(200) + "T09:00:00",
+                           "updated": ago(200) + "T09:00:00", "hits": 0, "source": "utilisateur", "status": "active",
+                           "meta": {"path": str(WORK)}}
+for i in range(20):  # 20 souvenirs, la fiche du projet n'en montre que 12 ; « m19 », le plus ancien, passe en dernier…
+    pg["nodes"][f"m{i}"] = {"id": f"m{i}", "type": "fact", "title": f"Fait numéro {i} de la boutique",
+                            "body": f"Le fait {i}.", "tags": [], "project": "boutique", "importance": 4,
+                            "created": ago(30 + i) + "T09:00:00", "updated": ago(30 + i) + "T09:00:00", "hits": 0,
+                            "source": "claude", "status": "active", "meta": {}}
+pg["edges"] = [{"from": f"m{i}", "to": "m19", "rel": "relates", "created": ago(20)} for i in range(19)]  # … et le pivot
+P.mkdir(parents=True)
+(P / "graph.json").write_text(json.dumps(pg, ensure_ascii=False), encoding="utf-8")
+b = loaded(P)
+gr2.ensure(b, wait=True)
+saved = index.PILLAR_W
+index.PILLAR_W = 0
+before = index.project_card(loaded(P), b.nodes["boutique"])
+index.PILLAR_W = saved
+after = index.project_card(loaded(P), b.nodes["boutique"])
+check(saved > 0 and "`m19`" not in before and "`m19`" in after,
+      "fiche du projet : le souvenir le plus central entre parmi les 12 montrés (il n'y était pas sans la centralité)",
+      after)
+check(abs(len(after) - len(before)) < 40, "fiche du projet : même place (seul l'ordre change)", (len(before), len(after)))
 
 remove_tree(TMP, wait=30)
 print(f"\n{len(OK)} vérifications OK, {len(FAIL)} échec(s)")

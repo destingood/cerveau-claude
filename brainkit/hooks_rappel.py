@@ -73,10 +73,22 @@ def pick_memories(brain, query, rc, project=None, injected=(), before=None, prev
                                                         limit=rc["max_items"]) if r["node"]["id"] not in injected]
     except Exception as exc:
         log(f"rappel daté : {exc!r}")
-        return picks
+        return conflicts_first(brain, picks)
     ids = {n["id"] for n in dated}
-    return ([(n, memory_line(n, query=query)) for n in dated] + [p for p in picks if p[0]["id"] not in ids])[:max(
-        rc["max_items"], len(picks))]
+    return conflicts_first(brain, ([(n, memory_line(n, query=query)) for n in dated]
+                                   + [p for p in picks if p[0]["id"] not in ids])[:max(rc["max_items"], len(picks))])
+
+
+def conflicts_first(brain, picks) -> list:
+    """Deux souvenirs rappelés ensemble qui se contredisent (lien `contradicts`) : le plus récent passe devant, la
+    ligne de l'autre le dit (temps.contradictions, étape 12). Un seul souvenir : rien à regarder."""
+    if len(picks) < 2:
+        return picks
+    from .temps import contradictions
+    lines = {n["id"]: line for n, line in picks}
+    order, notes = contradictions(brain.edges, [n for n, _ in picks])
+    return [(n, lines[n["id"]] + (f" · ⚠ contredit par `{notes[n['id']]}`, plus récent" if n["id"] in notes else ""))
+            for n in order]
 
 
 def _text_picks(brain, query, rc, project=None, injected=(), before=None, prev=(), raw=None, log_to=None) -> list:

@@ -147,8 +147,10 @@ Ce que font les hooks du cerveau, et le sens de chaque ligne qu'ils ajoutent au 
   à aucun réglage sur sa seule foi ; ses scripts ne se lancent qu'après `echange approuver <ami/nom> --oui`, sur le
   oui de l'utilisateur (reprendre la commande affichée : son `--empreinte` lie l'accord à ce qui a été montré).
 - **Fin de session** : journal, vue 3D, et une fois par jour consolidation prudente (doublons évidents, souvenirs
-  remplacés via `supersedes`, secrets) puis **rêve** (dates relatives rendues absolues, observations de plus de 7 jours
-  condensées en un résumé par semaine et par projet, dossier `REVE.md` des points à trancher ; s'il y en a assez, une
+  remplacés via `supersedes`, fins de validité passées, secrets) puis **rêve** (dates relatives rendues absolues,
+  observations de plus de 7 jours condensées en un résumé par semaine et par projet, dossier `REVE.md` des points à
+  trancher, dont « À revoir » : trois souvenirs importants au plus qui n'ont plus servi depuis 30 j, puis 60, 120…
+  — toujours vrai : `edit <id> --revu` ; sinon corriger ou archiver ; s'il y en a assez, une
   ligne 🌙 au démarrage propose de le confier à un sous-agent en arrière-plan :
   `dream` → appliquer ce qui est sûr → `dream --done`), avec instantané pris avant, et sauvegarde hors de ~/.claude
   (second disque sous Windows, sinon `~/Sauvegardes-cerveau-Claude`, dit une fois ; réglage `backup.dir`).
@@ -185,10 +187,11 @@ Toutes les commandes et options de la mémoire. Commande : `{CMD} <commande>`.
 | Observations datées de la session (mémoire épisodique, façon Mastra) | `obs "🔴 décision, blocage" "🟡 avancée" "🟢 détail"` (« 14:20 » en tête au besoin ; « hier » devient une date) · `obs` les dernières · `obs -p projet --days 7` — retrouvées par `q` (texte ou date : « on a fait quoi hier ? »), condensées par le rêve après 7 jours ; jamais injectées au démarrage |
 | Fait qui change (façon Zep / mem0) | `add … --replaces <ancien> [--parce-que "…"]` ou `supersede <nouveau> <ancien> [--parce-que "…"]` : l'ancien est archivé avec sa date de fin et la raison ; `show` donne la lignée (« C (depuis le 24/11) ← B (du 01/10 au 24/11, parce que …) ← A »). Un `add` sur le même sujet remplace tout seul l'ancien si une valeur change (chiffre, négation, « désormais », autre nom propre) ; jamais quand le titre vise une autre entité ou une autre date ; « ↻ remplace peut-être » = à confirmer |
 | Voyage dans le temps | `q "sujet" --at 15/10\\|hier\\|"il y a 3 jours"` (le cerveau tel qu'il était : l'instantané de ce jour-là ; plus ancien que les 60 instantanés, reconstruit d'après les dates de validité et des liens, avec le texte d'aujourd'hui, et c'est dit) · `show <id> --history` (versions successives) · `history --diff <n°\\|date>` (ce qui a changé depuis) |
-| Vrai depuis, vrai jusqu'à | `add … --depuis 01/09 --jusqu 31/12` ou `edit <id> --depuis …\\|none --jusqu …\\|none` : sans `--depuis`, vrai depuis l'enregistrement ; une fin à venir laisse le souvenir actif, l'entretien du jour l'archive le lendemain ; une fin passée l'archive tout de suite. `show` dit « valable du … au … » |
+| Vrai depuis, vrai jusqu'à | `add … --depuis 01/09 --jusqu 31/12` ou `edit <id> --depuis …\\|none --jusqu …\\|none` : sans `--depuis`, vrai depuis l'enregistrement ; une fin à venir laisse le souvenir actif, l'entretien du jour l'archive le lendemain ; une fin passée l'archive tout de suite. `show` dit « valable du … au … ». Échu ou pas encore commencé : ni rappelé à chaque message, ni trouvé par `q` (`q --archived` le montre) |
+| Souvenirs qui se contredisent | `link <ancien> <récent> -r contradicts` : rappelés ensemble (message ou `q`), le plus récent passe devant et l'autre est marqué « ⚠ contredit par … » ; si le récent remplace l'ancien, `supersede` plutôt |
 | Domaine et niveau | `--domaine code\\|business\\|contenu\\|finance\\|infra\\|recherche\\|perso` (libre ; posé sur un projet, ses souvenirs en héritent) · `--niveau vision\\|architecture\\|procedure\\|detail` (défaut selon le type : projet et profil = vision ; décision, concept, sujet, analyse = architecture ; règle, apprentissage = procédure ; le reste = détail) |
 | À-faire et échéances | `todo` (triés par échéance) · `done <id>` · `edit <id> --due "10/11"\\|"demain"\\|"dans 2 semaines"\\|none` |
-| Corriger / compléter | `edit <id> [-T …] [-b …] [-a "ajout"] [-i 4] [--add-tags x] [--depuis …] [--jusqu …] [--niveau …] [--domaine …]` |
+| Corriger / compléter | `edit <id> [-T …] [-b …] [-a "ajout"] [-i 4] [--add-tags x] [--depuis …] [--jusqu …] [--niveau …] [--domaine …] [--revu]` |
 | Voir / lister | `show <id>` · `ls [-t type] [-p projet]` |
 | Lier | `link <a> <b> [-r relates\\|depends_on\\|fixes\\|supersedes\\|contradicts]` (ou `[[id]]` dans un contenu) · `link --suggest` liens déduits à confirmer · `unlink <a> <b>` : le lien devient un lien terminé, daté (ni le rappel ni l'analyse du graphe ne le voient ; `q --at` et la lignée, si ; en mode wiki, propriété `anciens_liens` de la page) |
 | Archiver | `rm <id>` (réversible : `edit <id> --unarchive`) · `--purge` = définitif (instantané pris avant) |
