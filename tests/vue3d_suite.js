@@ -64,10 +64,16 @@ async function open(browser, file, options, out){
     await page.waitForTimeout(300);
     await page.evaluate(() => { flyTo(cur.byId.get("facture"), 0); st.userMoved = true; });
     await page.waitForTimeout(600);
-    const at = await page.evaluate(() => { const n = cur.byId.get("facture"); return G.graph2ScreenCoords(n.x, n.y, n.z); });
+    const where = () => page.evaluate(() => { const n = cur.byId.get("facture"); return G.graph2ScreenCoords(n.x, n.y, n.z); });
+    let at = await where();
     const before = out.errors.length;
     await page.mouse.move(at.x, at.y, { steps: 4 });
-    await page.waitForTimeout(500);
+    // machine chargée : le survol n'est vu qu'à une image suivante, et la caméra a pu finir de bouger ; on vise à nouveau
+    for (let i = 0; i < 16 && !(await page.evaluate(() => !!st.hover)); i++){
+      await page.waitForTimeout(500);
+      at = await where();
+      await page.mouse.move(at.x + (i % 2), at.y, { steps: 1 });
+    }
     // le nœud sous la souris (« facture », ou un autre devant lui selon la disposition) est celui qu'on glisse
     const grabbed = await page.evaluate(() => st.hover ? st.hover.id : null);
     await page.mouse.down();

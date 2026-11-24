@@ -79,7 +79,8 @@ sauf les correctifs sûrs, faits tout de suite à ta demande.
 | 24/11 | Passage sur Opus 5.5, « GO étape 10 » | Étape 10 faite : `CLAUDE.md` à la racine, hook de vérification en fin de tâche (E20 appliquée telle que recommandée) |
 | 24/11 | « Go étape 11 » | Étape 11 faite (8.34.0) ; E19 et E21 appliquées telles que recommandées |
 | 24/11 | « Continue le plan » | Étapes 12 (8.35.0, piliers livrés après mesure) et 13 (8.36.0) faites : Bloc E terminé |
-| 24/11 | « Regarde chaque lien GitHub que je t'ai envoyé et mets dans le cerveau ce qui est utile » | Bloc F, étapes 14 à 19, en attente de ton choix |
+| 24/11 | « Regarde chaque lien GitHub que je t'ai envoyé et mets dans le cerveau ce qui est utile » | Bloc F, étapes 14 à 19 ; tu as choisi les quatre groupes |
+| 24/11 | « Mets à jour et publie » | Étape 17 réunie et publiée (8.42.0) ; Bloc F fait, sauf ce qui est reporté et le point 3 de l'étape 19 |
 
 ## 2. Comment l'audit a été fait, et ses limites
 
@@ -873,12 +874,32 @@ non fait (pas demandé).
   - Liste des outils : toujours 3 204 caractères. Tests : nouveau `tests/test_serveur_mcp.py` (37 vérifications) ;
     `test_noyau` et `test_erreurs` attendent désormais le code exact de la spécification.
 
-**Étape 17 — La vue 3D, suite** (3d-force-graph).
+**Étape 17 — La vue 3D, suite** (3d-force-graph) : **faite le 24/11** (cerveau 8.42.0), sauf la mise à jour de la
+bibliothèque (point 2). Détail après la liste.
 1. Flèches sur les liens typés, et au survol d'un lien son type et ses dates. (S)
 2. Un nœud déplacé à la main reste où on le pose (bibliothèque passée de 1.80.0 à 1.80.2 pour le correctif du
    glissement). (S)
 3. Orbite automatique de la caméra, pour une capture vidéo YouTube. (S)
 4. L'animation se met en pause quand l'onglet est caché. (S)
+
+- ✅ Fait le 24/11 (cerveau 8.42.0), par un agent en parallèle puis repris sur la branche (`brainkit/vue3d/page.html`) :
+  - Flèches sur les liens typés ; aucune sur « lié à », les liens déduits et les concepts ; « fait partie de » n'a la
+    sienne qu'au survol (sinon des milliers de cônes pour un sens évident). Au survol d'un lien, une bulle donne son
+    type en français et ses dates. La zone de capture du halo des nœuds est réduite à 1,6 fois leur rayon : sans
+    cela, aucun lien ne se laissait survoler.
+  - Un nœud lâché reste posé ; en mode couches, sa hauteur suit son niveau. ⚲, la touche L ou un double-clic sur le
+    fond libèrent tout. **Bibliothèque restée en 1.80.0** : la 1.80.2 embarque three r186, qui ne fournit plus
+    `build/three.core.min.js` dont `fabriquer.py` a besoin, et le script refuse le mélange avec three 0.183.0.
+    `fabriquer.py` refait exactement les fichiers actuels (empreintes inchangées). Le correctif de la 1.80.2 (une
+    erreur à chaque fin de glisser) est repris dans la page, qui arrête l'événement en cause.
+  - ◎ « Orbite (vidéo) », touche O : un tour en 45 s, départ et arrêt en douceur ; un clic l'arrête ; coupée si le
+    système demande moins d'animations ou si les effets sont coupés.
+  - Onglet caché : boucle d'animation et rendu 3D en pause, reprise sans à-coup.
+  - Lecture ▶ de l'étape 13 rendue fiable : un souvenir revenu dans la période gardait sa marque d'extinction
+    jusqu'à un minuteur de 800 ms, en retard sous charge (vérification ratée environ une fois sur cinq). Il est
+    rallumé tout de suite, et les fondus finis sont nettoyés à chaque image.
+  - Tests : `test_vue3d` passe de 68 à 87 vérifications, dont un vrai glisser et un vrai survol à la souris
+    (`tests/vue3d_suite.js`). Gabarit : 80 709 → 89 182 octets ; page de démonstration +0,44 %.
 
 **Étape 18 — Six skills de plus** (toutes gratuites, sans clé ; réécrites en français, licence et auteur cités). **Faite le 24/11**
 (cerveau 8.40.0). Détail après la liste.

@@ -147,7 +147,10 @@ et three.js, sous licence MIT) sont livrées avec le plugin et intégrées à la
 Le curseur ▶ en bas rejoue ton cerveau dans le temps : à chaque date, les souvenirs vrais ce jour-là, ceux qui ont été
 remplacés depuis compris, s'allument et s'éteignent, et un remplacement passe en impulsion de l'ancien au nouveau.
 Couleurs par domaine ou par « chaleur » (dernier usage), et ☷ range les souvenirs en couches, de la vision en haut au
-détail en bas.
+détail en bas. Les liens typés ont une flèche qui dit leur sens et, au survol, leur type et leurs dates. Un nœud
+déplacé à la main reste où tu le poses (⚲ ou double-clic sur le fond pour tout libérer). Le bouton ◎ fait tourner la
+caméra seule autour du cerveau, pour filmer, sauf si ton système demande moins d'animations. L'animation s'arrête
+quand l'onglet est caché.
 
 ## Ce que fait le cerveau
 

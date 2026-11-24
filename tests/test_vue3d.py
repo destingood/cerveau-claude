@@ -231,7 +231,7 @@ if node and not os.environ.get("CERVEAU_SANS_NAVIGATEUR") and not (probe or {}).
     check(ch.get("layered") is True and ch.get("unlayered") is True,
           "couches : chaque souvenir à la hauteur de son niveau, puis libéré", (ch.get("layered"), ch.get("unlayered")))
     check(ch.get("legendDom") == "d:infra", "couleur « domaine » : le domaine écrit du souvenir", ch.get("legendDom"))
-    check(isinstance(ch.get("afterPlay"), dict) and ch.get("settled") == 0,
+    check(isinstance(ch.get("afterPlay"), dict) and ch.get("settled") == 0 and ch.get("revived") == 0,
           "lecture ▶ : jouée puis arrêtée sans erreur, plus aucun nœud en cours d'extinction ensuite", ch)
 
 # ---------------------------------------------------------------------------------------------- vue 3D, suite (étape 17)

@@ -78,6 +78,9 @@ const { pathToFileURL } = require("url");
     await page.waitForTimeout(2600);
     await page.click("#playBtn");
     out.afterPlay = await page.evaluate(() => ({ until: st.until, dying: cur.nodes.filter(n => n.__dying).length }));
+    // retour en avant juste après une extinction : les souvenirs revenus sont rallumés tout de suite (pas après un minuteur)
+    out.revived = await page.evaluate(() => { setUntil(0); setUntil(st.dates.length - 1);
+      return cur.nodes.filter(n => n.__dying && !late(n)).length; });
     await page.evaluate(() => setUntil(st.dates.length - 1));
     await page.waitForFunction(() => !cur.nodes.some(n => n.__dying), null, { timeout: 5000 }).catch(() => {});
     out.settled = await page.evaluate(() => cur.nodes.filter(n => n.__dying).length);

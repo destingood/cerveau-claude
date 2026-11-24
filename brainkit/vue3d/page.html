@@ -328,6 +328,12 @@ function linkAlive(l){
   return (!l.c || l.c <= st.until) && (!l.e || st.until < l.e);
 }
 function dying(n){ return !!n.__dying && performance.now() - n.__dying < 760; }
+function settleDying(){  // fondu fini ou souvenir revenu dans la période : rallumé tout de suite, sans attendre un minuteur
+  let changed = false, left = false;
+  for (const n of cur.nodes) if (n.__dying){ if (!dying(n) || !late(n)){ n.__dying = 0; changed = true; } else left = true; }
+  st.fading = left;
+  return changed;
+}
 function hidden(n){
   if (!n) return true;
   if (n.kind === "concept") return !st.concepts || st.hidden.has("k:concept") || !n.members.some(m => { const x = cur.byId.get(m); return x && !late(x) && !st.hidden.has(legendKey(x)); });
@@ -847,6 +853,7 @@ function frame(now){
   if (!G || !cur) return;
   try {
     if (FX.T){ animateNodes(now, dt); animateScene(now, dt); impulses(dt); }
+    if (st.fading && settleDying()) redraw();  // fondus finis, même sous charge (minuteurs en retard)
     orbitStep(dt);
     if (!FX.idleSpin && !st.rotate && !st.orbit && motionOn() && !st.sel && !st.hover && now - lastInput > 12000){ FX.idleSpin = true; applySpin(); }
     placeLabels();
@@ -1228,17 +1235,18 @@ function setUntil(i){
   const last = st.dates.length - 1, before = new Set(cur.nodes.filter(n => n.kind === "mem" && !late(n)).map(n => n.id));
   st.until = i >= last ? null : st.dates[Math.max(0, i)];
   $("#tl").value = String(Math.max(0, Math.min(i, last))); tlLabel();
+  settleDying();
   if (motionOn()){  // extinctions en fondu ; un remplacement : une impulsion de l'ancien vers le nouveau
     const now = performance.now();
     for (const n of cur.nodes) if (before.has(n.id) && late(n)){
-      n.__dying = now;
+      n.__dying = now; st.fading = true;
       const nu = n.sb && cur.byId.get(n.sb);
       if (nu && !late(nu)){
         const l = cur.links.find(x => x.rel === "supersedes" && idOf(x.source) === nu.id && idOf(x.target) === n.id);
         if (l && typeof l.source === "object") try { G.emitParticle(l); } catch (e) {}
       }
     }
-    setTimeout(() => { for (const n of cur.nodes) if (n.__dying && !dying(n)) n.__dying = 0; redraw(); }, 800);
+    setTimeout(() => { if (settleDying()) redraw(); }, 800);  // filet si l'animation est en pause (onglet caché)
   }
   redraw();
 }
