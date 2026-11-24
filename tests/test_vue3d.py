@@ -122,6 +122,10 @@ with Brain.edit() as b:
     for e in b.data["ended_edges"]:
         if e["from"] == "scw":
             e["created"], e["ended"] = "2026-06-10", "2026-07-01"
+    # étape 17 : un lien typé (flèche) et un lien « lié à » (sans flèche), tous deux d'aujourd'hui
+    b.add("fact", "Serveur dédié de production", body="Le serveur.", nid="serveur")
+    b.link("scw", "serveur", "uses")
+    b.link("facture", "serveur")
 OLD_REF = "af568b4"  # main à la 8.33.0, avant l'étape 13
 v833 = TMP / "v833"
 arch = subprocess.run(["git", "-C", str(CODE), "archive", OLD_REF, "brain.py", "brainkit"], capture_output=True)
@@ -159,6 +163,9 @@ if old_data is not None:
     check({(e["s"], e["t"], e["r"]) for e in old_data["edges"]} == {(e["s"], e["t"], e["r"]) for e in d["edges"]},
           "mêmes liens qu'en 8.33.0 dans DATA.edges")
     check(old_data.get("stats") == d.get("stats"), "mêmes compteurs qu'en 8.33.0", (old_data.get("stats"), d.get("stats")))
+check(any(e["s"] == "scw" and e["t"] == "serveur" and e["r"] == "uses" and e.get("c") for e in d["edges"])
+      and any(e["s"] == "facture" and e["t"] == "serveur" and e["r"] == "relates" for e in d["edges"]),
+      "données : un lien typé daté et un lien « lié à » (flèches et survol de l'étape 17)", d["edges"])
 check(len(json.dumps(d.get("past"))) + len(json.dumps(d.get("pastEdges"))) < 20_000,
       "le passé pèse peu dans la page (quelques souvenirs ici)")
 
@@ -226,6 +233,66 @@ if node and not os.environ.get("CERVEAU_SANS_NAVIGATEUR") and not (probe or {}).
     check(ch.get("legendDom") == "d:infra", "couleur « domaine » : le domaine écrit du souvenir", ch.get("legendDom"))
     check(isinstance(ch.get("afterPlay"), dict) and ch.get("settled") == 0,
           "lecture ▶ : jouée puis arrêtée sans erreur, plus aucun nœud en cours d'extinction ensuite", ch)
+
+# ---------------------------------------------------------------------------------------------- vue 3D, suite (étape 17)
+check(tpl.count("onNodeDragEnd(") == 1 and "pauseAnimation()" in tpl and "resumeAnimation()" in tpl
+      and "linkDirectionalArrowLength(" in tpl and "linkLabel(" in tpl and 'id="orbBtn"' in tpl and 'id="pinBtn"' in tpl,
+      "gabarit : flèches, étiquette des liens, nœuds posés, orbite et pause de l'onglet caché branchées")
+if node and not os.environ.get("CERVEAU_SANS_NAVIGATEUR") and not (probe or {}).get("skip"):
+    try:
+        r = subprocess.run([node, str(CODE / "tests" / "vue3d_suite.js"), str(chrono_path)], capture_output=True,
+                           text=True, timeout=240, cwd=str(TMP))
+        su = json.loads((r.stdout.strip().splitlines() or ["{}"])[-1])
+    except (OSError, subprocess.SubprocessError, ValueError) as exc:
+        su = {"errors": [repr(exc)]}
+    check(not su.get("errors"), "suite : aucune erreur", su.get("errors"))
+    ar = su.get("arrows") or {}
+    check((ar.get("typed") or 0) > 0 and ar.get("relates") == 0 and ar.get("inf") == 0 and ar.get("con") == 0
+          and ar.get("relPos") == 1 and ar.get("color"),
+          "flèches : sur un lien typé (« utilise »), pas sur « lié à », ni sur les liens déduits ou les concepts", ar)
+    check(ar.get("typedObj") is True and ar.get("relatesObj") is False,
+          "flèches : le cône est dessiné pour le lien typé, aucun pour « lié à »", ar)
+    created = (su.get("created") or "")[:10]
+    fr_created = f"{created[8:10]}/{created[5:7]}/{created[:4]}"
+    check("utilise" in (su.get("tipTyped") or "") and f"créé le {fr_created}" in (su.get("tipTyped") or "")
+          and "terminé" not in (su.get("tipTyped") or ""),
+          "survol d'un lien : son type et sa date de création", su.get("tipTyped"))
+    check("lié à" in (su.get("tipEnded") or "") and "créé le 10/06/2026" in (su.get("tipEnded") or "")
+          and "terminé le 01/07/2026" in (su.get("tipEnded") or ""),
+          "survol d'un lien terminé : son type, sa création et sa fin", su.get("tipEnded"))
+    check(su.get("hover") == {"on": True, "bigger": True, "off": True}, "survol d'un lien : il s'allume, puis s'éteint", su.get("hover"))
+    check(any(h and h.startswith("uses | ") and "utilise" in h for h in su.get("realHover") or []),
+          "vrai survol à la souris d'un lien : son étiquette s'affiche (les halos des nœuds ne le masquent pas)", su.get("realHover"))
+    rg = su.get("realDrag") or {}
+    check(rg.get("pinned") is True and rg.get("others") == [] and rg.get("controls") is True and rg.get("released") == 1
+          and rg.get("errors") == 0,
+          "vrai glisser à la souris : le nœud reste posé, la caméra se pilote encore, aucune erreur", rg)
+    dr = su.get("drag") or {}
+    check(dr.get("fx") == 123 and dr.get("fy") == 45 and dr.get("fz") == -67 and dr.get("button") is True
+          and dr.get("stayed") == "123,45,-67", "nœud lâché : il reste où on le pose (fx, fy, fz)", dr)
+    lay = dr.get("layered") or {}
+    check(lay.get("fy") == lay.get("level") and lay.get("fx") == 123 and lay.get("fz") == -67 and dr.get("unlayered") == 45,
+          "nœud posé et couches : sa hauteur suit son niveau, puis il retrouve la sienne", dr)
+    check(dr.get("released") == {"fx": True, "fy": True, "fz": True, "pin": True, "button": True} and dr.get("dblclick") is True,
+          "nœuds posés : libérés par le bouton, et par un double-clic sur le fond", dr)
+    ob = su.get("orbit") or {}
+    check("Orbite (vidéo)" in (ob.get("tip") or "") and ob.get("pressed") == "true" and ob.get("controlsOff") is True
+          and ob.get("turned") is True and ob.get("steady") is True,
+          "orbite : la caméra tourne seule autour du cerveau, à distance constante", ob)
+    check(ob.get("released") is True and ob.get("stopped") is True, "orbite : arrêtée en douceur, la souris reprend la caméra", ob)
+    check(ob.get("fxOff") == {"orbit": False, "disabled": True, "controls": True} and ob.get("fxBack") is True,
+          "orbite : coupée avec les effets", ob)
+    rd = su.get("reduced") or {}
+    check(rd.get("disabled") is True and rd.get("started") is False and rd.get("orbit") is False
+          and "moins d'animations" in (rd.get("tip") or ""),
+          "orbite : jamais quand le système demande moins d'animations", rd)
+    vi = su.get("visibility") or {}
+    check(vi.get("paused") is True and vi.get("raf") == 0 and vi.get("frozen") is True and vi.get("pause") == 1,
+          "onglet caché : boucle d'animation et rendu de 3d-force-graph en pause (une seule fois)", vi)
+    check(vi.get("resumed") is True and vi.get("running") is True and vi.get("resume") == 1,
+          "onglet revenu : tout reprend", vi)
+else:
+    SKIP.append("navigateur : vue 3D, suite (étape 17)")
 
 for s in SKIP:
     print(f"· sauté : {s}")

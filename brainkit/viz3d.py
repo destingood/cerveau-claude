@@ -1,7 +1,9 @@
 """Vue 3D (cerveau.html) — style futuriste et animé : 3d-force-graph (three.js), données intégrées, effets (bloom, champ
 d'étoiles scintillant, nébuleuses, grille holographique, influx neuronaux le long des liens, nœuds qui respirent,
 réticule de sélection, onde de choc au clic, démarrage où les nœuds se matérialisent en vague, rotation au repos) —
-coupables d'un clic (✨), réduits si le système demande moins d'animations.
+coupables d'un clic (✨), réduits si le système demande moins d'animations. Depuis l'étape 17 : flèches sur les liens
+typés et, au survol d'un lien, son type et ses dates ; un nœud lâché reste où on le pose (bouton ou double-clic sur le
+fond pour tout libérer) ; orbite de la caméra pour une vidéo ; animation en pause quand l'onglet est caché.
 
 Tout est dans la page, sans aucun site extérieur (avant la 8.31.0, les bibliothèques venaient de trois sites, sans
 contrôle d'intégrité, et la vue ne marchait pas hors ligne) : le gabarit est vue3d/page.html, les bibliothèques

@@ -170,7 +170,9 @@ box-shadow:0 0 30px var(--accent);animation:pulse 1.4s ease-in-out infinite}
   <button class="tog" id="conBtn" aria-pressed="true" data-tip="Concepts (outils, sujets, sigles)" aria-label="Concepts">◇</button>
   <button class="tog" id="lblBtn" aria-pressed="true" data-tip="Étiquettes" aria-label="Étiquettes">Aa</button>
   <button class="tog" id="rotBtn" aria-pressed="false" data-tip="Rotation continue · R" aria-label="Rotation">⟳</button>
+  <button class="tog" id="orbBtn" aria-pressed="false" data-tip="Orbite (vidéo) : la caméra tourne seule · O" aria-label="Orbite (vidéo)">◎</button>
   <button class="tog" id="layBtn" aria-pressed="false" data-tip="Couches : vision en haut, détail en bas" aria-label="Couches">☷</button>
+  <button id="pinBtn" disabled data-tip="Nœuds posés à la main : glisser un nœud le fixe là" aria-label="Libérer les nœuds posés à la main">⚲</button>
   <button class="tog" id="fxBtn" aria-pressed="true" data-tip="Effets et animations · E" aria-label="Effets">✦</button>
   <span class="sep" aria-hidden="true"></span>
   <button id="fitBtn" data-tip="Recentrer · F" aria-label="Recentrer">⌖</button>
@@ -185,7 +187,7 @@ box-shadow:0 0 30px var(--accent);animation:pulse 1.4s ease-in-out infinite}
 <div id="timeline" class="glass"><button id="playBtn" title="Voir le cerveau grandir jour après jour">▶</button>
 <input type="range" id="tl" min="0" max="0" value="0" aria-label="Chronologie : afficher les souvenirs jusqu'à une date"><span id="tlLabel"></span></div>
 <div id="tablewrap" class="glass"><table><thead id="thead"></thead><tbody id="tbody"></tbody></table></div>
-<div id="help" class="glass"><span class="live">en direct</span><span id="fps"></span><span>glisser : tourner · molette : zoom · clic : détails · Maj+clic : chemin</span></div>
+<div id="help" class="glass"><span class="live">en direct</span><span id="fps"></span><span>glisser : tourner · glisser un nœud : le poser · molette : zoom · clic : détails · Maj+clic : chemin</span></div>
 <div id="boot" aria-live="polite"><div class="core" aria-hidden="true"><i></i><i></i><i></i><b></b></div><div id="bootTitle">Cerveau</div><div id="bootMsg">démarrage…</div></div>
 <div id="fallback"><div class="glass"><h2 style="margin-top:0">Vue 3D indisponible</h2><p id="fbmsg"></p>
 <p><a class="btn" href="cerveau-2d.html">Ouvrir la vue 2D</a> <button id="fbTable">Vue tableau</button></p></div></div>
@@ -339,6 +341,7 @@ function pairKey(a, b){ return a < b ? a + "|" + b : b + "|" + a; }
 function focal(){ return st.hover || st.sel; }
 function hot(l){
   if (st.path && !st.hover) return st.path.links.has(pairKey(idOf(l.source), idOf(l.target)));
+  if (st.linkHover === l) return true;
   const f = focal(); return !!f && (idOf(l.source) === f.id || idOf(l.target) === f.id);
 }
 function linkColor(l){
@@ -350,6 +353,29 @@ function linkColor(l){
   if (l.con) return d ? "rgba(207,232,255,.12)" : "rgba(60,70,90,.16)";
   if (l.rel === "importe") return d ? "rgba(96,165,250,.30)" : "rgba(40,60,120,.28)";
   return d ? "rgba(251,191,36,.62)" : "rgba(170,110,0,.7)";
+}
+// Liens typés (étape 17) : une flèche dit leur sens ; « lié à », les liens déduits et les concepts n'en ont pas.
+// « fait partie de » relie chaque souvenir à son projet : sa flèche ne paraît qu'au survol (des milliers de cônes sinon).
+const REL_FR = {relates: "lié à", part_of: "fait partie de", depends_on: "dépend de", uses: "utilise", fixes: "corrige",
+  supersedes: "remplace", contradicts: "contredit", about: "à propos de", importe: "importe", mentionne: "mentionne",
+  "déduit": "lien déduit du contenu"};
+const frDate = d => d ? `${d.slice(8, 10)}/${d.slice(5, 7)}/${d.slice(0, 4)}` : "?";
+function typed(l){ return !cur.map && !l.inf && !l.con && !!l.rel && l.rel !== "relates"; }
+function arrowLen(l){
+  if (!typed(l)) return 0;
+  if (hot(l)) return 5.5;
+  return l.rel === "part_of" ? 0 : 3.6;
+}
+function linkTip(l){
+  const s = cur.byId.get(idOf(l.source)), t = cur.byId.get(idOf(l.target));
+  if (!s || !t) return "";
+  let sub = "";
+  if (l.inf) sub = `confiance ${l.conf || "?"} · ${(l.why || []).join(", ")}`;
+  else if (l.con) sub = "le souvenir mentionne ce concept";
+  else if (l.c || l.e) sub = (l.c ? `créé le ${frDate(l.c)}` : "création non datée") + (l.e ? ` · terminé le ${frDate(l.e)}` : "");
+  const arrow = typed(l) ? " → " : " — ";
+  return `<div class="scene-tip" style="--c:${baseColor(s)}"><b>${esc(REL_FR[l.rel] || l.rel)}</b>`
+    + `<span>${esc(short(s.name, 40))}${arrow}${esc(short(t.name, 40))}${sub ? "<br>" + esc(sub) : ""}</span></div>`;
 }
 function particleColor(l){
   if (hot(l)) return dark() ? "#ffffff" : "#0c1a3a";
@@ -400,6 +426,14 @@ function geo(name){
     wave: () => new T.RingGeometry(.92, 1, 72), radar: () => new T.RingGeometry(.975, 1, 128)}[name]();
   return FX.geo[name];
 }
+// Survol : le halo d'un nœud ne l'attrape qu'autour de l'astre (1,6 fois son rayon), pas sur toute sa lueur : sans cela,
+// les halos couvrent presque tout l'écran et aucun lien ne se laisse survoler (étape 17).
+function haloRaycast(sprite, r, rc, hits){
+  const s = sprite.scale.x;
+  sprite.scale.setScalar(r * 3.2); sprite.updateMatrixWorld();
+  FX.T.Sprite.prototype.raycast.call(sprite, rc, hits);
+  sprite.scale.setScalar(s); sprite.updateMatrixWorld();
+}
 function nodeObject(n){
   const T = FX.T, r = radius(n), col = new T.Color(baseColor(n));
   const g = new T.Group();
@@ -416,6 +450,7 @@ function nodeObject(n){
     blending: dark() ? T.AdditiveBlending : T.NormalBlending})), n.kind === "file" ? .42 : n.kind === "concept" ? .22 : .55, {halo: true});
   fx.haloBase = r * (n.kind === "concept" ? 3 : n.t === "project" ? 4.6 : 3.7);
   fx.halo.scale.setScalar(fx.haloBase);
+  fx.halo.raycast = function(rc, hits){ haloRaycast(this, r, rc, hits); };
   if (n.t === "project"){
     [[1.9, 1.15, .55, "ring"], [2.45, -.55, -.32, "ring2"]].forEach(([k, tilt, spin, gname]) => {
       const ring = add(new T.Mesh(geo(gname), basic({depthWrite: false, blending: dark() ? T.AdditiveBlending : T.NormalBlending})), .6, {spin});
@@ -486,7 +521,7 @@ function applyFX(){
   if (G && G.scene() && G.scene().fog){ G.scene().fog.density = on ? (d ? .00042 : .00025) : 0;
     G.scene().fog.color.set(getComputedStyle(root).getPropertyValue("--bg").trim() || "#03050b"); }
   $("#fxBtn").setAttribute("aria-pressed", String(on));
-  applySpin();
+  applySpin(); orbitButton();
 }
 function shockwave(n){
   if (!FX.T || !n.__fx || !FX.on || n.x == null) return;
@@ -532,8 +567,17 @@ function initGraph(){
     .linkDirectionalParticleWidth(l => hot(l) ? 2.4 : 1.7)
     .linkDirectionalParticleResolution(10)
     .linkDirectionalParticleColor(particleColor)
+    .linkDirectionalArrowLength(arrowLen)
+    .linkDirectionalArrowColor(linkColor)
+    .linkDirectionalArrowRelPos(1)
+    .linkDirectionalArrowResolution(6)
+    .linkLabel(linkTip)
+    .linkHoverPrecision(2)
     .d3AlphaDecay(.022).d3VelocityDecay(.32).warmupTicks(40).cooldownTime(8000)
     .onNodeHover(n => { st.hover = n || null; graphEl.style.cursor = n ? "pointer" : ""; computeFocus(); redraw(); })
+    .onLinkHover(l => { if (st.linkHover === (l || null)) return; st.linkHover = l || null;
+      if (!st.hover) graphEl.style.cursor = l ? "help" : ""; redraw(); })
+    .onNodeDragEnd(pinNode)
     .onNodeClick((n, ev) => { if (ev && ev.shiftKey && st.sel && st.sel.id !== n.id) return showPath(st.sel, n); shockwave(n); select(n); flyTo(n); })
     .onBackgroundClick(() => { if (st.sel){ st.sel = null; computeFocus(); redraw(); closePanel(); } })
     .onEngineStop(() => autoFit(900));
@@ -543,7 +587,103 @@ function initGraph(){
   if (c && c.addEventListener) c.addEventListener("start", () => { st.userMoved = true; });
   if (c){ c.enableDamping = true; c.dampingFactor = .08; }
   window.addEventListener("resize", () => { G.width(innerWidth).height(innerHeight); if (FX.bloom) FX.bloom.setSize(innerWidth, innerHeight); });
-  requestAnimationFrame(frame);
+  graphEl.addEventListener("pointerdown", () => { if (st.orbit) setOrbit(false, true); });  // la main reprend la caméra
+  graphEl.addEventListener("dblclick", () => { if (!st.hover) unpinAll(); });  // double-clic sur le fond : tout libérer
+  // Correctif de 3d-force-graph 1.80.2, la page gardant la 1.80.0 : à la fin d'un glisser, la 1.80.0 envoie au document un
+  // faux « pointerup » tactile, sur lequel les contrôles de la caméra lèvent une erreur (et le curseur reste « saisir »).
+  // La 1.80.2 ne l'envoie plus : la page l'arrête avant eux. Aucun vrai geste n'est touché (isTrusted).
+  document.addEventListener("pointerup", ev => { if (!ev.isTrusted && ev.pointerType === "touch") ev.stopImmediatePropagation(); }, true);
+  document.addEventListener("visibilitychange", onVisibility);
+  anim.raf = requestAnimationFrame(frame);
+}
+// ------------------------------------------------------------------ nœuds posés à la main (étape 17)
+// Un nœud lâché reste où on le pose (fx, fy, fz). En couches, sa hauteur reste celle de son niveau.
+function pinNode(n){
+  if (!n || n.x == null) return;
+  n.__pin = {x: n.x, y: n.y, z: n.z};
+  n.fx = n.x; n.fz = n.z;
+  n.fy = st.layers && !cur.map && n.kind === "mem" ? LEVEL_Y[levelOf(n)] : n.y;
+  pinState();
+}
+function unpinAll(){
+  let k = 0;
+  for (const n of cur.nodes){
+    if (!n.__pin) continue;
+    delete n.__pin; delete n.fx; delete n.fz; k++;
+    if (st.layers && !cur.map && n.kind === "mem") n.fy = LEVEL_Y[levelOf(n)]; else delete n.fy;
+  }
+  pinState();
+  if (k && G) G.d3ReheatSimulation();
+  return k;
+}
+function pinState(){
+  const k = cur ? cur.nodes.filter(n => n.__pin).length : 0, b = $("#pinBtn");
+  b.disabled = !k;
+  b.dataset.tip = k ? `Libérer ${k} nœud${k > 1 ? "s" : ""} posé${k > 1 ? "s" : ""} à la main · L ou double-clic sur le fond`
+                    : "Nœuds posés à la main : glisser un nœud le fixe là";
+}
+
+// ------------------------------------------------------------------ orbite de la caméra, pour une vidéo (étape 17)
+// Un tour lent et régulier autour du cerveau (45 s), qui démarre et s'arrête en douceur. Jamais si le système demande
+// moins d'animations ou si les effets sont coupés. Pendant l'orbite, la souris ne pilote pas la caméra (un clic l'arrête).
+const ORBIT_SPEED = Math.PI * 2 / 45;
+function setOrbit(on, now){
+  const b = $("#orbBtn"), c = G && G.controls && G.controls();
+  if (on && (!G || !motionOn())){ orbitButton(); return false; }
+  if (on){
+    if (st.rotate) toggleRotate();
+    const pts = cur.nodes.filter(n => n.x != null && !hidden(n));
+    const ctr = {x: 0, y: 0, z: 0};
+    for (const n of pts){ ctr.x += n.x / pts.length; ctr.y += n.y / pts.length; ctr.z += n.z / pts.length; }
+    const cam = G.camera().position, dx = cam.x - ctr.x, dz = cam.z - ctr.z;
+    st.orbit = {ctr, r: Math.max(120, Math.hypot(dx, dz)), h: cam.y - ctr.y, a: Math.atan2(dx, dz), speed: 0, target: ORBIT_SPEED, t: 0};
+    if (c) c.enabled = false;
+    FX.idleSpin = false; applySpin();
+  } else if (st.orbit){
+    if (motionOn() && !now) st.orbit.target = 0; else st.orbit = null;  // ralentit puis s'arrête (net si la main reprend)
+    if (c) c.enabled = true;
+  }
+  b.setAttribute("aria-pressed", String(!!on));
+  return !!on;
+}
+function orbitStep(dt){
+  const o = st.orbit; if (!o) return;
+  if (!motionOn()){ st.orbit = null; orbitButton(); const c = G.controls && G.controls(); if (c) c.enabled = true; return; }
+  const now = performance.now(), smooth = k => k * k * (3 - 2 * k);  // départ en 2 s, arrêt en 1,5 s, quelle que soit la cadence
+  if (o.target){ o.t0 = o.t0 || now; o.speed = ORBIT_SPEED * smooth(Math.min(1, (now - o.t0) / 2000)); }
+  else {
+    if (!o.stop) o.stop = {t0: now, v0: o.speed};
+    const k = (now - o.stop.t0) / 1500;
+    if (k >= 1){ st.orbit = null; return; }
+    o.speed = o.stop.v0 * (1 - smooth(k));
+  }
+  o.a += o.speed * dt; o.t += dt;
+  const y = o.ctr.y + o.h + o.r * .08 * Math.sin(o.t * .35) * Math.min(1, o.t / 4);  // légère houle, sans à-coup au départ
+  G.cameraPosition({x: o.ctr.x + o.r * Math.sin(o.a), y, z: o.ctr.z + o.r * Math.cos(o.a)}, o.ctr);
+}
+function orbitButton(){
+  const b = $("#orbBtn"), ok = motionOn();
+  b.disabled = !ok;
+  b.dataset.tip = ok ? "Orbite (vidéo) : la caméra tourne seule · O" : "Orbite (vidéo) : coupée, moins d'animations demandé";
+  b.setAttribute("aria-pressed", String(!!(st.orbit && st.orbit.target)));
+}
+
+// ------------------------------------------------------------------ onglet caché : tout s'arrête (étape 17)
+const anim = {raf: 0, paused: false};
+function onVisibility(){
+  if (!G) return;
+  if (document.hidden){
+    if (anim.paused) return;
+    anim.paused = true;
+    if (anim.raf) cancelAnimationFrame(anim.raf);
+    anim.raf = 0;
+    G.pauseAnimation();
+  } else if (anim.paused){
+    anim.paused = false;
+    lastT = performance.now();  // pas de saut de l'animation au retour
+    G.resumeAnimation();
+    if (!anim.raf) anim.raf = requestAnimationFrame(frame);
+  }
 }
 function pullForce(strength){  // rappel doux vers le centre : les souvenirs isolés ne partent plus au loin
   let nodes = [], deg = new Map();
@@ -593,6 +733,7 @@ function redraw(){
      .linkDirectionalParticleColor(particleColor)
      .nodeVisibility(n => !hidden(n) || dying(n))
      .linkDirectionalParticles(l => hot(l) ? 3 : 0)
+     .linkDirectionalArrowLength(l => arrowLen(l)).linkDirectionalArrowColor(l => linkColor(l))
      .linkVisibility(l => linkVis(l));
   });
 }
@@ -626,7 +767,7 @@ let lastT = performance.now(), lastInput = performance.now(), fpsAcc = 0, fpsN =
   lastInput = performance.now(); if (FX.idleSpin){ FX.idleSpin = false; applySpin(); } }, {passive: true}));
 function applySpin(){
   const c = G && G.controls && G.controls(); if (!c) return;
-  c.autoRotate = st.rotate || (FX.idleSpin && motionOn()); c.autoRotateSpeed = st.rotate ? .8 : .32;
+  c.autoRotate = !st.orbit && (st.rotate || (FX.idleSpin && motionOn())); c.autoRotateSpeed = st.rotate ? .8 : .32;
 }
 function animateNodes(now, dt){
   const f = focal(), mo = motionOn(), d = dark(), k = Math.min(1, dt * 7);
@@ -700,12 +841,14 @@ function impulses(dt){  // influx neuronaux : des étincelles parcourent les lie
   }
 }
 function frame(now){
-  requestAnimationFrame(frame);  // reprogrammée d'abord : une erreur ponctuelle n'arrête jamais l'animation
+  if (anim.paused){ anim.raf = 0; return; }  // onglet caché : la boucle s'arrête (onVisibility la relance)
+  anim.raf = requestAnimationFrame(frame);  // reprogrammée d'abord : une erreur ponctuelle n'arrête jamais l'animation
   const dt = Math.min(.05, Math.max(0, (now - lastT) / 1000)); lastT = now;
   if (!G || !cur) return;
   try {
     if (FX.T){ animateNodes(now, dt); animateScene(now, dt); impulses(dt); }
-    if (!FX.idleSpin && !st.rotate && motionOn() && !st.sel && !st.hover && now - lastInput > 12000){ FX.idleSpin = true; applySpin(); }
+    orbitStep(dt);
+    if (!FX.idleSpin && !st.rotate && !st.orbit && motionOn() && !st.sel && !st.hover && now - lastInput > 12000){ FX.idleSpin = true; applySpin(); }
     placeLabels();
   } catch (e) { if (!frame.warned){ frame.warned = true; console.warn("animation :", e); } }
   fpsAcc += dt; fpsN++;
@@ -880,7 +1023,7 @@ function showNode(n){
     + (n.p ? `<span>projet : <a href="#" data-go="${esc(n.p)}" style="color:var(--accent)">${esc(n.p)}</a></span>` : "")
     + `<span>importance ${n.imp || 3}/5</span><span>rappelé ${n.hits || 0}×</span><span>maj ${esc(n.upd || "?")}</span>`
     + `<span>centralité ${(n.pr || 0).toFixed(2)}</span></div>`;
-  const fr = d => d ? `${d.slice(8, 10)}/${d.slice(5, 7)}/${d.slice(0, 4)}` : "?";
+  const fr = frDate;
   const span = x => endOf(x) ? `du ${fr(startOf(x))} au ${fr(endOf(x))}` : `depuis le ${fr(startOf(x))}`;
   h += `<div class="meta" style="margin-top:6px"><span>valable ${span(n)}</span><span>niveau ${esc(levelOf(n))}</span>`
     + (domainOf(n) ? `<span>domaine ${esc(domainOf(n))}</span>` : "") + `</div>`;
@@ -1027,7 +1170,8 @@ function setStats(){
 }
 function setView(v){
   st.view = v; st.sel = null; st.hover = null; st.q = ""; st.groupFocus = null; st.focus = null; st.path = null; st.until = null;
-  st.hidden.clear(); $("#q").value = ""; FX.pool = null;
+  st.hidden.clear(); $("#q").value = ""; FX.pool = null; st.linkHover = null;
+  if (st.orbit) setOrbit(false, true);
   const g = v.startsWith("v:") ? (DATA.views || [])[+v.slice(2)] : null;  // Cerveau e-commerce, une boutique…
   const m = v === "mem" || g ? null : (DATA.maps || []).find(x => "map:" + x.pid === v);
   cur = m ? mapData(m) : memData();
@@ -1042,7 +1186,7 @@ function setView(v){
           const first = !setView.done; setView.done = true;
           setView.ts = [setTimeout(materialize, 60), setTimeout(() => autoFit(first && motionOn() ? 2400 : 700), first ? 260 : 120),
                         setTimeout(() => autoFit(900), 3400), setTimeout(() => autoFit(900), 6200)]; }
-  pickLabels(); buildLegend(); setStats();
+  pickLabels(); buildLegend(); setStats(); pinState();
   if ($("#tablewrap").classList.contains("open")) buildTable();
 }
 function buildViews(){
@@ -1100,7 +1244,9 @@ function setUntil(i){
 }
 function applyLayers(){  // couches : la hauteur d'un souvenir dit son niveau (vision en haut, détail en bas)
   for (const n of cur.nodes){
-    if (st.layers && !cur.map && n.kind === "mem") n.fy = LEVEL_Y[levelOf(n)]; else delete n.fy;
+    if (st.layers && !cur.map && n.kind === "mem") n.fy = LEVEL_Y[levelOf(n)];
+    else if (n.__pin) n.fy = n.__pin.y;  // posé à la main : il retrouve sa hauteur
+    else delete n.fy;
   }
   if (G) G.d3ReheatSimulation();
 }
@@ -1108,7 +1254,7 @@ function toggleFX(){ FX.on = !FX.on; store.set("brain3d-fx", FX.on ? "on" : "off
 function controls(){
   let theme = store.get("brain3d-theme") || "dark";
   applyTheme(theme);
-  $("#fxBtn").setAttribute("aria-pressed", String(FX.on));
+  $("#fxBtn").setAttribute("aria-pressed", String(FX.on)); orbitButton();
   $("#themeBtn").onclick = () => { theme = theme === "light" ? "dark" : "light"; store.set("brain3d-theme", theme); applyTheme(theme); };
   $("#color").onchange = e => { st.color = e.target.value; st.hidden.clear(); buildLegend(); recolor(); pickLabels(); redraw(); if (st.sel) showNode(st.sel); };
   $("#infBtn").onclick = e => { st.inf = !st.inf; e.currentTarget.setAttribute("aria-pressed", String(st.inf)); redraw(); };
@@ -1126,6 +1272,8 @@ function controls(){
   $("#rotBtn").onclick = () => toggleRotate();
   $("#layBtn").onclick = e => { st.layers = !st.layers; e.currentTarget.setAttribute("aria-pressed", String(st.layers)); applyLayers(); };
   $("#fxBtn").onclick = () => toggleFX();
+  $("#orbBtn").onclick = () => setOrbit(!(st.orbit && st.orbit.target));
+  $("#pinBtn").onclick = () => unpinAll();
   $("#fitBtn").onclick = () => G && G.zoomToFit(900, 80);
   $("#repBtn").onclick = () => showReport();
   $("#pngBtn").onclick = () => {
@@ -1147,6 +1295,8 @@ function controls(){
       if (String(st.view).startsWith("v:")){ st.view = "mem"; $("#view").value = "mem"; } }
     else if (ev.key === "r" || ev.key === "R") toggleRotate();
     else if (ev.key === "e" || ev.key === "E") toggleFX();
+    else if (ev.key === "o" || ev.key === "O") $("#orbBtn").click();
+    else if (ev.key === "l" || ev.key === "L") unpinAll();
     else if (ev.key === "f" || ev.key === "F") G && G.zoomToFit(900, 80);
   });
 }
