@@ -53,7 +53,7 @@ sauf les correctifs sûrs, faits tout de suite à ta demande.
    par MCP et une vue 3D avec le temps. Le cerveau en a déjà la plus grande part : graphe à liens typés,
    « A remplace B » avec date de fin, PageRank, vue 3D avec curseur. Il reste quatre manques, donc quatre
    étapes (10 à 13) : les réglages Claude Code du dépôt, le temps dans le modèle de données, le rappel et
-   les piliers, la vue 3D rejouable. Rien n'est codé ; l'exécution attend ton GO, sur Opus 5.5.
+   les piliers, la vue 3D rejouable. Étape 10 faite le 24/11, sur Opus 5.5 ; les étapes 11 à 13 attendent ton GO.
 
 ## 1. Ce que tu as demandé
 
@@ -76,6 +76,7 @@ sauf les correctifs sûrs, faits tout de suite à ta demande.
 | 23/11 | Valider les 7 retraits R9 ; relire d'abord les autres ADR | ADR-021, 046, 050, 057, 060 et 068 acceptés ; 35 ADR à relire (`docs/adr/A-VALIDER.md`) |
 | 23/11 | Fusionner la 8.32.0 ; puis les restes du plugin | 8.32.0 fusionnée ; restes faits (8.33.0) : fin de session wiki en 88 ms, `brain regroupe` complété |
 | 24/11 | Synthèse « cerveau en 4D » (graphe daté, mémoire par MCP, vue 3D avec le temps) ; « fais le plan et passe à Opus 5.5 » | Bloc E, étapes 10 à 13. Tes réponses du 24/11 : les quatre manques, reprendre les idées de Graphiti et mem0 sans les installer, rappel lexical avec filtre par date, tu changes le modèle toi-même |
+| 24/11 | Passage sur Opus 5.5, « GO étape 10 » | Étape 10 faite : `CLAUDE.md` à la racine, hook de vérification en fin de tâche (E20 appliquée telle que recommandée) |
 
 ## 2. Comment l'audit a été fait, et ses limites
 
@@ -583,7 +584,8 @@ synthèse est en place ; le plan ne traite que la colonne de droite.
 - Chaque changement a un test qui échoue sans lui. Une version mineure par étape ; README et page des réglages à
   jour. `brain.exe` n'est pas touché (E12).
 
-**Étape 10 — Les réglages Claude Code du dépôt** (rien de livré aux utilisateurs du plugin)
+**Étape 10 — Les réglages Claude Code du dépôt** (rien de livré aux utilisateurs du plugin) : **faite le 24/11**
+(PR #32, avec ce bloc). Détail plus bas, après le plan de l'étape.
 - Un `CLAUDE.md` à la racine, 60 lignes au plus : ce qu'est le dépôt (le plugin à la racine, la plateforme à part
   avec son propre `CLAUDE.md`), les commandes (le lint de la CI, un script de test, tous les scripts), les règles
   E.3, les interdits (`brain.exe`, les bibliothèques de `brainkit/vue3d/` refaites par `fabriquer.py` seulement),
@@ -595,6 +597,26 @@ synthèse est en place ; le plan ne traite que la colonne de droite.
 - Aucun interdit de `.claude/settings.json` n'est retiré ni assoupli.
 - Fini quand : le hook a son test (échec simulé, rien de changé, hors du plugin) ; une session neuve à qui tu dis
   « lance les tests du rappel » trouve la commande sans chercher.
+- ✅ Fait le 24/11 :
+  - `CLAUDE.md` à la racine, 59 lignes : carte, commandes, « quel test pour quoi », règles E.3, interdits, publier
+    une version. Trouvé en le rédigeant : `README.md`, `hooks/hooks.json`, les manifestes et toute la skill
+    `skills/brain/` sont générés par `brainkit/publish.py` ; le `CLAUDE.md` dit de changer le code qui les écrit.
+  - `.claude/hooks/verifier.py`, déclaré en hook Stop dans `.claude/settings.json` (aucun interdit retiré). Il
+    compare le dossier de travail à `main`, ne revérifie que les fichiers changés depuis son dernier passage vert
+    (état dans le dossier `.git`, jamais commité), lance le lint de la CI et les scripts qui portent sur ces
+    fichiers (imports, famille du module, chemins cités ; à défaut, le noyau), plus `test_decoupage`, quatre à la
+    fois. Un échec renvoie Claude avec la ligne ✗ et la commande à relancer ; le même échec n'est pas renvoyé deux
+    fois (tu es prévenu une fois) ; trois renvois au plus par tour. À la main : `--tout` (pas `--force`, que le
+    garde-fou des commandes refuse).
+  - Mesures (Linux, 4 cœurs) : rien de changé, 0,17 s ; `search.py` changé, 7 scripts ; pire cas (`common.py`),
+    30 scripts en 55 s au lieu d'environ 3 min 20 l'un après l'autre, sans échec en parallèle.
+  - Tests : nouveau `tests/test_verifier.py` (32 vérifications, sur un faux dépôt git). Une session neuve (Haiku,
+    sans outil de recherche) à qui « lance les tests du rappel » a été dit a lancé `python tests/test_rappel.py`
+    du premier coup.
+  - Les deux guides (claude-code-ultimate-guide, claude-code-best-practices) ont été lus par un agent et comparés
+    à la documentation de Claude Code. Retenu parce que la documentation le confirme : des commandes concrètes dans
+    `CLAUDE.md`, moins de 200 lignes, une règle qui doit tenir passe par un hook ou un interdit (le `CLAUDE.md`
+    n'est qu'un conseil), un hook Stop qui lance les tests. Le reste n'a pas été repris.
 
 **Étape 11 — Le temps dans le modèle de données** (cerveau 8.34.0)
 1. *Début et fin de validité.* `meta.valid_from` : le jour où le fait est devenu vrai ; absent, c'est la date
@@ -680,7 +702,7 @@ et se font dans l'ordre que tu veux.
 | E17 | Recherche par embeddings | **Tranché le 24/11 : le rappel reste lexical**, avec un filtre par validité en plus (étape 12) |
 | E18 | Modèle qui exécute le Bloc E | **Tranché le 24/11 : Opus 5.5**, tu changes le modèle de la session toi-même |
 | E19 | Liste des domaines, pour l'axe « domaine » (étape 11) | Sept domaines portés par le projet : code, business, contenu, finance, infra, recherche, perso. À toi de corriger la liste |
-| E20 | Vérification en fin de tâche dans ce dépôt (étape 10) | Le lint et les tests des fichiers touchés ; tous les scripts (3 min 50 mesurées le 24/11 sous Linux) restent pour la CI |
+| E20 | Vérification en fin de tâche dans ce dépôt (étape 10) | **Appliquée le 24/11 telle que recommandée** (ton GO, sans autre consigne) : le lint et les tests des fichiers touchés ; tous les scripts (3 min 50 mesurées le 24/11 sous Linux) restent pour la CI. À changer si tu veux tout lancer |
 | E21 | Où garder un lien terminé en mode wiki (étape 11) | Dans une propriété `anciens_liens` de la page, pour qu'il survive à une reconstruction de `graph.json` |
 
 Toujours ouvertes depuis le plan v2 : D4 (ton nom dans l'historique public), D5 (ordre des domaines),
