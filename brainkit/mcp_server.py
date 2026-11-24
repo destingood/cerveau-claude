@@ -9,6 +9,7 @@ from __future__ import annotations
 import contextlib
 import io
 import json
+import re
 import sys
 
 PROTOCOLS = ("2025-11-25", "2025-06-18", "2025-03-26", "2024-11-05")
@@ -365,41 +366,153 @@ def _opt(argv, flag, value):
         argv.append(f"{flag}={value}")
 
 
+# Ce qu'un memory_add fusionné dans un souvenir déjà connu ne pose pas (seul le texte le complète).
+MERGE_DROPS = ("due", "keys", "resume", "sources", "commun", "source")
+SETTABLE = ("due", "resume", "sources", "commun")  # ceux que memory_update sait poser ensuite
+
+
+def _given(args, key) -> bool:
+    v = args.get(key)
+    return v is not None and not (isinstance(v, str) and not v.strip())
+
+
+def _first_id(text):
+    """L'id du souvenir touché : le premier `id` de la première ligne « ✓ » ou « ≈ » de la commande."""
+    for line in str(text).splitlines():
+        if line.startswith(("✓", "≈")):
+            m = re.search(r"`([^`]+)`", line)
+            return m.group(1) if m else None
+    return None
+
+
+def _partial(text, err, drops=(), ignored=None):
+    """Résultat d'un ajout ou d'une modification où une partie de la demande n'est pas appliquée : chaque partie
+    refusée finit en ligne « ignoré : … » (préfixe stable), sans faire échouer l'appel. Sorties de `brain add` reprises :
+    « ≈ déjà connu → complété dans `x` » (fusion au lieu d'une création ; `--force` n'existe pas ici) et
+    « (remplacement ignoré : …) », « (lien ignoré : …) ». → (texte, erreur ?, {id, ignores})"""
+    if err:
+        return text, err
+    ignored, out = list(ignored or []), []
+    for line in str(text).split("\n"):
+        merged = re.match(r"≈ déjà connu → complété dans `([^`]+)`(.*?)\. `--force` pour créer un doublon\.$", line)
+        aside = re.match(r"\((\S+) ignoré : (.+)\)$", line)
+        if merged:
+            out.append(f"≈ déjà connu → complété dans `{merged.group(1)}`{merged.group(2)}.")
+            note = f"nouveau souvenir — déjà connu, le texte complète `{merged.group(1)}`"
+            if drops:
+                fix = [k for k in drops if k in SETTABLE]
+                note += f" ; non appliqués : {', '.join(drops)}" + (
+                    f" (memory_update id « {merged.group(1)} » pour {', '.join(fix)})" if fix else "")
+            ignored.insert(0, note)
+        elif aside:
+            ignored.append(f"{aside.group(1)} — {aside.group(2)}")
+        else:
+            out.append(line)
+    text = "\n".join(out + [f"ignoré : {x}" for x in ignored]).strip()
+    return text, False, {"id": _first_id(text), "ignores": ignored}
+
+
+def _update(args):
+    """memory_update : les champs donnés d'abord, puis done ou archive s'ils sont demandés (avant : done ou archive
+    passait seul, le reste perdu sans un mot). Ce qui ne s'applique pas est dit (« ignoré : … »), sans échec si le
+    reste a été fait."""
+    nid = _txt(args, "id", required=True)
+    done, archive = _flag(args, "done"), _flag(args, "archive")
+    argv = ["edit"]
+    for key in ("append", "body", "title", "due", "resume", "sources"):
+        _opt(argv, f"--{key}", _txt(args, key))
+    imp = _int(args, "importance", 1, 5)
+    _opt(argv, "--importance", None if imp is None else str(imp))
+    _opt(argv, "--commun", _choice(args, "commun", ("oui", "non", "auto")))
+    if not (done or archive):
+        if len(argv) == 1:
+            return "rien à modifier : donner append, body, title, importance, due, done ou archive", True
+        return _partial(*_run_cli(argv + ["--", nid]))
+    parts, ignored = [], []
+    if len(argv) > 1:
+        text, err = _run_cli(argv + ["--", nid])
+        if err:  # rien n'est modifié : l'à-faire n'est pas non plus terminé ni archivé
+            return text, True
+        parts.append(text)
+    action = "done" if done else "archive"
+    text, err = _run_cli([action if done else "rm", "--", nid])
+    if err and not parts:
+        return text, True
+    if err:
+        ignored.append(f"{action} — {text.lstrip('✗ ').strip()}")
+    else:
+        parts.append(text)
+    if done and archive:
+        ignored.append("archive — avec done, seul done est appliqué (il archive l'à-faire terminé)")
+    return _partial("\n".join(parts), False, ignored=ignored)
+
+
+class Protocole(Exception):
+    """Requête refusée par le protocole (outil inconnu, paramètres malformés) : une erreur JSON-RPC, pas un résultat
+    d'outil (spécification MCP, « Protocol Errors » : -32602, « Invalid params »)."""
+
+    def __init__(self, message, code=-32602, data=None):
+        super().__init__(message)
+        self.code, self.data = code, data
+
+
+ERR = "✗ "  # préfixe stable de tout résultat d'outil en erreur (isError vrai)
+
+
 def call_tool(name, args):
-    """Un appel d'outil → (texte, erreur ?). Un outil d'un groupe désactivé répond comment l'activer ; tout résultat est
-    borné (bounded). Arguments vérifiés (type, obligatoires, bornes) : un refus dit en français ce qui ne va pas."""
+    """Un appel d'outil → (texte, erreur ?) ; outil inconnu ou paramètres malformés → Protocole (erreur JSON-RPC)."""
+    return call_tool_full(name, args)[:2]
+
+
+def call_tool_full(name, args):
+    """Un appel d'outil → (texte, erreur ?, données structurées ou None). Un outil d'un groupe désactivé répond comment
+    l'activer ; tout résultat est borné (bounded). Arguments vérifiés (type, obligatoires, bornes) : un refus dit en
+    français ce qui ne va pas, toujours après « ✗ ». Les données structurées ne viennent que d'un vrai appel (pas de la
+    page 2 d'un résultat gardé)."""
     if not isinstance(name, str) or not name:
-        return "nom d'outil manquant (« name » dans params)", True
+        raise Protocole("nom d'outil manquant (« name » dans params)")
     if args is not None and not isinstance(args, dict):
-        return f"« arguments » : objet JSON attendu, pas {_kind(args)}", True
+        raise Protocole(f"« arguments » : objet JSON attendu, pas {_kind(args)}")
     args = args or {}
     if not any(t["name"] == name for t in TOOLS):
-        return f"outil inconnu : {name} — outils de ce serveur : {', '.join(t['name'] for t in tools())}", True
+        raise Protocole(f"outil inconnu : {name} — outils de ce serveur : {', '.join(t['name'] for t in tools())}",
+                        data={"outil": name})
     group = group_of(name)
     if group and group not in groups():
-        return (f"outil {name} désactivé sur ce serveur : `brain config mcp.groupes '[\"{group}\"]'` l'ajoute à la liste "
-                "(les outils de la mémoire sont toujours là)"), True
+        return (f"{ERR}outil {name} désactivé sur ce serveur : `brain config mcp.groupes '[\"{group}\"]'` l'ajoute à la "
+                "liste (les outils de la mémoire sont toujours là)"), True, None
     try:
         _int(args, "page", 1, 10 ** 6)
     except Bad as exc:
-        return f"✗ {exc}", True
+        return f"{ERR}{exc}", True, None
+    got = {}
 
     def run():
         try:
-            return _call(name, args)
+            out = _call(name, args)
         except Bad as exc:
-            return f"✗ {exc}", True
+            return f"{ERR}{exc}", True
         except Exception as exc:
             return _internal(exc, name), True
-    return bounded(name, args, run)
+        if len(out) > 2:
+            got["data"] = out[2]
+        return out[0], out[1]
+    text, err = bounded(name, args, run)
+    if err and not str(text).startswith(ERR.strip()):
+        text = ERR + str(text)
+    return text, err, got.get("data")
 
 
 def _call(name, args):
     if name == "memory_search":
+        from . import cli_memoire
         argv = ["q", "-k", str(_int(args, "limit", 1, 30, 6, clamp=True)), "--no-files"]
         _opt(argv, "--project", _txt(args, "project"))
         _opt(argv, "--at", _txt(args, "at"))
-        return _run_cli(argv + ["--", _txt(args, "query", required=True)])
+        query = _txt(args, "query", required=True)
+        cli_memoire.RESULTATS.clear()
+        text, err = _run_cli(argv + ["--", query])
+        return text, err, None if err else {"souvenirs": list(cli_memoire.RESULTATS)}
     if name == "memory_add":
         argv = ["add", f"--type={_choice(args, 'type', TYPES) or 'fact'}", f"--title={_txt(args, 'title', True, 'titre vide : « title » est obligatoire (court)')}",
                 f"--body={_txt(args, 'body', required=True)}", f"--project={_txt(args, 'project') or 'none'}"]
@@ -407,24 +520,12 @@ def _call(name, args):
             _opt(argv, f"--{key}", _txt(args, key))
         _opt(argv, "--commun", _choice(args, "commun", ("oui", "non", "auto")))
         _opt(argv, "--source", _choice(args, "source", ("utilisateur", "verifie", "claude", "deduit")) or "mcp")
-        return _run_cli(argv)
+        text, err = _run_cli(argv)
+        return _partial(text, err, [k for k in MERGE_DROPS if _given(args, k)])
     if name == "memory_show":
         return _run_cli(["show", "--", _txt(args, "id", required=True)])
     if name == "memory_update":
-        nid = _txt(args, "id", required=True)
-        if _flag(args, "done"):
-            return _run_cli(["done", "--", nid])
-        if _flag(args, "archive"):
-            return _run_cli(["rm", "--", nid])
-        argv = ["edit"]
-        for key in ("append", "body", "title", "due", "resume", "sources"):
-            _opt(argv, f"--{key}", _txt(args, key))
-        imp = _int(args, "importance", 1, 5)
-        _opt(argv, "--importance", None if imp is None else str(imp))
-        _opt(argv, "--commun", _choice(args, "commun", ("oui", "non", "auto")))
-        if len(argv) == 1:
-            return "rien à modifier : donner append, body, title, importance, due, done ou archive", True
-        return _run_cli(argv + ["--", nid])
+        return _update(args)
     if name == "memory_todo":
         return _run_cli(["todo"])
     if name == "memory_context":
@@ -508,49 +609,137 @@ def _call(name, args):
     return f"outil inconnu : {name}", True
 
 
+# Deux époques du protocole (spécification MCP, « Versioning and Compatibility ») : l'ancienne commence par
+# `initialize` (PROTOCOLS, celle de Claude Code aujourd'hui) ; la nouvelle (2026-07-28) n'a plus de poignée de main,
+# chaque requête porte sa version et les capacités du client dans params._meta, et `server/discover` dit ce que le
+# serveur sait faire. Une requête qui porte une version dans _meta est servie selon la nouvelle, toute autre selon
+# l'ancienne : rien ne change pour un client d'aujourd'hui.
+MODERN = ("2026-07-28",)
+META_VERSION, META_CAPS = "io.modelcontextprotocol/protocolVersion", "io.modelcontextprotocol/clientCapabilities"
+META_SERVER = "io.modelcontextprotocol/serverInfo"
+INSTRUCTIONS = ("Mémoire persistante de l'utilisateur : chercher (memory_search) avant de redemander, mémoriser "
+                "(memory_add) ce qui est durable, jamais de secret.")
+URI = "memoire://"
+TEMPLATE = {"uriTemplate": URI + "{id}", "name": "souvenir", "title": "Souvenir du cerveau", "mimeType": "text/plain",
+            "description": "Un souvenir en entier, avec ses liens (le texte de memory_show) ; l'id vient de "
+                           "memory_search ou d'un résultat du cerveau."}
+# Indications de cache exigées par la nouvelle époque (ttlMs, cacheScope) : les listes changent rarement (mcp.groupes) ;
+# un souvenir peut changer à chaque instant et n'appartient qu'à l'utilisateur.
+CACHE = {"server/discover": (3600000, "public"), "tools/list": (60000, "public"), "prompts/list": (3600000, "public"),
+         "resources/list": (60000, "public"), "resources/templates/list": (3600000, "public"),
+         "resources/read": (0, "private")}
+
+
+def _caps() -> dict:
+    return {"tools": {"listChanged": False}, "prompts": {"listChanged": False},
+            "resources": {"subscribe": False, "listChanged": False}}
+
+
+def _server_info() -> dict:
+    from . import __version__
+    return {"name": "cerveau", "version": __version__}
+
+
+def _check_meta(meta):
+    """Requête de la nouvelle époque : version prise en charge et capacités du client présentes, sinon l'erreur JSON-RPC
+    que la spécification demande (-32022 avec les versions acceptées, -32602 pour un champ manquant)."""
+    if not isinstance(meta, dict) or META_VERSION not in meta:
+        return {"code": -32602, "message": f"params._meta : « {META_VERSION} » manquant — versions par requête : "
+                                           f"{', '.join(MODERN)} ; avec `initialize` : {', '.join(PROTOCOLS)}"}
+    asked = meta[META_VERSION]
+    if asked not in MODERN:
+        return {"code": -32022, "message": f"version du protocole non prise en charge : {str(asked)[:40]} — par "
+                                           f"requête : {', '.join(MODERN)} ; avec `initialize` : {', '.join(PROTOCOLS)}",
+                "data": {"supported": list(MODERN), "requested": asked}}
+    if not isinstance(meta.get(META_CAPS), dict):
+        return {"code": -32602, "message": f"params._meta : « {META_CAPS} » manquant (un objet, même vide)"}
+    return None
+
+
+def _read(params, modern):
+    """resources/read de memoire://<id> : le texte de memory_show, borné comme les outils. Souvenir introuvable →
+    -32002 (ancienne époque) ou -32602 (2026-07-28, qui a changé ce code), jamais une liste vide."""
+    uri = params.get("uri") if isinstance(params, dict) else None
+    if not isinstance(uri, str) or not uri.strip():
+        raise Protocole(f"« uri » manquant : {URI}<id> (l'id vient de memory_search)")
+    from urllib.parse import unquote
+    nid = unquote(uri[len(URI):]).strip() if uri.startswith(URI) else ""
+    code = -32602 if modern else -32002
+    if not nid:
+        raise Protocole(f"ressource introuvable : {uri[:200]} — ce serveur ne sert que {URI}<id>", code, {"uri": uri})
+    text, err = call_tool("memory_show", {"id": nid})
+    if err:
+        raise Protocole(f"ressource introuvable : {uri[:200]} — {text.lstrip('✗ ')}", code, {"uri": uri})
+    return {"contents": [{"uri": uri, "mimeType": "text/plain", "text": text}]}
+
+
+def _dispatch(method, params, modern):
+    """Une méthode → son résultat (dict) ; un refus du protocole lève Protocole."""
+    if method == "initialize":
+        asked = params.get("protocolVersion") if isinstance(params, dict) else None
+        return {"protocolVersion": asked if asked in PROTOCOLS else PROTOCOLS[0], "capabilities": _caps(),
+                "serverInfo": _server_info(), "instructions": INSTRUCTIONS}
+    if method == "server/discover":
+        return {"supportedVersions": list(MODERN), "capabilities": _caps(), "instructions": INSTRUCTIONS}
+    if method == "ping":
+        return {}
+    if method == "tools/list":
+        return {"tools": tools()}
+    if method == "tools/call":
+        if not isinstance(params, dict):
+            raise Protocole("params : objet JSON attendu ({\"name\": …, \"arguments\": {…}})")
+        text, is_err, data = call_tool_full(params.get("name"), params.get("arguments"))
+        res = {"content": [{"type": "text", "text": text or "(vide)"}], "isError": is_err}
+        # Nouvelle époque seulement : Claude Code ne passe au modèle que le structuredContent quand il y en a un (le
+        # texte de content disparaît) ; le texte y est donc aussi, et aucun outputSchema n'allonge la liste des outils.
+        if modern and data is not None and not is_err:
+            res["structuredContent"] = {**data, "texte": text}
+        return res
+    if method == "prompts/list":
+        return {"prompts": [PROMPT]}
+    if method == "prompts/get":
+        if not isinstance(params, dict) or params.get("name") != PROMPT["name"]:
+            raise Protocole("prompt inconnu")
+        text, _ = call_tool("memory_context", {})
+        return {"description": PROMPT["description"], "messages": [
+            {"role": "user", "content": {"type": "text", "text": "Contexte de ma mémoire persistante (à utiliser sans le "
+                                                                 "répéter) :\n\n" + text}}]}
+    if method == "resources/list":
+        return {"resources": []}  # rien de lourd : un souvenir se lit par son id (resources/templates/list)
+    if method == "resources/templates/list":
+        return {"resourceTemplates": [TEMPLATE]}
+    if method == "resources/read":
+        return _read(params, modern)
+    raise Protocole(f"méthode inconnue : {method}", -32601)
+
+
 def handle(msg):
     """Une requête JSON-RPC → la réponse (ou None pour une notification)."""
     mid, method = msg.get("id"), msg.get("method")
     if mid is None:  # notification (initialized, cancelled…) : pas de réponse
         return None
+    params = msg.get("params")
+    meta = params.get("_meta") if isinstance(params, dict) else None
+    modern = method != "initialize" and isinstance(meta, dict) and META_VERSION in meta
     try:
-        if method == "initialize":
-            from . import __version__
-            asked = msg["params"].get("protocolVersion") if isinstance(msg.get("params"), dict) else None
-            return {"jsonrpc": "2.0", "id": mid, "result": {
-                "protocolVersion": asked if asked in PROTOCOLS else PROTOCOLS[0],
-                "capabilities": {"tools": {"listChanged": False}, "prompts": {"listChanged": False}},
-                "serverInfo": {"name": "cerveau", "version": __version__},
-                "instructions": "Mémoire persistante de l'utilisateur : chercher (memory_search) avant de redemander, "
-                                "mémoriser (memory_add) ce qui est durable, jamais de secret."}}
-        if method == "ping":
-            return {"jsonrpc": "2.0", "id": mid, "result": {}}
-        if method == "tools/list":
-            return {"jsonrpc": "2.0", "id": mid, "result": {"tools": tools()}}
-        if method == "tools/call":
-            p = msg.get("params") or {}
-            if not isinstance(p, dict):
-                return {"jsonrpc": "2.0", "id": mid, "error": {"code": -32603, "message": "params : objet JSON attendu "
-                                                                                          "({\"name\": …, \"arguments\": {…}})"}}
-            text, is_err = call_tool(p.get("name"), p.get("arguments"))
-            return {"jsonrpc": "2.0", "id": mid, "result": {"content": [{"type": "text", "text": text or "(vide)"}],
-                                                             "isError": is_err}}
-        if method == "prompts/list":
-            return {"jsonrpc": "2.0", "id": mid, "result": {"prompts": [PROMPT]}}
-        if method == "prompts/get":
-            if not isinstance(msg.get("params"), dict) or msg["params"].get("name") != PROMPT["name"]:
-                return {"jsonrpc": "2.0", "id": mid, "error": {"code": -32602, "message": "prompt inconnu"}}
-            text, _ = call_tool("memory_context", {})
-            return {"jsonrpc": "2.0", "id": mid, "result": {"description": PROMPT["description"], "messages": [
-                {"role": "user", "content": {"type": "text", "text": "Contexte de ma mémoire persistante (à utiliser "
-                                                                     "sans le répéter) :\n\n" + text}}]}}
-        if method == "resources/list":
-            return {"jsonrpc": "2.0", "id": mid, "result": {"resources": []}}
-        if method == "resources/templates/list":
-            return {"jsonrpc": "2.0", "id": mid, "result": {"resourceTemplates": []}}
-        return {"jsonrpc": "2.0", "id": mid, "error": {"code": -32601, "message": f"méthode inconnue : {method}"}}
+        if modern or method == "server/discover":
+            bad = _check_meta(meta)
+            if bad:
+                return {"jsonrpc": "2.0", "id": mid, "error": bad}
+            modern = True
+        result = _dispatch(method, params, modern)
+    except Protocole as exc:
+        error = {"code": exc.code, "message": str(exc)}
+        if exc.data is not None:
+            error["data"] = exc.data
+        return {"jsonrpc": "2.0", "id": mid, "error": error}
     except Exception as exc:  # jamais de trace ni de repr Python en anglais : une phrase, le détail au journal
         return {"jsonrpc": "2.0", "id": mid, "error": {"code": -32603, "message": _internal(exc, str(method))}}
+    if modern:  # chaque résultat dit son type et qui répond ; les listes et lectures, combien de temps les garder
+        result = {"resultType": "complete", **result, "_meta": {META_SERVER: _server_info()}}
+        if method in CACHE:
+            result["ttlMs"], result["cacheScope"] = CACHE[method]
+    return {"jsonrpc": "2.0", "id": mid, "result": result}
 
 
 def serve():

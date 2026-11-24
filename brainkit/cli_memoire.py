@@ -17,6 +17,8 @@ from .cli_commun import body_of, die, node_line, project_arg, refresh_views, typ
 from .common import PROJECTS_DIR, est_tokens, fmt_date, fold, load_config, log, now_iso, short, slugify
 from .store import TYPES, Brain, bump_hits, clean_tags, normalize_type, priority
 
+RESULTATS = []  # souvenirs du dernier `q` ({id, type, title, project, score}), lus par le serveur MCP
+
 
 def cmd_q(a):
     from . import common, filesearch
@@ -61,6 +63,9 @@ def cmd_q(a):
             res += graph.expand(b, graph.ensure(b), res, {r["node"]["id"] for r in res}, limit=3, types=types)
         except Exception as exc:
             log(f"q : expansion par le graphe : {exc!r}")
+    # Les souvenirs trouvés, tels quels : le serveur MCP en fait le structuredContent de memory_search.
+    RESULTATS[:] = [{"id": r["node"]["id"], "type": r["node"]["type"], "title": r["node"]["title"],
+                     "project": r["node"].get("project"), "score": round(float(r.get("score") or 0), 3)} for r in res]
     if a.json:
         rows = [{"id": fiche["node"]["id"], "type": "fiche", "title": fiche["node"]["title"], "body": fiche["node"]["body"],
                  "members": fiche["fiche"]["members"], "via": "fiche"}] if fiche else []
