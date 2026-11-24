@@ -812,8 +812,8 @@ coût pour le rappel.
     un nouveau trait du neurone rendrait inutilisable le modèle déjà appris sur ton PC).
   - Tests : nouveau `tests/test_justesse.py` (16 vérifications). Les 39 scripts passent.
 
-**Étape 15 — La mémoire protégée** (guides Claude Code) : **points 1 à 4 faits le 24/11** (cerveau 8.37.0) ;
-le point 5 après l'étape 18, qui change les skills. Détail après la liste.
+**Étape 15 — La mémoire protégée** (guides Claude Code) : **faite le 24/11** (points 1 à 4 en 8.37.0, point 5
+en 8.41.0, après l'étape 18). Détail après la liste.
 1. Anti-empoisonnement à l'écriture : le contrôle des pages d'amis (`lint_text`) passe aussi sur ce qui entre dans la
    mémoire depuis le web, une transcription ou une source du wiki ; un texte qui donne des consignes est mis de côté
    et signalé, pas ré-injecté à chaque message. (S, guide Bruniaux §7.1)
@@ -842,6 +842,14 @@ le point 5 après l'étape 18, qui change les skills. Détail après la liste.
     180 jours ; à l'échéance il est prolongé s'il retire encore assez de bruit, retiré sinon, et c'est annoncé. Pas
     d'étape « candidat » : le filtre ne servirait qu'avec retard, et il était déjà annoncé et retirable.
   - Tests : nouveau `tests/test_protection.py` (27 vérifications). Les 38 scripts passent.
+  - Point 5 (8.41.0) : `tests/test_declencheurs.py`, un corpus d'acceptation par skill (3 demandes dites autrement
+    que ses déclencheurs, 2 phrases voisines). Le déclenchement du cerveau repose sur des phrases, pas sur un score :
+    il n'y a pas de seuil par skill à régler (écart avec le guide), mais des planchers de précision et de F1. Première
+    mesure : rappel 61/66, 5 faux déclenchements sur 44 (« la sécurité sociale m'a écrit » → securite, « je joue à
+    fortnite ce soir » → fortnite, « regarde cette vidéo de chat » → apprendre-en-livrant…), précision 92 %. Corrigé
+    dans les `SKILL.md` (phrases négatives, déclencheurs trop larges resserrés, déclencheurs manquants) : 66/66, aucun
+    faux déclenchement. Ce corpus a servi à corriger : ce n'est pas une mesure indépendante, c'est le garde-fou des
+    prochains changements.
 
 **Étape 16 — Le serveur MCP** (serveurs de référence) : **points 1 à 3 faits le 24/11** (cerveau 8.39.0) ; le 4
 non fait (pas demandé).
