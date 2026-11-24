@@ -843,7 +843,8 @@ le point 5 après l'étape 18, qui change les skills. Détail après la liste.
     d'étape « candidat » : le filtre ne servirait qu'avec retard, et il était déjà annoncé et retirable.
   - Tests : nouveau `tests/test_protection.py` (27 vérifications). Les 38 scripts passent.
 
-**Étape 16 — Le serveur MCP** (serveurs de référence).
+**Étape 16 — Le serveur MCP** (serveurs de référence) : **points 1 à 3 faits le 24/11** (cerveau 8.39.0) ; le 4
+non fait (pas demandé).
 1. Erreurs conformes : outil inconnu → erreur JSON-RPC -32602 ; ajout ou modification en partie refusés → le dire
    (« ignoré : … ») sans échouer. (S, aucun caractère de plus dans la liste des outils)
 2. Ressources `memoire://{id}` : un souvenir se joint à une conversation sans appel d'outil. (M, 0 caractère de plus)
@@ -851,6 +852,18 @@ le point 5 après l'étape 18, qui change les skills. Détail après la liste.
    rester compatible avec les prochaines versions de Claude Code. (M, 0 caractère de plus)
 4. Annotations des outils (lecture seule, destructif) : +550 caractères dans chaque session ; à ne faire que si tu
    veux ce confort. (S)
+- ✅ Fait le 24/11 (cerveau 8.39.0), par un agent en parallèle puis repris sur la branche :
+  - Erreurs : outil inconnu et paramètres malformés → erreur JSON-RPC -32602 (spécification MCP 2025-11-25) ; un outil
+    qui échoue reste un résultat en erreur préfixé « ✗ » ; « ignoré : … » dit ce qu'un ajout ou une modification
+    n'applique pas ; `memory_update` ne perd plus les champs donnés avec `done` ou `archive`.
+  - Ressource `memoire://{id}` (modèle de ressource, lecture paginée ; souvenir inconnu : -32002, ou -32602 en
+    2026-07-28, qui a changé ce code).
+  - Protocole 2026-07-28 servi à côté de l'actuel (`server/discover`, `_meta.protocolVersion`, résultats
+    structurés). Limite trouvée : d'après plusieurs tickets de Claude Code, quand une réponse a un `structuredContent`,
+    le modèle ne voit que lui ; les clients qui commencent par `initialize` (Claude Code aujourd'hui) reçoivent donc
+    les mêmes réponses qu'avant.
+  - Liste des outils : toujours 3 204 caractères. Tests : nouveau `tests/test_serveur_mcp.py` (37 vérifications) ;
+    `test_noyau` et `test_erreurs` attendent désormais le code exact de la spécification.
 
 **Étape 17 — La vue 3D, suite** (3d-force-graph).
 1. Flèches sur les liens typés, et au survol d'un lien son type et ses dates. (S)
