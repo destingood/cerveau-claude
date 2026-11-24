@@ -151,6 +151,9 @@ def build_index(brain, cfg=None, focus=None, previews=None, sig=None, info=None)
     said = {}  # résumé de chaque souvenir, fait une fois : une section se construit deux fois (sa demande, puis sa place)
 
     def line(n, chars):
+        if n["id"] not in said and (n.get("meta") or {}).get("a_verifier"):  # mis de côté (garde.py)
+            from .garde import caution
+            said[n["id"]] = caution(n)
         if n["id"] not in said:
             said[n["id"]] = concis((n.get("meta") or {}).get("resume") or n.get("body", ""))
         body = short(said[n["id"]], chars)

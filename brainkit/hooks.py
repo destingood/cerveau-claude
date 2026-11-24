@@ -119,6 +119,9 @@ def context_query(raw, query) -> str:
 def gist(n, chars=220, query=None) -> str:
     """Ce qu'on montre d'un souvenir : le résumé d'une page du wiki s'il existe, sinon le début de son contenu ; avec
     `query`, les phrases qui répondent au message quand le début en montre moins (concis.relevant)."""
+    if (n.get("meta") or {}).get("a_verifier"):  # mis de côté (garde.py) : jamais son texte, l'avertissement
+        from .garde import caution
+        return caution(n)
     from .concis import concis, relevant
     base = (n.get("meta") or {}).get("resume") or n.get("body", "")
     return (query and relevant(base, n.get("body", ""), query, chars, n.get("title", ""))) or short(concis(base), chars)

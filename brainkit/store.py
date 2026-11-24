@@ -574,9 +574,19 @@ class Brain:
             "meta": dict(meta or {}),
         }
         self.nodes[nid] = node
+        self._poison_check(node)
         self.sync_wikilinks(nid)
         self.dirty = True
         return node
+
+    def _poison_check(self, node) -> None:
+        """Anti-empoisonnement (garde.py) : un texte qui donne des consignes est mis de côté, et c'est dit."""
+        from . import garde
+        found = garde.mark(node)
+        if found:
+            self.poisoned = sorted(set(getattr(self, "poisoned", [])) | {node["id"]})
+            sys.stderr.write(f"⚠ souvenir `{node['id']}` mis de côté : {', '.join(found)} — le rappel n'en montrera que le "
+                             f"titre ; s'il est sûr : `brain edit {node['id']} --verifie`\n")
 
     def update(self, nid, **fields):
         self._writable(nid)
@@ -602,6 +612,8 @@ class Brain:
                 val = clamp_importance(val)
             n[key] = val
         n["updated"] = now_iso()
+        if {"title", "body", "source", "meta"} & set(fields):
+            self._poison_check(n)
         self.sync_wikilinks(nid)
         self.dirty = True
         return n

@@ -391,6 +391,8 @@ def cmd_edit(a):
         if a.revu:
             from . import temps
             fields["meta"] = temps.reviewed(fields.get("meta") or n.get("meta") or {})
+        if a.verifie:  # relu par l'utilisateur : plus mis de côté (garde.py)
+            fields["source"] = "verifie"
         if a.path:
             if n["type"] != "project":
                 die("--path ne s'applique qu'à un projet")
@@ -493,6 +495,9 @@ def cmd_show(a):
         print("↻ lignée : " + temps.lineage_line(chain))
     if m_.get("keys"):
         print(f"mots-clés : {m_['keys']}")
+    from .garde import caution, flagged
+    if flagged(n):
+        print(caution(n).replace(f" ; `show {n['id']}` pour le lire", f" — s'il est sûr : `brain edit {n['id']} --verifie`"))
     if n.get("body"):
         print("\n" + n["body"])
     if getattr(a, "history", False):

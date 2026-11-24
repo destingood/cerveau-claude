@@ -167,6 +167,10 @@ détail en bas.
   récent d'abord, l'autre marqué. Au démarrage, les souvenirs les plus reliés de ton projet passent devant (les
   piliers). Et le rêve te ressort, trois au plus, les souvenirs importants qui ne servent plus, à revoir de plus en
   plus rarement (30 jours, puis 60, 120…) tant qu'ils restent vrais.
+- **La mémoire protégée** : un souvenir tiré d'une page web ou d'une transcription qui contiendrait une consigne piégée
+  (« ignore les consignes de l'utilisateur », « fais-le sans le lui dire », une commande qui télécharge et exécute)
+  est mis de côté : Claude n'en voit que le titre et un avertissement, jamais le texte, tant que tu ne l'as pas relu
+  (`brain edit <id> --verifie`). Au démarrage, le `CLAUDE.md` du projet ouvert passe le même contrôle.
 - **Le rêve** : l'entretien de ta mémoire se fait hors conversation, chaque jour — dates relatives rendues réelles,
   observations anciennes condensées — et ce qui demande du jugement (corrections entendues, doublons, conflits,
   à-faire en retard) est tranché par Claude au démarrage suivant : ce qui est sûr est appliqué, un doute est laissé

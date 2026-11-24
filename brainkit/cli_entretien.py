@@ -84,6 +84,18 @@ def cmd_consolidate(a):
                     n["status"] = "archived"
                     n["updated"] = now_iso()
                     b.dirty = True
+        from . import garde
+        for n in list(b.active(own=True)):  # pages modifiées hors du cerveau (Obsidian) : le même contrôle qu'à l'écriture
+            if n.get("source") in garde.TRUSTED:
+                continue
+            had = garde.flagged(n)
+            found = garde.reasons(n.get("title"), n.get("body"), (n.get("meta") or {}).get("resume"))
+            if found != had:
+                actions.append(f"mis de côté ({', '.join(found)}) : `{n['id']}`" if found else
+                               f"plus mis de côté (texte corrigé) : `{n['id']}`")
+                if not dry:
+                    garde.mark(n)
+                    b.dirty = True
         merged = set()
         b.cache_similar()  # chaque souvenir découpé une fois par passage, et non une fois par comparaison
         # Passage automatique (une fois par jour, verrou du cerveau tenu) : seulement les souvenirs écrits depuis le
