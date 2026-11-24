@@ -789,7 +789,8 @@ coût pour le rappel.
    diversité des souvenirs rappelés (MMR) au lieu de l'élimination des seuls quasi-doublons. (S, mem0, graphiti,
    guide Bruniaux §9) — mesuré sur le banc du rappel avant d'être gardé, comme les piliers.
 
-**Étape 15 — La mémoire protégée** (guides Claude Code).
+**Étape 15 — La mémoire protégée** (guides Claude Code) : **points 1 à 4 faits le 24/11** (cerveau 8.37.0) ;
+le point 5 après l'étape 18, qui change les skills. Détail après la liste.
 1. Anti-empoisonnement à l'écriture : le contrôle des pages d'amis (`lint_text`) passe aussi sur ce qui entre dans la
    mémoire depuis le web, une transcription ou une source du wiki ; un texte qui donne des consignes est mis de côté
    et signalé, pas ré-injecté à chaque message. (S, guide Bruniaux §7.1)
@@ -801,6 +802,23 @@ coût pour le rappel.
    preuve et une date d'expiration. (M, guide Bruniaux)
 5. Déclenchement des skills calibré : phrases positives et négatives par skill, seuil par skill, mesuré hors des
    hooks. (M, `bm25-routing` du guide Bruniaux)
+- ✅ Fait le 24/11 (cerveau 8.37.0) :
+  - Anti-empoisonnement (`brainkit/garde.py`) : à l'écriture d'un souvenir qui ne vient pas de l'utilisateur, et chaque
+    jour pour les pages changées hors du cerveau. Seules les familles du contrôle des skills qui trahissent une
+    injection comptent (consigne qui annule celles de l'utilisateur, action cachée, téléchargement exécuté,
+    caractères invisibles, commentaire caché) : appliqué tel quel, ce contrôle aurait caché des règles légitimes
+    (« ne jamais faire git push --force », « la clé reste dans le fichier d'environnement »). Un souvenir mis de côté
+    porte `meta.a_verifier` (propriété du même nom dans le wiki) ; le rappel et le démarrage n'en montrent que le
+    titre et l'avertissement ; `brain edit <id> --verifie` le lève.
+  - `CLAUDE.md`, `CLAUDE.local.md` et `.claude/CLAUDE.md` du projet ouvert contrôlés au démarrage ; verdict gardé par
+    version du fichier : Claude est prévenu à chaque session, l'utilisateur une fois.
+  - Canari de portée : écart avec le plan. Le rappel montre exprès un souvenir d'un autre projet (sans le bonus du
+    projet courant) ; « ne jamais revenir dans un autre projet » contredirait cette règle. Le test vérifie la règle
+    réelle : à texte égal, le souvenir du projet courant passe devant.
+  - Règles apprises : chaque filtre de sortie appris garde sa preuve (la commande, masquée) et une échéance de
+    180 jours ; à l'échéance il est prolongé s'il retire encore assez de bruit, retiré sinon, et c'est annoncé. Pas
+    d'étape « candidat » : le filtre ne servirait qu'avec retard, et il était déjà annoncé et retirable.
+  - Tests : nouveau `tests/test_protection.py` (27 vérifications). Les 38 scripts passent.
 
 **Étape 16 — Le serveur MCP** (serveurs de référence).
 1. Erreurs conformes : outil inconnu → erreur JSON-RPC -32602 ; ajout ou modification en partie refusés → le dire
