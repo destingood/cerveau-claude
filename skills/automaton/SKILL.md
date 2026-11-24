@@ -1,6 +1,6 @@
 ---
 name: automaton
-description: "Faire tourner l'agent autonome Automaton de Conway Research dans Docker, avec le modèle Ollama du PC, coupé de tout paiement : construire, configurer, lancer, surveiller, arrêter. Sur demande : /cerveau:automaton."
+description: "Quand l'utilisateur veut faire tourner l'agent autonome Automaton de Conway Research sur son PC, dans Docker et sans paiement. Sur demande : /cerveau:automaton."
 disable-model-invocation: true
 metadata:
   triggers: >-

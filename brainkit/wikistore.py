@@ -39,13 +39,17 @@ REL_FM = {"relates": "lie_a", "part_of": "fait_partie_de", "depends_on": "depend
           "fixes": "corrige", "supersedes": "remplace", "contradicts": "contredit", "about": "a_propos_de"}
 FM_REL = {v: k for k, v in REL_FM.items()}
 # champs de `meta` ↔ propriétés (ordre d'écriture) ; les autres champs de meta gardent leur nom
-META_FM = {"resume": "resume", "domaine": "domaine", "sources": "sources", "due": "echeance", "done": "fait_le",
-           "valid_to": "fin", "superseded_by": "remplace_par", "merged_into": "fusionne_dans", "keys": "cles",
+META_FM = {"resume": "resume", "domaine": "domaine", "niveau": "niveau", "sources": "sources", "due": "echeance",
+           "done": "fait_le", "valid_from": "debut", "valid_to": "fin", "end_reason": "raison_fin", "superseded_by": "remplace_par", "merged_into": "fusionne_dans", "keys": "cles",
            "conf": "confiance", "path": "chemin", "aliases": "chemins_alt", "stack": "stack", "auto_body": "corps_auto",
            "format": "format", "url": "url", "auteur": "auteur", "date_source": "date_source", "brut": "brut",
            "sha1": "sha1", "origin": "fichier_origine", "hash": "empreinte", "name": "nom", "alias": "aliases"}
 FM_META = {v: k for k, v in META_FM.items()}
 LINK_META = ("superseded_by", "merged_into")  # un id de souvenir, écrit comme un lien
+# Liens terminés (temps.py) : dans la page d'où part le lien, une ligne « relation · id visé · créé → retiré », sans
+# [[…]] pour qu'Obsidian ne les dessine pas comme des liens vivants. L'id ne change pas quand une page est renommée.
+ENDED_FM = "anciens_liens"
+ENDED_RX = re.compile(r"^\s*([a-z_]+)\s*·\s*(\S+)\s*·\s*(\d{4}-\d{2}-\d{2})\s*→\s*(\d{4}-\d{2}-\d{2})\s*$")
 CORE_FM = ("id", "type", "projet", "tags", "importance", "origine", "cree", "maj", "titre")
 VOLATILE = ("hits", "last_hit", "used", "last_used")
 VOLATILE_META = ("hits0", "mapped")
@@ -300,16 +304,17 @@ def _resolver(nodes, stems):
     return find
 
 
-def content_key(n, stems_by_id, out_rels) -> str:
-    """Empreinte de tout ce qui s'écrit dans la page (y compris le nom des pages visées) : la page n'est réécrite
-    que si elle change."""
+def content_key(n, stems_by_id, out_rels, ended=()) -> str:
+    """Empreinte de tout ce qui s'écrit dans la page (y compris le nom des pages visées et ses liens terminés) : la
+    page n'est réécrite que si elle change."""
     m = n.get("meta") or {}
     meta = sorted((k, v) for k, v in m.items() if k not in VOLATILE_META)
     rels = sorted((rel, stems_by_id.get(t, t)) for rel, t in out_rels)
     pid = n.get("project")
     blob = (n["title"], n["type"], n.get("body", ""), n.get("tags") or [], stems_by_id.get(pid, pid) if pid else None,
             n.get("importance", 3), _minute(n.get("created")), _minute(n.get("updated")), n.get("source"),
-            n.get("status", "active"), meta, rels, [stems_by_id.get(m.get(k), m.get(k)) for k in LINK_META])
+            n.get("status", "active"), meta, rels, [stems_by_id.get(m.get(k), m.get(k)) for k in LINK_META],
+            sorted(ended))
     return hashlib.sha1(repr(blob).encode("utf-8", "surrogatepass")).hexdigest()[:16]  # repr : ~3× plus vite que json
 
 
@@ -338,7 +343,7 @@ def build(root, pages, old=None) -> dict:
         title = clean_label(p["t"] or fm.get("titre") or stem(rel))
         meta = {}
         for k, v in fm.items():
-            if k in CORE_FM or k in FM_REL:
+            if k in CORE_FM or k in FM_REL or k == ENDED_FM:
                 continue
             key = FM_META.get(k, k)
             if v in ("", [], None):
@@ -348,7 +353,7 @@ def build(root, pages, old=None) -> dict:
             meta["alias"] = [a for a in _text_list(meta["alias"]) if fold(a) != fold(title)]
             if not meta["alias"]:
                 meta.pop("alias")
-        for k in ("done", "valid_to", "due"):
+        for k in ("done", "valid_from", "valid_to", "due"):
             if k in meta:
                 meta[k] = str(meta[k])[:10]
         mtime = _dt.datetime.fromtimestamp(p.get("m", 0) / 1e9).replace(microsecond=0).isoformat() if p.get("m") else now_iso()
@@ -373,7 +378,7 @@ def build(root, pages, old=None) -> dict:
         paths[nid] = rel
         rels_raw[nid] = (raw.get("projet", ""), {FM_REL[k]: links_in(raw[k]) or _text_list(fm.get(k))
                                                 for k in raw if k in FM_REL},
-                         {k: raw.get(META_FM[k], "") for k in LINK_META})
+                         {k: raw.get(META_FM[k], "") for k in LINK_META}, _text_list(fm.get(ENDED_FM)))
     stems = {stem(rel).lower(): nid for nid, rel in paths.items()}
     find = _resolver(nodes, stems)
     old_edges = {(e["from"], e["to"], e["rel"]): e.get("created") for e in old.get("edges") or []}
@@ -386,7 +391,14 @@ def build(root, pages, old=None) -> dict:
         seen.add((a, b, rel))
         edges.append({"from": a, "to": b, "rel": rel, "created": old_edges.get((a, b, rel)) or today})
 
-    for nid, (proj_raw, rels, link_meta) in rels_raw.items():
+    page_ended = {}
+    for nid, (proj_raw, rels, link_meta, ended_raw) in rels_raw.items():
+        for line in ended_raw:
+            m = ENDED_RX.match(line)
+            target = find(m.group(2)) if m else None
+            if target and target != nid:
+                page_ended.setdefault(nid, []).append({"from": nid, "to": target, "rel": FM_REL.get(m.group(1), m.group(1)),
+                                                      "created": m.group(3), "ended": m.group(4)})
         n = nodes[nid]
         if proj_raw:
             pid = find(first_ref(proj_raw))
@@ -404,18 +416,48 @@ def build(root, pages, old=None) -> dict:
                 add_edge(nid, find(t), rel)
         for t in links_in(n["body"]):
             add_edge(nid, find(t), "relates")
-    data = {k: v for k, v in old.items() if k not in ("nodes", "edges", "wiki")}
+    data = {k: v for k, v in old.items() if k not in ("nodes", "edges", "wiki", "ended_edges")}
     data.setdefault("version", 1)
     data.setdefault("created", now_iso())
     data.update({"nodes": nodes, "edges": edges})
+    _ended_into(data, old, page_ended, seen, today, str(root))
     stems_by_id = {nid: stem(rel) for nid, rel in paths.items()}
     out = {}
     for e in edges:
         out.setdefault(e["from"], []).append((e["rel"], e["to"]))
     data["wiki"] = {"root": str(root), "files": {
         nid: {"path": paths[nid], "title": n["title"], "type": n["type"], "status": n["status"],
-              "k": content_key(n, stems_by_id, out.get(nid, []))} for nid, n in nodes.items()}}
+              "k": content_key(n, stems_by_id, out.get(nid, []), _ended_keys(page_ended.get(nid, ())))}
+        for nid, n in nodes.items()}}
     return data
+
+
+def _ended_keys(rows) -> list:
+    return [(e["rel"], e["to"], e.get("created") or "", e.get("ended") or "") for e in rows]
+
+
+def _ended_into(data, old, page_ended, live, today, root) -> None:
+    """Liens terminés du graphe : ceux écrits dans les pages, ceux que le cache connaît sans qu'une page les porte
+    encore (la prochaine écriture les y met : leur empreinte diffère), et les liens disparus d'une page depuis la
+    dernière lecture (retirés à la main dans Obsidian), datés du jour. Le cache d'un autre wiki, ou d'un cerveau
+    classique qui passe au wiki, ne compte pas : ses liens n'ont pas été lus dans ces pages."""
+    nodes = data["nodes"]
+    rows = [e for rows in page_ended.values() for e in rows]
+    if (old.get("wiki") or {}).get("root") == root:
+        rows += [e for e in old.get("ended_edges") or [] if isinstance(e, dict) and e.get("from") in nodes and e.get("to") in nodes]
+        for e in old.get("edges") or []:
+            key = (e.get("from"), e.get("to"), e.get("rel"))
+            if key not in live and key[0] in nodes and key[1] in nodes:
+                rows.append({"from": key[0], "to": key[1], "rel": key[2], "created": e.get("created") or today,
+                             "ended": today})
+    out, have = [], set()
+    for e in rows:
+        key = (e["from"], e["to"], e["rel"], e.get("ended"))
+        if key not in have:
+            have.add(key)
+            out.append(e)
+    if out:
+        data["ended_edges"] = out
 
 
 def _parse_cache(root, parse_file=None) -> dict:
@@ -513,8 +555,8 @@ def _yv(v) -> str:
     return json.dumps(s, ensure_ascii=False)
 
 
-def render(n, stems_by_id, out_rels) -> str:
-    """Nœud → texte de la page (propriétés, titre, corps)."""
+def render(n, stems_by_id, out_rels, ended=()) -> str:
+    """Nœud → texte de la page (propriétés, titre, corps) ; `ended` : ses liens terminés (temps.py)."""
     def link(nid):
         return f"[[{stems_by_id[nid]}]]" if nid in stems_by_id else nid
 
@@ -555,6 +597,8 @@ def render(n, stems_by_id, out_rels) -> str:
     for rel, fkey in REL_FM.items():
         if by_rel.get(rel):
             fm.append((fkey, sorted(by_rel[rel], key=str.lower)))
+    if ended:
+        fm.append((ENDED_FM, sorted(f"{REL_FM.get(rel, rel)} · {to} · {c} → {end}" for rel, to, c, end in ended)))
     if aliases:
         fm.append(("aliases", aliases))
     fm.append(("cree", _minute(n.get("created"))[:16]))
@@ -654,23 +698,27 @@ def save(data, root=None, full=False, cache_file=None, parse_file=None, guard=Tr
             if renamed:
                 body = _relink(body, renamed)
             n["body"] = _canon_links(body, find, stems_by_id, stems)
-    out = {}
+    out, gone_links = {}, {}
     for e in edges:
         if e["from"] in nodes and e["to"] in nodes:
             out.setdefault(e["from"], []).append((e["rel"], e["to"]))
+    for e in data.get("ended_edges") or []:
+        if isinstance(e, dict) and e.get("from") in nodes and e.get("to") in nodes:
+            gone_links.setdefault(e["from"], []).append(e)
     report = {"written": 0, "moved": 0, "removed": 0}
     gone = [nid for nid in files if nid not in nodes]
     if gone and guard and not full and len(files) >= 10 and len(gone) > MASS_DELETE * len(files):
         raise RuntimeError(f"écriture refusée : elle effacerait {len(gone)} pages sur {len(files)} du wiki")
     new_files, writes = {}, []
     for nid, n in nodes.items():
-        k = content_key(n, stems_by_id, out.get(nid, []))
+        ended = _ended_keys(gone_links.get(nid, ()))
+        k = content_key(n, stems_by_id, out.get(nid, []), ended)
         prev = files.get(nid) or {}
         rel = paths[nid]
         new_files[nid] = {"path": rel, "title": n["title"], "type": n["type"], "status": n.get("status", "active"), "k": k}
         if prev.get("k") == k and prev.get("path") == rel and not full:
             continue
-        text = render(n, stems_by_id, out.get(nid, []))
+        text = render(n, stems_by_id, out.get(nid, []), ended)
         target = root / rel
         if full and target.is_file():
             try:

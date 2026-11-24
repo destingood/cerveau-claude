@@ -1,11 +1,11 @@
 ---
 name: public-apis
-description: "Trouver une API publique gratuite qui répond encore (2 245 API, 30 serveurs MCP) : recherche hors ligne, filtres sans clé, HTTPS, CORS, vérification en ligne avant de la conseiller."
+description: "Quand un projet a besoin d'une API publique gratuite (sans clé, HTTPS, CORS) ou d'un serveur MCP, et qu'il faut savoir laquelle répond encore."
 metadata:
   triggers: >-
     « trouve une API gratuite pour… » « une API sans clé » « quelle API pour… » « une API météo »
     « API de taux de change » « API d'adresses » « API entreprise française » « API crypto » « API de films »
-    « des données gratuites pour mon site ou mon app » « public-apis » « un serveur MCP pour… » Ne pas utiliser pour
+    « des données gratuites pour mon site ou mon app » « données gratuites pour mon app » « public-apis » « un serveur MCP pour… » Ne pas utiliser pour
     l'API cachée d'un site qui n'en publie pas : cerveau:web — ni pour extraire les données d'une page : cerveau:web.
 ---
 

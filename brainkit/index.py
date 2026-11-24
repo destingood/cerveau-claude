@@ -65,17 +65,36 @@ def project_line(brain, p, seen) -> str:
     return f"- **{p['title']}** (`{p['id']}`)" + (f" — {desc}" if desc else "") + " · " + " · ".join(bits)
 
 
-def _relevance(brain, focus, sig=None, info=None):
-    """Lien de chaque souvenir avec le projet courant : liens écrits, liens déduits, concepts partagés. Dans un hook,
-    l'analyse du graphe sert telle qu'elle est (même périmée) et se refait en arrière-plan (graph.ensure) ;
-    `info["stale"]` le dit."""
-    try:
-        from . import graph
-        an = graph.ensure(brain, sig=sig)
-    except Exception:
-        return {}
+# Piliers (étape 12) : la centralité dans le graphe (PageRank normalisé, 1 = le plus central) entre dans l'ordre de
+# l'injection du démarrage (index et fiche du projet), à place égale. Mesuré le 24/11 sur le cerveau du banc du rappel :
+# piliers de chaque projet à l'écran 11/15 au lieu de 9/15 (10, 20 ou 30 : pareil), rappel inchangé (58/62).
+PILLAR_W = 10
+
+
+def _analysis(brain, sig=None, info=None) -> dict:
+    """L'analyse du graphe telle qu'elle est en cache (même périmée : elle se refait en arrière-plan, graph.ensure) ;
+    `info["stale"]` le dit. {} si elle manque. Lue une fois par cerveau tant qu'il n'est pas modifié : l'index et la
+    fiche du projet d'un même démarrage s'en servent tous deux (+21 ms dans un projet sinon, à 3 000 souvenirs)."""
+    keep = getattr(brain, "_analysis_read", None)
+    if keep and keep[0] is not None and keep[0] == brain.stamp:
+        an = keep[1]
+    else:
+        try:
+            from . import graph
+            an = graph.ensure(brain, sig=sig)
+        except Exception:
+            return {}
+        brain._analysis_read = (brain.stamp, an)
     if info is not None:
         info["stale"] = bool(an.get("stale"))
+    return an
+
+
+def _relevance(brain, focus, sig=None, info=None, an=None):
+    """Lien de chaque souvenir avec le projet courant : liens écrits, liens déduits, concepts partagés."""
+    an = an if an is not None else _analysis(brain, sig, info)
+    if not an:
+        return {}
     members = {n["id"] for n in brain.project_members(focus)} | {focus}
     rel = {}
 
@@ -113,10 +132,12 @@ def build_index(brain, cfg=None, focus=None, previews=None, sig=None, info=None)
     friends = sorted((n for n in brain.active() if n["id"].startswith("c--")),  # cerveau commun : le plus récent d'abord
                      key=lambda n: n.get("updated") or "", reverse=True)
     seen = journal.last_seen_by_project()
-    rel = _relevance(brain, focus, sig, info) if focus else {}
+    an = _analysis(brain, sig, info) if focus or PILLAR_W else {}
+    rel = _relevance(brain, focus, sig, info, an) if focus else {}
+    pr = (an.get("pr") or {}) if PILLAR_W else {}
 
     def score(n):
-        s = priority(n)
+        s = priority(n) + PILLAR_W * pr.get(n["id"], 0.0)
         if focus and n["type"] not in ("user", "feedback"):  # profil et règles valent partout : ordre d'importance
             r = rel.get(n["id"], 0)
             s += min(r, 30)
@@ -130,6 +151,9 @@ def build_index(brain, cfg=None, focus=None, previews=None, sig=None, info=None)
     said = {}  # résumé de chaque souvenir, fait une fois : une section se construit deux fois (sa demande, puis sa place)
 
     def line(n, chars):
+        if n["id"] not in said and (n.get("meta") or {}).get("a_verifier"):  # mis de côté (garde.py)
+            from .garde import caution
+            said[n["id"]] = caution(n)
         if n["id"] not in said:
             said[n["id"]] = concis((n.get("meta") or {}).get("resume") or n.get("body", ""))
         body = short(said[n["id"]], chars)
@@ -469,7 +493,8 @@ def project_card(brain, p, cfg=None, exclude_session=None, previews=None):
         digest = ("_Pas encore de carte de ce dossier : elle se génère en arrière-plan s'il contient du code ou des "
                   "documents (`brain map .` pour la forcer)._")
     digest = fit_digest(digest, budget_chars(cfg["inject"], "digest_tokens") or 10 ** 6)
-    mems = sorted(brain.project_members(p["id"]), key=lambda n: -priority(n))
+    pr = (_analysis(brain).get("pr") or {}) if PILLAR_W else {}
+    mems = sorted(brain.project_members(p["id"]), key=lambda n: -(priority(n) + PILLAR_W * pr.get(n["id"], 0.0)))
     mem_lines = [f"- [{TYPES.get(n['type'], n['type'])}] {n['title']} `{n['id']}`" for n in mems[:12]]
     sessions = journal.recent(project=p["id"], limit=3, exclude=exclude_session)
     sess_lines = table(["date", "titre", "dernière demande", "modifiés"], [journal.session_row(s) for s in sessions])

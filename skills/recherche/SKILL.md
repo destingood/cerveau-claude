@@ -1,6 +1,6 @@
 ---
 name: recherche
-description: "Recherche web approfondie et sourcée, rangée dans le wiki du cerveau (dossier, affirmations classées), ou recherche avec Perplexity : brancher le serveur, outils payants à l'appel. Pas pour une question simple ni pour le SEO."
+description: "Quand une question demande une recherche web approfondie et sourcée, à ranger dans le wiki du cerveau, ou une recherche avec Perplexity. Pas pour une question simple ni pour le SEO."
 metadata:
   triggers: >-
     « recherche à fond » « recherche approfondie » « fais un dossier sur » « creuse le sujet » « enquête sur »

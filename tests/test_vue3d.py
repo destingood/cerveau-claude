@@ -99,6 +99,76 @@ finally:
 check("__LIB_3D__" not in broken and "ForceGraph3D=" not in broken and "brain doctor" in broken,
       "bibliothèque absente : page faite quand même, avec le message qui dit quoi faire")
 
+# ---------------------------------------------------------------------------------------------- chronologie (étape 13)
+def page_data(path):
+    text = Path(path).read_text(encoding="utf-8")
+    start = text.index("const DATA = ") + len("const DATA = ")
+    return json.loads(text[start:text.index("</script>", start)].rstrip().rstrip(";"))
+
+
+with Brain.edit() as b:
+    ovh = b.add("decision", "Hébergement chez OVH", body="On héberge chez OVH.", nid="ovh",
+                meta={"valid_from": "2026-03-01", "domaine": ["infra"]})
+    scw = b.add("decision", "Hébergement chez Scaleway", body="On passe chez Scaleway.", nid="scw",
+                meta={"valid_from": "2026-06-01", "niveau": "vision"})
+    fac = b.add("fact", "Facture serveur de mai", body="Payée.", nid="facture")
+    b.supersede("scw", "ovh", why="OVH trop cher")
+    ovh["meta"]["valid_to"] = "2026-05-31"
+    ovh["created"], scw["created"] = "2026-03-01T09:00:00", "2026-06-01T09:00:00"
+    b.link("ovh", "facture")
+    b.unlink("ovh", "facture")
+    b.link("scw", "facture")
+    b.unlink("scw", "facture")
+    for e in b.data["ended_edges"]:
+        if e["from"] == "scw":
+            e["created"], e["ended"] = "2026-06-10", "2026-07-01"
+    # étape 17 : un lien typé (flèche) et un lien « lié à » (sans flèche), tous deux d'aujourd'hui
+    b.add("fact", "Serveur dédié de production", body="Le serveur.", nid="serveur")
+    b.link("scw", "serveur", "uses")
+    b.link("facture", "serveur")
+OLD_REF = "af568b4"  # main à la 8.33.0, avant l'étape 13
+v833 = TMP / "v833"
+arch = subprocess.run(["git", "-C", str(CODE), "archive", OLD_REF, "brain.py", "brainkit"], capture_output=True)
+if arch.returncode == 0:
+    v833.mkdir()
+    subprocess.run(["tar", "-x", "-C", str(v833)], input=arch.stdout, check=True)
+    # le code de la 8.33.0 sur les skills d'aujourd'hui : le même cerveau des deux côtés (l'étape 18 en ajoute cinq,
+    # qui sont des nœuds de la vue ; seul le code doit différer)
+    shutil.copytree(CODE / "skills", v833 / "skills", ignore=shutil.ignore_patterns("__pycache__"))
+    r = subprocess.run([sys.executable, "-I", "-S", str(v833 / "brain.py"), "viz"], capture_output=True, env=os.environ.copy(),
+                       timeout=300)
+    old_data = page_data(viz.VIZ_FILE) if r.returncode == 0 else None
+    check(old_data is not None, "8.33.0 : sa vue du même cerveau est faite", r.stderr.decode("utf-8", "replace")[-500:])
+else:
+    old_data = None
+    check(False, f"code de la 8.33.0 ({OLD_REF}) introuvable dans l'historique git : `git fetch --unshallow`")
+chrono_path = viz.render()
+d = page_data(chrono_path)
+past = {n["id"]: n for n in d.get("past", [])}
+present = {n["id"]: n for n in d["nodes"]}
+check("ovh" in past and "ovh" not in present and past["ovh"].get("sb") == "scw" and past["ovh"].get("why") == "OVH trop cher"
+      and past["ovh"].get("vt") == "2026-05-31" and past["ovh"].get("dom") == "infra",
+      "données : le souvenir remplacé est dans le passé, avec fin, raison, remplaçant et domaine", past.get("ovh"))
+check(present.get("scw", {}).get("vf") == "2026-06-01" and present["scw"].get("niv") == "vision",
+      "données : le présent porte son début et son niveau corrigé", present.get("scw"))
+ended = [e for e in d.get("pastEdges", []) if e.get("e")]
+check(any(e["s"] == "scw" and e["t"] == "facture" and e["c"] == "2026-06-10" and e["e"] == "2026-07-01" for e in ended),
+      "données : un lien terminé, avec sa création et sa fin", d.get("pastEdges"))
+check(not any(e["s"] == "ovh" or e["t"] == "ovh" for e in d["edges"]) and not any(
+      e["s"] == "scw" and e["t"] == "facture" for e in d["edges"]), "données : DATA.edges ne garde que le présent")
+if old_data is not None:
+    check({n["id"] for n in old_data["nodes"]} == set(present),
+          "mêmes souvenirs qu'en 8.33.0 dans DATA.nodes (la vue 2D et le tableau ne voient que le présent)",
+          sorted({n["id"] for n in old_data["nodes"]} ^ set(present)))
+    check({(e["s"], e["t"], e["r"]) for e in old_data["edges"]} == {(e["s"], e["t"], e["r"]) for e in d["edges"]},
+          "mêmes liens qu'en 8.33.0 dans DATA.edges")
+    check(old_data.get("stats") == d.get("stats"), "mêmes compteurs qu'en 8.33.0", (old_data.get("stats"), d.get("stats")))
+check(any(e["s"] == "scw" and e["t"] == "serveur" and e["r"] == "uses" and e.get("c") for e in d["edges"])
+      and any(e["s"] == "facture" and e["t"] == "serveur" and e["r"] == "relates" for e in d["edges"]),
+      "données : un lien typé daté et un lien « lié à » (flèches et survol de l'étape 17)", d["edges"])
+check(len(json.dumps(d.get("past"))) + len(json.dumps(d.get("pastEdges"))) < 20_000,
+      "le passé pèse peu dans la page (quelques souvenirs ici)")
+
 # ---------------------------------------------------------------------------------------------- distribution
 files = selfupdate._code_files(CODE)
 for rel in ("brainkit/vue3d/page.html", "brainkit/vue3d/3d-force-graph.min.js", "brainkit/vue3d/three-fx.js",
@@ -139,6 +209,90 @@ else:
     check(not probe.get("fallbackShown"), "navigateur : pas de message « vue 3D indisponible »", probe.get("fallbackText"))
     check(not any("Multiple instances" in w for w in probe.get("warnings", [])),
           "navigateur : un seul three.js déclaré (pas d'avertissement)", probe.get("warnings"))
+
+if node and not os.environ.get("CERVEAU_SANS_NAVIGATEUR") and not (probe or {}).get("skip"):
+    try:
+        r = subprocess.run([node, str(CODE / "tests" / "vue3d_chronologie.js"), str(chrono_path)], capture_output=True,
+                           text=True, timeout=180, cwd=str(TMP))
+        ch = json.loads((r.stdout.strip().splitlines() or ["{}"])[-1])
+    except (OSError, subprocess.SubprocessError, ValueError) as exc:
+        ch = {"errors": [repr(exc)]}
+    check(not ch.get("errors"), "chronologie : aucune erreur", ch.get("errors"))
+    check(ch.get("todayExtra") == [] and ch.get("todayMissing") == [] and ch.get("todayPastLinks") == 0
+          and ch.get("todayLinks") == ch.get("presentLinks"),
+          "curseur à droite : exactement le présent (mêmes souvenirs et liens qu'en 8.33.0, rien du passé)", ch)
+    pc = ch.get("pastCase") or {}
+    check(pc.get("old") == "ovh" and pc.get("oldShown") and pc.get("replacement") == "scw" and not pc.get("replacementShown"),
+          "à une date passée : le souvenir remplacé depuis est visible, son remplaçant pas encore", pc)
+    check(ch.get("endedLink") == {"aliveBefore": True, "aliveAfter": False},
+          "un lien terminé : visible avant sa fin, plus après", ch.get("endedLink"))
+    check("dom" in (ch.get("layers") or []) and "heat" in (ch.get("layers") or []),
+          "couleurs « domaine » et « chaleur », et le bouton des couches", ch.get("layers"))
+    check(ch.get("layered") is True and ch.get("unlayered") is True,
+          "couches : chaque souvenir à la hauteur de son niveau, puis libéré", (ch.get("layered"), ch.get("unlayered")))
+    check(ch.get("legendDom") == "d:infra", "couleur « domaine » : le domaine écrit du souvenir", ch.get("legendDom"))
+    check(isinstance(ch.get("afterPlay"), dict) and ch.get("settled") == 0 and ch.get("revived") == 0,
+          "lecture ▶ : jouée puis arrêtée sans erreur, plus aucun nœud en cours d'extinction ensuite", ch)
+
+# ---------------------------------------------------------------------------------------------- vue 3D, suite (étape 17)
+check(tpl.count("onNodeDragEnd(") == 1 and "pauseAnimation()" in tpl and "resumeAnimation()" in tpl
+      and "linkDirectionalArrowLength(" in tpl and "linkLabel(" in tpl and 'id="orbBtn"' in tpl and 'id="pinBtn"' in tpl,
+      "gabarit : flèches, étiquette des liens, nœuds posés, orbite et pause de l'onglet caché branchées")
+if node and not os.environ.get("CERVEAU_SANS_NAVIGATEUR") and not (probe or {}).get("skip"):
+    try:
+        r = subprocess.run([node, str(CODE / "tests" / "vue3d_suite.js"), str(chrono_path)], capture_output=True,
+                           text=True, timeout=240, cwd=str(TMP))
+        su = json.loads((r.stdout.strip().splitlines() or ["{}"])[-1])
+    except (OSError, subprocess.SubprocessError, ValueError) as exc:
+        su = {"errors": [repr(exc)]}
+    check(not su.get("errors"), "suite : aucune erreur", su.get("errors"))
+    ar = su.get("arrows") or {}
+    check((ar.get("typed") or 0) > 0 and ar.get("relates") == 0 and ar.get("inf") == 0 and ar.get("con") == 0
+          and ar.get("relPos") == 1 and ar.get("color"),
+          "flèches : sur un lien typé (« utilise »), pas sur « lié à », ni sur les liens déduits ou les concepts", ar)
+    check(ar.get("typedObj") is True and ar.get("relatesObj") is False,
+          "flèches : le cône est dessiné pour le lien typé, aucun pour « lié à »", ar)
+    created = (su.get("created") or "")[:10]
+    fr_created = f"{created[8:10]}/{created[5:7]}/{created[:4]}"
+    check("utilise" in (su.get("tipTyped") or "") and f"créé le {fr_created}" in (su.get("tipTyped") or "")
+          and "terminé" not in (su.get("tipTyped") or ""),
+          "survol d'un lien : son type et sa date de création", su.get("tipTyped"))
+    check("lié à" in (su.get("tipEnded") or "") and "créé le 10/06/2026" in (su.get("tipEnded") or "")
+          and "terminé le 01/07/2026" in (su.get("tipEnded") or ""),
+          "survol d'un lien terminé : son type, sa création et sa fin", su.get("tipEnded"))
+    check(su.get("hover") == {"on": True, "bigger": True, "off": True}, "survol d'un lien : il s'allume, puis s'éteint", su.get("hover"))
+    check(any(h and h.startswith("uses | ") and "utilise" in h for h in su.get("realHover") or []),
+          "vrai survol à la souris d'un lien : son étiquette s'affiche (les halos des nœuds ne le masquent pas)", su.get("realHover"))
+    rg = su.get("realDrag") or {}
+    check(rg.get("pinned") is True and rg.get("others") == [] and rg.get("controls") is True and rg.get("released") == 1
+          and rg.get("errors") == 0,
+          "vrai glisser à la souris : le nœud reste posé, la caméra se pilote encore, aucune erreur", rg)
+    dr = su.get("drag") or {}
+    check(dr.get("fx") == 123 and dr.get("fy") == 45 and dr.get("fz") == -67 and dr.get("button") is True
+          and dr.get("stayed") == "123,45,-67", "nœud lâché : il reste où on le pose (fx, fy, fz)", dr)
+    lay = dr.get("layered") or {}
+    check(lay.get("fy") == lay.get("level") and lay.get("fx") == 123 and lay.get("fz") == -67 and dr.get("unlayered") == 45,
+          "nœud posé et couches : sa hauteur suit son niveau, puis il retrouve la sienne", dr)
+    check(dr.get("released") == {"fx": True, "fy": True, "fz": True, "pin": True, "button": True} and dr.get("dblclick") is True,
+          "nœuds posés : libérés par le bouton, et par un double-clic sur le fond", dr)
+    ob = su.get("orbit") or {}
+    check("Orbite (vidéo)" in (ob.get("tip") or "") and ob.get("pressed") == "true" and ob.get("controlsOff") is True
+          and ob.get("turned") is True and ob.get("steady") is True,
+          "orbite : la caméra tourne seule autour du cerveau, à distance constante", ob)
+    check(ob.get("released") is True and ob.get("stopped") is True, "orbite : arrêtée en douceur, la souris reprend la caméra", ob)
+    check(ob.get("fxOff") == {"orbit": False, "disabled": True, "controls": True} and ob.get("fxBack") is True,
+          "orbite : coupée avec les effets", ob)
+    rd = su.get("reduced") or {}
+    check(rd.get("disabled") is True and rd.get("started") is False and rd.get("orbit") is False
+          and "moins d'animations" in (rd.get("tip") or ""),
+          "orbite : jamais quand le système demande moins d'animations", rd)
+    vi = su.get("visibility") or {}
+    check(vi.get("paused") is True and vi.get("raf") == 0 and vi.get("frozen") is True and vi.get("pause") == 1,
+          "onglet caché : boucle d'animation et rendu de 3d-force-graph en pause (une seule fois)", vi)
+    check(vi.get("resumed") is True and vi.get("running") is True and vi.get("resume") == 1,
+          "onglet revenu : tout reprend", vi)
+else:
+    SKIP.append("navigateur : vue 3D, suite (étape 17)")
 
 for s in SKIP:
     print(f"· sauté : {s}")

@@ -70,11 +70,33 @@ def cmd_consolidate(a):
         for e in list(b.edges):  # « A remplace B » : B est archivé (il reste consultable) — jamais une page d'ami
             if e["rel"] == "supersedes" and not e["to"].startswith("c--") and e["to"] in b.nodes \
                     and b.nodes[e["to"]].get("status", "active") == "active" \
-                    and e["from"] in b.nodes and b.nodes[e["from"]].get("status", "active") == "active":
+                    and e["from"] in b.nodes and b.nodes[e["from"]].get("status", "active") == "active" \
+                    and not (str((b.nodes[e["to"]].get("meta") or {}).get("valid_to") or "") >= now_iso()[:10]):
+                # (un ancien encore vrai jusqu'au début de son remplaçant reste actif : l'échéance l'archivera)
                 actions.append(f"archivage (remplacé par `{e['from']}`) : `{e['to']}`")
                 if not dry:
                     b.nodes[e["to"]]["status"] = "archived"
                     b.nodes[e["to"]].setdefault("meta", {})["superseded_by"] = e["from"]
+                    b.dirty = True
+        from . import temps
+        for n in list(b.active(own=True)):  # fin de validité écrite (`--jusqu 31/12`) passée : archivé le lendemain
+            if temps.expired(n):
+                actions.append(f"archivage (vrai jusqu'au {fmt_date(n['meta']['valid_to'])}) : `{n['id']}`")
+                if not dry:
+                    n["status"] = "archived"
+                    n["updated"] = now_iso()
+                    b.dirty = True
+        from . import garde
+        for n in list(b.active(own=True)):  # pages modifiées hors du cerveau (Obsidian) : le même contrôle qu'à l'écriture
+            if n.get("source") in garde.TRUSTED:
+                continue
+            had = garde.flagged(n)
+            found = garde.reasons(n.get("title"), n.get("body"), (n.get("meta") or {}).get("resume"))
+            if found != had:
+                actions.append(f"mis de côté ({', '.join(found)}) : `{n['id']}`" if found else
+                               f"plus mis de côté (texte corrigé) : `{n['id']}`")
+                if not dry:
+                    garde.mark(n)
                     b.dirty = True
         merged = set()
         b.cache_similar()  # chaque souvenir découpé une fois par passage, et non une fois par comparaison

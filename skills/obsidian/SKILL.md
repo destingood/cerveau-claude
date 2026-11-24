@@ -1,6 +1,6 @@
 ---
 name: obsidian
-description: "Syntaxe Obsidian du wiki du cerveau : propriétés, liens [[…]], intégrations, encadrés, Mermaid, fichiers Bases (.base : vues, kanban) et Canvas (.canvas). Pas pour ingérer une source ni chercher sur le web."
+description: "Quand il faut écrire en syntaxe Obsidian dans le wiki ou un coffre : propriétés, liens, encadrés, Mermaid, Bases, Canvas. Pas pour ingérer une source ni chercher sur le web."
 metadata:
   triggers: >-
     « fais une base » « ajoute une vue au tableau de bord » « un kanban dans Obsidian » « fais un canvas »

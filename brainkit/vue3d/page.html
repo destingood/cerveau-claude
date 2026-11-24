@@ -160,6 +160,8 @@ box-shadow:0 0 30px var(--accent);animation:pulse 1.4s ease-in-out infinite}
     <option value="comm">Couleur : communauté</option>
     <option value="type">Couleur : type</option>
     <option value="proj">Couleur : projet</option>
+    <option value="dom">Couleur : domaine</option>
+    <option value="heat">Couleur : chaleur (dernier usage)</option>
   </select>
   <input type="search" id="q" placeholder="Rechercher…  ( / )" aria-label="Rechercher">
 </div>
@@ -168,6 +170,9 @@ box-shadow:0 0 30px var(--accent);animation:pulse 1.4s ease-in-out infinite}
   <button class="tog" id="conBtn" aria-pressed="true" data-tip="Concepts (outils, sujets, sigles)" aria-label="Concepts">◇</button>
   <button class="tog" id="lblBtn" aria-pressed="true" data-tip="Étiquettes" aria-label="Étiquettes">Aa</button>
   <button class="tog" id="rotBtn" aria-pressed="false" data-tip="Rotation continue · R" aria-label="Rotation">⟳</button>
+  <button class="tog" id="orbBtn" aria-pressed="false" data-tip="Orbite (vidéo) : la caméra tourne seule · O" aria-label="Orbite (vidéo)">◎</button>
+  <button class="tog" id="layBtn" aria-pressed="false" data-tip="Couches : vision en haut, détail en bas" aria-label="Couches">☷</button>
+  <button id="pinBtn" disabled data-tip="Nœuds posés à la main : glisser un nœud le fixe là" aria-label="Libérer les nœuds posés à la main">⚲</button>
   <button class="tog" id="fxBtn" aria-pressed="true" data-tip="Effets et animations · E" aria-label="Effets">✦</button>
   <span class="sep" aria-hidden="true"></span>
   <button id="fitBtn" data-tip="Recentrer · F" aria-label="Recentrer">⌖</button>
@@ -182,7 +187,7 @@ box-shadow:0 0 30px var(--accent);animation:pulse 1.4s ease-in-out infinite}
 <div id="timeline" class="glass"><button id="playBtn" title="Voir le cerveau grandir jour après jour">▶</button>
 <input type="range" id="tl" min="0" max="0" value="0" aria-label="Chronologie : afficher les souvenirs jusqu'à une date"><span id="tlLabel"></span></div>
 <div id="tablewrap" class="glass"><table><thead id="thead"></thead><tbody id="tbody"></tbody></table></div>
-<div id="help" class="glass"><span class="live">en direct</span><span id="fps"></span><span>glisser : tourner · molette : zoom · clic : détails · Maj+clic : chemin</span></div>
+<div id="help" class="glass"><span class="live">en direct</span><span id="fps"></span><span>glisser : tourner · glisser un nœud : le poser · molette : zoom · clic : détails · Maj+clic : chemin</span></div>
 <div id="boot" aria-live="polite"><div class="core" aria-hidden="true"><i></i><i></i><i></i><b></b></div><div id="bootTitle">Cerveau</div><div id="bootMsg">démarrage…</div></div>
 <div id="fallback"><div class="glass"><h2 style="margin-top:0">Vue 3D indisponible</h2><p id="fbmsg"></p>
 <p><a class="btn" href="cerveau-2d.html">Ouvrir la vue 2D</a> <button id="fbTable">Vue tableau</button></p></div></div>
@@ -232,9 +237,12 @@ function boot(msg){ $("#bootMsg").textContent = msg; }
 // ------------------------------------------------------------------ données des vues
 function memData(){
   const nodes = DATA.nodes.map(n => Object.assign({}, n, {kind: "mem", name: n.title}));
+  for (const n of (DATA.past || [])) nodes.push(Object.assign({}, n, {kind: "mem", name: n.title}));  // le passé (chronologie)
   const byId = new Map(nodes.map(n => [n.id, n]));
   const links = [];
-  for (const e of DATA.edges) if (byId.has(e.s) && byId.has(e.t)) links.push({source: e.s, target: e.t, rel: e.r, inf: false});
+  for (const e of DATA.edges) if (byId.has(e.s) && byId.has(e.t)) links.push({source: e.s, target: e.t, rel: e.r, inf: false, c: e.c});
+  for (const e of (DATA.pastEdges || [])) if (byId.has(e.s) && byId.has(e.t))
+    links.push({source: e.s, target: e.t, rel: e.r, inf: false, c: e.c, e: e.e, past: true});
   for (const e of (DATA.inf || [])) if (byId.has(e.s) && byId.has(e.t))
     links.push({source: e.s, target: e.t, rel: "déduit", inf: true, w: e.w, why: e.why, conf: e.conf});
   for (const c of (DATA.concepts || [])){  // concepts façon graphify : un nœud par outil/sujet partagé
@@ -263,10 +271,25 @@ function finish(nodes, links, map){
 }
 
 // ------------------------------------------------------------------ couleurs, tailles, visibilité
+const DOMAINS = ["code", "business", "contenu", "finance", "infra", "recherche", "perso"];  // E19 du plan
+const LEVEL_Y = {vision: 150, architecture: 50, procedure: -50, detail: -150};  // couches : vision en haut
+const TYPE_LEVEL = {project: "vision", user: "vision", decision: "architecture", concept: "architecture", topic: "architecture",
+                    analysis: "architecture", feedback: "procedure", learning: "procedure"};
+const HEAT = [[7, "cette semaine", "#f97316"], [30, "ce mois-ci", "#fbbf24"], [90, "ces 3 mois", "#60a5fa"], [1e9, "plus ancien", "#64748b"]];
+function today(){ return (DATA.generated || "").slice(0, 10); }
+function domainOf(n){ if (n.dom) return n.dom; const p = n.p && cur.byId.get(n.p); return (p && p.dom) || ""; }
+function levelOf(n){ return n.niv || TYPE_LEVEL[n.t] || "detail"; }
+function heatOf(n){
+  const d = n.lu || n.upd || n.cre; if (!d) return HEAT.length - 1;
+  const days = (Date.parse(today()) - Date.parse(d)) / 864e5;
+  return HEAT.findIndex(h => days <= h[0]);
+}
 function legendKey(n){
   if (n.kind === "concept") return "k:concept";
   if (n.kind === "file") return "m:" + (n.c >= 0 ? n.c : "x");
   if (st.color === "type") return "t:" + n.t;
+  if (st.color === "dom") return "d:" + (domainOf(n) || "-");
+  if (st.color === "heat") return "h:" + heatOf(n);
   if (st.color === "proj") return "p:" + ((n.t === "project" ? n.id : n.p) || "-");
   const c = commById.get(n.c);
   return "c:" + (c && c.size >= 2 ? n.c : "iso");
@@ -275,6 +298,9 @@ function baseColor(n){
   if (n.kind === "concept") return dark() ? "#cfe8ff" : "#4f5d7a";
   if (n.kind === "file") return n.c >= 0 ? PALETTE[n.c % PALETTE.length] : "#8494b2";
   if (st.color === "type") return (TYPES[n.t] || ["", "#a5b4cf"])[1];
+  if (st.color === "dom"){ const d = domainOf(n); if (!d) return "#8b9ab8"; const i = DOMAINS.indexOf(d);
+    return PALETTE[(i >= 0 ? i : DOMAINS.length + [...d].reduce((a, c) => a + c.charCodeAt(0), 0)) % PALETTE.length]; }
+  if (st.color === "heat") return HEAT[heatOf(n)][2];
   if (st.color === "proj"){ const p = n.t === "project" ? n.id : n.p; return projIndex.has(p) ? PALETTE[(projIndex.get(p) + 1) % PALETTE.length] : "#8b9ab8"; }
   const c = commById.get(n.c);
   return c && c.size < 2 ? (dark() ? "#a9bde6" : "#6b7a99") : PALETTE[(n.c || 0) % PALETTE.length];
@@ -287,7 +313,27 @@ function nodeVal(n){
   return 2 + 1.1 * (n.imp || 3) + 12 * (n.pr || 0);
 }
 function radius(n){ return Math.cbrt(nodeVal(n)) * REL; }
-function late(n){ return !!st.until && (n.cre || n.upd || "") > st.until; }  // chronologie : pas encore créé
+function startOf(n){ return n.vf || n.cre || n.upd || ""; }
+function endOf(n){ return n.vt || (n.old ? n.upd : "") || ""; }
+// Chronologie (étape 13) : à une date, un souvenir est là entre son début et sa fin ; curseur à droite (aujourd'hui), le
+// passé (souvenirs archivés, liens terminés) reste caché : la vue est celle d'avant.
+function late(n){
+  if (n.kind !== "mem") return false;
+  if (!st.until) return !!n.old;
+  const a = startOf(n), b = endOf(n);
+  return (!!a && a > st.until) || (!!b && st.until > b);
+}
+function linkAlive(l){
+  if (!st.until) return !l.e;
+  return (!l.c || l.c <= st.until) && (!l.e || st.until < l.e);
+}
+function dying(n){ return !!n.__dying && performance.now() - n.__dying < 760; }
+function settleDying(){  // fondu fini ou souvenir revenu dans la période : rallumé tout de suite, sans attendre un minuteur
+  let changed = false, left = false;
+  for (const n of cur.nodes) if (n.__dying){ if (!dying(n) || !late(n)){ n.__dying = 0; changed = true; } else left = true; }
+  st.fading = left;
+  return changed;
+}
 function hidden(n){
   if (!n) return true;
   if (n.kind === "concept") return !st.concepts || st.hidden.has("k:concept") || !n.members.some(m => { const x = cur.byId.get(m); return x && !late(x) && !st.hidden.has(legendKey(x)); });
@@ -295,12 +341,13 @@ function hidden(n){
   return st.hidden.has(legendKey(n));
 }
 function linkVis(l){
-  return (st.inf || !l.inf) && (st.concepts || !l.con) && !hidden(cur.byId.get(idOf(l.source))) && !hidden(cur.byId.get(idOf(l.target)));
+  return (st.inf || !l.inf) && (st.concepts || !l.con) && linkAlive(l) && !hidden(cur.byId.get(idOf(l.source))) && !hidden(cur.byId.get(idOf(l.target)));
 }
 function pairKey(a, b){ return a < b ? a + "|" + b : b + "|" + a; }
 function focal(){ return st.hover || st.sel; }
 function hot(l){
   if (st.path && !st.hover) return st.path.links.has(pairKey(idOf(l.source), idOf(l.target)));
+  if (st.linkHover === l) return true;
   const f = focal(); return !!f && (idOf(l.source) === f.id || idOf(l.target) === f.id);
 }
 function linkColor(l){
@@ -312,6 +359,29 @@ function linkColor(l){
   if (l.con) return d ? "rgba(207,232,255,.12)" : "rgba(60,70,90,.16)";
   if (l.rel === "importe") return d ? "rgba(96,165,250,.30)" : "rgba(40,60,120,.28)";
   return d ? "rgba(251,191,36,.62)" : "rgba(170,110,0,.7)";
+}
+// Liens typés (étape 17) : une flèche dit leur sens ; « lié à », les liens déduits et les concepts n'en ont pas.
+// « fait partie de » relie chaque souvenir à son projet : sa flèche ne paraît qu'au survol (des milliers de cônes sinon).
+const REL_FR = {relates: "lié à", part_of: "fait partie de", depends_on: "dépend de", uses: "utilise", fixes: "corrige",
+  supersedes: "remplace", contradicts: "contredit", about: "à propos de", importe: "importe", mentionne: "mentionne",
+  "déduit": "lien déduit du contenu"};
+const frDate = d => d ? `${d.slice(8, 10)}/${d.slice(5, 7)}/${d.slice(0, 4)}` : "?";
+function typed(l){ return !cur.map && !l.inf && !l.con && !!l.rel && l.rel !== "relates"; }
+function arrowLen(l){
+  if (!typed(l)) return 0;
+  if (hot(l)) return 5.5;
+  return l.rel === "part_of" ? 0 : 3.6;
+}
+function linkTip(l){
+  const s = cur.byId.get(idOf(l.source)), t = cur.byId.get(idOf(l.target));
+  if (!s || !t) return "";
+  let sub = "";
+  if (l.inf) sub = `confiance ${l.conf || "?"} · ${(l.why || []).join(", ")}`;
+  else if (l.con) sub = "le souvenir mentionne ce concept";
+  else if (l.c || l.e) sub = (l.c ? `créé le ${frDate(l.c)}` : "création non datée") + (l.e ? ` · terminé le ${frDate(l.e)}` : "");
+  const arrow = typed(l) ? " → " : " — ";
+  return `<div class="scene-tip" style="--c:${baseColor(s)}"><b>${esc(REL_FR[l.rel] || l.rel)}</b>`
+    + `<span>${esc(short(s.name, 40))}${arrow}${esc(short(t.name, 40))}${sub ? "<br>" + esc(sub) : ""}</span></div>`;
 }
 function particleColor(l){
   if (hot(l)) return dark() ? "#ffffff" : "#0c1a3a";
@@ -362,6 +432,14 @@ function geo(name){
     wave: () => new T.RingGeometry(.92, 1, 72), radar: () => new T.RingGeometry(.975, 1, 128)}[name]();
   return FX.geo[name];
 }
+// Survol : le halo d'un nœud ne l'attrape qu'autour de l'astre (1,6 fois son rayon), pas sur toute sa lueur : sans cela,
+// les halos couvrent presque tout l'écran et aucun lien ne se laisse survoler (étape 17).
+function haloRaycast(sprite, r, rc, hits){
+  const s = sprite.scale.x;
+  sprite.scale.setScalar(r * 3.2); sprite.updateMatrixWorld();
+  FX.T.Sprite.prototype.raycast.call(sprite, rc, hits);
+  sprite.scale.setScalar(s); sprite.updateMatrixWorld();
+}
 function nodeObject(n){
   const T = FX.T, r = radius(n), col = new T.Color(baseColor(n));
   const g = new T.Group();
@@ -378,6 +456,7 @@ function nodeObject(n){
     blending: dark() ? T.AdditiveBlending : T.NormalBlending})), n.kind === "file" ? .42 : n.kind === "concept" ? .22 : .55, {halo: true});
   fx.haloBase = r * (n.kind === "concept" ? 3 : n.t === "project" ? 4.6 : 3.7);
   fx.halo.scale.setScalar(fx.haloBase);
+  fx.halo.raycast = function(rc, hits){ haloRaycast(this, r, rc, hits); };
   if (n.t === "project"){
     [[1.9, 1.15, .55, "ring"], [2.45, -.55, -.32, "ring2"]].forEach(([k, tilt, spin, gname]) => {
       const ring = add(new T.Mesh(geo(gname), basic({depthWrite: false, blending: dark() ? T.AdditiveBlending : T.NormalBlending})), .6, {spin});
@@ -448,7 +527,7 @@ function applyFX(){
   if (G && G.scene() && G.scene().fog){ G.scene().fog.density = on ? (d ? .00042 : .00025) : 0;
     G.scene().fog.color.set(getComputedStyle(root).getPropertyValue("--bg").trim() || "#03050b"); }
   $("#fxBtn").setAttribute("aria-pressed", String(on));
-  applySpin();
+  applySpin(); orbitButton();
 }
 function shockwave(n){
   if (!FX.T || !n.__fx || !FX.on || n.x == null) return;
@@ -483,7 +562,7 @@ function initGraph(){
     .nodeOpacity(.95)
     .nodeResolution(18)
     .nodeColor(nodeColor)
-    .nodeVisibility(n => !hidden(n))
+    .nodeVisibility(n => !hidden(n) || dying(n))
     .linkVisibility(l => linkVis(l))
     .linkColor(linkColor)
     .linkOpacity(.7)
@@ -494,8 +573,17 @@ function initGraph(){
     .linkDirectionalParticleWidth(l => hot(l) ? 2.4 : 1.7)
     .linkDirectionalParticleResolution(10)
     .linkDirectionalParticleColor(particleColor)
+    .linkDirectionalArrowLength(arrowLen)
+    .linkDirectionalArrowColor(linkColor)
+    .linkDirectionalArrowRelPos(1)
+    .linkDirectionalArrowResolution(6)
+    .linkLabel(linkTip)
+    .linkHoverPrecision(2)
     .d3AlphaDecay(.022).d3VelocityDecay(.32).warmupTicks(40).cooldownTime(8000)
     .onNodeHover(n => { st.hover = n || null; graphEl.style.cursor = n ? "pointer" : ""; computeFocus(); redraw(); })
+    .onLinkHover(l => { if (st.linkHover === (l || null)) return; st.linkHover = l || null;
+      if (!st.hover) graphEl.style.cursor = l ? "help" : ""; redraw(); })
+    .onNodeDragEnd(pinNode)
     .onNodeClick((n, ev) => { if (ev && ev.shiftKey && st.sel && st.sel.id !== n.id) return showPath(st.sel, n); shockwave(n); select(n); flyTo(n); })
     .onBackgroundClick(() => { if (st.sel){ st.sel = null; computeFocus(); redraw(); closePanel(); } })
     .onEngineStop(() => autoFit(900));
@@ -505,7 +593,103 @@ function initGraph(){
   if (c && c.addEventListener) c.addEventListener("start", () => { st.userMoved = true; });
   if (c){ c.enableDamping = true; c.dampingFactor = .08; }
   window.addEventListener("resize", () => { G.width(innerWidth).height(innerHeight); if (FX.bloom) FX.bloom.setSize(innerWidth, innerHeight); });
-  requestAnimationFrame(frame);
+  graphEl.addEventListener("pointerdown", () => { if (st.orbit) setOrbit(false, true); });  // la main reprend la caméra
+  graphEl.addEventListener("dblclick", () => { if (!st.hover) unpinAll(); });  // double-clic sur le fond : tout libérer
+  // Correctif de 3d-force-graph 1.80.2, la page gardant la 1.80.0 : à la fin d'un glisser, la 1.80.0 envoie au document un
+  // faux « pointerup » tactile, sur lequel les contrôles de la caméra lèvent une erreur (et le curseur reste « saisir »).
+  // La 1.80.2 ne l'envoie plus : la page l'arrête avant eux. Aucun vrai geste n'est touché (isTrusted).
+  document.addEventListener("pointerup", ev => { if (!ev.isTrusted && ev.pointerType === "touch") ev.stopImmediatePropagation(); }, true);
+  document.addEventListener("visibilitychange", onVisibility);
+  anim.raf = requestAnimationFrame(frame);
+}
+// ------------------------------------------------------------------ nœuds posés à la main (étape 17)
+// Un nœud lâché reste où on le pose (fx, fy, fz). En couches, sa hauteur reste celle de son niveau.
+function pinNode(n){
+  if (!n || n.x == null) return;
+  n.__pin = {x: n.x, y: n.y, z: n.z};
+  n.fx = n.x; n.fz = n.z;
+  n.fy = st.layers && !cur.map && n.kind === "mem" ? LEVEL_Y[levelOf(n)] : n.y;
+  pinState();
+}
+function unpinAll(){
+  let k = 0;
+  for (const n of cur.nodes){
+    if (!n.__pin) continue;
+    delete n.__pin; delete n.fx; delete n.fz; k++;
+    if (st.layers && !cur.map && n.kind === "mem") n.fy = LEVEL_Y[levelOf(n)]; else delete n.fy;
+  }
+  pinState();
+  if (k && G) G.d3ReheatSimulation();
+  return k;
+}
+function pinState(){
+  const k = cur ? cur.nodes.filter(n => n.__pin).length : 0, b = $("#pinBtn");
+  b.disabled = !k;
+  b.dataset.tip = k ? `Libérer ${k} nœud${k > 1 ? "s" : ""} posé${k > 1 ? "s" : ""} à la main · L ou double-clic sur le fond`
+                    : "Nœuds posés à la main : glisser un nœud le fixe là";
+}
+
+// ------------------------------------------------------------------ orbite de la caméra, pour une vidéo (étape 17)
+// Un tour lent et régulier autour du cerveau (45 s), qui démarre et s'arrête en douceur. Jamais si le système demande
+// moins d'animations ou si les effets sont coupés. Pendant l'orbite, la souris ne pilote pas la caméra (un clic l'arrête).
+const ORBIT_SPEED = Math.PI * 2 / 45;
+function setOrbit(on, now){
+  const b = $("#orbBtn"), c = G && G.controls && G.controls();
+  if (on && (!G || !motionOn())){ orbitButton(); return false; }
+  if (on){
+    if (st.rotate) toggleRotate();
+    const pts = cur.nodes.filter(n => n.x != null && !hidden(n));
+    const ctr = {x: 0, y: 0, z: 0};
+    for (const n of pts){ ctr.x += n.x / pts.length; ctr.y += n.y / pts.length; ctr.z += n.z / pts.length; }
+    const cam = G.camera().position, dx = cam.x - ctr.x, dz = cam.z - ctr.z;
+    st.orbit = {ctr, r: Math.max(120, Math.hypot(dx, dz)), h: cam.y - ctr.y, a: Math.atan2(dx, dz), speed: 0, target: ORBIT_SPEED, t: 0};
+    if (c) c.enabled = false;
+    FX.idleSpin = false; applySpin();
+  } else if (st.orbit){
+    if (motionOn() && !now) st.orbit.target = 0; else st.orbit = null;  // ralentit puis s'arrête (net si la main reprend)
+    if (c) c.enabled = true;
+  }
+  b.setAttribute("aria-pressed", String(!!on));
+  return !!on;
+}
+function orbitStep(dt){
+  const o = st.orbit; if (!o) return;
+  if (!motionOn()){ st.orbit = null; orbitButton(); const c = G.controls && G.controls(); if (c) c.enabled = true; return; }
+  const now = performance.now(), smooth = k => k * k * (3 - 2 * k);  // départ en 2 s, arrêt en 1,5 s, quelle que soit la cadence
+  if (o.target){ o.t0 = o.t0 || now; o.speed = ORBIT_SPEED * smooth(Math.min(1, (now - o.t0) / 2000)); }
+  else {
+    if (!o.stop) o.stop = {t0: now, v0: o.speed};
+    const k = (now - o.stop.t0) / 1500;
+    if (k >= 1){ st.orbit = null; return; }
+    o.speed = o.stop.v0 * (1 - smooth(k));
+  }
+  o.a += o.speed * dt; o.t += dt;
+  const y = o.ctr.y + o.h + o.r * .08 * Math.sin(o.t * .35) * Math.min(1, o.t / 4);  // légère houle, sans à-coup au départ
+  G.cameraPosition({x: o.ctr.x + o.r * Math.sin(o.a), y, z: o.ctr.z + o.r * Math.cos(o.a)}, o.ctr);
+}
+function orbitButton(){
+  const b = $("#orbBtn"), ok = motionOn();
+  b.disabled = !ok;
+  b.dataset.tip = ok ? "Orbite (vidéo) : la caméra tourne seule · O" : "Orbite (vidéo) : coupée, moins d'animations demandé";
+  b.setAttribute("aria-pressed", String(!!(st.orbit && st.orbit.target)));
+}
+
+// ------------------------------------------------------------------ onglet caché : tout s'arrête (étape 17)
+const anim = {raf: 0, paused: false};
+function onVisibility(){
+  if (!G) return;
+  if (document.hidden){
+    if (anim.paused) return;
+    anim.paused = true;
+    if (anim.raf) cancelAnimationFrame(anim.raf);
+    anim.raf = 0;
+    G.pauseAnimation();
+  } else if (anim.paused){
+    anim.paused = false;
+    lastT = performance.now();  // pas de saut de l'animation au retour
+    G.resumeAnimation();
+    if (!anim.raf) anim.raf = requestAnimationFrame(frame);
+  }
 }
 function pullForce(strength){  // rappel doux vers le centre : les souvenirs isolés ne partent plus au loin
   let nodes = [], deg = new Map();
@@ -536,7 +720,11 @@ function forces(){
   const link = G.d3Force("link"), charge = G.d3Force("charge");
   if (cur.map){ if (link) link.distance(30); if (charge){ charge.strength(-55); charge.distanceMax && charge.distanceMax(240); } }
   else { if (link) link.distance(l => l.inf ? 100 : l.con ? 58 : l.rel === "part_of" ? 76 : 60);
-         if (charge){ charge.strength(-190); charge.distanceMax && charge.distanceMax(280); } }  // de l'air entre les nœuds
+         if (link && link.strength) link.strength(l => {  // le passé (caché aujourd'hui) tient à peine : la vue d'aujourd'hui reste la même
+           if (l.past) return .02;
+           const a = cur.adj.get(idOf(l.source)), b = cur.adj.get(idOf(l.target));
+           return 1 / Math.max(1, Math.min(a ? a.size : 1, b ? b.size : 1)); });
+         if (charge){ charge.strength(n => n.old ? -12 : -190); charge.distanceMax && charge.distanceMax(280); } }  // de l'air entre les nœuds
   G.d3Force("pull", pullForce(cur.map ? .02 : .03));
   G.d3Force("collide", collideForce(cur.map ? 2 : 6));
 }
@@ -549,8 +737,9 @@ function redraw(){
     G.nodeColor(n => nodeColor(n)).linkColor(l => linkColor(l)).linkWidth(l => hot(l) ? .55 : 0)
      .linkDirectionalParticleWidth(l => hot(l) ? 2.4 : 1.7)
      .linkDirectionalParticleColor(particleColor)
-     .nodeVisibility(n => !hidden(n))
+     .nodeVisibility(n => !hidden(n) || dying(n))
      .linkDirectionalParticles(l => hot(l) ? 3 : 0)
+     .linkDirectionalArrowLength(l => arrowLen(l)).linkDirectionalArrowColor(l => linkColor(l))
      .linkVisibility(l => linkVis(l));
   });
 }
@@ -584,7 +773,7 @@ let lastT = performance.now(), lastInput = performance.now(), fpsAcc = 0, fpsN =
   lastInput = performance.now(); if (FX.idleSpin){ FX.idleSpin = false; applySpin(); } }, {passive: true}));
 function applySpin(){
   const c = G && G.controls && G.controls(); if (!c) return;
-  c.autoRotate = st.rotate || (FX.idleSpin && motionOn()); c.autoRotateSpeed = st.rotate ? .8 : .32;
+  c.autoRotate = !st.orbit && (st.rotate || (FX.idleSpin && motionOn())); c.autoRotateSpeed = st.rotate ? .8 : .32;
 }
 function animateNodes(now, dt){
   const f = focal(), mo = motionOn(), d = dark(), k = Math.min(1, dt * 7);
@@ -594,8 +783,8 @@ function animateNodes(now, dt){
     if (fx.gone){ fx.gone = false; fx.t0 = now + Math.random() * 160; fx.appear = 0; }  // réapparition (filtre, chronologie)
     if (!fx.born && now - viewStart > 2600){ fx.t0 = now; fx.born = true; }  // filet de sécurité
     if (fx.t0 != null && now >= fx.t0){ const t = Math.min(1, (now - fx.t0) / (mo ? 760 : 1)); fx.appear = mo ? easeOutBack(t) : 1; if (t >= 1){ fx.t0 = null; fx.appear = 1; } }
-    const vis = clamp(fx.appear, 0, 1), dim = !!st.focus && !st.focus.has(n.id);
-    fx.op += ((dim ? .05 : 1) * vis - fx.op) * k;
+    const vis = n.__dying ? 0 : clamp(fx.appear, 0, 1), dim = !!st.focus && !st.focus.has(n.id);  // extinction : fondu
+    fx.op += ((dim ? .05 : 1) * vis - fx.op) * (n.__dying ? Math.min(1, dt * 5) : k);
     fx.dimk = (fx.dimk == null ? 0 : fx.dimk) + ((dim ? 1 : 0) - (fx.dimk || 0)) * k;  // hors focus : plus petit, sans halo
     const flareT = f && f.id === n.id ? 1.3 : (f && st.focus && st.focus.has(n.id) ? 1.1 : 1);
     fx.flare += (flareT - fx.flare) * Math.min(1, dt * 6);
@@ -658,12 +847,15 @@ function impulses(dt){  // influx neuronaux : des étincelles parcourent les lie
   }
 }
 function frame(now){
-  requestAnimationFrame(frame);  // reprogrammée d'abord : une erreur ponctuelle n'arrête jamais l'animation
+  if (anim.paused){ anim.raf = 0; return; }  // onglet caché : la boucle s'arrête (onVisibility la relance)
+  anim.raf = requestAnimationFrame(frame);  // reprogrammée d'abord : une erreur ponctuelle n'arrête jamais l'animation
   const dt = Math.min(.05, Math.max(0, (now - lastT) / 1000)); lastT = now;
   if (!G || !cur) return;
   try {
     if (FX.T){ animateNodes(now, dt); animateScene(now, dt); impulses(dt); }
-    if (!FX.idleSpin && !st.rotate && motionOn() && !st.sel && !st.hover && now - lastInput > 12000){ FX.idleSpin = true; applySpin(); }
+    if (st.fading && settleDying()) redraw();  // fondus finis, même sous charge (minuteurs en retard)
+    orbitStep(dt);
+    if (!FX.idleSpin && !st.rotate && !st.orbit && motionOn() && !st.sel && !st.hover && now - lastInput > 12000){ FX.idleSpin = true; applySpin(); }
     placeLabels();
   } catch (e) { if (!frame.warned){ frame.warned = true; console.warn("animation :", e); } }
   fpsAcc += dt; fpsN++;
@@ -689,7 +881,7 @@ function pickLabels(){
   $("#labels").textContent = "";
   labelEls = new Map();
   const score = n => n.kind === "file" ? (n.pr || 0) : (n.t === "project" ? 10 : 0) + (n.pr || 0) * 3 + (n.imp || 3) * .2;
-  const arr = cur.nodes.filter(n => n.kind !== "concept").sort((a, b) => score(b) - score(a));
+  const arr = cur.nodes.filter(n => n.kind !== "concept" && !n.old).sort((a, b) => score(b) - score(a));
   const con = cur.nodes.filter(n => n.kind === "concept").sort((a, b) => b.n - a.n);
   baseLabels = [...arr.slice(0, cur.map ? 14 : 10), ...con.slice(0, 5)].map(n => n.id);  // les autres : au survol
 }
@@ -739,6 +931,7 @@ function computeFocus(){
 function matches(q){
   const t = fold(q), out = new Set();
   for (const n of cur.nodes){
+    if (n.old && !st.until) continue;  // le passé ne se cherche qu'à une date passée
     const hay = fold([n.title, n.name, n.body, (n.tags || []).join(" "), n.id, n.d, n.path, n.p].join(" "));
     if (hay.includes(t)) out.add(n.id);
   }
@@ -827,7 +1020,7 @@ function showNode(n){
   const links = [];
   for (const l of cur.links){
     const s = idOf(l.source), d = idOf(l.target);
-    if (l.inf) continue;
+    if (l.inf || !linkAlive(l) || hidden(cur.byId.get(s === n.id ? d : s))) continue;  // les liens de ce jour-là seulement
     if (s === n.id) links.push([d, "→ " + l.rel]); else if (d === n.id) links.push([s, "← " + l.rel]);
   }
   const inf = (DATA.inf || []).filter(e => e.s === n.id || e.t === n.id).sort((a, b) => b.w - a.w).slice(0, 6);
@@ -837,6 +1030,13 @@ function showNode(n){
     + (n.p ? `<span>projet : <a href="#" data-go="${esc(n.p)}" style="color:var(--accent)">${esc(n.p)}</a></span>` : "")
     + `<span>importance ${n.imp || 3}/5</span><span>rappelé ${n.hits || 0}×</span><span>maj ${esc(n.upd || "?")}</span>`
     + `<span>centralité ${(n.pr || 0).toFixed(2)}</span></div>`;
+  const fr = frDate;
+  const span = x => endOf(x) ? `du ${fr(startOf(x))} au ${fr(endOf(x))}` : `depuis le ${fr(startOf(x))}`;
+  h += `<div class="meta" style="margin-top:6px"><span>valable ${span(n)}</span><span>niveau ${esc(levelOf(n))}</span>`
+    + (domainOf(n) ? `<span>domaine ${esc(domainOf(n))}</span>` : "") + `</div>`;
+  const chain = lineage(n);
+  if (chain.length > 1) h += `<h3>Lignée · ${chain.length}</h3><ul class="list">${chain.map(x =>
+    item(x.id, span(x) + (x.why ? " · parce que " + x.why : "") + (x.id === n.id ? " · celui-ci" : ""))).join("")}</ul>`;
   if (n.path) h += `<div class="meta" style="margin-top:6px"><code>${esc(n.path)}</code></div>`;
   if (n.wpath) h += `<p style="margin:10px 0 0"><a class="btn" href="${obsUrl(n.wpath)}" title="${esc(n.wpath)}">Ouvrir dans Obsidian</a></p>`;
   if (n.tags && n.tags.length) h += `<div class="chips">${n.tags.map(x => `<span class="chip">#${esc(x)}</span>`).join("")}</div>`;
@@ -848,6 +1048,19 @@ function showNode(n){
   if (links.length) h += `<h3>Liens · ${links.length}</h3><ul class="list">${links.map(([id, r]) => item(id, r)).join("")}</ul>`;
   if (inf.length) h += `<h3>Liens déduits</h3><ul class="list">${inf.map(e => item(e.s === n.id ? e.t : e.s, `confiance ${e.conf} · ${e.why.join(", ")}`)).join("")}</ul>`;
   openPanel(h);
+}
+function lineage(n){  // chaîne des remplacements qui passe par ce souvenir, du plus récent au plus ancien
+  let top = n; const seen = new Set();
+  while (top.sb && cur.byId.get(top.sb) && !seen.has(top.id)){ seen.add(top.id); top = cur.byId.get(top.sb); }
+  const chain = [top], olds = new Map();
+  for (const l of cur.links) if (l.rel === "supersedes"){ const a = idOf(l.source), b = cur.byId.get(idOf(l.target));
+    if (b){ if (!olds.has(a)) olds.set(a, []); olds.get(a).push(b); } }
+  while (chain.length < 12){
+    const prev = (olds.get(chain[chain.length - 1].id) || []).filter(x => !chain.includes(x)).sort((a, b) => endOf(b) < endOf(a) ? -1 : 1);
+    if (!prev.length) break;
+    chain.push(prev[0]);
+  }
+  return chain;
 }
 function showFile(n){
   const out = [], inn = [];
@@ -897,12 +1110,13 @@ function showReport(){
 function buildLegend(){
   const items = new Map();
   for (const n of cur.nodes){
+    if (n.old) continue;
     const k = legendKey(n);
     if (!items.has(k)) items.set(k, {k, n: 0, color: baseColor(n), label: legendLabel(k)});
     items.get(k).n++;
   }
   const arr = [...items.values()].sort((a, b) => b.n - a.n);
-  const hint = cur.map ? "Modules · clic : masquer/afficher" : st.color === "comm" ? "Communautés · clic : masquer/afficher" : st.color === "type" ? "Types · clic : masquer/afficher" : "Projets · clic : masquer/afficher";
+  const hint = cur.map ? "Modules · clic : masquer/afficher" : st.color === "comm" ? "Communautés · clic : masquer/afficher" : st.color === "type" ? "Types · clic : masquer/afficher" : st.color === "dom" ? "Domaines · clic : masquer/afficher" : st.color === "heat" ? "Dernier usage · clic : masquer/afficher" : "Projets · clic : masquer/afficher";
   $("#legend").innerHTML = `<div class="hint">${hint}</div><div class="row">` + arr.slice(0, 24).map(x =>
     `<button data-k="${esc(x.k)}" aria-pressed="${!st.hidden.has(x.k)}"><span class="dot" style="background:${x.color};color:${x.color}"></span>${esc(short(x.label, 30))} <span class="muted">${x.n}</span></button>`).join("") + `</div>`;
   $("#legend").querySelectorAll("button").forEach(b => b.onclick = () => {
@@ -914,6 +1128,8 @@ function legendLabel(k){
   const [kind, v] = [k.slice(0, 1), k.slice(2)];
   if (kind === "k") return "concepts";
   if (kind === "t") return (TYPES[v] || [v])[0];
+  if (kind === "d") return v === "-" ? "sans domaine" : v;
+  if (kind === "h") return (HEAT[+v] || HEAT[HEAT.length - 1])[1];
   if (kind === "p") return v === "-" ? "global" : (DATA.nodes.find(n => n.id === v) || {title: v}).title;
   if (kind === "m"){ const m = (cur.map.mods12 || [])[+v]; return m ? m.label : "autres"; }
   if (v === "iso") return "isolés";
@@ -933,7 +1149,7 @@ function buildTable(){
     return;
   }
   th.innerHTML = "<tr><th>Souvenir</th><th>Type</th><th>Communauté</th><th>Projet</th><th>Imp.</th><th>Rappels</th><th>Maj</th></tr>";
-  for (const n of cur.nodes.filter(x => x.kind !== "concept").sort((a, b) => (b.pr || 0) - (a.pr || 0))){
+  for (const n of cur.nodes.filter(x => x.kind !== "concept" && !x.old).sort((a, b) => (b.pr || 0) - (a.pr || 0))){
     const c = commById.get(n.c);
     const tr = document.createElement("tr"); tr.tabIndex = 0;
     tr.innerHTML = `<td>${esc(n.title)}</td><td>${esc((TYPES[n.t] || [n.t])[0])}</td><td>${esc(c ? (c.size < 2 ? "isolé" : c.label) : "")}</td><td>${esc(n.p || "")}</td><td>${n.imp || 3}</td><td>${n.hits || 0}</td><td>${esc(n.upd || "")}</td>`;
@@ -961,22 +1177,23 @@ function setStats(){
 }
 function setView(v){
   st.view = v; st.sel = null; st.hover = null; st.q = ""; st.groupFocus = null; st.focus = null; st.path = null; st.until = null;
-  st.hidden.clear(); $("#q").value = ""; FX.pool = null;
+  st.hidden.clear(); $("#q").value = ""; FX.pool = null; st.linkHover = null;
+  if (st.orbit) setOrbit(false, true);
   const g = v.startsWith("v:") ? (DATA.views || [])[+v.slice(2)] : null;  // Cerveau e-commerce, une boutique…
   const m = v === "mem" || g ? null : (DATA.maps || []).find(x => "map:" + x.pid === v);
   cur = m ? mapData(m) : memData();
   if (g && g.members){ st.groupFocus = new Set(g.members.filter(id => cur.byId.has(id))); st.focusLabel = g.label; computeFocus(); }
-  $("#color").disabled = !!m; $("#infBtn").disabled = !!m; $("#conBtn").disabled = !!m;
+  $("#color").disabled = !!m; $("#infBtn").disabled = !!m; $("#conBtn").disabled = !!m; $("#layBtn").disabled = !!m;
   initTimeline();
   closePanel();
   if (G){ viewStart = performance.now();
           G.warmupTicks(m ? 120 : 70).cooldownTime(m ? 6000 : 8000);  // disposition pré-calculée : cadrage immédiat
-          G.graphData({nodes: cur.nodes, links: cur.links}); forces();
+          G.graphData({nodes: cur.nodes, links: cur.links}); forces(); if (st.layers) applyLayers();
           st.userMoved = false; (setView.ts || []).forEach(clearTimeout);
           const first = !setView.done; setView.done = true;
           setView.ts = [setTimeout(materialize, 60), setTimeout(() => autoFit(first && motionOn() ? 2400 : 700), first ? 260 : 120),
                         setTimeout(() => autoFit(900), 3400), setTimeout(() => autoFit(900), 6200)]; }
-  pickLabels(); buildLegend(); setStats();
+  pickLabels(); buildLegend(); setStats(); pinState();
   if ($("#tablewrap").classList.contains("open")) buildTable();
 }
 function buildViews(){
@@ -996,7 +1213,13 @@ function applyTheme(t){
   if (G){ G.backgroundColor(getComputedStyle(root).getPropertyValue("--bg").trim()); recolor(); applyFX(); redraw(); buildLegend(); pickLabels(); }
 }
 function initTimeline(){
-  const dates = cur.map ? [] : [...new Set(cur.nodes.filter(n => n.kind === "mem").map(n => n.cre || n.upd).filter(Boolean))].sort();
+  const t = today(), after = d => { const x = new Date(Date.parse(d) + 864e5); return x.toISOString().slice(0, 10); };
+  const all = [];
+  if (!cur.map){
+    for (const n of cur.nodes) if (n.kind === "mem"){ all.push(startOf(n)); const e = endOf(n); if (e) all.push(after(e)); }
+    for (const l of cur.links){ if (l.c) all.push(l.c); if (l.e) all.push(l.e); }
+  }
+  const dates = [...new Set(all.filter(d => d && d <= t))].sort();
   st.dates = dates; st.until = null;
   const tl = $("#tl"); tl.max = String(Math.max(0, dates.length - 1)); tl.value = tl.max;
   $("#timeline").style.display = dates.length > 1 ? "flex" : "none";
@@ -1005,19 +1228,41 @@ function initTimeline(){
 function tlLabel(){
   const d = st.until || st.dates[st.dates.length - 1];
   if (!d) return;
-  const n = cur.nodes.filter(x => x.kind === "mem" && (x.cre || x.upd || "") <= d).length;
+  const n = cur.nodes.filter(x => x.kind === "mem" && !late(x)).length;
   $("#tlLabel").textContent = `${st.until ? "jusqu'au" : "au"} ${d.slice(8, 10)}/${d.slice(5, 7)}/${d.slice(0, 4)} · ${n} nœuds`;
 }
 function setUntil(i){
-  const last = st.dates.length - 1;
+  const last = st.dates.length - 1, before = new Set(cur.nodes.filter(n => n.kind === "mem" && !late(n)).map(n => n.id));
   st.until = i >= last ? null : st.dates[Math.max(0, i)];
-  $("#tl").value = String(Math.max(0, Math.min(i, last))); tlLabel(); redraw();
+  $("#tl").value = String(Math.max(0, Math.min(i, last))); tlLabel();
+  settleDying();
+  if (motionOn()){  // extinctions en fondu ; un remplacement : une impulsion de l'ancien vers le nouveau
+    const now = performance.now();
+    for (const n of cur.nodes) if (before.has(n.id) && late(n)){
+      n.__dying = now; st.fading = true;
+      const nu = n.sb && cur.byId.get(n.sb);
+      if (nu && !late(nu)){
+        const l = cur.links.find(x => x.rel === "supersedes" && idOf(x.source) === nu.id && idOf(x.target) === n.id);
+        if (l && typeof l.source === "object") try { G.emitParticle(l); } catch (e) {}
+      }
+    }
+    setTimeout(() => { if (settleDying()) redraw(); }, 800);  // filet si l'animation est en pause (onglet caché)
+  }
+  redraw();
+}
+function applyLayers(){  // couches : la hauteur d'un souvenir dit son niveau (vision en haut, détail en bas)
+  for (const n of cur.nodes){
+    if (st.layers && !cur.map && n.kind === "mem") n.fy = LEVEL_Y[levelOf(n)];
+    else if (n.__pin) n.fy = n.__pin.y;  // posé à la main : il retrouve sa hauteur
+    else delete n.fy;
+  }
+  if (G) G.d3ReheatSimulation();
 }
 function toggleFX(){ FX.on = !FX.on; store.set("brain3d-fx", FX.on ? "on" : "off"); applyFX(); }
 function controls(){
   let theme = store.get("brain3d-theme") || "dark";
   applyTheme(theme);
-  $("#fxBtn").setAttribute("aria-pressed", String(FX.on));
+  $("#fxBtn").setAttribute("aria-pressed", String(FX.on)); orbitButton();
   $("#themeBtn").onclick = () => { theme = theme === "light" ? "dark" : "light"; store.set("brain3d-theme", theme); applyTheme(theme); };
   $("#color").onchange = e => { st.color = e.target.value; st.hidden.clear(); buildLegend(); recolor(); pickLabels(); redraw(); if (st.sel) showNode(st.sel); };
   $("#infBtn").onclick = e => { st.inf = !st.inf; e.currentTarget.setAttribute("aria-pressed", String(st.inf)); redraw(); };
@@ -1033,7 +1278,10 @@ function controls(){
   };
   $("#lblBtn").onclick = e => { st.labels = !st.labels; e.currentTarget.setAttribute("aria-pressed", String(st.labels)); };
   $("#rotBtn").onclick = () => toggleRotate();
+  $("#layBtn").onclick = e => { st.layers = !st.layers; e.currentTarget.setAttribute("aria-pressed", String(st.layers)); applyLayers(); };
   $("#fxBtn").onclick = () => toggleFX();
+  $("#orbBtn").onclick = () => setOrbit(!(st.orbit && st.orbit.target));
+  $("#pinBtn").onclick = () => unpinAll();
   $("#fitBtn").onclick = () => G && G.zoomToFit(900, 80);
   $("#repBtn").onclick = () => showReport();
   $("#pngBtn").onclick = () => {
@@ -1055,6 +1303,8 @@ function controls(){
       if (String(st.view).startsWith("v:")){ st.view = "mem"; $("#view").value = "mem"; } }
     else if (ev.key === "r" || ev.key === "R") toggleRotate();
     else if (ev.key === "e" || ev.key === "E") toggleFX();
+    else if (ev.key === "o" || ev.key === "O") $("#orbBtn").click();
+    else if (ev.key === "l" || ev.key === "L") unpinAll();
     else if (ev.key === "f" || ev.key === "F") G && G.zoomToFit(900, 80);
   });
 }

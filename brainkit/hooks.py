@@ -59,7 +59,8 @@ STOP_REASON = (
     f"`{CMD} obs \"🔴 …\" \"🟡 …\"` (3 à 5 observations datées), puis le durable dit par l'utilisateur (0 à 3 : "
     f"feedback, user, decision, fact, learning, reference, todo) : `{CMD} add -t <type> -T \"titre\" -b \"fait + pourquoi "
     "+ comment l'appliquer\" --keys \"synonymes, mots d'une question qui le chercherait\"` (`-p none` hors projet ; "
-    "`edit <id>` corrige). Jamais de secret."
+    "`edit <id>` corrige). Un souvenir tient seul : noms, chiffres et dates exacts ; un changement : « X → Y, "
+    "parce que… ». Jamais de secret."
 )
 WIKI_REASON = (" Wiki : une réponse qui vaut d'être gardée (synthèse, comparaison, analyse) → page Analyses "
                f"(`{CMD} add -t analyse -T … -b - --resume …`) puis `{CMD} wiki log query \"…\"` ; une source lue ou "
@@ -119,6 +120,9 @@ def context_query(raw, query) -> str:
 def gist(n, chars=220, query=None) -> str:
     """Ce qu'on montre d'un souvenir : le résumé d'une page du wiki s'il existe, sinon le début de son contenu ; avec
     `query`, les phrases qui répondent au message quand le début en montre moins (concis.relevant)."""
+    if (n.get("meta") or {}).get("a_verifier"):  # mis de côté (garde.py) : jamais son texte, l'avertissement
+        from .garde import caution
+        return caution(n)
     from .concis import concis, relevant
     base = (n.get("meta") or {}).get("resume") or n.get("body", "")
     return (query and relevant(base, n.get("body", ""), query, chars, n.get("title", ""))) or short(concis(base), chars)

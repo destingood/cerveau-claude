@@ -139,6 +139,34 @@ def repeated_rules(brain, limit=4):
     return groups[:limit]
 
 
+MOTIF = "Motif : "  # titre des souvenirs « motif » (étape 14, d'après le Dream de mem0) : un par sujet, jamais deux
+MOTIF_MIN = 8  # un sujet d'au moins tant de souvenirs
+
+
+def patterns(brain, limit=1) -> list:
+    """Gros sujets (communautés de l'analyse du graphe) sans souvenir « Motif : … » : à synthétiser par Claude ou
+    l'archiviste, en lien avec leurs preuves. Relancer le rêve ne propose pas deux fois le même : le titre fait foi.
+    → [(étiquette, [ids des membres, les plus centraux d'abord])]."""
+    from . import graph
+    try:
+        an = graph.ensure(brain)
+    except Exception:
+        return []
+    done = {fold(n["title"][len(MOTIF):]) for n in brain.nodes.values() if str(n.get("title", "")).startswith(MOTIF)}
+    pr = an.get("pr") or {}
+    out = []
+    for c in sorted(an.get("communities") or [], key=lambda c: -c.get("size", 0)):
+        ids = [i for i in c.get("members") or [] if i in brain.nodes and brain.nodes[i].get("status", "active") == "active"
+               and brain.nodes[i]["type"] != "project"]
+        label = str(c.get("label") or "").strip()
+        if len(ids) < MOTIF_MIN or not label or fold(label) in done:
+            continue
+        out.append((label, sorted(ids, key=lambda i: -pr.get(i, 0))))
+        if len(out) >= limit:
+            break
+    return out
+
+
 def prepare(apply_safe=True):
     """→ (texte du dossier, nombre de points demandant du jugement). La partie sûre est appliquée (instantané avant)."""
     from .dates import has_relative
@@ -165,6 +193,9 @@ def prepare(apply_safe=True):
     dups, conflicts = pairs(brain)
     rules = repeated_rules(brain)
     idle = unused(brain)[:6]
+    from .temps import to_review
+    review = to_review(brain)  # importants qui n'ont plus servi (étape 12) : trois au plus par jour
+    motifs = patterns(brain)  # un gros sujet sans motif écrit (étape 14) : un par rêve
     why = no_why(brain)[:6]
     late = overdue(brain)
     try:
@@ -183,7 +214,8 @@ def prepare(apply_safe=True):
         except Exception as exc:
             from .common import log
             log(f"rêve : lint du wiki : {exc!r}")
-    items = len(heard) + len(dups) + len(conflicts) + len(rules) + len(idle) + len(why) + len(late) + len(red) \
+    items = len(heard) + len(dups) + len(conflicts) + len(rules) + len(idle) + len(review) + len(motifs) + len(why) \
+        + len(late) + len(red) \
         + sum(len(r) for _, r in wiki_rows)
     lines = [f"# 🌙 Rêve du cerveau — {fmt_date(now_iso())}", "",
              f"_{items} point(s) demandant du jugement. Appliquer ce qui est sûr avec les commandes indiquées, demander "
@@ -212,6 +244,14 @@ def prepare(apply_safe=True):
         ("Montrés souvent, jamais utilisés",
          [f"`{n['id']}` ({short(n['title'], 70)}) — montré {shown_since(n)}× sans servir → titre plus précis, importance plus basse, "
           f"ou `rm` s'il est obsolète" for n in idle]),
+        ("À revoir (importants qui n'ont plus servi)",
+         [f"`{n['id']}` ({short(n['title'], 70)}) — rien depuis {d} j → toujours vrai : `edit {n['id']} --revu` "
+          f"(prochaine revue dans {min(480, 2 * int((n.get('meta') or {}).get('revue_delai') or 30))} j) ; sinon le corriger "
+          f"(`edit`) ou l'archiver (`rm`), en demandant à l'utilisateur en cas de doute" for d, n in review]),
+        ("Motif à écrire (ce qui se dégage d'un sujet, relié à ses preuves)",
+         [f"« {label} » ({len(ids)} souvenirs : " + ", ".join(f"`{i}`" for i in ids[:6]) + ") → si un motif s'en dégage "
+          f"(une règle, une tendance, une leçon qui revient) : `add -t analysis -T \"{MOTIF}{label}\" -b \"…\" "
+          + " ".join(f"--link {i}:about" for i in ids[:4]) + "` ; rien d'inventé, sinon le laisser" for label, ids in motifs]),
         ("Décisions et règles sans « pourquoi »",
          [f"`{n['id']}` ({short(n['title'], 70)}) → `edit {n['id']} -a \"Pourquoi : …\"` si la raison est connue"
           for n in why]),

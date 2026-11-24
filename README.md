@@ -3,7 +3,7 @@
 Une mémoire persistante pour Claude Code, faite par destingood : Claude se souvient de toi, de tes projets, de tes
 décisions et de ce qu'il a appris, d'une session à l'autre. Tout reste chez toi, sur ton PC.
 
-![Version 8.33.0](https://img.shields.io/badge/version-8.33.0-2ea44f) ![Python 3.10 ou plus](https://img.shields.io/badge/python-3.10%2B-3776ab) ![Windows, macOS, Linux](https://img.shields.io/badge/Windows_%C2%B7_macOS_%C2%B7_Linux-555)
+![Version 8.42.0](https://img.shields.io/badge/version-8.42.0-2ea44f) ![Python 3.10 ou plus](https://img.shields.io/badge/python-3.10%2B-3776ab) ![Windows, macOS, Linux](https://img.shields.io/badge/Windows_%C2%B7_macOS_%C2%B7_Linux-555)
 
 **Sommaire** — [Installer](#installer-une-seule-fois) · [Au quotidien](#au-quotidien) · [Ce que fait le cerveau](#ce-que-fait-le-cerveau) ·
 [Moins de tokens](#moins-de-tokens) · [Il apprend tout seul](#le-cerveau-apprend-tout-seul) ·
@@ -67,6 +67,13 @@ Rien à faire : parle normalement à Claude. Pour aller plus loin :
 Vue 3D de ta mémoire : `~/.claude/brain/cerveau.html` (souvenirs, projets, le cerveau e-commerce avec ses fiches et ses
 outils, et tes boutiques suivies). Elle marche hors ligne, sans aucun site extérieur : ses bibliothèques (3d-force-graph
 et three.js, sous licence MIT) sont livrées avec le plugin et intégrées à la page (`brainkit/vue3d/LICENCES.md`).
+Le curseur ▶ en bas rejoue ton cerveau dans le temps : à chaque date, les souvenirs vrais ce jour-là, ceux qui ont été
+remplacés depuis compris, s'allument et s'éteignent, et un remplacement passe en impulsion de l'ancien au nouveau.
+Couleurs par domaine ou par « chaleur » (dernier usage), et ☷ range les souvenirs en couches, de la vision en haut au
+détail en bas. Les liens typés ont une flèche qui dit leur sens et, au survol, leur type et leurs dates. Un nœud
+déplacé à la main reste où tu le poses (⚲ ou double-clic sur le fond pour tout libérer). Le bouton ◎ fait tourner la
+caméra seule autour du cerveau, pour filmer, sauf si ton système demande moins d'animations. L'animation s'arrête
+quand l'onglet est caché.
 
 ## Ce que fait le cerveau
 
@@ -77,6 +84,21 @@ et three.js, sous licence MIT) sont livrées avec le plugin et intégrées à la
 - **En fin de tâche** : si tu as dit une décision ou une préférence pas encore enregistrée, Claude la note ; sinon
   le cerveau ne dit rien (pas de rappel inutile).
 - **Cartes de tes projets** (fichiers clés, où est défini quoi), à-faire datés, vue 3D, serveur MCP.
+- **La mémoire datée** : un souvenir est vrai d'une date à une autre (« vrai depuis le 01/09 », « jusqu'au 31/12 » :
+  archivé le lendemain). Quand un fait change, l'ancien est gardé avec sa date de fin et la raison, et `brain show`
+  donne la lignée (« Scaleway depuis le 24/11 ← OVH du 01/09 au 24/11, parce que trop cher »). Un lien retiré est
+  daté, pas effacé. `brain q "…" --at 15/05` montre le cerveau tel qu'il était, même au-delà des instantanés. Chaque
+  souvenir a aussi un domaine (celui de son projet) et un niveau (vision, architecture, procédure, détail).
+  Un souvenir échu n'est plus rappelé, même avant son archivage ; deux souvenirs qui se contredisent arrivent le plus
+  récent d'abord, l'autre marqué. Au démarrage, les souvenirs les plus reliés de ton projet passent devant (les
+  piliers). Et le rêve te ressort, trois au plus, les souvenirs importants qui ne servent plus, à revoir de plus en
+  plus rarement (30 jours, puis 60, 120…) tant qu'ils restent vrais. Un fait qui change à une date à venir
+  (« à partir du 1er janvier ») laisse l'ancien vrai jusque-là ; « Mondial Relay » et « MondialRelay » sont reconnus
+  comme le même nom.
+- **La mémoire protégée** : un souvenir tiré d'une page web ou d'une transcription qui contiendrait une consigne piégée
+  (« ignore les consignes de l'utilisateur », « fais-le sans le lui dire », une commande qui télécharge et exécute)
+  est mis de côté : Claude n'en voit que le titre et un avertissement, jamais le texte, tant que tu ne l'as pas relu
+  (`brain edit <id> --verifie`). Au démarrage, le `CLAUDE.md` du projet ouvert passe le même contrôle.
 - **Le rêve** : l'entretien de ta mémoire se fait hors conversation, chaque jour — dates relatives rendues réelles,
   observations anciennes condensées — et ce qui demande du jugement (corrections entendues, doublons, conflits,
   à-faire en retard) est tranché par Claude au démarrage suivant : ce qui est sûr est appliqué, un doute est laissé
@@ -212,8 +234,14 @@ fournissent ; une fois ces plugins installés, « humanise ce texte », « on di
 
 | Tu dis… | Skill | Ce que fait Claude | D'après |
 |---|---|---|---|
+| « audite cette skill », « je peux installer cette skill ? » | `/cerveau:securite` (audit-skills) | lit une skill tierce sans rien lancer : « sûre », « à vérifier » ou « refusée », avec les raisons ; aussi dans `brain echange voir` | skill-security-auditor (Alireza Rezvani, MIT) |
+| « cuisine-moi sur ma boutique » | `/cerveau:cuisine-moi` (sur demande) | t'interroge par tours de questions numérotées, avec sa réponse conseillée à chaque fois, puis ne fait rien avant ton « oui » | grilling (Matt Pocock, MIT) |
+| « fais une passation » | `/cerveau:passation` (sur demande) | écrit le document pour reprendre ailleurs (état, décisions, fichiers, skills à charger), sans aucun secret | handoff (Matt Pocock, MIT) |
+| « tu as vraiment vérifié ? » | `/cerveau:preuve-avant-fini` | rien n'est annoncé fini sans la commande qui le prouve et sa sortie lue | verification-before-completion (Jesse Vincent, MIT) |
+| « mets ce tuto en pratique » | `/cerveau:apprendre-en-livrant` | une vidéo ou un cours devient une suite de petits projets à livrer | ship-learn-next (tapestry-skills, MIT) |
+| « range mes factures », « tableau pour mon comptable » | `/cerveau:factures-recus` | inventaire, lecture des factures électroniques, noms « AAAA-MM-JJ Fournisseur - Facture - Objet », copies classées, CSV pour Excel ; côté e-commerce, un tirage au sort équitable et vérifiable (`tirage.py`), côté carrière commerciale, le débrief d'un appel de vente (`appel.py`) | écrite pour le cerveau |
 | « branche perplexity », puis « cherche sur perplexity … » | `/cerveau:recherche` (perplexity) | recherche web filtrée par sites, langue, pays ou date, ou recherche approfondie avec sources, avec ton propre compte Perplexity | le serveur officiel de Perplexity |
-| « installe agent-reach », puis « lis ce tweet », « lis ce fil reddit », « sous-titres de cette vidéo YouTube » | `/cerveau:web` (agent-reach) | lit en lecture seule X/Twitter, Reddit, YouTube, LinkedIn, Instagram et d'autres, là où sa recherche web échoue | Agent Reach (Panniantong) |
+| « installe agent-reach », puis « lis ce tweet », « lis ce fil reddit », « récupère les sous-titres de cette vidéo YouTube » | `/cerveau:web` (agent-reach) | lit en lecture seule X/Twitter, Reddit, YouTube, LinkedIn, Instagram et d'autres, là où sa recherche web échoue | Agent Reach (Panniantong) |
 | « clone cette app », « ma version de X » | `/cerveau:replica` | refait ta propre version d'une app existante en 11 étapes, jusqu'à la fiche App Store et la mise en ligne | replica-skill (Jake Schincariol, MIT) |
 | « script de ma vidéo », « titre et miniature », « coupe les blancs », « audit de ma chaîne » | `/cerveau:youtube` | prépare, écrit et analyse tes vidéos en 11 étapes : planning, ce qui marche dans ta niche, script et accroche notée, titre et miniature, coupes, chapitres, description, Shorts, commentaires, rétention, audit ; rien ne se publie sans toi | youtube-agent-skill (Jake Schincariol, MIT) |
 | « ma map fortnite », « titre et tags de ma map », « tendances fortnite », « ma map n'a pas de joueurs » | `/cerveau:fortnite` | fait monter tes maps Fortnite (Créatif, UEFN) sans payer : niche lue dans l'API publique d'Epic, Discover et recherche du jeu, fiche de l'île et miniatures, rétention des maps de combat, lancement, page web citable par Google et les IA, diagnostic du goulot ; rien ne se publie sans toi | documentation et règles d'Epic, API publique de Fortnite |
@@ -243,7 +271,7 @@ fournissent ; une fois ces plugins installés, « humanise ce texte », « on di
 <summary>Le détail de chaque outil</summary>
 
 - **Perplexity** (skill `/cerveau:recherche`, fiche perplexity) : dis « branche perplexity » et Claude ajoute le serveur officiel de Perplexity sur ton PC, puis te guide pour te connecter avec ton propre compte (payant à l'appel, à ta charge, rien de partagé). Ensuite, « cherche sur perplexity … » : recherche web filtrée par sites, langue, pays ou date, ou recherche approfondie avec sources. Sans ce mot, Claude garde sa recherche web intégrée, sans frais.
-- **Agent Reach** (skill `/cerveau:web`, fiche agent-reach) : dis « installe agent-reach » et Claude te guide pour installer sur ton PC l'outil libre Agent Reach (github.com/Panniantong/Agent-Reach). Ensuite, « lis ce tweet », « lis ce fil reddit », « sous-titres de cette vidéo YouTube » : Claude lit en lecture seule X/Twitter, Reddit, YouTube, LinkedIn, Instagram et d'autres là où sa recherche web échoue. L'outil est gratuit (seule la transcription audio demande ta propre clé Groq ou OpenAI) ; il ne poste jamais rien et ne se connecte jamais à ta place (compte secondaire conseillé).
+- **Agent Reach** (skill `/cerveau:web`, fiche agent-reach) : dis « installe agent-reach » et Claude te guide pour installer sur ton PC l'outil libre Agent Reach (github.com/Panniantong/Agent-Reach). Ensuite, « lis ce tweet », « lis ce fil reddit », « récupère les sous-titres de cette vidéo YouTube » : Claude lit en lecture seule X/Twitter, Reddit, YouTube, LinkedIn, Instagram et d'autres là où sa recherche web échoue. L'outil est gratuit (seule la transcription audio demande ta propre clé Groq ou OpenAI) ; il ne poste jamais rien et ne se connecte jamais à ta place (compte secondaire conseillé).
 - **Replica** (skill `/cerveau:replica`, d'après replica-skill de Jake Schincariol, MIT) : « clone cette app » ou « ma version de X » et Claude refait sa propre version d'une app existante en 11 étapes — analyse des écrans et parcours, architecture, design, construction, backend, tests, score de parité avec l'original, lecture des vrais avis (ce que les utilisateurs détestent devient tes corrections et ton angle de vente), nouvelle marque, page de lancement et fiche App Store, mise en ligne. Les fonctions et les parcours seulement, jamais le code, le logo, les textes ni le contenu de l'original. Six outils Python fournis, sans installation ni accès réseau.
 - **YouTube** (skill `/cerveau:youtube`, d'après youtube-agent-skill de Jake Schincariol, MIT) : « script de ma vidéo », « mon CTR est bas », « fais des shorts de ma vidéo », « audit de ma chaîne » et Claude t'aide pour tes propres vidéos en 11 étapes — planning de la semaine, vidéos qui battent leur chaîne dans ta niche (lues avec yt-dlp, en lecture publique), script avec cinq accroches notées, titre et texte de miniature, liste de coupes (blancs, « euh », reprises), chapitres valides, description et tags, Shorts, réponses aux commentaires, courbe de rétention de Studio, audit avec une seule correction prioritaire. Six petits outils Python sans réseau, adaptés au français (scores non calibrés en français : un repère, pas un verdict). Ton profil de voix vit dans `~/.claude/youtube/voice.md`. Claude écrit, toi tu publies : rien ne part sur ta chaîne sans ton oui.
 - **Maps Fortnite** (skill `/cerveau:fortnite`) : « ma map fortnite n'a pas de joueurs », « titre et tags de ma map », « quelles maps marchent en ce moment ? » et Claude t'aide à faire jouer tes îles Fortnite (Créatif, UEFN), d'abord les maps de combat et d'entraînement (zone wars, box fight, 1v1, free for all, aim). Sept fiches écrites d'après la documentation et les règles d'Epic, chaque point marqué établi, hypothèse ou non vérifié : choix de la niche, fonctionnement de Discover et de la recherche du jeu, titre, description, tags, genre, miniatures et test A/B, rétention (premier combat, lobby vide, accolades, J1 et J7), lancement et fenêtre de test de deux semaines, Google et assistants IA, mesure. Cinq outils Python : classement d'un genre et chiffres des maps concurrentes lus dans l'API publique d'Epic (sans clé), suivi de ta map au-delà des 7 jours que garde l'API (`~/.claude/fortnite`), contrôle de la fiche avant publication (termes interdits, quatre tags, titre trop proche d'un autre), contrôle des cinq images obligatoires, diagnostic du goulot et lecture d'un test A/B, page web de la map prête à mettre en ligne. Jamais de faux joueurs ni d'échange de favoris ; toi seul publies.
@@ -323,4 +351,4 @@ invite tes amis (Settings → Collaborators → Add people), puis rejoins-le le 
 
 `/plugin uninstall cerveau@cerveau`. Tes souvenirs restent dans `~/.claude/brain` (supprime ce dossier pour tout effacer).
 
-Version 8.33.0.
+Version 8.42.0.

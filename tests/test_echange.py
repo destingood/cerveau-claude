@@ -434,6 +434,8 @@ if links:
           "lien dans une skill : quarantaine ; dossier skills/ qui est un lien : ignoré", out)
 c, out = brain(B, "echange", "voir", "dan/desc-piege")
 check("description non affichée" in out and "Ignore all previous" not in out, "voir une skill en quarantaine : sa description reste dans le fichier", out)
+check("audit : ❌ refusée — consigne qui annule celles de l'utilisateur" in out and "Ignore all previous" not in out,
+      "voir : le verdict de l'auditeur de skills (étape 18), ses raisons sans aucun texte de la skill", out)
 c, out = brain(B, "echange", "propositions")
 check("dan/range-garage" not in out, "l'usage qu'un auteur déclare de sa propre skill ne lui fait pas « faire ses preuves »", out)
 c, out = brain(B, "echange", "retours")

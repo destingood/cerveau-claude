@@ -261,10 +261,13 @@ check(got.get(3, ("", True))[1] is False and "-rf efface tout" in got[3][0], "MC
 check(got.get(4, ("", True))[1] is False and "✓ modifié" in got[4][0], "MCP : un ajout qui commence par « - »", got.get(4))
 for i, want in ((5, "argument manquant : « query »"), (6, "nombre entier attendu"), (7, "texte attendu"),
                 (8, "« type » : « zzz » inconnu"), (9, "argument manquant : « body »"), (10, "hors limites, de 1 à 5"),
-                (11, "vrai ou faux attendu"), (12, "outil inconnu : zzz"), (13, "objet JSON attendu"),
-                (14, "introuvable"), (15, "nombre entier attendu")):
+                (11, "vrai ou faux attendu"), (14, "introuvable"), (15, "nombre entier attendu")):
     text, is_err = got.get(i, ("(pas de réponse)", None))
-    check(is_err is True and want in text, f"MCP : refus en français (« {want} »)", text)
+    check(is_err is True and text.startswith("✗ ") and want in text, f"MCP : refus en français (« {want} »)", text)
+for i, want in ((12, "outil inconnu : zzz"), (13, "objet JSON attendu")):  # requête malformée : erreur du protocole
+    text, is_err = got.get(i, ("(pas de réponse)", True))
+    check(is_err is None and '"code": -32602' in text and want in text, f"MCP : erreur JSON-RPC -32602 en français "
+          f"(« {want} »)", text)
 check(all("Traceback" not in t and not ENGLISH.search(t) for t, _ in got.values()) and "Traceback" not in err,
       "MCP : aucune trace Python ni message anglais dans les résultats", got)
 check("méthode inconnue" in got.get(99, ("",))[0], "MCP : méthode inconnue dite en français", got.get(99))

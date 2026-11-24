@@ -1,6 +1,6 @@
 ---
 name: web
-description: "Agir sur des sites web : piloter un navigateur (agent-browser, playwright-cli : tests, captures, bugs, web vitals), extraire des données en JSON (ScrapeGraphAI), lire réseaux sociaux (Agent Reach), client d'API d'un site (rae)."
+description: "Quand il faut agir sur un site : piloter un navigateur (tests, captures, bugs, vitesse), extraire ses données en JSON, lire un réseau social ou faire un client de l'API cachée d'un site."
 metadata:
   triggers: >-
     « agent-browser » « agent browser » « installe agent-browser » « cherche les bugs de mon site »
@@ -10,10 +10,10 @@ metadata:
     « automatise le navigateur » « scrapegraph » « installe scrapegraph » « scrape ce site » « scrape cette page »
     « aspire les données de » « récupère tous les produits et les prix de » « liste les prix des concurrents »
     « extrais en JSON » « agent-reach » « agent reach » « installe agent-reach » « lis ce tweet » « lis ce fil reddit »
-    « sous-titres de cette vidéo YouTube » « résume cette vidéo » « transcris cette vidéo » « reverse api »
+    « récupère les sous-titres de cette vidéo YouTube » « résume cette vidéo » « transcris cette vidéo » « reverse api »
     « reverse-api-engineer » « installe reverse api » « transforme ce site en API » « l'API cachée de ce site »
     « ce site n'a pas d'API » « fais-moi un client API pour ce site » « récupère les données de ce site par son API »
-    « capture les requêtes du site » « rejoue l'API du site » Ne pas utiliser pour « l'API payante ScrapeGraph »
+    « capture les requêtes du site » « rejoue l'API du site » Ne pas utiliser pour « l'API payante ScrapeGraph » « l'API ne répond plus »
 ---
 
 # Web — l'aiguillage vers la bonne fiche

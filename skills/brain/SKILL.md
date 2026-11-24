@@ -37,7 +37,7 @@ côté de ce SKILL.md : les lire (Read) seulement quand la tâche s'y rapporte.
 |---|---|
 | Chercher (souvenirs, voisins du graphe, sessions, fichiers) | `q "mots clés" [-p projet] [-t type] [--only]` — dates comprises (« hier », « le 12/11 ») |
 | Mémoriser | `add -t <type> -T "titre court" -b "fait + pourquoi + comment appliquer" [--tags a,b] [-i 1-5] [-p .\|none\|id] [--due 10/11] [--replaces id] [--keys "synonymes, questions"]` |
-| Fait qui change | `add … --replaces <ancien>` (l'ancien est archivé, la chaîne reste dans `show`) |
+| Fait qui change | `add … --replaces <ancien> [--parce-que "…"]` (l'ancien est archivé, la lignée reste dans `show`) |
 | Corriger, compléter | `edit <id> [-T …] [-b …] [-a "ajout"] [-i 4] [--due "10/11"\|none]` |
 | Voir, lister | `show <id>` · `ls [-t type] [-p projet]` · `fiche <mot>` (synthèse d'un sujet) |
 | À-faire | `todo` (par échéance) · `done <id>` |

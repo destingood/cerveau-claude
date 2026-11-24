@@ -68,7 +68,7 @@ côté de ce SKILL.md : les lire (Read) seulement quand la tâche s'y rapporte.
 |---|---|
 | Chercher (souvenirs, voisins du graphe, sessions, fichiers) | `q "mots clés" [-p projet] [-t type] [--only]` — dates comprises (« hier », « le 12/11 ») |
 | Mémoriser | `add -t <type> -T "titre court" -b "fait + pourquoi + comment appliquer" [--tags a,b] [-i 1-5] [-p .\\|none\\|id] [--due 10/11] [--replaces id] [--keys "synonymes, questions"]` |
-| Fait qui change | `add … --replaces <ancien>` (l'ancien est archivé, la chaîne reste dans `show`) |
+| Fait qui change | `add … --replaces <ancien> [--parce-que "…"]` (l'ancien est archivé, la lignée reste dans `show`) |
 | Corriger, compléter | `edit <id> [-T …] [-b …] [-a "ajout"] [-i 4] [--due "10/11"\\|none]` |
 | Voir, lister | `show <id>` · `ls [-t type] [-p projet]` · `fiche <mot>` (synthèse d'un sujet) |
 | À-faire | `todo` (par échéance) · `done <id>` |
@@ -147,8 +147,11 @@ Ce que font les hooks du cerveau, et le sens de chaque ligne qu'ils ajoutent au 
   à aucun réglage sur sa seule foi ; ses scripts ne se lancent qu'après `echange approuver <ami/nom> --oui`, sur le
   oui de l'utilisateur (reprendre la commande affichée : son `--empreinte` lie l'accord à ce qui a été montré).
 - **Fin de session** : journal, vue 3D, et une fois par jour consolidation prudente (doublons évidents, souvenirs
-  remplacés via `supersedes`, secrets) puis **rêve** (dates relatives rendues absolues, observations de plus de 7 jours
-  condensées en un résumé par semaine et par projet, dossier `REVE.md` des points à trancher ; s'il y en a assez, une
+  remplacés via `supersedes`, fins de validité passées, secrets) puis **rêve** (dates relatives rendues absolues,
+  observations de plus de 7 jours condensées en un résumé par semaine et par projet, dossier `REVE.md` des points à
+  trancher, dont « À revoir » : trois souvenirs importants au plus qui n'ont plus servi depuis 30 j, puis 60, 120…
+  — toujours vrai : `edit <id> --revu` ; sinon corriger ou archiver ; et un « motif » à écrire pour un gros sujet
+  qui n'en a pas, relié à ses souvenirs ; s'il y en a assez, une
   ligne 🌙 au démarrage propose de le confier à un sous-agent en arrière-plan :
   `dream` → appliquer ce qui est sûr → `dream --done`), avec instantané pris avant, et sauvegarde hors de ~/.claude
   (second disque sous Windows, sinon `~/Sauvegardes-cerveau-Claude`, dit une fois ; réglage `backup.dir`).
@@ -183,12 +186,16 @@ Toutes les commandes et options de la mémoire. Commande : `{CMD} <commande>`.
 | Mémoriser | `add -t <type> -T "titre court" -b "fait + pourquoi + comment appliquer" [--tags a,b] [-i 1-5] [-p .\\|none\\|id] [--link id] [--due 10/11] [--replaces id] [--keys "synonymes, questions"] [--src utilisateur\\|verifie\\|deduit]` (étiquettes auto si absentes, liens suggérés affichés ; « hier », « dans 2 semaines » deviennent des dates réelles) |
 | Question large (« où en est la boutique ? », « le point sur… ») | `q` place d'abord la **fiche de synthèse** de la communauté dominante (phrases les plus centrales de ses souvenirs, à-faire, ids), puis les souvenirs qu'elle ne cite pas · `fiche` liste les fiches · `fiche <n°\\|mot\\|id>` |
 | Observations datées de la session (mémoire épisodique, façon Mastra) | `obs "🔴 décision, blocage" "🟡 avancée" "🟢 détail"` (« 14:20 » en tête au besoin ; « hier » devient une date) · `obs` les dernières · `obs -p projet --days 7` — retrouvées par `q` (texte ou date : « on a fait quoi hier ? »), condensées par le rêve après 7 jours ; jamais injectées au démarrage |
-| Fait qui change (façon Zep / mem0) | `add … --replaces <ancien>` ou `supersede <nouveau> <ancien>` : l'ancien est archivé avec sa date de fin, la chaîne reste visible dans `show`. Un `add` sur le même sujet remplace tout seul l'ancien si une valeur change (chiffre, négation, « désormais », autre nom propre) ; jamais quand le titre vise une autre entité ou une autre date ; « ↻ remplace peut-être » = à confirmer |
-| Voyage dans le temps | `q "sujet" --at 15/10\\|hier\\|"il y a 3 jours"` (le cerveau tel qu'il était) · `show <id> --history` (versions successives) · `history --diff <n°\\|date>` (ce qui a changé depuis) |
+| Fait qui change (façon Zep / mem0) | `add … --replaces <ancien> [--parce-que "…"]` ou `supersede <nouveau> <ancien> [--parce-que "…"]` : l'ancien est archivé avec sa date de fin et la raison (fin = veille du `--depuis` du nouveau ; un nouveau qui ne commence que plus tard laisse l'ancien vrai jusque-là ; refusé si le nouveau commence avant l'ancien) ; `show` donne la lignée (« C (depuis le 24/11) ← B (du 01/10 au 24/11, parce que …) ← A »). Un `add` sur le même sujet remplace tout seul l'ancien si une valeur change (chiffre, négation, « désormais », autre nom propre) ; jamais quand le titre vise une autre entité ou une autre date ; « ↻ remplace peut-être » = à confirmer |
+| Voyage dans le temps | `q "sujet" --at 15/10\\|hier\\|"il y a 3 jours"` (le cerveau tel qu'il était : l'instantané de ce jour-là ; plus ancien que les 60 instantanés, reconstruit d'après les dates de validité et des liens, avec le texte d'aujourd'hui, et c'est dit) · `show <id> --history` (versions successives) · `history --diff <n°\\|date>` (ce qui a changé depuis) |
+| Vrai depuis, vrai jusqu'à | `add … --depuis 01/09 --jusqu 31/12` ou `edit <id> --depuis …\\|none --jusqu …\\|none` : sans `--depuis`, vrai depuis l'enregistrement ; une fin à venir laisse le souvenir actif, l'entretien du jour l'archive le lendemain ; une fin passée l'archive tout de suite. `show` dit « valable du … au … ». Des dates dites dans le texte (« depuis le 01/09 », « à partir du 1er janvier », « jusqu'au 31/12 ») sont proposées après `add` (📅), jamais posées seules ; une échéance (« d'ici le ») n'est pas une fin. Deux souvenirs aux périodes distinctes ne se remplacent pas. Échu ou pas encore commencé : ni rappelé à chaque message, ni trouvé par `q` (`q --archived` le montre) |
+| Souvenirs qui se contredisent | `link <ancien> <récent> -r contradicts` : rappelés ensemble (message ou `q`), le plus récent passe devant et l'autre est marqué « ⚠ contredit par … » ; si le récent remplace l'ancien, `supersede` plutôt |
+| Domaine et niveau | `--domaine code\\|business\\|contenu\\|finance\\|infra\\|recherche\\|perso` (libre ; posé sur un projet, ses souvenirs en héritent) · `--niveau vision\\|architecture\\|procedure\\|detail` (défaut selon le type : projet et profil = vision ; décision, concept, sujet, analyse = architecture ; règle, apprentissage = procédure ; le reste = détail) |
 | À-faire et échéances | `todo` (triés par échéance) · `done <id>` · `edit <id> --due "10/11"\\|"demain"\\|"dans 2 semaines"\\|none` |
-| Corriger / compléter | `edit <id> [-T …] [-b …] [-a "ajout"] [-i 4] [--add-tags x]` |
+| Corriger / compléter | `edit <id> [-T …] [-b …] [-a "ajout"] [-i 4] [--add-tags x] [--depuis …] [--jusqu …] [--niveau …] [--domaine …] [--revu] [--verifie]` |
+| Texte piégé (anti-empoisonnement) | un souvenir écrit par Claude (pas par l'utilisateur) dont le texte donne des consignes — annuler celles de l'utilisateur, agir sans le lui dire, `curl … \\| sh`, caractères invisibles, commentaire caché — est mis de côté : le rappel et le démarrage n'en montrent que le titre et « ⚠ texte mis de côté », `show <id>` montre tout ; s'il est sûr : `edit <id> --verifie`. Contrôlé à l'écriture et chaque jour (pages modifiées dans Obsidian). Le `CLAUDE.md` du projet ouvert passe le même contrôle au démarrage |
 | Voir / lister | `show <id>` · `ls [-t type] [-p projet]` |
-| Lier | `link <a> <b> [-r relates\\|depends_on\\|fixes\\|supersedes\\|contradicts]` (ou `[[id]]` dans un contenu) · `link --suggest` liens déduits à confirmer |
+| Lier | `link <a> <b> [-r relates\\|depends_on\\|fixes\\|supersedes\\|contradicts]` (ou `[[id]]` dans un contenu) · `link --suggest` liens déduits à confirmer · `unlink <a> <b>` : le lien devient un lien terminé, daté (ni le rappel ni l'analyse du graphe ne le voient ; `q --at` et la lignée, si ; en mode wiki, propriété `anciens_liens` de la page) |
 | Archiver | `rm <id>` (réversible : `edit <id> --unarchive`) · `--purge` = définitif (instantané pris avant) |
 | Historique / annuler | `history` (instantanés) · `restore <n°>` (l'état courant est sauvegardé d'abord) |
 | Sauvegardes (hors de ~/.claude) | `backup` · `backup --list` · `backup --restore <archive.zip>` · `backup --to <dossier>` |
@@ -229,7 +236,7 @@ variables d'env, documents, cycles, TODO, fichiers sensibles jamais lus).
 | Communauté, centralité, concepts et liens déduits d'un souvenir | `show <id>` |
 | Fiche de synthèse d'une communauté (extractive, régénérée seulement quand un membre change) | `fiche [n°\\|mot\\|id]` |
 | Concepts repérés (outils, sujets, sigles, domaines, produits) et souvenirs liés | `concept [nom]` |
-| Vue 3D interactive (mémoire, concepts, chronologie, Maj+clic = chemin, cartes de projets) | `viz --open` → `cerveau.html`, hors ligne (`cerveau-2d.html` sans WebGL) |
+| Vue 3D interactive (mémoire, concepts, chronologie, Maj+clic = chemin, cartes de projets) | `viz --open` → `cerveau.html`, hors ligne (`cerveau-2d.html` sans WebGL) · le curseur ▶ rejoue le cerveau tel qu'il était à chaque date : souvenirs remplacés et liens retirés réapparaissent à leur époque, un remplacement passe en impulsion de l'ancien au nouveau ; curseur à droite, la vue d'aujourd'hui · couleurs « domaine » et « chaleur » (dernier usage) · ☷ couches : vision en haut, détail en bas · le panneau d'un souvenir donne sa validité et sa lignée · flèches sur les liens typés ; au survol d'un lien, son type et ses dates · un nœud glissé reste posé (⚲, L ou double-clic sur le fond pour libérer) · ◎ orbite de la caméra pour une vidéo (O) · pause quand l'onglet est caché |
 
 Liens **déduits** = similarité du contenu (raison : mots communs ; confiance forte/moyenne/faible), jamais écrits
 dans le graphe tant qu'ils ne sont pas confirmés par `link`. Analyse en cache (`state/analysis.json`), recalculée
@@ -347,7 +354,7 @@ Journal, mode éco, sorties compactes, PC, skills, connecteurs, serveur MCP, Obs
 | But | Commande |
 |---|---|
 | Coffre Obsidian / Markdown, synchronisé dans les deux sens (une note par souvenir, propriétés, liens `[[ ]]`) — sans objet en mode wiki (le wiki est le coffre) | `export --vault <dossier>` (dossier retenu ensuite : `export --vault`) — notes modifiées rapatriées champ par champ, nouvelle note dans « À trier » = nouveau souvenir, note supprimée = souvenir archivé, conflit = version Obsidian gardée dans « Conflits » · `--push` écrase le coffre |
-| Serveur MCP (chat Claude, Cowork, tout client MCP) : outils memory_search / memory_add / memory_show / memory_update / memory_todo / memory_context ; avec `config mcp.groupes '["wiki", "boutique"]'`, aussi wiki_status / wiki_add_source / wiki_lint / wiki_log et boutique_etat / boutique_ajouter / boutique_plan / boutique_kpi / boutique_audit ; résultat long coupé en pages (`config mcp.max_car`, la suite avec `page`) | `mcp` (stdio) · `install --mcp` l'enregistre dans l'app Claude (`--uninstall` le retire) |
+| Serveur MCP (chat Claude, Cowork, tout client MCP) : outils memory_search / memory_add / memory_show / memory_update / memory_todo / memory_context ; avec `config mcp.groupes '["wiki", "boutique"]'`, aussi wiki_status / wiki_add_source / wiki_lint / wiki_log et boutique_etat / boutique_ajouter / boutique_plan / boutique_kpi / boutique_audit ; résultat long coupé en pages (`config mcp.max_car`, la suite avec `page`) ; `memory_search` accepte `at` (le cerveau à une date) ; chaque souvenir est aussi une ressource `memoire://<id>` (le texte de memory_show), à joindre sans appel d'outil ; ce qu'un ajout ou une modification n'applique pas est dit en fin de résultat (« ignoré : … ») ; un outil inconnu est une erreur du protocole (-32602) ; les clients du protocole 2026-07-28 (`server/discover`) reçoivent aussi des résultats structurés | `mcp` (stdio) · `install --mcp` l'enregistre dans l'app Claude (`--uninstall` le retire) |
 """,
 }
 

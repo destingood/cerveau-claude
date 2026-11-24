@@ -118,10 +118,13 @@ leaks = [p.name for p in (TMP / "brain").rglob("*") if p.is_file() and KEY.encod
 check(not err and "🔒 secret masqué" in out and not leaks and "«clé API Anthropic/OpenAI masqué»" in GRAPH_FILE.read_text("utf-8"),
       "memory_add avec une clé : enregistré masqué, nulle part en clair, Claude prévenu", (out, leaks))
 check(rpc("méthode/inconnue")["error"]["code"] == -32601, "méthode inconnue : erreur JSON-RPC -32601")
-out, err = tool("outil_inexistant")
-check(err and "outil inconnu" in out, "outil inconnu : résultat en erreur (isError), pas de plantage", out)
+unknown = rpc("tools/call", {"name": "outil_inexistant", "arguments": {}})
+check("result" not in unknown and unknown.get("error", {}).get("code") == -32602
+      and "outil inconnu" in unknown["error"].get("message", ""),
+      "outil inconnu : erreur JSON-RPC -32602 (spécification MCP), pas de plantage", unknown)
 bad = mcp_server.handle({"jsonrpc": "2.0", "id": 9, "method": "tools/call", "params": "pas un objet"})
-check(bad.get("id") == 9 and bad.get("error", {}).get("code") == -32603, "paramètres malformés : erreur -32603", bad)
+check(bad.get("id") == 9 and bad.get("error", {}).get("code") == -32602 and "objet JSON attendu" in bad["error"]["message"],
+      "paramètres malformés : erreur -32602 (Invalid params ; -32603 avant, le code d'une erreur interne)", bad)
 out, err = tool("memory_add", type="fact", title="", body="sans titre")
 check(err and "titre vide" in out, "memory_add sans titre : l'erreur est rendue au modèle", out)
 

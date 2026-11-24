@@ -591,11 +591,14 @@ def auto_learn(cfg=None) -> list:
     cc = (cfg or load_config()).get("compact") or {}
     if not cc.get("enabled", True) or not cc.get("apprendre_auto", True):
         return []
-    groups = {}
+    groups, seen = {}, {}
     for cmd, text in _samples():
         name = program(cmd)
+        if name:
+            seen.setdefault(name, []).append((cmd, text))
         if name and _learnable(name) and not _forgotten(name, cc) and not _rules(name, cc):
             groups.setdefault(name, []).append((cmd, text))
+    _recheck(cc, seen)
     new = []
     for name, samples in sorted(groups.items()):
         if len(samples) < 3:
@@ -604,7 +607,8 @@ def auto_learn(cfg=None) -> list:
         if not rows:
             continue
         filt = {"nom": name, "cmd": re.escape(name) + r"(?=\s|$)", "drop": [r[5] for r in rows[:12]],
-                "auto": time.strftime("%Y-%m-%d")}
+                "auto": time.strftime("%Y-%m-%d"), "preuve": _proof(samples),
+                "jusqu": time.strftime("%Y-%m-%d", time.localtime(time.time() + KEEP_DAYS * 86400))}
         drop, kind = [re.compile(x) for x in filt["drop"]], family(name) or "perso"
         before = sum(len(t if kind == "perso" else compact_text(t, kind)) for _, t in samples)
         after = sum(len(compact_text(t, kind, drop)) for _, t in samples)
@@ -625,6 +629,57 @@ def auto_learn(cfg=None) -> list:
                   f"(−{100 - 100 * b // max(1, a)} %), erreurs et traces toujours gardées · retirer : "
                   f"`{CMD} compact --oublier \"{f['nom']}\"`")
     return [(f["nom"], a, b) for f, a, b in new]
+
+
+KEEP_DAYS = 180  # un filtre appris est revu à cette échéance (étape 15) : gardé s'il fait encore gagner, sinon retiré
+
+
+def _proof(samples) -> str:
+    """Preuve d'un filtre appris : la commande d'une sortie qui l'a fait apprendre, masquée, courte."""
+    from .privacy import mask
+    return mask(" ".join(str(samples[0][0]).split())[:160])[0] if samples else ""
+
+
+def _recheck(cc, seen) -> None:
+    """Filtres appris arrivés à échéance : prolongés s'ils retirent encore assez de bruit des sorties récentes de leur
+    commande (preuve renouvelée), retirés sinon, et c'est annoncé. Les filtres écrits à la main ne sont jamais touchés."""
+    today = time.strftime("%Y-%m-%d")
+    due = [f for f in cc.get("filtres") or [] if isinstance(f, dict) and f.get("auto") and str(f.get("jusqu") or "9") < today]
+    if not due:
+        return
+    keep, gone = {}, []
+    for f in due:
+        samples = seen.get(f.get("nom")) or []
+        try:
+            drop = [re.compile(x) for x in f.get("drop") or []]
+        except re.error:
+            drop, samples = [], []
+        kind = family(f.get("nom") or "") or "perso"
+        before = sum(len(t if kind == "perso" else compact_text(t, kind)) for _, t in samples)
+        after = sum(len(compact_text(t, kind, drop)) for _, t in samples)
+        if samples and before - after >= max(cc.get("min_gain", 0.3) * before, cc.get("min_saved", 600) * len(samples)):
+            keep[f.get("nom")] = _proof(samples)
+        else:
+            gone.append(f.get("nom"))
+    from .common import update_config
+    from .eco import _announce
+    until = time.strftime("%Y-%m-%d", time.localtime(time.time() + KEEP_DAYS * 86400))
+
+    def change(c):
+        cur = c.setdefault("compact", {})
+        out = []
+        for f in cur.get("filtres") or []:
+            due_now = isinstance(f, dict) and f.get("auto") and str(f.get("jusqu") or "9") < today
+            if due_now and f.get("nom") in gone:
+                continue
+            if due_now and f.get("nom") in keep:
+                f = dict(f, jusqu=until, preuve=keep[f["nom"]])
+            out.append(f)
+        cur["filtres"] = out
+    update_config(change)
+    for name in gone:
+        _announce(f"🧹 Filtre de sortie appris pour « {name} » retiré : il ne retirait plus assez de bruit "
+                  f"(revu après {KEEP_DAYS} jours) ; il se réapprend tout seul si le bruit revient")
 
 
 def forget_filter(command) -> str:

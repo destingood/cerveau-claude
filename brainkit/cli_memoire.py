@@ -14,8 +14,10 @@ import os
 from . import index as idx
 from . import journal, search
 from .cli_commun import body_of, die, node_line, project_arg, refresh_views, types_of, wiki_meta
-from .common import PROJECTS_DIR, est_tokens, fmt_date, fold, load_config, log, short, slugify
+from .common import PROJECTS_DIR, est_tokens, fmt_date, fold, load_config, log, now_iso, short, slugify
 from .store import TYPES, Brain, bump_hits, clean_tags, normalize_type, priority
+
+RESULTATS = []  # souvenirs du dernier `q` ({id, type, title, project, score}), lus par le serveur MCP
 
 
 def cmd_q(a):
@@ -25,17 +27,21 @@ def cmd_q(a):
     text = " ".join(a.text)
     if a.at:
         from . import dates, history
-        day = dates.parse(a.at)
+        day = dates.parse(a.at, nearest=True)  # « --at 15/10 » : le 15/10 le plus proche, pas celui de l'an prochain
         if not day:
             die(f"date illisible : « {a.at} » (ex. 15/10, hier, 2026-10-15)")
         data, label = history.state_at(day.replace("-", "") + "-235959")
-        if data is None:
-            die(f"pas d'état connu au {fmt_date(day)} : {label}")
+        rebuilt = data is None  # avant le premier instantané gardé (ou aucun) : reconstruit d'après les dates
+        if rebuilt:
+            from . import temps
+            data = temps.state_on(Brain.load().data, day)
         b = Brain(data)
         import datetime as _dt
         res = search.search_memories(b, text, limit=a.k, include_archived=False, expand=False, use_cache=False,
                                      fuse=True, today=_dt.date.fromisoformat(day))
-        print(f"🕰️ Le cerveau tel qu'il était le {fmt_date(day)} (source : {label}, à 30 min près) :")
+        print(f"🕰️ Le cerveau tel qu'il était le {fmt_date(day)} " + (
+            f"(reconstruit d'après les dates ; le texte des souvenirs est celui d'aujourd'hui — {label}) :" if rebuilt
+            else f"(source : {label}, à 30 min près) :"))
         if res and res[0].get("via") == "fiche":
             print(res.pop(0)["node"]["body"])
         for i, r in enumerate(res, 1):
@@ -57,6 +63,9 @@ def cmd_q(a):
             res += graph.expand(b, graph.ensure(b), res, {r["node"]["id"] for r in res}, limit=3, types=types)
         except Exception as exc:
             log(f"q : expansion par le graphe : {exc!r}")
+    # Les souvenirs trouvés, tels quels : le serveur MCP en fait le structuredContent de memory_search.
+    RESULTATS[:] = [{"id": r["node"]["id"], "type": r["node"]["type"], "title": r["node"]["title"],
+                     "project": r["node"].get("project"), "score": round(float(r.get("score") or 0), 3)} for r in res]
     if a.json:
         rows = [{"id": fiche["node"]["id"], "type": "fiche", "title": fiche["node"]["title"], "body": fiche["node"]["body"],
                  "members": fiche["fiche"]["members"], "via": "fiche"}] if fiche else []
@@ -72,10 +81,16 @@ def cmd_q(a):
         hidden = sum(1 for r in res if r["node"]["id"] in cited)
         res = [r for r in res if r["node"]["id"] not in cited]  # déjà lus dans la fiche : pas deux fois
     if res:
+        from . import temps
+        order, against = temps.contradictions(b.edges, [r["node"] for r in res])  # le plus récent devant (étape 12)
+        by_id = {r["node"]["id"]: r for r in res}
+        res = [by_id[n["id"]] for n in order]
         print(f"Souvenirs ({len(res)}" + (f", +{hidden} déjà dans la fiche" if hidden else "") + ") :")
         for i, r in enumerate(res, 1):
             n = r["node"]
             line = f"{i}. {node_line(n, 110 if fiche else 260)}"  # après une fiche : des renvois courts suffisent
+            if n["id"] in against:
+                line += f"  ⚠ contredit par `{against[n['id']]}`, plus récent"
             if n.get("project") and n["type"] != "project":
                 line += f" · projet {n['project']}"
             via = r.get("via") or ""
@@ -184,6 +199,37 @@ def _search_sessions(text, project=None, limit=3):
     return [by_id[r["key"]] for r in res]
 
 
+def time_meta(a, meta, node=None) -> dict:
+    """--depuis, --jusqu, --niveau → meta (valid_from, valid_to, niveau) ; « none » les retire. Une date illisible ou un
+    début après la fin arrêtent tout, avant la moindre écriture."""
+    from . import dates, temps
+    for opt, key, near in (("depuis", "valid_from", True), ("jusqu", "valid_to", False)):
+        raw = getattr(a, opt, None)
+        if raw is None:
+            continue
+        if fold(raw) in ("none", "aucun", "aucune", "-", ""):
+            meta.pop(key, None)
+            continue
+        d = dates.parse(raw, nearest=near)
+        if not d:
+            die(f"date illisible pour --{opt} : « {raw} » (ex. 01/09, 31/12/2026, il y a 3 mois, demain)")
+        meta[key] = d
+    raw = getattr(a, "niveau", None)
+    if raw is not None:
+        if fold(raw) in ("none", "aucun", "-", ""):
+            meta.pop("niveau", None)
+        else:
+            level = temps.normalize_level(raw)
+            if not level:
+                die(f"niveau inconnu « {raw} » — niveaux : {', '.join(temps.LEVELS)}")
+            meta["niveau"] = level
+    start = meta.get("valid_from") or (temps.day(node.get("created")) if node else now_iso()[:10])
+    if start and meta.get("valid_to") and meta["valid_to"] < start:
+        die(f"fin de validité ({fmt_date(meta['valid_to'])}) avant le début ({fmt_date(start)}) : rien n'est enregistré "
+            "— donne aussi --depuis, ou une autre fin")
+    return meta
+
+
 def cmd_add(a):
     from . import dates, graph
     body = body_of(a) or ""
@@ -218,7 +264,8 @@ def cmd_add(a):
         from . import reconcile
         dec, why, node = None, [], True
         if not a.force and not a.replaces:
-            dec = reconcile.decide(b, ntype, a.title, body, pid)  # mêmes règles que mem0 / Zep, sans LLM
+            dec = reconcile.decide(b, ntype, a.title, body, pid,  # mêmes règles que mem0 / Zep, sans LLM
+                                   period=time_meta(a, {}))  # (dates écrites : vérifiées avant toute écriture)
             if dec["action"] == "merge":
                 n = dec["target"]
                 merged_body = n.get("body", "")
@@ -233,6 +280,7 @@ def cmd_add(a):
                 why = dec["why"]
         if node:
             meta = {"due": due} if due else {}
+            time_meta(a, meta)
             if a.keys:
                 meta["keys"] = " ".join(a.keys.split())
             wiki_meta(a, meta)
@@ -245,7 +293,12 @@ def cmd_add(a):
             elif target and target["id"].startswith("c--"):
                 print(f"(remplacement ignoré : `{target['id']}` est la page d'un ami, en lecture seule — la tienne est créée)")
                 target = None
-            if target and b.supersede(created, target["id"]):
+            from . import temps
+            if target and temps.starts_before(node, target):  # le nouveau commence avant l'ancien : pas un remplaçant
+                print(f"(remplacement ignoré : `{created}` commence avant `{target['id']}` — les deux restent ; "
+                      f"si c'est l'inverse : `brain supersede {target['id']} {created}`)")
+                target = None
+            if target and b.supersede(created, target["id"], why=getattr(a, "why", None)):
                 print(f"↻ remplace `{target['id']}` ({target['title']}" + (f" — {', '.join(why)}" if why else "")
                       + f") : archivé avec sa date de fin, consultable : `brain show {target['id']}`")
             elif dec:
@@ -268,6 +321,12 @@ def cmd_add(a):
             print(f"✓ mémorisé `{node['id']}` [{TYPES[ntype]}]{extra}"
                   + (f" · échéance {dates.human(due_txt)}" if due_txt else "")
                   + (f" · étiquettes auto : {', '.join(tags)}" if auto_tags and tags else ""))
+            if a.depuis is None and a.jusqu is None:  # dates dites dans le texte : proposées, jamais posées en silence
+                from . import temps
+                said = temps.text_dates(f"{a.title}\n{body}")
+                opts = " ".join(f"--{'depuis' if k == 'valid_from' else 'jusqu'} {fmt_date(v)}" for k, v in said.items())
+                if opts:
+                    print(f"📅 dates dites dans le texte : `brain edit {node['id']} {opts}` si elles disent quand c'est vrai")
     from . import mots
     sug = []
     if created:
@@ -287,10 +346,19 @@ def cmd_supersede(a):
         new, old = b.get(a.new), b.get(a.old)
         if not new or not old:
             die(f"introuvable : {a.new if not new else a.old}")
-        if not b.supersede(new["id"], old["id"]):
+        from . import temps
+        if temps.starts_before(new, old):
+            die(f"`{new['id']}` commence ({fmt_date(temps.valid_from(new))}) avant `{old['id']}` "
+                f"({fmt_date(temps.valid_from(old))}) : ce n'est pas son remplaçant — inverse les deux, ou corrige "
+                "les dates (`brain edit … --depuis …`)")
+        if not b.supersede(new["id"], old["id"], why=a.why):
             die("remplacement impossible (même souvenir ?)")
-        print(f"✓ `{new['id']}` remplace `{old['id']}` — l'ancien est archivé (valable jusqu'à aujourd'hui), "
-              f"toujours consultable : `brain show {old['id']}`")
+        end = old["meta"]["valid_to"]
+        state = (f"encore vrai jusqu'au {fmt_date(end)} (le nouveau commence ensuite), archivé le lendemain"
+                 if old.get("status", "active") == "active" else f"archivé, valable jusqu'au {fmt_date(end)}")
+        print(f"✓ `{new['id']}` remplace `{old['id']}` — l'ancien est {state}, "
+              f"toujours consultable : `brain show {old['id']}`" + ("" if a.why else
+              f" · la raison, si tu la connais : `brain supersede {new['id']} {old['id']} --parce-que \"…\"`"))
     refresh_views()
 
 
@@ -340,6 +408,16 @@ def cmd_edit(a):
             fields["meta"] = meta
         if a.resume is not None or a.sources is not None or a.domaine is not None or a.commun is not None:
             fields["meta"] = wiki_meta(a, dict(fields.get("meta") or n.get("meta") or {}))
+        if a.depuis is not None or a.jusqu is not None or a.niveau is not None:
+            fields["meta"] = time_meta(a, dict(fields.get("meta") or n.get("meta") or {}), n)
+            from . import temps
+            if temps.expired({**n, "meta": fields["meta"], "status": "active"}) and not a.unarchive:
+                fields["status"] = "archived"  # fin déjà passée : archivé tout de suite, comme le ferait l'entretien
+        if a.revu:
+            from . import temps
+            fields["meta"] = temps.reviewed(fields.get("meta") or n.get("meta") or {})
+        if a.verifie:  # relu par l'utilisateur : plus mis de côté (garde.py)
+            fields["source"] = "verifie"
         if a.path:
             if n["type"] != "project":
                 die("--path ne s'applique qu'à un projet")
@@ -353,7 +431,8 @@ def cmd_edit(a):
             b.update(n["id"], **fields)
         except ValueError as exc:
             die(str(exc))
-        print(f"✓ modifié `{n['id']}`")
+        print(f"✓ modifié `{n['id']}`" + (f" · relu : prochaine revue dans {fields['meta']['revue_delai']} j"
+                                          if a.revu else ""))
     refresh_views()
 
 
@@ -433,13 +512,17 @@ def cmd_show(a):
         if members:
             print("souvenirs : " + " · ".join(f"`{x['id']}`" for x in members[:20]))
     m_ = n.get("meta") or {}
-    if m_.get("superseded_by"):
-        print(f"↻ remplacé par `{m_['superseded_by']}` — valable du {fmt_date(n.get('created'))} au {fmt_date(m_.get('valid_to'))}")
-    olds = [e["to"] for e in b.edges if e["from"] == n["id"] and e["rel"] == "supersedes"]
-    if olds:
-        print("↻ remplace : " + ", ".join(f"`{o}`" for o in olds))
+    from . import temps
+    print(f"valable {temps.span(n)} · {temps.axes_line(n, b.nodes)}"
+          + (f" · fin : {m_['end_reason']}" if m_.get("end_reason") and not m_.get("superseded_by") else ""))
+    chain = temps.lineage(b, n["id"])
+    if len(chain) > 1:  # plus récent ← … ← plus ancien, avec dates et raisons
+        print("↻ lignée : " + temps.lineage_line(chain))
     if m_.get("keys"):
         print(f"mots-clés : {m_['keys']}")
+    from .garde import caution, flagged
+    if flagged(n):
+        print(caution(n).replace(f" ; `show {n['id']}` pour le lire", f" — s'il est sûr : `brain edit {n['id']} --verifie`"))
     if n.get("body"):
         print("\n" + n["body"])
     if getattr(a, "history", False):

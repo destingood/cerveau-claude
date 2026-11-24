@@ -26,7 +26,9 @@
           {
             "type": "command",
             "command": "python",
-            "args": ["${CLAUDE_PROJECT_DIR}/plateforme/.claude/hooks/protect_paths.py"],
+            "args": [
+              "${CLAUDE_PROJECT_DIR}/plateforme/.claude/hooks/protect_paths.py"
+            ],
             "timeout": 15,
             "onFailure": "block"
           }
@@ -38,9 +40,39 @@
           {
             "type": "command",
             "command": "python",
-            "args": ["${CLAUDE_PROJECT_DIR}/plateforme/.claude/hooks/guard_shell.py"],
+            "args": [
+              "${CLAUDE_PROJECT_DIR}/plateforme/.claude/hooks/guard_shell.py"
+            ],
             "timeout": 15,
             "onFailure": "block"
+          }
+        ]
+      },
+      {
+        "matcher": "Edit|Write",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "python",
+            "args": [
+              "${CLAUDE_PROJECT_DIR}/.claude/hooks/claude_md.py"
+            ],
+            "timeout": 15
+          }
+        ]
+      }
+    ],
+    "Stop": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "python",
+            "args": [
+              "${CLAUDE_PROJECT_DIR}/.claude/hooks/verifier.py"
+            ],
+            "timeout": 600,
+            "statusMessage": "Vérification du plugin…"
           }
         ]
       }

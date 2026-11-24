@@ -26,8 +26,9 @@ def _mk(y, m, d):
         return None
 
 
-def parse(text, today=None):
-    """Texte → date ISO « AAAA-MM-JJ » (année absente : la prochaine occurrence, à 30 jours de retard près)."""
+def parse(text, today=None, nearest=False):
+    """Texte → date ISO « AAAA-MM-JJ » (année absente : la prochaine occurrence, à 30 jours de retard près ;
+    nearest=True : l'occurrence la plus proche, passée ou future, pour un début de validité comme « depuis le 01/09 »)."""
     today = today or _dt.date.today()
     t = fold(text or "").strip()
     if not t or t in ("none", "aucune", "-"):
@@ -67,6 +68,8 @@ def parse(text, today=None):
         y = int(year)
         y = y + 2000 if y < 100 else y
         d = _mk(y, month, day)
+    elif nearest:
+        d = _nearest(month, day, today) if _mk(2024, month, day) else None
     else:
         d = _mk(today.year, month, day)
         if d and (today - d).days > 30:

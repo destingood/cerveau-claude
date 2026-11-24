@@ -1,6 +1,6 @@
 ---
 name: animation
-description: "Animer un site ou une appli : durée, courbe et chorégraphie (CSS, GSAP, Lottie), anime.js (timelines, SVG, scroll, texte), animations de composants, revue et saccades (skills d'Emil Kowalski), site entier animé. Pas pour une vidéo."
+description: "Quand il faut animer un site ou une appli (durée, courbe, timeline, scroll, SVG, texte), revoir des animations qui saccadent ou choisir une librairie d'animation. Pas pour une vidéo."
 metadata:
   triggers: >-
     « motion design » « motion-design » « règle la durée de cette animation » « affine la courbe d'easing »
@@ -12,7 +12,7 @@ metadata:
     « skills d'emil » « emil kowalski » « emil-kowalski » « anime ce bouton » « micro-interaction »
     « revois mes animations » « audite les animations » « trop d'animations » « l'animation saccade »
     « comment s'appelle cet effet » « teste le pire cas » « casse mon interface » « fais plus natif sur mobile »
-    « quelle librairie choisir » « plusieurs versions de ce composant » Ne pas utiliser pour « animation commerciale »
+    « quelle librairie choisir » « plusieurs versions de ce composant » « fais bouger le bouton » Ne pas utiliser pour « animation commerciale »
     « animation en magasin » « film d'animation » « montage vidéo »
 ---
 

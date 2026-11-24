@@ -1,6 +1,6 @@
 ---
 name: design
-description: "Design d'un site ou d'une appli : direction artistique, critique et finition d'interface, style d'une marque connue (DESIGN.md), design relevé sur un site, capture ou maquette transformée en vrai site. Pas pour un logo ni une animation seule."
+description: "Quand il faut une direction artistique pour un site ou une appli, critiquer ou finir une interface, reprendre le style d'une marque ou d'un site, ou coder une maquette. Pas pour un logo ni une animation."
 metadata:
   triggers: >-
     « direction artistique » « refais le design » « refais ma landing page » « design pro » « design premium »
