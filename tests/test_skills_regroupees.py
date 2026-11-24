@@ -12,7 +12,11 @@ dans l'en-tête `metadata.triggers`, hors de la liste des skills que Claude Code
   ne déclenche rien ; une skill sur demande est proposée en commande à taper ;
 - catalogue gardé d'un message à l'autre : un SKILL.md inchangé n'est pas relu, un aiguillage modifié l'est (lui seul) ;
 - corrections de l'audit : chemin du script de scrapegraph, test cité par image-to-code, déclencheurs de logo-design ;
-- mode classique : les anciennes skills posées par le cerveau sont retirées, les nouvelles posées avec leurs fiches.
+- mode classique : les anciennes skills posées par le cerveau sont retirées, les nouvelles posées avec leurs fiches ;
+- étape 18 (six skills de plus, 23 skills) : cuisine-moi, passation, preuve-avant-fini, apprendre-en-livrant,
+  factures-recus, et l'auditeur de skills tierces dans securite ; chaque description dit QUAND s'en servir (« Quand… »,
+  « Avant… »), jamais la marche à suivre ; chaque skill adaptée cite son auteur, sa licence et son adresse, avec la
+  licence à côté ; la liste des 23 skills tient toujours dans le même plafond (5 000 caractères).
 
 Lancement : python tests/test_skills_regroupees.py   (sortie : « N vérifications OK, M échec(s) »)"""
 import json
@@ -62,7 +66,10 @@ GROUPS = {"design": ["taste-skill", "impeccable", "design-md", "skillui", "image
           "recherche": ["recherche", "perplexity"]}
 KEPT = ["brain", "obsidian", "ecommerce", "fortnite", "carriere-commerciale", "youtube", "replica", "securite",
         "spec-kit", "rea", "automaton", "logo-design", "public-apis"]
-MANUAL = {"spec-kit", "rea", "automaton"}
+NEW18 = ["cuisine-moi", "passation", "preuve-avant-fini", "apprendre-en-livrant", "factures-recus"]  # étape 18
+KEPT += NEW18
+MANUAL = {"spec-kit", "rea", "automaton", "cuisine-moi", "passation"}
+COUNT = 23  # 18 de l'étape 5, puis les 5 skills de l'étape 18 (l'auditeur entre dans securite)
 EXPECTED = set(GROUPS) | set(KEPT)
 GROUP_OF = {old: g for g, olds in GROUPS.items() for old in olds}
 # Fichiers des anciennes skills regroupées (git ls-tree de d695ddb, cerveau 8.27.0) : SKILL.md devient fiche.md.
@@ -84,7 +91,7 @@ def head(name) -> dict:
 @section
 def disposition():
     here = {d.name for d in SKILLS.iterdir() if (d / "SKILL.md").is_file()}
-    check(here == EXPECTED, "les 18 skills attendues, ni plus ni moins",
+    check(here == EXPECTED and len(here) == COUNT, f"les {COUNT} skills attendues, ni plus ni moins",
           (sorted(here - EXPECTED), sorted(EXPECTED - here)))
     check(not (SKILLS / "humanizer").exists() and not (SKILLS / "vercel").exists(),
           "skills humanizer et vercel retirées (décision E8 : leurs plugins les fournissent)")
@@ -97,7 +104,7 @@ def disposition():
     check(not missing, f"les {len(OLD_FILES)} fichiers des anciennes skills sont sous leur groupe (fiche, références, "
           "scripts, licence)", missing)
     stray = [p.relative_to(SKILLS).as_posix() for p in SKILLS.glob("*/*/SKILL.md")]
-    check(not stray, "aucun SKILL.md dans une fiche : Claude Code ne liste que les 18 skills", stray)
+    check(not stray, f"aucun SKILL.md dans une fiche : Claude Code ne liste que les {COUNT} skills", stray)
     nolic = [f"{g}/{o}" for o, g in GROUP_OF.items()
              if not re.search(r"licen[cs]e|\bMIT\b|Apache|d'après|officiel",
                               (SKILLS / g / o / "fiche.md").read_text(encoding="utf-8"))]
@@ -150,9 +157,10 @@ def entetes():
                                                              if name in MANUAL else "Claude peut la charger seul"))
     total = sum(LISTING.values())
     shown = sum(n for k, n in LISTING.items() if k not in MANUAL)
-    print(f"· liste des skills du cerveau : {total} caractères pour 18 skills ({shown} pour les 15 que Claude Code "
-          f"montre au modèle ; 29 000 environ pour les 33 d'avant)")
-    check(len(LISTING) == 18 and total <= 5000, f"la liste des 18 skills tient en 5 000 caractères ({total})")
+    print(f"· liste des skills du cerveau : {total} caractères pour {len(LISTING)} skills ({shown} pour les "
+          f"{len(LISTING) - len(MANUAL)} que Claude Code montre au modèle ; 4 180 pour les 18 de l'étape 5, "
+          f"29 000 environ pour les 33 d'avant)")
+    check(len(LISTING) == COUNT and total <= 5000, f"la liste des {COUNT} skills tient en 5 000 caractères ({total})")
 
 
 @section
@@ -250,6 +258,19 @@ ROUTES = [  # (message, skill attendue) : demandes du plan, anciens noms de skil
     ("anime ce bouton", "cerveau:animation"),
     ("anime le logo de mon site", "cerveau:animation"),
     ("trouve une API gratuite pour la météo", "cerveau:public-apis"),
+    # étape 18
+    ("audite cette skill avant que je l'installe", "cerveau:securite"),
+    ("cette skill est-elle sûre ?", "cerveau:securite"),
+    ("cuisine-moi sur ma boutique", "cerveau:cuisine-moi"),
+    ("challenge mon plan pour la map", "cerveau:cuisine-moi"),
+    ("fais une passation pour demain", "cerveau:passation"),
+    ("tu as vraiment vérifié que les tests passent ?", "cerveau:preuve-avant-fini"),
+    ("mets ce tuto en pratique", "cerveau:apprendre-en-livrant"),
+    ("transforme cette vidéo en plan d'action", "cerveau:apprendre-en-livrant"),
+    ("range mes factures de 2026", "cerveau:factures-recus"),
+    ("fais un tableau pour mon comptable", "cerveau:factures-recus"),
+    ("tire au sort le gagnant du concours instagram", "cerveau:ecommerce"),
+    ("analyse mon appel de vente d'hier", "cerveau:carriere-commerciale"),
 ]
 
 
@@ -260,7 +281,7 @@ def reflexe():
     cat = skills.index(None, {"plugins": True})
     names = {s["name"] for s in cat}
     check({f"cerveau:{n}" for n in EXPECTED - {"brain"}} <= names and "cerveau:brain" not in names,
-          "catalogue : les 17 skills métier du plugin, jamais celle du cerveau lui-même", sorted(names))
+          f"catalogue : les {COUNT - 1} skills métier du plugin, jamais celle du cerveau lui-même", sorted(names))
     check({"humanizer:humanizer", "vercel:deploy", "vercel:react-best-practices", "vercel:vercel-cli"} <= names
           and not any(n.startswith((HUMANIZER, VERCEL)) for n in names),
           "plugins synchronisés sous un identifiant : nommés comme l'outil Skill, SKILL.md à la racine compris",
@@ -279,7 +300,11 @@ def reflexe():
                        ("ma fille regarde un film d'animation", "cerveau:animation"),
                        ("on fait une animation commerciale en magasin samedi", "cerveau:animation"),
                        ("le design de la facture est simple", "cerveau:design"),
-                       ("fais une base de données SQL pour les commandes", "cerveau:obsidian")):
+                       ("fais une base de données SQL pour les commandes", "cerveau:obsidian"),
+                       ("une recette de cuisine pour moi ce soir", "cerveau:cuisine-moi"),
+                       ("la passation de pouvoir au conseil municipal", "cerveau:passation"),
+                       ("crée une facture pour mon client", "cerveau:factures-recus"),
+                       ("la preuve que le colis est parti", "cerveau:preuve-avant-fini")):
         got = [r["name"] for r in skills.match(msg, cat) if r["name"].startswith(never)]
         check(not got, f"« {msg} » : pas de {never.rstrip(':') if never != 'cerveau:' else 'skill du cerveau'} "
               "(un mot seul ne déclenche rien)", got)
@@ -398,6 +423,52 @@ def readme():
     check(all(f"/cerveau:{g}" in text for g in GROUPS) and "plugins (humanizer, vercel)" in text,
           "README : les cinq aiguillages, et humanizer et vercel renvoyés à leurs plugins")
     check((CODE / "README.md").read_text(encoding="utf-8") == text, "README.md = celui que génère brain publish")
+
+
+# ------------------------------------------------------------------ 6. étape 18 : six skills de plus, deux pratiques
+# Sources adaptées : (skill, fichier qui cite la source, auteur, adresse, titulaire du LICENSE posé à côté).
+ADAPTED = [("cuisine-moi", "cuisine-moi/SKILL.md", "Matt Pocock", "github.com/mattpocock/skills", "Matt Pocock"),
+           ("passation", "passation/SKILL.md", "Matt Pocock", "github.com/mattpocock/skills", "Matt Pocock"),
+           ("preuve-avant-fini", "preuve-avant-fini/SKILL.md", "Jesse Vincent", "github.com/obra/superpowers",
+            "Jesse Vincent"),
+           ("apprendre-en-livrant", "apprendre-en-livrant/SKILL.md", "Michał Parkola",
+            "github.com/michalparkola/tapestry-skills", "Tapestry Skills Contributors"),
+           ("securite", "securite/audit-skills/fiche.md", "Alireza Rezvani", "github.com/alirezarezvani/claude-skills",
+            "Alireza Rezvani")]
+HOW = re.compile(r"\ben \d+ étapes\b|\bpuis\b|\bensuite\b|→|:\s*\w+(?:\s\w+)?,\s\w+(?:\s\w+)?,\s\w+(?:\s\w+)?,"
+                 r"\s(?:puis|et)\b")
+
+
+@section
+def etape18():
+    for name in sorted(EXPECTED - {"brain"}):  # brain : écrite par install.py (fichier généré)
+        desc = head(name).get("description", "")
+        check(desc.startswith(("Quand ", "Avant ")), f"{name} : la description dit quand s'en servir", desc[:60])
+        check(not HOW.search(desc), f"{name} : la description ne résume pas la marche à suivre", desc)
+    for name, where, author, url, holder in ADAPTED:
+        text = (SKILLS / where).read_text(encoding="utf-8")
+        lic = SKILLS / Path(where).parent / "LICENSE"
+        check(author in text and url in text and "licence MIT" in text and "`LICENSE`" in text,
+              f"{name} : auteur, adresse et licence de la source cités ({where})")
+        check(lic.is_file() and lic.read_text(encoding="utf-8").startswith("MIT License")
+              and holder in lic.read_text(encoding="utf-8"), f"{name} : licence MIT de la source posée à côté ({holder})")
+    fac = (SKILLS / "factures-recus" / "SKILL.md").read_text(encoding="utf-8")
+    check(not (SKILLS / "factures-recus" / "LICENSE").exists() and "sans son texte" in fac and "ComposioHQ" in fac,
+          "factures-recus : écrite de zéro (la source n'a pas de licence : idées seulement, aucun LICENSE recopié)")
+    check("1er septembre 2026" in fac and "economie.gouv.fr" in fac and "impots.gouv.fr" in fac,
+          "factures-recus : réception des factures électroniques datée, avec ses sources officielles")
+    sec = (SKILLS / "securite" / "SKILL.md").read_text(encoding="utf-8")
+    check("](audit-skills/fiche.md)" in sec and (SKILLS / "securite" / "audit-skills" / "scripts" / "auditer.py").is_file()
+          and (CODE / "brainkit" / "skills_audit.py").is_file(),
+          "securite : l'auditeur de skills tierces lié depuis la skill, son script et son moteur présents")
+    for name, script in (("ecommerce", "scripts/tirage.py"), ("carriere-commerciale", "scripts/appel.py"),
+                         ("factures-recus", "scripts/factures.py")):
+        body = (SKILLS / name / "SKILL.md").read_text(encoding="utf-8")
+        check(script.rsplit("/", 1)[-1] in body and (SKILLS / name / script).is_file(),
+              f"{name} : {script} présenté par la skill et présent")
+    check("references/08-analyser-un-appel.md" in
+          (SKILLS / "carriere-commerciale" / "SKILL.md").read_text(encoding="utf-8"),
+          "carriere-commerciale : la fiche d'analyse d'un appel de vente est routée")
 
 
 if not remove_tree(TMP, wait=60):

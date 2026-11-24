@@ -1,13 +1,14 @@
 ---
 name: securite
-description: "Contrôle sécurité avant de livrer ou relire du code exposé (site, API, formulaire, upload, connexion, webhook, prompt nourri de contenu externe) : règle et bibliothèque sûre par faille. Pas pour un script local."
+description: "Avant de livrer ou relire du code exposé (site, API, formulaire, upload, connexion, webhook, prompt nourri de contenu externe) ou d'installer une skill tierce. Pas pour un script local."
 metadata:
   triggers: >-
-    « sécurise ce code » « faille / XSS / injection SQL / CSRF » « est-ce que c'est sécurisé » Ne pas utiliser pour un
-    script local sans entrée extérieure.
+    « sécurise ce code » « faille / XSS / injection SQL / CSRF » « est-ce que c'est sécurisé » « audite cette skill »
+    « cette skill est-elle sûre » « vérifie cette skill avant de l'installer » « skill tierce » « skill-security-auditor »
+    « je peux installer cette skill » Ne pas utiliser pour un script local sans entrée extérieure.
 ---
 
-# Sécurité : liste de contrôle du code exposé
+# Sécurité : liste de contrôle du code exposé, audit des skills tierces
 
 Principe : prendre l'outil qui rend la faille impossible par défaut (protection intégrée du framework d'abord,
 sinon une bibliothèque de la liste) plutôt que de compter sur la vigilance à chaque ligne. Le moins de code qui marche
@@ -52,3 +53,7 @@ Pour chacune : où va-t-elle (base, HTML, chemin, URL appelée, commande, prompt
 - Dépendances : versions figées ; `pip-audit` ou `npm audit` avant de livrer.
 - Moindre privilège : serveur local sur 127.0.0.1, clés aux droits minimaux.
 - Ce qui n'a pas été vérifié (test, outil, doc) : le dire, ne pas l'affirmer.
+
+## 4. Avant d'installer une skill ou un plugin tiers
+Suivre [audit-skills/fiche.md](audit-skills/fiche.md) : l'auditeur `audit-skills/scripts/auditer.py` lit le dossier
+sans rien lancer et rend « sûre », « à vérifier » ou « refusée », avec les raisons ; à relancer à chaque mise à jour.

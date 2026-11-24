@@ -456,6 +456,8 @@ def show(ref, cfg=None) -> str:
           else "  description non affichée (contrôle non passé) : la lire dans le fichier avant d'adopter"),
          f"  dossier : {en['dir']}",
          "  fichiers : " + ", ".join(f"{rel} ({len(d)} o)" for rel, d in sorted(files.items()) if rel != MANIFEST)]
+    from .skills_audit import audit, summary_line  # l'auditeur de skills tierces (étape 18) : raisons seulement
+    L.append("  " + summary_line(audit(en["dir"])))
     if scripts:
         L.append("  scripts (" + ("approuvés" if en["scripts_ok"] else "PAS approuvés : jamais lancés sans ton oui") + ") : "
                  + ", ".join(f"{rel} sha256 {_sha(files[rel])[:12]}" for rel in scripts))

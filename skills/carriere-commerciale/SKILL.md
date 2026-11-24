@@ -1,11 +1,12 @@
 ---
 name: carriere-commerciale
-description: "Carrière de vendeur ou de commercial dans la tech : premier poste sans diplôme, monter les échelons, salaires sourcés, CV et LinkedIn, entretiens, négociation, dyslexie au travail. Pas pour vendre à un client."
+description: "Quand l'utilisateur vise ou fait un métier de vente dans la tech : premier poste, échelons, salaires, CV, entretiens, négociation, dyslexie, débrief d'un appel de vente. Pas pour vendre à un client."
 metadata:
   triggers: >-
     « devenir vendeur » « devenir commercial » « travailler dans la vente » « vendeur en magasin »
     « conseiller de vente » « monter les échelons » « mon CV de vendeur » « préparer un entretien »
-    « négocier mon salaire » « je suis dyslexique » Ne pas utiliser pour vendre un produit à un client précis (skills
+    « négocier mon salaire » « je suis dyslexique » « analyse mon appel de vente » « débrief de mon appel »
+    « analyse ce jeu de rôle » « transcription de mon appel » Ne pas utiliser pour vendre un produit à un client précis (skills
     sales:*).
 ---
 
@@ -49,6 +50,7 @@ demande. Les marques [FAIT — source], [PRATIQUE COURANTE] (sources secondaires
 | 05 | Entretiens et jeux de rôle (appel de prospection, « vendez-moi ce stylo ») | `references/05-entretiens.md` | — |
 | 06 | Négocier : fixe, variable, objectif, augmentation, offre concurrente | `references/06-negocier-salaire.md` | `remuneration.py` |
 | 07 | Monter d'échelon : chiffres à tenir, preuves, promotion ou changement d'entreprise | `references/07-monter-d-echelon.md` | `progression.py` |
+| 08 | Analyser un appel de vente ou un jeu de rôle : repères chiffrés, grille de débrief, une chose à changer | `references/08-analyser-un-appel.md` | `appel.py` |
 
 Démarrages express :
 
@@ -58,6 +60,7 @@ Démarrages express :
 | « J'ai un entretien » | 05, puis jeu de rôle à voix haute avec Claude |
 | « On me propose un poste » | 06 → `remuneration.py comparer` → questions à poser avant de signer |
 | « Je veux une augmentation / passer chef de rayon » | 07 → `progression.py preuves` → 06 (la demande) |
+| « Analyse mon appel » | 08 → `appel.py` sur la transcription → débrief en quatre points → jeu de rôle du passage à refaire |
 
 ## Les outils
 
@@ -69,6 +72,7 @@ son mode d'emploi.
 |---|---|
 | `remuneration.py` | Revenu réel selon l'objectif atteint (seuil, accélérateur, plafond), net estimé ; comparaison d'offres sur l'attendu, pas sur le package annoncé |
 | `progression.py` | Journal hebdomadaire (appels, conversations, rendez-vous, signatures, chiffre) gardé dans `~/.claude/carriere/` ; taux de passage, objectif, preuves chiffrées pour CV et promotion |
+| `appel.py` | Transcription d'un appel ou d'un jeu de rôle → part de parole, questions ouvertes, monologue, reformulations, mots de remplissage, objections et réponses, prochaine étape |
 | `cv.py` | CV d'une page en HTML à imprimer en PDF ; signale les qualités sans preuve, les expériences sans chiffre, les phrases trop longues |
 
 ## Avec le cerveau

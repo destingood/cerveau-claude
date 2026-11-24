@@ -1,6 +1,6 @@
 ---
 name: youtube
-description: "Ses propres vidéos YouTube : planning, script et accroche, titre et miniature, coupes, chapitres, description et tags, Shorts, commentaires, rétention, audit. Rien n'est publié. Pas pour lire la vidéo d'un autre."
+description: "Quand l'utilisateur prépare ou analyse ses propres vidéos YouTube : planning, script, titre, miniature, coupes, chapitres, description, Shorts, commentaires, rétention, audit. Pas pour la vidéo d'un autre."
 metadata:
   triggers: >-
     « ma chaîne YouTube » « script de ma vidéo » « accroche de ma vidéo » « titre de ma vidéo » « miniature YouTube »

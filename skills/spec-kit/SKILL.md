@@ -1,6 +1,6 @@
 ---
 name: spec-kit
-description: "Construire un projet ou une grosse fonction à partir d'une spec écrite avec Spec Kit de GitHub (specify) : constitution, spec, plan, tâches, code, contrôle. Sur demande : /cerveau:spec-kit."
+description: "Quand l'utilisateur veut construire un projet ou une grosse fonction à partir d'une spec écrite, avec Spec Kit de GitHub (specify). Sur demande : /cerveau:spec-kit."
 disable-model-invocation: true
 metadata:
   triggers: >-

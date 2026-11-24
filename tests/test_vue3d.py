@@ -124,10 +124,13 @@ with Brain.edit() as b:
             e["created"], e["ended"] = "2026-06-10", "2026-07-01"
 OLD_REF = "af568b4"  # main à la 8.33.0, avant l'étape 13
 v833 = TMP / "v833"
-arch = subprocess.run(["git", "-C", str(CODE), "archive", OLD_REF, "brain.py", "brainkit", "skills"], capture_output=True)
+arch = subprocess.run(["git", "-C", str(CODE), "archive", OLD_REF, "brain.py", "brainkit"], capture_output=True)
 if arch.returncode == 0:
     v833.mkdir()
     subprocess.run(["tar", "-x", "-C", str(v833)], input=arch.stdout, check=True)
+    # le code de la 8.33.0 sur les skills d'aujourd'hui : le même cerveau des deux côtés (l'étape 18 en ajoute cinq,
+    # qui sont des nœuds de la vue ; seul le code doit différer)
+    shutil.copytree(CODE / "skills", v833 / "skills", ignore=shutil.ignore_patterns("__pycache__"))
     r = subprocess.run([sys.executable, "-I", "-S", str(v833 / "brain.py"), "viz"], capture_output=True, env=os.environ.copy(),
                        timeout=300)
     old_data = page_data(viz.VIZ_FILE) if r.returncode == 0 else None

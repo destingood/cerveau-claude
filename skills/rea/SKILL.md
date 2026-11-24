@@ -1,6 +1,6 @@
 ---
 name: rea
-description: "Rétro-ingénierie locale avec REA : binaire, APK, appli Electron, .NET, firmware, capture HAR ou PCAP — comment marche une fonction, preuves à l'appui. Sur demande : /cerveau:rea."
+description: "Quand il faut comprendre en local comment marche un binaire, un APK, une appli Electron ou .NET, un firmware ou une capture HAR ou PCAP. Sur demande : /cerveau:rea."
 disable-model-invocation: true
 metadata:
   triggers: >-

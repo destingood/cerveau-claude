@@ -1,6 +1,6 @@
 ---
 name: logo-design
-description: "Créer, refaire ou critiquer un logo : brief, trois concepts en gris, logo SVG testé à 16 px, puis kit (couleurs, versions, favicon, icônes d'appli, mini-charte). Pas pour animer un logo (cerveau:animation)."
+description: "Quand il faut créer, refaire ou critiquer un logo, une identité visuelle, un favicon ou une icône d'appli. Pas pour animer un logo (cerveau:animation)."
 metadata:
   triggers: >-
     « fais-moi un logo » « fais un logo » « faire un logo » « crée un logo » « créer un logo » « crée-moi un logo »

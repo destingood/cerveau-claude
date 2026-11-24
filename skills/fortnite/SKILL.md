@@ -1,6 +1,6 @@
 ---
 name: fortnite
-description: "Maps Fortnite (Créatif, UEFN) : faire monter une map en tendance sans payer — niche, Discover, titre, tags, miniatures, rétention, lancement, SEO, mesure. Pas pour jouer ni coder en Verse."
+description: "Quand une map Fortnite (Créatif, UEFN) doit gagner des joueurs sans payer : niche, Discover, titre, tags, miniatures, rétention, lancement, mesure. Pas pour jouer ni coder en Verse."
 metadata:
   triggers: >-
     « ma map fortnite » « mon île fortnite » « map UEFN » « code de map » « Discover fortnite »

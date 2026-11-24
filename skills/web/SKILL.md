@@ -1,6 +1,6 @@
 ---
 name: web
-description: "Agir sur des sites web : piloter un navigateur (agent-browser, playwright-cli : tests, captures, bugs, web vitals), extraire des données en JSON (ScrapeGraphAI), lire réseaux sociaux (Agent Reach), client d'API d'un site (rae)."
+description: "Quand il faut agir sur un site : piloter un navigateur (tests, captures, bugs, vitesse), extraire ses données en JSON, lire un réseau social ou faire un client de l'API cachée d'un site."
 metadata:
   triggers: >-
     « agent-browser » « agent browser » « installe agent-browser » « cherche les bugs de mon site »

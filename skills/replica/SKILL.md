@@ -1,6 +1,6 @@
 ---
 name: replica
-description: "Refaire sa propre version d'une app existante en 11 étapes : analyse, architecture, design, code, tests, score de parité, avis des utilisateurs, marque, lancement. Fonctions seulement, jamais le code ni la marque."
+description: "Quand l'utilisateur veut refaire sa propre version d'une app existante, de l'analyse au lancement (fonctions seulement, jamais le code ni la marque). Pas pour une boutique en ligne."
 metadata:
   triggers: >-
     « replica » « clone cette app » « refais cette app » « ma version de X » « copie cette app » « reverse engineer X »

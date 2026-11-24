@@ -1,6 +1,6 @@
 ---
 name: composants
-description: "Composants d'interface tout faits à intégrer et adapter : composants React animés (KokonutUI), boutons, loaders, cartes et formulaires HTML/CSS (Uiverse Galaxy), graphiques React animés et tableaux de bord (Bklit UI)."
+description: "Quand il faut un composant d'interface tout fait à intégrer : bouton, loader, carte, formulaire, fond ou texte animé (KokonutUI, Uiverse), graphique ou tableau de bord React (Bklit UI)."
 metadata:
   triggers: >-
     « kokonut » « kokonutui » « composant animé » « composants tout faits » « composants tout fait »

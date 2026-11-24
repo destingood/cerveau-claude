@@ -1,9 +1,10 @@
 ---
 name: ecommerce
-description: "Faire décoller une boutique en ligne sans pub (Shopify, WooCommerce, Etsy, Vinted…) : audit, SEO, GEO, réseaux, fiche produit, conversion, prix et marges, emails, gestion, conformité France, mode agence."
+description: "Quand une boutique en ligne doit vendre plus sans pub (Shopify, WooCommerce, Etsy, Vinted…) : audit, SEO, GEO, réseaux, fiches, prix et marges, emails, gestion, conformité, concours, mode agence."
 metadata:
   triggers: >-
-    « ma boutique ne vend pas » « trouve-moi des clients » « fais décoller ce site »
+    « ma boutique ne vend pas » « trouve-moi des clients » « fais décoller ce site » « tire au sort le gagnant »
+    « tirage au sort du concours » « tirage au sort équitable » « fais le tirage au sort »
 ---
 
 # 🛒 Cerveau e-commerce — le prompt maître
@@ -130,6 +131,7 @@ Charge seulement les modules utiles ; combine-les si la demande est transversale
 | Audit de tout le catalogue (titres, descriptions, images, GTIN, prix barrés, allégations) et flux Merchant Center | `python scripts/audit_catalogue.py --url <boutique>` ou `--csv export.csv --flux flux.tsv` |
 | Préparer un panel simulé (personas, consignes par lot, fil d'avis, événement) et en faire la synthèse (intention par variante et segment, objections, questions, prix acceptés) | `python scripts/panel_clients.py --aide` |
 | Relire un texte avant publication (allégations interdites, fausse urgence, partenariat sans mention, tics d'IA) | `python scripts/relire_texte.py texte.txt --type fiche\|email\|post\|annonce` |
+| Tirer au sort les gagnants d'un concours ou d'un giveaway (boutique, chaîne YouTube) : équitable, doublons retirés, graine annoncée avant pour que chacun vérifie (`engager`, `tirer`, `verifier`) ; règlement : `references/10-conformite-france.md` | `python scripts/tirage.py --aide` |
 | Publier par API officielle (Pinterest, page Facebook, Instagram professionnel) après une configuration unique ; relecture et plafond quotidien intégrés | `python scripts/publier.py --aide` (YouTube et Shopify : connecteurs officiels, module 14) |
 | Textes prêts à adapter : fiche produit, séquences d'e-mails, messages aux créateurs et partenaires, presse, demande d'avis, annonces de marketplace | `assets/modeles-textes.md` |
 | Modèles : fiche contexte, journal, rapport d'audit client | `assets/modele-contexte-boutique.md`, `assets/modele-journal.md`, `assets/modele-rapport-audit.md` |
