@@ -154,6 +154,11 @@ et three.js, sous licence MIT) sont livrées avec le plugin et intégrées à la
 - **En fin de tâche** : si tu as dit une décision ou une préférence pas encore enregistrée, Claude la note ; sinon
   le cerveau ne dit rien (pas de rappel inutile).
 - **Cartes de tes projets** (fichiers clés, où est défini quoi), à-faire datés, vue 3D, serveur MCP.
+- **La mémoire datée** : un souvenir est vrai d'une date à une autre (« vrai depuis le 01/09 », « jusqu'au 31/12 » :
+  archivé le lendemain). Quand un fait change, l'ancien est gardé avec sa date de fin et la raison, et `brain show`
+  donne la lignée (« Scaleway depuis le 24/11 ← OVH du 01/09 au 24/11, parce que trop cher »). Un lien retiré est
+  daté, pas effacé. `brain q "…" --at 15/05` montre le cerveau tel qu'il était, même au-delà des instantanés. Chaque
+  souvenir a aussi un domaine (celui de son projet) et un niveau (vision, architecture, procédure, détail).
 - **Le rêve** : l'entretien de ta mémoire se fait hors conversation, chaque jour — dates relatives rendues réelles,
   observations anciennes condensées — et ce qui demande du jugement (corrections entendues, doublons, conflits,
   à-faire en retard) est tranché par Claude au démarrage suivant : ce qui est sûr est appliqué, un doute est laissé

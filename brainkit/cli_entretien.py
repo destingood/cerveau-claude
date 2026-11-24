@@ -76,6 +76,14 @@ def cmd_consolidate(a):
                     b.nodes[e["to"]]["status"] = "archived"
                     b.nodes[e["to"]].setdefault("meta", {})["superseded_by"] = e["from"]
                     b.dirty = True
+        from . import temps
+        for n in list(b.active(own=True)):  # fin de validité écrite (`--jusqu 31/12`) passée : archivé le lendemain
+            if temps.expired(n):
+                actions.append(f"archivage (vrai jusqu'au {fmt_date(n['meta']['valid_to'])}) : `{n['id']}`")
+                if not dry:
+                    n["status"] = "archived"
+                    n["updated"] = now_iso()
+                    b.dirty = True
         merged = set()
         b.cache_similar()  # chaque souvenir découpé une fois par passage, et non une fois par comparaison
         # Passage automatique (une fois par jour, verrou du cerveau tenu) : seulement les souvenirs écrits depuis le

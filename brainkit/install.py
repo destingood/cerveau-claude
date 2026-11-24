@@ -68,7 +68,7 @@ côté de ce SKILL.md : les lire (Read) seulement quand la tâche s'y rapporte.
 |---|---|
 | Chercher (souvenirs, voisins du graphe, sessions, fichiers) | `q "mots clés" [-p projet] [-t type] [--only]` — dates comprises (« hier », « le 12/11 ») |
 | Mémoriser | `add -t <type> -T "titre court" -b "fait + pourquoi + comment appliquer" [--tags a,b] [-i 1-5] [-p .\\|none\\|id] [--due 10/11] [--replaces id] [--keys "synonymes, questions"]` |
-| Fait qui change | `add … --replaces <ancien>` (l'ancien est archivé, la chaîne reste dans `show`) |
+| Fait qui change | `add … --replaces <ancien> [--parce-que "…"]` (l'ancien est archivé, la lignée reste dans `show`) |
 | Corriger, compléter | `edit <id> [-T …] [-b …] [-a "ajout"] [-i 4] [--due "10/11"\\|none]` |
 | Voir, lister | `show <id>` · `ls [-t type] [-p projet]` · `fiche <mot>` (synthèse d'un sujet) |
 | À-faire | `todo` (par échéance) · `done <id>` |
@@ -183,12 +183,14 @@ Toutes les commandes et options de la mémoire. Commande : `{CMD} <commande>`.
 | Mémoriser | `add -t <type> -T "titre court" -b "fait + pourquoi + comment appliquer" [--tags a,b] [-i 1-5] [-p .\\|none\\|id] [--link id] [--due 10/11] [--replaces id] [--keys "synonymes, questions"] [--src utilisateur\\|verifie\\|deduit]` (étiquettes auto si absentes, liens suggérés affichés ; « hier », « dans 2 semaines » deviennent des dates réelles) |
 | Question large (« où en est la boutique ? », « le point sur… ») | `q` place d'abord la **fiche de synthèse** de la communauté dominante (phrases les plus centrales de ses souvenirs, à-faire, ids), puis les souvenirs qu'elle ne cite pas · `fiche` liste les fiches · `fiche <n°\\|mot\\|id>` |
 | Observations datées de la session (mémoire épisodique, façon Mastra) | `obs "🔴 décision, blocage" "🟡 avancée" "🟢 détail"` (« 14:20 » en tête au besoin ; « hier » devient une date) · `obs` les dernières · `obs -p projet --days 7` — retrouvées par `q` (texte ou date : « on a fait quoi hier ? »), condensées par le rêve après 7 jours ; jamais injectées au démarrage |
-| Fait qui change (façon Zep / mem0) | `add … --replaces <ancien>` ou `supersede <nouveau> <ancien>` : l'ancien est archivé avec sa date de fin, la chaîne reste visible dans `show`. Un `add` sur le même sujet remplace tout seul l'ancien si une valeur change (chiffre, négation, « désormais », autre nom propre) ; jamais quand le titre vise une autre entité ou une autre date ; « ↻ remplace peut-être » = à confirmer |
-| Voyage dans le temps | `q "sujet" --at 15/10\\|hier\\|"il y a 3 jours"` (le cerveau tel qu'il était) · `show <id> --history` (versions successives) · `history --diff <n°\\|date>` (ce qui a changé depuis) |
+| Fait qui change (façon Zep / mem0) | `add … --replaces <ancien> [--parce-que "…"]` ou `supersede <nouveau> <ancien> [--parce-que "…"]` : l'ancien est archivé avec sa date de fin et la raison ; `show` donne la lignée (« C (depuis le 24/11) ← B (du 01/10 au 24/11, parce que …) ← A »). Un `add` sur le même sujet remplace tout seul l'ancien si une valeur change (chiffre, négation, « désormais », autre nom propre) ; jamais quand le titre vise une autre entité ou une autre date ; « ↻ remplace peut-être » = à confirmer |
+| Voyage dans le temps | `q "sujet" --at 15/10\\|hier\\|"il y a 3 jours"` (le cerveau tel qu'il était : l'instantané de ce jour-là ; plus ancien que les 60 instantanés, reconstruit d'après les dates de validité et des liens, avec le texte d'aujourd'hui, et c'est dit) · `show <id> --history` (versions successives) · `history --diff <n°\\|date>` (ce qui a changé depuis) |
+| Vrai depuis, vrai jusqu'à | `add … --depuis 01/09 --jusqu 31/12` ou `edit <id> --depuis …\\|none --jusqu …\\|none` : sans `--depuis`, vrai depuis l'enregistrement ; une fin à venir laisse le souvenir actif, l'entretien du jour l'archive le lendemain ; une fin passée l'archive tout de suite. `show` dit « valable du … au … » |
+| Domaine et niveau | `--domaine code\\|business\\|contenu\\|finance\\|infra\\|recherche\\|perso` (libre ; posé sur un projet, ses souvenirs en héritent) · `--niveau vision\\|architecture\\|procedure\\|detail` (défaut selon le type : projet et profil = vision ; décision, concept, sujet, analyse = architecture ; règle, apprentissage = procédure ; le reste = détail) |
 | À-faire et échéances | `todo` (triés par échéance) · `done <id>` · `edit <id> --due "10/11"\\|"demain"\\|"dans 2 semaines"\\|none` |
-| Corriger / compléter | `edit <id> [-T …] [-b …] [-a "ajout"] [-i 4] [--add-tags x]` |
+| Corriger / compléter | `edit <id> [-T …] [-b …] [-a "ajout"] [-i 4] [--add-tags x] [--depuis …] [--jusqu …] [--niveau …] [--domaine …]` |
 | Voir / lister | `show <id>` · `ls [-t type] [-p projet]` |
-| Lier | `link <a> <b> [-r relates\\|depends_on\\|fixes\\|supersedes\\|contradicts]` (ou `[[id]]` dans un contenu) · `link --suggest` liens déduits à confirmer |
+| Lier | `link <a> <b> [-r relates\\|depends_on\\|fixes\\|supersedes\\|contradicts]` (ou `[[id]]` dans un contenu) · `link --suggest` liens déduits à confirmer · `unlink <a> <b>` : le lien devient un lien terminé, daté (ni le rappel ni l'analyse du graphe ne le voient ; `q --at` et la lignée, si ; en mode wiki, propriété `anciens_liens` de la page) |
 | Archiver | `rm <id>` (réversible : `edit <id> --unarchive`) · `--purge` = définitif (instantané pris avant) |
 | Historique / annuler | `history` (instantanés) · `restore <n°>` (l'état courant est sauvegardé d'abord) |
 | Sauvegardes (hors de ~/.claude) | `backup` · `backup --list` · `backup --restore <archive.zip>` · `backup --to <dossier>` |

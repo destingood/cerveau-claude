@@ -25,19 +25,20 @@ TOOLS = [
      "inputSchema": {"type": "object", "properties": {
          "query": {"type": "string", "description": "mots clés ou question"},
          "limit": {"type": "integer", "description": "défaut 6, 30 au plus"},
-         "project": {"type": "string", "description": "id ou nom de projet"}, "page": PAGE},
+         "project": {"type": "string", "description": "id ou nom"},
+         "at": {"type": "string", "description": "état à une date passée"}, "page": PAGE},
          "required": ["query"]}},
     {"name": "memory_add",
      "description": "Mémoriser un fait durable (préférence, correction, décision, état d'un travail, piège résolu, "
-                    "ressource, à-faire) ; anti-doublon, secrets masqués.",
+                    "ressource, à-faire) ; anti-doublon.",
      "inputSchema": {"type": "object", "properties": {
          "type": {"type": "string", "enum": TYPES},
          "title": {"type": "string", "description": "court"},
          "body": {"type": "string", "description": "fait + pourquoi + comment l'appliquer"},
-         "project": {"type": "string", "description": "id de projet, « none » : global"},
+         "project": {"type": "string", "description": "id, « none » : global"},
          "due": {"type": "string", "description": "échéance (10/11, demain…)"},
          "replaces": {"type": "string", "description": "id du souvenir remplacé"},
-         "keys": {"type": "string", "description": "mots-clés et synonymes pour le retrouver"},
+         "keys": {"type": "string", "description": "synonymes pour le retrouver"},
          "resume": {"type": "string", "description": "wiki : une phrase, l'essentiel"},
          "sources": {"type": "string", "description": "wiki : « [[Titre]], … »"},
          "commun": {"type": "string", "enum": ["oui", "non", "auto"], "description": "partage aux amis"},
@@ -51,13 +52,13 @@ TOOLS = [
      "description": "Corriger ou compléter un souvenir ; done : à-faire terminé ; archive : souvenir devenu faux.",
      "inputSchema": {"type": "object", "properties": {
          "id": {"type": "string"},
-         "append": {"type": "string", "description": "texte ajouté à la fin"},
+         "append": {"type": "string", "description": "ajouté à la fin"},
          "body": {"type": "string", "description": "contenu complet"},
          "title": {"type": "string"},
          "importance": {"type": "integer", "description": "1 à 5"},
          "due": {"type": "string", "description": "« none » : sans échéance"},
          "resume": {"type": "string", "description": "wiki : résumé"},
-         "sources": {"type": "string", "description": "wiki : pages Sources ajoutées"},
+         "sources": {"type": "string", "description": "wiki : Sources ajoutées"},
          "commun": {"type": "string", "enum": ["oui", "non", "auto"]},
          "done": {"type": "boolean"},
          "archive": {"type": "boolean"}},
@@ -397,6 +398,7 @@ def _call(name, args):
     if name == "memory_search":
         argv = ["q", "-k", str(_int(args, "limit", 1, 30, 6, clamp=True)), "--no-files"]
         _opt(argv, "--project", _txt(args, "project"))
+        _opt(argv, "--at", _txt(args, "at"))
         return _run_cli(argv + ["--", _txt(args, "query", required=True)])
     if name == "memory_add":
         argv = ["add", f"--type={_choice(args, 'type', TYPES) or 'fact'}", f"--title={_txt(args, 'title', True, 'titre vide : « title » est obligatoire (court)')}",

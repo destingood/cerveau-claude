@@ -106,14 +106,20 @@ def build_parser():
     s.add_argument("--force", action="store_true", help="créer même si un souvenir quasi identique existe")
     s.add_argument("--due", help="échéance (10/11, 10/11/2026, 3 novembre, demain, dans 2 semaines)")
     s.add_argument("--replaces", "--supersede", dest="replaces", help="id du souvenir que celui-ci remplace (l'ancien est archivé)")
+    s.add_argument("--parce-que", dest="why", help="avec --replaces : pourquoi l'ancien ne vaut plus (gardé dans sa lignée)")
+    s.add_argument("--depuis", help="vrai depuis cette date (01/09, il y a 3 mois ; défaut : aujourd'hui)")
+    s.add_argument("--jusqu", help="vrai jusqu'à cette date incluse (31/12) : archivé le lendemain")
+    s.add_argument("--niveau", help="niveau : vision, architecture, procedure, detail (défaut : selon le type)")
     s.add_argument("--resume", help="page du wiki : une phrase qui dit l'essentiel (index, rappel)")
     s.add_argument("--commun", choices=["oui", "non", "auto"], help="cerveau commun : oui = partager, non = garder privé, "
                                                                  "auto = règles par défaut")
     s.add_argument("--sources", help="page du wiki : pages Sources qui l'appuient (« [[Titre]], [[Autre]] »)")
-    s.add_argument("--domaine", help="page du wiki : domaines séparés par des virgules (business, recherche, perso, lecture…)")
+    s.add_argument("--domaine", help="domaines séparés par des virgules (code, business, contenu, finance, infra, "
+                                     "recherche, perso, ou un autre) ; posé sur un projet, ses souvenirs en héritent")
     s = cmd("supersede", cmd_supersede, "« nouveau » remplace « ancien » : l'ancien est archivé avec sa date de fin", ["remplace"])
     s.add_argument("new")
     s.add_argument("old")
+    s.add_argument("--parce-que", dest="why", help="pourquoi l'ancien ne vaut plus (gardé dans la lignée : `show`)")
 
     s = cmd("edit", cmd_edit, "modifier un souvenir", ["maj"])
     s.add_argument("id")
@@ -134,7 +140,10 @@ def build_parser():
     s.add_argument("--commun", choices=["oui", "non", "auto"], help="cerveau commun : oui = partager, non = garder privé, "
                                                                  "auto = règles par défaut")
     s.add_argument("--sources", help="page du wiki : pages Sources à ajouter (« [[Titre]] » ; « none » pour vider)")
-    s.add_argument("--domaine", help="page du wiki : domaines (« none » pour les enlever)")
+    s.add_argument("--domaine", help="domaines (« none » pour les enlever) ; posé sur un projet, ses souvenirs en héritent")
+    s.add_argument("--depuis", help="vrai depuis cette date (« none » : depuis son enregistrement)")
+    s.add_argument("--jusqu", help="vrai jusqu'à cette date incluse : archivé le lendemain (« none » pour l'enlever)")
+    s.add_argument("--niveau", help="vision, architecture, procedure, detail (« none » : selon le type)")
 
     s = cmd("rm", cmd_rm, "archiver un souvenir (--purge = supprimer définitivement)", ["archive"])
     s.add_argument("id")

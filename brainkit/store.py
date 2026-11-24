@@ -619,13 +619,20 @@ class Brain:
         return True
 
     def unlink(self, a, b, rel=None) -> int:
-        before = len(self.edges)
-        self.data["edges"] = [e for e in self.edges
-                              if not ({e["from"], e["to"]} == {a, b} and (rel is None or e["rel"] == rel))]
-        removed = before - len(self.edges)
-        if removed:
+        """Retire un lien : il n'est pas effacé, il devient un lien terminé, daté du jour (temps.py)."""
+        from . import temps
+        gone = [e for e in self.edges if {e["from"], e["to"]} == {a, b} and (rel is None or e["rel"] == rel)]
+        if gone:
+            self.data["edges"] = [e for e in self.edges if not any(e is g for g in gone)]
+            temps.end_edges(self.data, gone)
             self.dirty = True
-        return removed
+        return len(gone)
+
+    @property
+    def all_edges(self) -> list:
+        """Liens vivants puis liens terminés (lignée, `q --at`, vue 3D) ; tout le reste lit `edges`."""
+        from . import temps
+        return self.edges + temps.ended(self.data)
 
     def adjust_confidence(self, nid, delta):
         n = self.nodes.get(nid)
@@ -636,9 +643,10 @@ class Brain:
         n["meta"] = meta
         self.dirty = True
 
-    def supersede(self, new_id, old_id) -> bool:
-        """« new remplace old » (façon mem0 / Zep) : lien supersedes, old archivé avec sa fin de validité.
-        Rien n'est effacé : l'ancien fait reste consultable (`show`) et datable (`q --at`)."""
+    def supersede(self, new_id, old_id, why=None) -> bool:
+        """« new remplace old » (façon mem0 / Zep) : lien supersedes, old archivé avec sa fin de validité et, si elle
+        est donnée, la raison (`meta.end_reason`). Rien n'est effacé : l'ancien fait reste consultable (`show`, sa
+        lignée) et datable (`q --at`)."""
         if new_id == old_id or new_id not in self.nodes or old_id not in self.nodes:
             return False
         self._writable(new_id)
@@ -648,6 +656,9 @@ class Brain:
         meta = dict(old.get("meta") or {})
         meta["valid_to"] = now_iso()[:10]
         meta["superseded_by"] = new_id
+        why = clean_label(self._guard(why)) if why else ""
+        if why:
+            meta["end_reason"] = why
         old["meta"] = meta
         old["status"] = "archived"
         old["updated"] = now_iso()
@@ -714,6 +725,8 @@ class Brain:
             # noté dans les écritures récentes, et effacé des lignes plus anciennes : une réparation ne le ramène pas
             self.__dict__.setdefault("_purged", set()).add(nid)
             self.data["edges"] = [e for e in self.edges if nid not in (e["from"], e["to"])]
+            from . import temps
+            temps.forget_node(self.data, nid)
             for n in self.nodes.values():
                 if n.get("project") == nid:
                     n["project"] = None
