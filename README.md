@@ -3,7 +3,7 @@
 Une mémoire persistante pour Claude Code, faite par destingood : Claude se souvient de toi, de tes projets, de tes
 décisions et de ce qu'il a appris, d'une session à l'autre. Tout reste chez toi, sur ton PC.
 
-![Version 8.41.0](https://img.shields.io/badge/version-8.41.0-2ea44f) ![Python 3.10 ou plus](https://img.shields.io/badge/python-3.10%2B-3776ab) ![Windows, macOS, Linux](https://img.shields.io/badge/Windows_%C2%B7_macOS_%C2%B7_Linux-555)
+![Version 8.42.0](https://img.shields.io/badge/version-8.42.0-2ea44f) ![Python 3.10 ou plus](https://img.shields.io/badge/python-3.10%2B-3776ab) ![Windows, macOS, Linux](https://img.shields.io/badge/Windows_%C2%B7_macOS_%C2%B7_Linux-555)
 
 **Sommaire** — [Installer](#installer-une-seule-fois) · [Au quotidien](#au-quotidien) · [Ce que fait le cerveau](#ce-que-fait-le-cerveau) ·
 [Moins de tokens](#moins-de-tokens) · [Il apprend tout seul](#le-cerveau-apprend-tout-seul) ·
@@ -70,7 +70,10 @@ et three.js, sous licence MIT) sont livrées avec le plugin et intégrées à la
 Le curseur ▶ en bas rejoue ton cerveau dans le temps : à chaque date, les souvenirs vrais ce jour-là, ceux qui ont été
 remplacés depuis compris, s'allument et s'éteignent, et un remplacement passe en impulsion de l'ancien au nouveau.
 Couleurs par domaine ou par « chaleur » (dernier usage), et ☷ range les souvenirs en couches, de la vision en haut au
-détail en bas.
+détail en bas. Les liens typés ont une flèche qui dit leur sens et, au survol, leur type et leurs dates. Un nœud
+déplacé à la main reste où tu le poses (⚲ ou double-clic sur le fond pour tout libérer). Le bouton ◎ fait tourner la
+caméra seule autour du cerveau, pour filmer, sauf si ton système demande moins d'animations. L'animation s'arrête
+quand l'onglet est caché.
 
 ## Ce que fait le cerveau
 
@@ -348,4 +351,4 @@ invite tes amis (Settings → Collaborators → Add people), puis rejoins-le le 
 
 `/plugin uninstall cerveau@cerveau`. Tes souvenirs restent dans `~/.claude/brain` (supprime ce dossier pour tout effacer).
 
-Version 8.41.0.
+Version 8.42.0.
