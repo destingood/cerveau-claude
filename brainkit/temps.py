@@ -161,6 +161,67 @@ def lineage_line(chain) -> str:
     return " ← ".join(parts)
 
 
+# ------------------------------------------------------------------ dates dites dans le texte (étape 14, d'après graphiti)
+_DATE_WORDS = (r"(\d{1,2}/\d{1,2}(?:/\d{2,4})?|\d{4}-\d{2}-\d{2}|(?:1er|\d{1,2})\s+(?:janv\w*|f[ée]v\w*|mars|avr\w*|mai|juin|"
+               r"juil\w*|ao[uû]t|sept\w*|oct\w*|nov\w*|d[ée]c\w*)(?:\s+\d{4})?)")
+_FROM_RX = None
+_TO_RX = None
+
+
+def text_dates(text, today=None) -> dict:
+    """Début et fin de validité dits dans un texte : « depuis le 01/09 », « à partir du 1er janvier », « dès le … »,
+    « jusqu'au 31/12 ». Une échéance (« d'ici le », « avant le ») n'est pas une fin. → {"valid_from"?, "valid_to"?}
+    (AAAA-MM-JJ), proposés à Claude, jamais posés en silence."""
+    import re
+    from . import dates
+    global _FROM_RX, _TO_RX
+    if _FROM_RX is None:
+        _FROM_RX = re.compile(r"\b(?:depuis\s+(?:le\s+)?|[àa]\s+partir\s+du?\s+|d[èe]s\s+le\s+)" + _DATE_WORDS, re.I)
+        _TO_RX = re.compile(r"\bjusqu[’']?(?:au|à|a)\s+(?:le\s+)?" + _DATE_WORDS, re.I)
+    out = {}
+    m = _FROM_RX.search(str(text or ""))
+    if m and dates.parse(m.group(1), today, nearest=True):
+        out["valid_from"] = dates.parse(m.group(1), today, nearest=True)
+    m = _TO_RX.search(str(text or ""))
+    if m and dates.parse(m.group(1), today):
+        out["valid_to"] = dates.parse(m.group(1), today)
+    if out.get("valid_from") and out.get("valid_to") and out["valid_to"] < out["valid_from"]:
+        out.pop("valid_to")
+    return out
+
+
+def end_for(old, new, today=None) -> tuple:
+    """Fin de validité de `old` quand `new` le remplace (étape 14, d'après graphiti) : la veille du début écrit de
+    `new` s'il en a un, sinon aujourd'hui ; jamais plus tard qu'une fin déjà écrite. → (fin, encore vrai aujourd'hui ?) :
+    un remplaçant qui ne commence que plus tard laisse l'ancien vrai jusque-là."""
+    import datetime as _dt
+    today = today or now_iso()[:10]
+    start = day((new.get("meta") or {}).get("valid_from"))
+    end = today
+    if start:
+        end = (_dt.date.fromisoformat(start) - _dt.timedelta(days=1)).isoformat()
+        end = max(end, valid_from(old) or end)  # jamais avant son propre début
+    written = day((old.get("meta") or {}).get("valid_to"))
+    if written:
+        end = min(end, written)
+    return end, end >= today and bool(start) and start > today
+
+
+def starts_before(new, old) -> bool:
+    """Le « nouveau » commence avant l'ancien (dates écrites) : ce n'est pas son remplaçant."""
+    a, b = day((new.get("meta") or {}).get("valid_from")), valid_from(old)
+    return bool(a and b and a < b)
+
+
+def overlap(a, b) -> bool:
+    """Les périodes écrites de deux souvenirs se chevauchent (sans date écrite : on ne sait pas, donc oui)."""
+    ma, mb = a.get("meta") or {}, b.get("meta") or {}
+    if not any(m.get(k) for m in (ma, mb) for k in ("valid_from", "valid_to")):
+        return True
+    a0, a1, b0, b1 = valid_from(a) or "", valid_to(a) or "9999", valid_from(b) or "", valid_to(b) or "9999"
+    return a0 <= b1 and b0 <= a1
+
+
 # ------------------------------------------------------------------ souvenirs en conflit, revue espacée
 def _recency(n) -> tuple:
     return valid_from(n) or "", str(n.get("updated") or "")

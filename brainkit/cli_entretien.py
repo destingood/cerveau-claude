@@ -70,7 +70,9 @@ def cmd_consolidate(a):
         for e in list(b.edges):  # « A remplace B » : B est archivé (il reste consultable) — jamais une page d'ami
             if e["rel"] == "supersedes" and not e["to"].startswith("c--") and e["to"] in b.nodes \
                     and b.nodes[e["to"]].get("status", "active") == "active" \
-                    and e["from"] in b.nodes and b.nodes[e["from"]].get("status", "active") == "active":
+                    and e["from"] in b.nodes and b.nodes[e["from"]].get("status", "active") == "active" \
+                    and not (str((b.nodes[e["to"]].get("meta") or {}).get("valid_to") or "") >= now_iso()[:10]):
+                # (un ancien encore vrai jusqu'au début de son remplaçant reste actif : l'échéance l'archivera)
                 actions.append(f"archivage (remplacé par `{e['from']}`) : `{e['to']}`")
                 if not dry:
                     b.nodes[e["to"]]["status"] = "archived"

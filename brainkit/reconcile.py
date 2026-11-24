@@ -7,7 +7,7 @@ from __future__ import annotations
 
 import re
 
-from .common import STOPWORDS, fold, jaccard, tokenize
+from .common import STOPWORDS, fold, jaccard, now_iso, tokenize
 
 UPDATABLE = ("fact", "decision", "reference", "entity", "user", "feedback", "project")
 NUM_RX = re.compile(r"\d+(?:[.,]\d+)?")
@@ -103,8 +103,30 @@ def other_event(o_title, o_body, n_title, n_body) -> bool:
 def entities(text) -> set:
     """Noms propres et codes d'un texte (Colissimo, Mondial Relay, NEWS15, judge.me…), repliés.
     En début de phrase, un mot capitalisé ne compte que s'il a l'air d'un nom (point, chiffre, majuscule interne)."""
+    return {f for _, _, f in _entity_spans(text)}
+
+
+def names(text) -> set:
+    """Les noms d'un texte sous une forme qui ne dépend pas de l'écriture (étape 14, d'après graphiti) : les mots d'un
+    nom en plusieurs mots réunis, sans espace, tiret ni point — « Mondial Relay », « MondialRelay » et « mondial-relay »
+    donnent tous « mondialrelay »."""
     text = str(text or "")
-    out = set()
+    spans, out, run = _entity_spans(text), set(), []
+    for s, e, f in spans:
+        gap = text[run[-1][1]:s] if run else ""
+        if run and not (gap and gap.strip(" \t") == ""):  # séparés par autre chose que des espaces : deux noms
+            out.add(re.sub(r"[^0-9a-z]", "", "".join(x[2] for x in run)))
+            run = []
+        run.append((s, e, f))
+    if run:
+        out.add(re.sub(r"[^0-9a-z]", "", "".join(x[2] for x in run)))
+    return {x for x in out if len(x) >= 2}
+
+
+def _entity_spans(text) -> list:
+    """[(début, fin, mot replié)] des noms propres et codes d'un texte, dans l'ordre (voir entities)."""
+    text = str(text or "")
+    out = []
     for m in _WORD.finditer(text):
         w = re.sub(r"^(?:[ldjmnstcLDJMNSTC]|[qQ]u)['’]", "", m.group(0).strip(".'’-"))  # d'Amazon → Amazon
         if len(w) < 2:
@@ -121,7 +143,7 @@ def entities(text) -> set:
             continue
         if cap and not (code or domain) and _SENT_START.search(text[:m.start()]) and not (inner or "." in w):
             continue
-        out.add(f)
+        out.append((m.start(), m.end(), f))
     return out
 
 
@@ -146,7 +168,7 @@ def signals(old, title, body) -> dict:
     o_title, o_body = old.get("title", ""), old.get("body", "")
     o_all, n_all = f"{o_title}\n{o_body}", f"{title}\n{body}"
     sig = {}
-    ot_ent, nt_ent = entities(o_title), entities(title)
+    ot_ent, nt_ent = names(o_title), names(title)  # « Mondial Relay » = « MondialRelay » (étape 14)
     if ot_ent != nt_ent:
         sig["autre sujet"] = True  # une entité du titre change ou s'ajoute (Kyoto ≠ Osaka, « … en Belgique »)
     if set(DATE_RX.findall(o_title)) != set(DATE_RX.findall(title)) or other_event(o_title, o_body, title, body):
@@ -159,7 +181,7 @@ def signals(old, title, body) -> dict:
         sig["négation"] = True
     if CUE_RX.search(n_all) and not CUE_RX.search(o_all):
         sig["changement annoncé"] = True
-    oe, ne = entities(o_body) - ot_ent, entities(body) - nt_ent
+    oe, ne = names(o_body) - ot_ent, names(body) - nt_ent
     if oe - ne and ne - oe:
         sig["autre nom"] = True  # Colissimo → Mondial Relay, Dawn → Impulse
     return sig
@@ -168,13 +190,17 @@ def signals(old, title, body) -> dict:
 VALUE_SIGNALS = ("chiffres", "négation", "changement annoncé", "autre nom")
 
 
-def decide(brain, ntype, title, body, project=None, exclude=None):
-    """→ {"action": "merge"|"update"|"new", "target": nœud|None, "why": [...], "neighbors": [(sim, nœud, why)]}"""
+def decide(brain, ntype, title, body, project=None, exclude=None, period=None):
+    """→ {"action": "merge"|"update"|"new", "target": nœud|None, "why": [...], "neighbors": [(sim, nœud, why)]}
+    `period` : dates écrites du nouveau fait ({"valid_from", "valid_to"}) ; un souvenir dont la période ne chevauche
+    pas la sienne n'est ni fusionné ni remplacé (étape 14 : deux périodes distinctes ne se contredisent pas)."""
+    from .temps import overlap
     t_tok = _content(title)
     cands = brain.similar(title, body, None, limit=6, threshold=0.3, exclude=exclude)
     neighbors = []
+    me = {"meta": dict(period or {}), "created": now_iso()}
     for s, n in cands:
-        if (n.get("project") or None) != (project or None):
+        if (n.get("project") or None) != (project or None) or not overlap(me, n):
             continue
         sig = signals(n, title, body)
         ts = jaccard(t_tok, _content(n["title"]))
@@ -188,7 +214,43 @@ def decide(brain, ntype, title, body, project=None, exclude=None):
             return {"action": "update", "target": n, "why": value, "neighbors": neighbors}
         if s >= 0.8 and not value:
             return {"action": "merge", "target": n, "why": [], "neighbors": neighbors}
+    near = _same_name(brain, title, body, project, {exclude}, me)
+    boost = {n["id"] for _, n, _, _ in near}
+    neighbors = [(max(sim, 0.45) if n["id"] in boost else sim, n, v, o) for sim, n, v, o in neighbors]
+    have = {n["id"] for _, n, _, _ in neighbors}
+    neighbors += [x for x in near if x[1]["id"] not in have]
     return {"action": "new", "target": None, "why": [], "neighbors": neighbors}
+
+
+RARE = 3  # un nom du titre porté par au plus RARE souvenirs : un lien fort entre eux
+
+
+def _same_name(brain, title, body, project, seen, me) -> list:
+    """Souvenirs qui partagent un nom propre rare du titre, même rédigés autrement (étape 14, d'après graphiti :
+    les faits à invalider se cherchent aussi parmi ceux qui touchent la même entité). Seulement des suggestions
+    (« remplace peut-être »), jamais un remplacement automatique. → voisins au format de decide."""
+    from .temps import overlap
+    mine = names(title)
+    if not mine:
+        return []
+    holders = {}
+    for n in brain.active(own=True):
+        if n["id"] in seen or n["type"] == "project":
+            continue
+        for x in names(f"{n.get('title', '')}\n{n.get('body', '')}") & mine:
+            holders.setdefault(x, []).append(n)
+    out = []
+    for x, nodes in holders.items():
+        if len(nodes) > RARE:
+            continue
+        for n in nodes:
+            if (n.get("project") or None) != (project or None) or not overlap(me, n) or n["id"] in seen:
+                continue
+            sig = signals(n, title, body)
+            value = [k for k in VALUE_SIGNALS if sig.get(k)]
+            seen = seen | {n["id"]}
+            out.append((0.45, n, value, bool(sig.get("autre événement"))))
+    return out
 
 
 def suggestions(decision, limit=2):

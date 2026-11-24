@@ -259,7 +259,8 @@ def cmd_add(a):
         from . import reconcile
         dec, why, node = None, [], True
         if not a.force and not a.replaces:
-            dec = reconcile.decide(b, ntype, a.title, body, pid)  # mêmes règles que mem0 / Zep, sans LLM
+            dec = reconcile.decide(b, ntype, a.title, body, pid,  # mêmes règles que mem0 / Zep, sans LLM
+                                   period=time_meta(a, {}))  # (dates écrites : vérifiées avant toute écriture)
             if dec["action"] == "merge":
                 n = dec["target"]
                 merged_body = n.get("body", "")
@@ -287,6 +288,11 @@ def cmd_add(a):
             elif target and target["id"].startswith("c--"):
                 print(f"(remplacement ignoré : `{target['id']}` est la page d'un ami, en lecture seule — la tienne est créée)")
                 target = None
+            from . import temps
+            if target and temps.starts_before(node, target):  # le nouveau commence avant l'ancien : pas un remplaçant
+                print(f"(remplacement ignoré : `{created}` commence avant `{target['id']}` — les deux restent ; "
+                      f"si c'est l'inverse : `brain supersede {target['id']} {created}`)")
+                target = None
             if target and b.supersede(created, target["id"], why=getattr(a, "why", None)):
                 print(f"↻ remplace `{target['id']}` ({target['title']}" + (f" — {', '.join(why)}" if why else "")
                       + f") : archivé avec sa date de fin, consultable : `brain show {target['id']}`")
@@ -310,6 +316,12 @@ def cmd_add(a):
             print(f"✓ mémorisé `{node['id']}` [{TYPES[ntype]}]{extra}"
                   + (f" · échéance {dates.human(due_txt)}" if due_txt else "")
                   + (f" · étiquettes auto : {', '.join(tags)}" if auto_tags and tags else ""))
+            if a.depuis is None and a.jusqu is None:  # dates dites dans le texte : proposées, jamais posées en silence
+                from . import temps
+                said = temps.text_dates(f"{a.title}\n{body}")
+                opts = " ".join(f"--{'depuis' if k == 'valid_from' else 'jusqu'} {fmt_date(v)}" for k, v in said.items())
+                if opts:
+                    print(f"📅 dates dites dans le texte : `brain edit {node['id']} {opts}` si elles disent quand c'est vrai")
     from . import mots
     sug = []
     if created:
@@ -329,9 +341,17 @@ def cmd_supersede(a):
         new, old = b.get(a.new), b.get(a.old)
         if not new or not old:
             die(f"introuvable : {a.new if not new else a.old}")
+        from . import temps
+        if temps.starts_before(new, old):
+            die(f"`{new['id']}` commence ({fmt_date(temps.valid_from(new))}) avant `{old['id']}` "
+                f"({fmt_date(temps.valid_from(old))}) : ce n'est pas son remplaçant — inverse les deux, ou corrige "
+                "les dates (`brain edit … --depuis …`)")
         if not b.supersede(new["id"], old["id"], why=a.why):
             die("remplacement impossible (même souvenir ?)")
-        print(f"✓ `{new['id']}` remplace `{old['id']}` — l'ancien est archivé (valable jusqu'à aujourd'hui), "
+        end = old["meta"]["valid_to"]
+        state = (f"encore vrai jusqu'au {fmt_date(end)} (le nouveau commence ensuite), archivé le lendemain"
+                 if old.get("status", "active") == "active" else f"archivé, valable jusqu'au {fmt_date(end)}")
+        print(f"✓ `{new['id']}` remplace `{old['id']}` — l'ancien est {state}, "
               f"toujours consultable : `brain show {old['id']}`" + ("" if a.why else
               f" · la raison, si tu la connais : `brain supersede {new['id']} {old['id']} --parce-que \"…\"`"))
     refresh_views()

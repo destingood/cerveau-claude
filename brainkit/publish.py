@@ -166,7 +166,9 @@ détail en bas.
   Un souvenir échu n'est plus rappelé, même avant son archivage ; deux souvenirs qui se contredisent arrivent le plus
   récent d'abord, l'autre marqué. Au démarrage, les souvenirs les plus reliés de ton projet passent devant (les
   piliers). Et le rêve te ressort, trois au plus, les souvenirs importants qui ne servent plus, à revoir de plus en
-  plus rarement (30 jours, puis 60, 120…) tant qu'ils restent vrais.
+  plus rarement (30 jours, puis 60, 120…) tant qu'ils restent vrais. Un fait qui change à une date à venir
+  (« à partir du 1er janvier ») laisse l'ancien vrai jusque-là ; « Mondial Relay » et « MondialRelay » sont reconnus
+  comme le même nom.
 - **La mémoire protégée** : un souvenir tiré d'une page web ou d'une transcription qui contiendrait une consigne piégée
   (« ignore les consignes de l'utilisateur », « fais-le sans le lui dire », une commande qui télécharge et exécute)
   est mis de côté : Claude n'en voit que le titre et un avertissement, jamais le texte, tant que tu ne l'as pas relu

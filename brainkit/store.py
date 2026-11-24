@@ -666,14 +666,17 @@ class Brain:
         self.link(new_id, old_id, "supersedes")
         old = self.nodes[old_id]
         meta = dict(old.get("meta") or {})
-        end = str(meta.get("valid_to") or "")[:10]
-        meta["valid_to"] = min(end, now_iso()[:10]) if end else now_iso()[:10]  # une fin déjà passée reste la sienne
+        from .temps import end_for
+        # fin : la veille du début écrit du nouveau, sinon aujourd'hui ; une fin déjà passée reste la sienne ; un
+        # remplaçant qui ne commence que plus tard laisse l'ancien vrai (et actif) jusque-là (étape 14)
+        meta["valid_to"], still = end_for(old, self.nodes[new_id])
         meta["superseded_by"] = new_id
         why = clean_label(self._guard(why)) if why else ""
         if why:
             meta["end_reason"] = why
         old["meta"] = meta
-        old["status"] = "archived"
+        if not still:
+            old["status"] = "archived"
         old["updated"] = now_iso()
         self.dirty = True
         return True
