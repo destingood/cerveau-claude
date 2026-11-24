@@ -79,6 +79,7 @@ sauf les correctifs sûrs, faits tout de suite à ta demande.
 | 24/11 | Passage sur Opus 5.5, « GO étape 10 » | Étape 10 faite : `CLAUDE.md` à la racine, hook de vérification en fin de tâche (E20 appliquée telle que recommandée) |
 | 24/11 | « Go étape 11 » | Étape 11 faite (8.34.0) ; E19 et E21 appliquées telles que recommandées |
 | 24/11 | « Continue le plan » | Étapes 12 (8.35.0, piliers livrés après mesure) et 13 (8.36.0) faites : Bloc E terminé |
+| 24/11 | « Regarde chaque lien GitHub que je t'ai envoyé et mets dans le cerveau ce qui est utile » | Bloc F, étapes 14 à 19, en attente de ton choix |
 
 ## 2. Comment l'audit a été fait, et ses limites
 
@@ -752,6 +753,99 @@ le plan de l'étape.
 
 **Ordre.** L'étape 10 d'abord : elle sert aux trois autres. Puis la 11. Les étapes 12 et 13 s'appuient sur la 11
 et se font dans l'ordre que tu veux.
+
+### Bloc F — Ce qu'apportent les 8 dépôts cités le 24/11 (plugin, étapes 14 à 19)
+
+Ta demande du 24/11 : « regarde chaque lien GitHub que je t'ai envoyé et mets dans le cerveau ce qui est intéressant
+et utile ». Quatre agents ont lu les 8 dépôts le 24/11 (README, docs, code ; commits cités dans leurs rapports). Le
+cerveau en avait déjà une bonne part : cycle de vie par hooks, graphe typé et daté, remplacement sans effacer, fusion
+RRF, doublons exacts, montré ≠ utilisé, provenance et confiance, contrôle des skills reçues, sorties de commandes qui
+contiennent un secret jamais gardées. Écarté pour toutes les étapes : embeddings, Neo4j ou FalkorDB, appels à une
+API payante (extraction par LLM à chaque ajout, rerankers, `claude -p` en boucle), code Node.js à embarquer.
+Licences : Graphiti, mem0 Apache-2.0 ; best-practices, skills de Matt Pocock, obra, tapestry, l'auditeur de skills,
+3d-force-graph MIT ; le guide de F. Bruniaux CC BY-SA 4.0 (on reprend des idées, pas son texte).
+
+**Étape 14 — Une mémoire plus juste** (Graphiti, mem0). Tout en code déterministe, à l'écriture ou au rêve : aucun
+coût pour le rappel.
+1. Dates tirées du texte à l'ajout : « depuis le », « à partir du », « jusqu'au », et le futur (« va », « prévu »,
+   « d'ici le ») ; une échéance n'est pas une fin. Proposées à Claude, pas posées en silence. (S, graphiti
+   `temporal_edge_utils.py`)
+2. Un remplacement clôt l'ancien à la date de début du nouveau, pas à la date du jour ; un nouveau qui commence avant
+   l'ancien n'est pas le remplaçant ; deux périodes qui ne se chevauchent pas ne se contredisent pas. (S, graphiti
+   `edge_operations.py`)
+3. Contradictions cherchées aussi parmi les souvenirs qui partagent un nom propre rare, pas seulement les textes
+   proches ; un événement ne contredit jamais un état. (S, graphiti `dedupe_edges.py`)
+4. Les variantes d'un même nom réunies (« Mondial Relay », « MondialRelay », « mondial-relay ») : trigrammes et
+   MinHash en bibliothèque standard, au rêve. (S, graphiti `dedup_helpers.py`)
+5. Index nom → souvenirs gardé avec le graphe, au lieu de tout relire à chaque question. (S, mem0 `main.py`)
+6. Règles d'écriture d'un souvenir dans le rappel de fin de tâche : il tient seul, sans pronom ; noms et chiffres
+   exacts ; un changement s'écrit « X → Y, parce que… » ; dates absolues ; rien de ce que Claude a seulement répété.
+   (S, prompt d'extraction de mem0)
+7. Provenance par session (`meta.sessions`) et `brain oublier-session <id>` qui retire ce qui ne reposait que sur
+   elle ; journal ancien/nouveau texte par souvenir. (M, graphiti `remove_episode`, table history de mem0)
+8. Au rêve, des souvenirs « motif » rédigés par Claude ou l'archiviste à partir d'une communauté, liés à leurs
+   preuves, sans doublon d'un rêve à l'autre. (M, Dream de mem0)
+9. Usage : un facteur de déclin d'après les derniers rappels (ACT-R), comme trait du neurone, jamais comme filtre ;
+   diversité des souvenirs rappelés (MMR) au lieu de l'élimination des seuls quasi-doublons. (S, mem0, graphiti,
+   guide Bruniaux §9) — mesuré sur le banc du rappel avant d'être gardé, comme les piliers.
+
+**Étape 15 — La mémoire protégée** (guides Claude Code).
+1. Anti-empoisonnement à l'écriture : le contrôle des pages d'amis (`lint_text`) passe aussi sur ce qui entre dans la
+   mémoire depuis le web, une transcription ou une source du wiki ; un texte qui donne des consignes est mis de côté
+   et signalé, pas ré-injecté à chaque message. (S, guide Bruniaux §7.1)
+2. Canari de portée dans `brain bench` : un souvenir planté dans un projet ne doit jamais revenir dans un autre.
+   (S, guide Bruniaux §1)
+3. Au démarrage, le `CLAUDE.md` du projet ouvert passé au même contrôle (consignes cachées, `curl | bash`, base64,
+   commentaires HTML). (S, `claudemd-scanner.sh`)
+4. Une règle apprise (filtre de commande, déclencheur de skill) passe par « candidate » avant « active », avec sa
+   preuve et une date d'expiration. (M, guide Bruniaux)
+5. Déclenchement des skills calibré : phrases positives et négatives par skill, seuil par skill, mesuré hors des
+   hooks. (M, `bm25-routing` du guide Bruniaux)
+
+**Étape 16 — Le serveur MCP** (serveurs de référence).
+1. Erreurs conformes : outil inconnu → erreur JSON-RPC -32602 ; ajout ou modification en partie refusés → le dire
+   (« ignoré : … ») sans échouer. (S, aucun caractère de plus dans la liste des outils)
+2. Ressources `memoire://{id}` : un souvenir se joint à une conversation sans appel d'outil. (M, 0 caractère de plus)
+3. `structuredContent` dans les réponses et le protocole 2026-07-28 (`server/discover`) à côté de l'actuel, pour
+   rester compatible avec les prochaines versions de Claude Code. (M, 0 caractère de plus)
+4. Annotations des outils (lecture seule, destructif) : +550 caractères dans chaque session ; à ne faire que si tu
+   veux ce confort. (S)
+
+**Étape 17 — La vue 3D, suite** (3d-force-graph).
+1. Flèches sur les liens typés, et au survol d'un lien son type et ses dates. (S)
+2. Un nœud déplacé à la main reste où on le pose (bibliothèque passée de 1.80.0 à 1.80.2 pour le correctif du
+   glissement). (S)
+3. Orbite automatique de la caméra, pour une capture vidéo YouTube. (S)
+4. L'animation se met en pause quand l'onglet est caché. (S)
+
+**Étape 18 — Six skills de plus** (toutes gratuites, sans clé ; réécrites en français, licence et auteur cités).
+1. Auditeur de skills (MIT, bibliothèque standard) : avant d'installer ou de mettre à jour une skill tierce, un
+   verdict « sûre / à vérifier / refusée » ; aussi branché sur l'échange de skills avec tes amis. (M)
+2. « Cuisine-moi » (grilling, M. Pocock) : Claude t'interroge question par question sur un projet (boutique, map,
+   module de la plateforme), avec sa réponse recommandée à chaque fois. (S)
+3. Passation (handoff) : un document qui résume la conversation pour la reprendre ailleurs. (S)
+4. Preuve avant « fini » (obra) : rien d'annoncé fini sans la commande qui le prouve et sa sortie lue. (S)
+5. Apprendre en livrant (ship-learn-next) : un tutoriel ou une vidéo devient une suite de petits projets. (S)
+6. Factures et reçus : renommés, classés, CSV pour le comptable (réception des factures électroniques obligatoire
+   depuis le 01/09/2026). (S-M) — et, plus petits : tirage au sort pour concours, analyse d'un appel de vente dans
+   carriere-commerciale.
+Et deux pratiques : la description d'une skill dit quand s'en servir, jamais comment (à corriger dans les 18) ; un
+test de comportement par skill (sans la skill, puis avec). (S, M)
+
+**Étape 19 — Ce dépôt** (outillage, rien de livré).
+1. Grille de tri d'un test en échec (régression, instable, environnement, test périmé) proposée par le hook de
+   vérification. (S, best-practices `test-triage`)
+2. Contrôle d'un `CLAUDE.md` avant écriture (chemins absolus, secrets, sections vides). (S)
+3. À ta décision, pas à la mienne : le garde-fou des commandes de la plateforme (`guard_shell.py`) résout les chemins
+   relatifs par rapport au dépôt, pas au dossier courant après un `cd` ; il a refusé à tort un `git clone` dans un
+   dossier temporaire. Le corriger touche un garde-fou (règle du `CLAUDE.md` de la plateforme) : je ne le fais pas
+   sans toi.
+
+**Serveurs à brancher sur ton PC** (rien à coder, à ta demande) : Fetch (lire une offre d'emploi ou une fiche
+concurrente par morceaux), Time, Git, Filesystem en lecture seule sur le coffre Obsidian. Pas le serveur « memory » :
+il fait doublon avec le cerveau.
+
+**Ordre proposé** : 15 (protéger d'abord, petit et sûr), 14, 18, puis 16, 17, 19.
 
 ## 10. Décisions demandées
 
