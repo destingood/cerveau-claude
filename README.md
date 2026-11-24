@@ -3,7 +3,7 @@
 Une mémoire persistante pour Claude Code, faite par destingood : Claude se souvient de toi, de tes projets, de tes
 décisions et de ce qu'il a appris, d'une session à l'autre. Tout reste chez toi, sur ton PC.
 
-![Version 8.33.0](https://img.shields.io/badge/version-8.33.0-2ea44f) ![Python 3.10 ou plus](https://img.shields.io/badge/python-3.10%2B-3776ab) ![Windows, macOS, Linux](https://img.shields.io/badge/Windows_%C2%B7_macOS_%C2%B7_Linux-555)
+![Version 8.34.0](https://img.shields.io/badge/version-8.34.0-2ea44f) ![Python 3.10 ou plus](https://img.shields.io/badge/python-3.10%2B-3776ab) ![Windows, macOS, Linux](https://img.shields.io/badge/Windows_%C2%B7_macOS_%C2%B7_Linux-555)
 
 **Sommaire** — [Installer](#installer-une-seule-fois) · [Au quotidien](#au-quotidien) · [Ce que fait le cerveau](#ce-que-fait-le-cerveau) ·
 [Moins de tokens](#moins-de-tokens) · [Il apprend tout seul](#le-cerveau-apprend-tout-seul) ·
@@ -77,6 +77,11 @@ et three.js, sous licence MIT) sont livrées avec le plugin et intégrées à la
 - **En fin de tâche** : si tu as dit une décision ou une préférence pas encore enregistrée, Claude la note ; sinon
   le cerveau ne dit rien (pas de rappel inutile).
 - **Cartes de tes projets** (fichiers clés, où est défini quoi), à-faire datés, vue 3D, serveur MCP.
+- **La mémoire datée** : un souvenir est vrai d'une date à une autre (« vrai depuis le 01/09 », « jusqu'au 31/12 » :
+  archivé le lendemain). Quand un fait change, l'ancien est gardé avec sa date de fin et la raison, et `brain show`
+  donne la lignée (« Scaleway depuis le 24/11 ← OVH du 01/09 au 24/11, parce que trop cher »). Un lien retiré est
+  daté, pas effacé. `brain q "…" --at 15/05` montre le cerveau tel qu'il était, même au-delà des instantanés. Chaque
+  souvenir a aussi un domaine (celui de son projet) et un niveau (vision, architecture, procédure, détail).
 - **Le rêve** : l'entretien de ta mémoire se fait hors conversation, chaque jour — dates relatives rendues réelles,
   observations anciennes condensées — et ce qui demande du jugement (corrections entendues, doublons, conflits,
   à-faire en retard) est tranché par Claude au démarrage suivant : ce qui est sûr est appliqué, un doute est laissé
@@ -323,4 +328,4 @@ invite tes amis (Settings → Collaborators → Add people), puis rejoins-le le 
 
 `/plugin uninstall cerveau@cerveau`. Tes souvenirs restent dans `~/.claude/brain` (supprime ce dossier pour tout effacer).
 
-Version 8.33.0.
+Version 8.34.0.
