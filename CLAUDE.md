@@ -24,7 +24,8 @@ projets de l'utilisateur. Plan unique, plugin compris : `plateforme/docs/plans/p
   commandes `test_commandes`, `test_erreurs` · texte injecté `test_consommation` · vitesse `test_vitesse_message` ·
   wiki `test_wiki`, `test_wiki_conflits` · vue 3D `test_vue3d` · réglages `test_page_reglages` ·
   skills `test_skills_regroupees`, `test_scripts_skills` · regrouper `test_regroupe` · pertes `test_pertes` ·
-  partage `test_partage`, `test_echange`, `test_commun` · e-commerce `test_ecommerce`, `test_boutique`.
+  partage `test_partage`, `test_echange`, `test_commun` · e-commerce `test_ecommerce`, `test_boutique` ·
+  temps `test_temps`, `test_justesse` · protection `test_protection` · serveur MCP `test_serveur_mcp`.
 
 ## Règles
 
