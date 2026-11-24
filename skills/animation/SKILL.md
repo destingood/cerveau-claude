@@ -12,7 +12,7 @@ metadata:
     « skills d'emil » « emil kowalski » « emil-kowalski » « anime ce bouton » « micro-interaction »
     « revois mes animations » « audite les animations » « trop d'animations » « l'animation saccade »
     « comment s'appelle cet effet » « teste le pire cas » « casse mon interface » « fais plus natif sur mobile »
-    « quelle librairie choisir » « plusieurs versions de ce composant » Ne pas utiliser pour « animation commerciale »
+    « quelle librairie choisir » « plusieurs versions de ce composant » « fais bouger le bouton » Ne pas utiliser pour « animation commerciale »
     « animation en magasin » « film d'animation » « montage vidéo »
 ---
 

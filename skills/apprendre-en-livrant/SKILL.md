@@ -4,8 +4,8 @@ description: "Quand l'utilisateur veut mettre en pratique un tutoriel, une vidé
 metadata:
   triggers: >-
     « apprendre en livrant » « ship learn next » « ship-learn-next » « mets ce tuto en pratique » « mets cette vidéo en
-    pratique » « transforme cette vidéo en plan d'action » « transforme ce cours en projets » « j'ai regardé cette vidéo,
-    et maintenant » « plan d'action à partir de ce tuto » « apprendre en faisant » « des petits projets pour apprendre »
+    pratique » « transforme cette vidéo en plan d'action » « transforme ce cours en projets » « mettre en pratique ce cours » « petits projets à livrer »
+    « plan d'action à partir de ce tuto » « apprendre en faisant » « des petits projets pour apprendre »
     Ne pas utiliser pour « résume cette vidéo » (cerveau:web), ni pour un plan de travail sur un projet existant.
 ---
 

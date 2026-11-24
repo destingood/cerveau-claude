@@ -5,7 +5,7 @@ metadata:
   triggers: >-
     « ma map fortnite » « mon île fortnite » « map UEFN » « code de map » « Discover fortnite »
     « ma map n'a pas de joueurs » « titre de ma map » « tags de ma map » « miniature de ma map » « rétention de ma map »
-    « tendances fortnite » « publier ma map » « portail créateur fortnite » Ne pas utiliser pour jouer à Fortnite, ni
+    « tendances fortnite » « publier ma map » « portail créateur fortnite » Ne pas utiliser pour jouer à Fortnite (« je joue à fortnite »), ni
     pour coder en Verse ou monter le niveau dans UEFN.
 ---
 

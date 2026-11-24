@@ -3,7 +3,7 @@ name: youtube
 description: "Quand l'utilisateur prépare ou analyse ses propres vidéos YouTube : planning, script, titre, miniature, coupes, chapitres, description, Shorts, commentaires, rétention, audit. Pas pour la vidéo d'un autre."
 metadata:
   triggers: >-
-    « ma chaîne YouTube » « script de ma vidéo » « accroche de ma vidéo » « titre de ma vidéo » « miniature YouTube »
+    « ma chaîne YouTube » « script de ma vidéo » « accroche de ma vidéo » « titre de ma vidéo » « titre pour ma vidéo » « miniature YouTube »
     « CTR de ma vidéo » « coupe les blancs » « chapitres de ma vidéo » « timestamps YouTube » « description YouTube »
     « tags YouTube » « fais des shorts de ma vidéo » « réponds aux commentaires YouTube » « planning de vidéos »
     « ce qui marche sur YouTube dans ma niche » « pourquoi les gens arrêtent de regarder » « audit de ma chaîne » Ne pas

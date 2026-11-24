@@ -10,10 +10,10 @@ metadata:
     « automatise le navigateur » « scrapegraph » « installe scrapegraph » « scrape ce site » « scrape cette page »
     « aspire les données de » « récupère tous les produits et les prix de » « liste les prix des concurrents »
     « extrais en JSON » « agent-reach » « agent reach » « installe agent-reach » « lis ce tweet » « lis ce fil reddit »
-    « sous-titres de cette vidéo YouTube » « résume cette vidéo » « transcris cette vidéo » « reverse api »
+    « récupère les sous-titres de cette vidéo YouTube » « résume cette vidéo » « transcris cette vidéo » « reverse api »
     « reverse-api-engineer » « installe reverse api » « transforme ce site en API » « l'API cachée de ce site »
     « ce site n'a pas d'API » « fais-moi un client API pour ce site » « récupère les données de ce site par son API »
-    « capture les requêtes du site » « rejoue l'API du site » Ne pas utiliser pour « l'API payante ScrapeGraph »
+    « capture les requêtes du site » « rejoue l'API du site » Ne pas utiliser pour « l'API payante ScrapeGraph » « l'API ne répond plus »
 ---
 
 # Web — l'aiguillage vers la bonne fiche

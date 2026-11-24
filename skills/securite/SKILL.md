@@ -5,7 +5,7 @@ metadata:
   triggers: >-
     « sécurise ce code » « faille / XSS / injection SQL / CSRF » « est-ce que c'est sécurisé » « audite cette skill »
     « cette skill est-elle sûre » « vérifie cette skill avant de l'installer » « skill tierce » « skill-security-auditor »
-    « je peux installer cette skill » Ne pas utiliser pour un script local sans entrée extérieure.
+    « je peux installer cette skill » Ne pas utiliser pour un script local sans entrée extérieure, ni pour « sécurité sociale » « porte de sécurité » « ceinture de sécurité ».
 ---
 
 # Sécurité : liste de contrôle du code exposé, audit des skills tierces
