@@ -641,7 +641,7 @@ code, out = run(FA, "verifier", "vrac/releve.csv")
 check(code == 1 and "HT + TVA (2,20) ≠ TTC (1,00)" in out, "factures verifier : HT + TVA = TTC contrôlé", out)
 code, d, out = data(FA, "ranger", "vrac/releve.csv", "--vers", "classees")
 check(code == 1 and d and not d["applique"] and not (WORK / "classees").exists() and "bombe.xml" in d["ecartes"]
-      and any(dst.endswith("2026/emballage-expedition/2026-10-03 Emballages Du Sud - Facture - Cartons 30x20.pdf")
+      and any(Path(dst).as_posix().endswith("2026/emballage-expedition/2026-10-03 Emballages Du Sud - Facture - Cartons 30x20.pdf")
               for _src, dst in d["rangement"]),
       "factures ranger : plan seulement sans --appliquer, nom clair AAAA-MM-JJ Fournisseur - Facture - Objet", out)
 code, d, out = data(FA, "ranger", "vrac/releve.csv", "--vers", "classees", "--appliquer")
