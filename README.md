@@ -3,7 +3,7 @@
 Une mémoire persistante pour Claude Code, faite par destingood : Claude se souvient de toi, de tes projets, de tes
 décisions et de ce qu'il a appris, d'une session à l'autre. Tout reste chez toi, sur ton PC.
 
-![Version 8.39.0](https://img.shields.io/badge/version-8.39.0-2ea44f) ![Python 3.10 ou plus](https://img.shields.io/badge/python-3.10%2B-3776ab) ![Windows, macOS, Linux](https://img.shields.io/badge/Windows_%C2%B7_macOS_%C2%B7_Linux-555)
+![Version 8.40.0](https://img.shields.io/badge/version-8.40.0-2ea44f) ![Python 3.10 ou plus](https://img.shields.io/badge/python-3.10%2B-3776ab) ![Windows, macOS, Linux](https://img.shields.io/badge/Windows_%C2%B7_macOS_%C2%B7_Linux-555)
 
 **Sommaire** — [Installer](#installer-une-seule-fois) · [Au quotidien](#au-quotidien) · [Ce que fait le cerveau](#ce-que-fait-le-cerveau) ·
 [Moins de tokens](#moins-de-tokens) · [Il apprend tout seul](#le-cerveau-apprend-tout-seul) ·
@@ -231,6 +231,12 @@ fournissent ; une fois ces plugins installés, « humanise ce texte », « on di
 
 | Tu dis… | Skill | Ce que fait Claude | D'après |
 |---|---|---|---|
+| « audite cette skill », « je peux installer cette skill ? » | `/cerveau:securite` (audit-skills) | lit une skill tierce sans rien lancer : « sûre », « à vérifier » ou « refusée », avec les raisons ; aussi dans `brain echange voir` | skill-security-auditor (Alireza Rezvani, MIT) |
+| « cuisine-moi sur ma boutique » | `/cerveau:cuisine-moi` (sur demande) | t'interroge par tours de questions numérotées, avec sa réponse conseillée à chaque fois, puis ne fait rien avant ton « oui » | grilling (Matt Pocock, MIT) |
+| « fais une passation » | `/cerveau:passation` (sur demande) | écrit le document pour reprendre ailleurs (état, décisions, fichiers, skills à charger), sans aucun secret | handoff (Matt Pocock, MIT) |
+| « tu as vraiment vérifié ? » | `/cerveau:preuve-avant-fini` | rien n'est annoncé fini sans la commande qui le prouve et sa sortie lue | verification-before-completion (Jesse Vincent, MIT) |
+| « mets ce tuto en pratique » | `/cerveau:apprendre-en-livrant` | une vidéo ou un cours devient une suite de petits projets à livrer | ship-learn-next (tapestry-skills, MIT) |
+| « range mes factures », « tableau pour mon comptable » | `/cerveau:factures-recus` | inventaire, lecture des factures électroniques, noms « AAAA-MM-JJ Fournisseur - Facture - Objet », copies classées, CSV pour Excel ; côté e-commerce, un tirage au sort équitable et vérifiable (`tirage.py`), côté carrière commerciale, le débrief d'un appel de vente (`appel.py`) | écrite pour le cerveau |
 | « branche perplexity », puis « cherche sur perplexity … » | `/cerveau:recherche` (perplexity) | recherche web filtrée par sites, langue, pays ou date, ou recherche approfondie avec sources, avec ton propre compte Perplexity | le serveur officiel de Perplexity |
 | « installe agent-reach », puis « lis ce tweet », « lis ce fil reddit », « sous-titres de cette vidéo YouTube » | `/cerveau:web` (agent-reach) | lit en lecture seule X/Twitter, Reddit, YouTube, LinkedIn, Instagram et d'autres, là où sa recherche web échoue | Agent Reach (Panniantong) |
 | « clone cette app », « ma version de X » | `/cerveau:replica` | refait ta propre version d'une app existante en 11 étapes, jusqu'à la fiche App Store et la mise en ligne | replica-skill (Jake Schincariol, MIT) |
@@ -342,4 +348,4 @@ invite tes amis (Settings → Collaborators → Add people), puis rejoins-le le 
 
 `/plugin uninstall cerveau@cerveau`. Tes souvenirs restent dans `~/.claude/brain` (supprime ce dossier pour tout effacer).
 
-Version 8.39.0.
+Version 8.40.0.
