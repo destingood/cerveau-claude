@@ -1,6 +1,6 @@
 # Plan du cerveau — le plan unique
 
-Date : 20/11/2026, mis à jour le 23/11 · Remplace le plan v1 (`plan-parite-aladdin.md`) et le plan v2
+Date : 20/11/2026, mis à jour le 24/11 · Remplace le plan v1 (`plan-parite-aladdin.md`) et le plan v2
 (`plan-parite-aladdin-v2.md`), gardés dans `docs/archive/plans/` · Statut : **en cours** ; chaque étape attend ton GO,
 sauf les correctifs sûrs, faits tout de suite à ta demande.
 
@@ -49,6 +49,11 @@ sauf les correctifs sûrs, faits tout de suite à ta demande.
 7. **La suite** : 9 étapes pour le plugin (Réparer, Accélérer, Alléger, Regrouper), puis les étapes de
    la plateforme reprises du plan v2. Tes décisions sont au §10, les commandes à lancer sur ton PC au
    §11.
+8. **Le cerveau en 4D** (24/11, Bloc E du §9). Ta synthèse demande un graphe de souvenirs daté, une mémoire
+   par MCP et une vue 3D avec le temps. Le cerveau en a déjà la plus grande part : graphe à liens typés,
+   « A remplace B » avec date de fin, PageRank, vue 3D avec curseur. Il reste quatre manques, donc quatre
+   étapes (10 à 13) : les réglages Claude Code du dépôt, le temps dans le modèle de données, le rappel et
+   les piliers, la vue 3D rejouable. Rien n'est codé ; l'exécution attend ton GO, sur Opus 5.5.
 
 ## 1. Ce que tu as demandé
 
@@ -70,6 +75,7 @@ sauf les correctifs sûrs, faits tout de suite à ta demande.
 | 21/11 | Fusionner la 8.31.0 ; étape 9 ; garder l'ADR-013 (pas de yfinance) | 8.31.0 fusionnée ; étape 9 faite (8.32.0) |
 | 23/11 | Valider les 7 retraits R9 ; relire d'abord les autres ADR | ADR-021, 046, 050, 057, 060 et 068 acceptés ; 35 ADR à relire (`docs/adr/A-VALIDER.md`) |
 | 23/11 | Fusionner la 8.32.0 ; puis les restes du plugin | 8.32.0 fusionnée ; restes faits (8.33.0) : fin de session wiki en 88 ms, `brain regroupe` complété |
+| 24/11 | Synthèse « cerveau en 4D » (graphe daté, mémoire par MCP, vue 3D avec le temps) ; « fais le plan et passe à Opus 5.5 » | Bloc E, étapes 10 à 13. Tes réponses du 24/11 : les quatre manques, reprendre les idées de Graphiti et mem0 sans les installer, rappel lexical avec filtre par date, tu changes le modèle toi-même |
 
 ## 2. Comment l'audit a été fait, et ses limites
 
@@ -527,6 +533,130 @@ CV ; PC Windows et réseau ; code et automatisation. Le détail est au §7 du pl
 
 Amélioration continue, puis N3 domaine par domaine. N4 reste hors du plan.
 
+### Bloc E — Le cerveau en 4D (plugin, étapes 10 à 13)
+
+Ta demande du 24/11 : un cerveau « en 4D », c'est-à-dire un graphe de souvenirs (les trois dimensions) où chaque
+souvenir et chaque lien porte ses dates (la quatrième). Plan écrit le 24/11. L'exécution se fait sur Opus 5.5 :
+une étape par PR, chacune après ton GO. Ce bloc ne dépend pas des blocs B à D ; il peut passer avant.
+
+**Pour reprendre** (toi, puis le modèle qui exécute) : passe la session sur Opus 5.5 (sélecteur de modèle, ou
+`/model`), puis écris `GO étape 10`. Le modèle lit ce bloc, les décisions E16 à E21 du §10 et les fichiers cités
+dans l'étape, écrit un complément de plan si un point reste flou, puis code.
+
+**E.1 Ce que le cerveau a déjà.** Lu dans le code de la 8.33.0 le 24/11, sans essai. La plus grande part de ta
+synthèse est en place ; le plan ne traite que la colonne de droite.
+
+| Ta synthèse demande | Le cerveau 8.33.0 | Ce qui manque |
+|---|---|---|
+| Un graphe d'entités et de liens | 13 types de souvenirs, 8 types de liens (`store.py`) | rien |
+| Une fin de validité, l'historique gardé | `brain supersede` archive l'ancien avec sa date de fin (`valid_to`) et son remplaçant | pas de date de début distincte de la date d'enregistrement ; pas de fin posée à l'avance (« vrai jusqu'au 31/12 ») ; un lien retiré est effacé, pas daté |
+| Interroger le passé | `brain q --at` relit un instantané de `graph.json` (`history.state_at`) | 60 instantanés gardés : plus loin, la commande répond « pas d'état connu » |
+| Pourquoi B a remplacé A | le lien `supersedes` | la raison n'est notée nulle part |
+| Les axes domaine et abstraction | type, projet, étiquettes, communauté | ni domaine ni niveau d'abstraction |
+| Fraîcheur et réactivation | `usage()` (utilisé sur montré, atténué sur 45 jours) et `priority()` (`store.py`) | rien ne fait revoir un souvenir important qui ne sert plus |
+| Les nœuds centraux comme piliers | PageRank et « nœuds clés » (`graph.py`), utilisés par les fiches et `brain graph` | l'injection du démarrage trie par `priority()` seul (`index.build_index`) : la centralité n'y compte pas |
+| Une recherche qui filtre par date et statut | rappel lexical ; un souvenir archivé n'est pas rappelé | pas de filtre sur les dates de validité elles-mêmes |
+| La consolidation en fin de session | hook Stop, puis le rêve chaque jour (`dream.py`) | rien |
+| La mémoire par MCP | serveur MCP du plugin, 6 outils de mémoire | pas de date dans `memory_search` |
+| Une vue 3D avec curseur de temps | `cerveau.html` : 3d-force-graph intégré, curseur et lecture ▶ | le curseur cache seulement les souvenirs pas encore créés ; les souvenirs archivés ne sont pas dans la page ; les liens n'y ont pas de date |
+| CLAUDE.md, hooks, permissions | `.claude/settings.json` (14 interdits, 2 hooks), `plateforme/CLAUDE.md` | pas de `CLAUDE.md` à la racine pour le plugin ; aucune vérification en fin de tâche |
+| Skills à chargement progressif, sous-agents, CI | 18 skills, 3 agents, CI sur trois systèmes | rien |
+
+**E.2 Hors du plan**, d'après tes réponses du 24/11 :
+- Graphiti, mem0 et toute base de graphe (E16) : ils demandent Neo4j ou FalkorDB et des appels payants à un
+  modèle. Le plan reprend leurs deux idées utiles, la double datation et le lien daté au lieu d'effacé.
+- Les embeddings (E17) : le rappel reste lexical.
+- La revue de code par Claude dans la CI : pas demandée.
+- Les quatre dépôts de guides et de skills que tu cites n'ont pas été lus pour ce plan. L'étape 10 lit les deux
+  guides et ne reprend que ce que la documentation de Claude Code confirme.
+
+**E.3 Règles des quatre étapes.**
+- Zéro dépendance : bibliothèque standard seule, le plugin tourne toujours en `python -I -S`.
+- Aucune migration ne réécrit tes souvenirs : un champ absent prend sa valeur déduite à la lecture. Un
+  `graph.json` de la 8.33.0 se charge tel quel, et une 8.33.0 qui lit un graphe plus récent (un ami du cerveau
+  commun, ton second PC) ne casse pas. Chaque étape le prouve par un test.
+- En mode wiki, tout nouveau champ fait l'aller-retour entre la page et le graphe (`wikistore.py`), avec une clé
+  française dans les propriétés.
+- Les budgets de la 8.33.0 tiennent : chaque hook sous 150 ms à 3 000 souvenirs, texte du démarrage et liste des
+  outils MCP pas plus longs (`test_consommation`), rappel à 58 questions sur 62 au moins (`test_rappel`), aucun
+  fichier au-delà de 1 000 lignes (`test_decoupage`). `search.py` en a 997 : il se découpe avant de grossir.
+- Chaque changement a un test qui échoue sans lui. Une version mineure par étape ; README et page des réglages à
+  jour. `brain.exe` n'est pas touché (E12).
+
+**Étape 10 — Les réglages Claude Code du dépôt** (rien de livré aux utilisateurs du plugin)
+- Un `CLAUDE.md` à la racine, 60 lignes au plus : ce qu'est le dépôt (le plugin à la racine, la plateforme à part
+  avec son propre `CLAUDE.md`), les commandes (le lint de la CI, un script de test, tous les scripts), les règles
+  E.3, les interdits (`brain.exe`, les bibliothèques de `brainkit/vue3d/` refaites par `fabriquer.py` seulement),
+  la façon de publier une version.
+- La vérification en fin de tâche (E20) : un hook Stop, `.claude/hooks/verifier.py`. Si des fichiers du plugin ont
+  changé depuis son dernier passage vert, il lance le lint et les scripts de test qui portent sur les fichiers
+  touchés, plus `test_decoupage`. Un échec rend la main à Claude avec la sortie ; sans changement, le hook ne dit
+  rien. Tous les scripts restent lancés par la CI. Modèle à suivre : `plateforme/.claude/hooks/quick_checks.py`.
+- Aucun interdit de `.claude/settings.json` n'est retiré ni assoupli.
+- Fini quand : le hook a son test (échec simulé, rien de changé, hors du plugin) ; une session neuve à qui tu dis
+  « lance les tests du rappel » trouve la commande sans chercher.
+
+**Étape 11 — Le temps dans le modèle de données** (cerveau 8.34.0)
+1. *Début et fin de validité.* `meta.valid_from` : le jour où le fait est devenu vrai ; absent, c'est la date
+   d'enregistrement. `brain add --depuis 01/09`, `brain edit --depuis … --jusqu 31/12`. Une fin posée à l'avance
+   laisse le souvenir actif jusque-là ; le rêve l'archive le lendemain. Dans le wiki : propriétés `debut` et `fin`.
+2. *Liens datés.* Un lien retiré (`brain unlink`, lien disparu d'une page du wiki, fusion de doublons) reçoit une
+   date de fin au lieu d'être effacé. `Brain.edges` ne rend que les liens vivants, donc ses 38 usages dans 11
+   fichiers gardent leur sens ; `Brain.all_edges` rend tout. La suppression définitive d'un souvenir efface
+   toujours ses liens. En mode wiki, l'endroit où garder un lien terminé est la décision E21.
+3. *Le pourquoi.* `brain supersede <nouveau> <ancien> --parce-que "…"`, et la même option sur
+   `brain add --replaces`. La raison est gardée sur le lien. `brain show` affiche la lignée :
+   « C (depuis le 24/11) ← B (du 01/10 au 24/11, parce que …) ← A ».
+4. *Les deux axes.* `store.axes(souvenir)` rend un domaine et un niveau, déduits et corrigeables.
+   Niveau, quatre valeurs : vision (projet, profil), architecture (décision, concept, sujet, analyse), procédure
+   (règle, apprentissage), détail (fait, référence, entité, à-faire, source) ; `--niveau` le corrige.
+   Domaine : porté par le projet (`brain proj … --domaine`), hérité par ses souvenirs ; liste à la décision E19.
+5. *Le passé sans instantané.* Hors de la fenêtre des 60 instantanés, `brain q --at` reconstruit l'état d'après
+   les dates (souvenir : début ≤ jour < fin ; lien : création ≤ jour < fin) et le dit : « reconstruit d'après les
+   dates ; le texte des souvenirs est celui d'aujourd'hui ». `memory_search` reçoit `at`, si la liste des outils
+   MCP ne s'allonge pas.
+- Fichiers : `store.py`, `cli.py`, `cli_memoire.py`, `wikistore.py`, `history.py`, `search.py`, `dream.py`,
+  `mcp_server.py`, `bench.py`, `skills/brain/references/memoire.md`.
+- Tests : nouveau `tests/test_temps.py` ; `test_wiki` (aller-retour), `test_commandes`, `test_consommation`.
+- Fini quand : un graphe 8.33.0 se charge sans être réécrit ; un lien terminé n'est vu que par la lignée, `--at`
+  et la vue ; sur un cerveau d'essai, `brain q --at` répond pour une date vieille de six mois.
+- Risque principal : une lecture qui verrait un lien terminé fausserait le PageRank, les communautés et les
+  fusions. Paré par `Brain.edges` filtré et par un test sur chaque module qui lit les liens.
+
+**Étape 12 — Rappel et piliers** (cerveau 8.35.0, après l'étape 11)
+1. *Filtre par validité.* Le rappel automatique et `brain q` écartent un souvenir pas encore valable ou échu,
+   même encore actif ; `--archived` le montre.
+2. *Souvenirs en conflit.* Deux souvenirs actifs liés par `contradicts` et rappelés ensemble : le plus récent
+   passe devant et la ligne dit « contredit … ».
+3. *Piliers au démarrage.* La centralité, déjà calculée, entre dans l'ordre de tri de l'injection du démarrage, à
+   nombre de caractères égal. C'est une hypothèse : si le banc d'essai ne montre pas les nœuds clés de chaque
+   projet dans l'injection, ou si le rappel descend sous 58 sur 62, ce point n'est pas livré.
+4. *Réactivation.* Un souvenir d'importance 4 ou 5 qui n'a pas servi depuis 30 jours entre dans le dossier du
+   rêve, section « À revoir ». L'archiviste le tranche au démarrage suivant : toujours vrai (la date est notée et
+   le délai double : 30, 60, 120 jours…), corrigé, ou archivé. Trois par jour au plus ; rien dans la conversation.
+- Fichiers : `search.py`, `hooks_message.py`, `index.py`, `dream.py`, `store.py`.
+- Tests : `test_rappel`, `test_demarrage`, `test_consommation`, `brain bench` avant et après.
+
+**Étape 13 — La vue 3D rejouable** (cerveau 8.36.0, après l'étape 11)
+1. *Données.* `viz.render` ajoute aux souvenirs leur début et leur fin, aux liens leur création et leur fin, la
+   raison d'un remplacement, le domaine et le niveau, et les souvenirs archivés qui ont une date de fin (les
+   2 000 plus récents au plus). Le poids de la page est mesuré avant et après.
+2. *Le curseur montre le passé.* À une date, un souvenir est visible entre son début et sa fin, un lien entre sa
+   création et sa fin. Curseur à droite : la vue d'aujourd'hui, identique à celle de la 8.33.0.
+3. *La lecture ▶.* Naissances (effet existant), extinctions en fondu, remplacement montré par une impulsion de
+   l'ancien vers le nouveau. Le réglage « moins d'animations » du système reste respecté.
+4. *Les axes à l'écran.* Deux couleurs de plus, « domaine » et « chaleur » (dernier usage). Une disposition
+   « couches », sur un bouton : la hauteur d'un souvenir est fixée par son niveau, vision en haut, détail en bas.
+5. *Le panneau d'un souvenir* affiche sa lignée : ce qu'il remplace, ce qui l'a remplacé, les dates, la raison.
+6. La vue 2D et le tableau acceptent les nouveaux champs et ne montrent que le présent.
+- Fichiers : `viz.py`, `brainkit/vue3d/page.html`, `tests/test_vue3d.py`, `tests/vue3d_navigateur.js`. Les
+  bibliothèques intégrées ne changent pas.
+- Fini quand : dans le test en navigateur, à une date passée, un souvenir remplacé depuis est visible et son
+  remplaçant absent ; curseur à droite, la page affiche les mêmes nœuds et liens qu'en 8.33.0.
+
+**Ordre.** L'étape 10 d'abord : elle sert aux trois autres. Puis la 11. Les étapes 12 et 13 s'appuient sur la 11
+et se font dans l'ordre que tu veux.
+
 ## 10. Décisions demandées
 
 | # | Décision | Ma recommandation |
@@ -546,6 +676,12 @@ Amélioration continue, puis N3 domaine par domaine. N4 reste hors du plan.
 | E13 | ADR-013 (« pas de yfinance ») contre l'étape 9 du plan v2 | **Tranché le 21/11 : l'ADR-013 fait foi**, le plan v2 corrigé (étape 9) |
 | E14 | Retraits de cas d'évaluation réservés par R9 | **Validés le 23/11** : ADR-021, 046, 050, 057, 060, 063 (le retrait) et 068 |
 | E15 | 35 ADR encore « proposé » | À relire dans `docs/adr/A-VALIDER.md` (ta réponse du 23/11 : relire d'abord) |
+| E16 | Graphiti, mem0 ou une base de graphe pour le cerveau en 4D | **Tranché le 24/11 : reprendre leurs idées, ne rien installer** (Bloc E) |
+| E17 | Recherche par embeddings | **Tranché le 24/11 : le rappel reste lexical**, avec un filtre par validité en plus (étape 12) |
+| E18 | Modèle qui exécute le Bloc E | **Tranché le 24/11 : Opus 5.5**, tu changes le modèle de la session toi-même |
+| E19 | Liste des domaines, pour l'axe « domaine » (étape 11) | Sept domaines portés par le projet : code, business, contenu, finance, infra, recherche, perso. À toi de corriger la liste |
+| E20 | Vérification en fin de tâche dans ce dépôt (étape 10) | Le lint et les tests des fichiers touchés ; tous les scripts (3 min 50 mesurées le 24/11 sous Linux) restent pour la CI |
+| E21 | Où garder un lien terminé en mode wiki (étape 11) | Dans une propriété `anciens_liens` de la page, pour qu'il survive à une reconstruction de `graph.json` |
 
 Toujours ouvertes depuis le plan v2 : D4 (ton nom dans l'historique public), D5 (ordre des domaines),
 D6 (ta boutique), D7 (réseaux sociaux visés), D8 (canal des approbations), D9 (modèle local),
@@ -585,6 +721,10 @@ git push origin --delete cerveau-plateforme claude/clever-heisenberg-lgjfhn clau
   vraie base) ni sous Windows.
 - `[VERIFICATION REQUIRED]` : le coût réel des skills et des outils MCP dans ta session (`/context`) ;
   le compte réel des tokens (le cerveau estime 2,2 caractères par token) ; les vitesses sous Windows.
+- **Bloc E** : le tableau E.1 vient d'une lecture du code le 24/11, fichier par fichier, pas d'essais.
+  État de départ mesuré le 24/11 sous Linux (Python 3.13) : les 35 scripts de test passent sans échec en 3 min 50, le lint de la CI ne signale rien. Les quatre dépôts de guides et
+  de skills cités dans ta synthèse n'ont pas été lus. Les piliers au démarrage (étape 12, point 3) sont une
+  hypothèse, livrée seulement si le banc d'essai la confirme.
 
 ## Annexe — Constats techniques
 
