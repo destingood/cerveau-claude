@@ -53,7 +53,7 @@ sauf les correctifs sûrs, faits tout de suite à ta demande.
    par MCP et une vue 3D avec le temps. Le cerveau en a déjà la plus grande part : graphe à liens typés,
    « A remplace B » avec date de fin, PageRank, vue 3D avec curseur. Il reste quatre manques, donc quatre
    étapes (10 à 13) : les réglages Claude Code du dépôt, le temps dans le modèle de données, le rappel et
-   les piliers, la vue 3D rejouable. Étapes 10 à 12 faites le 24/11, sur Opus 5.5 (cerveau 8.35.0) ; l'étape 13 suit.
+   les piliers, la vue 3D rejouable. Les quatre étapes sont faites le 24/11, sur Opus 5.5 (cerveau 8.36.0) : le Bloc E est terminé.
 
 ## 1. Ce que tu as demandé
 
@@ -78,7 +78,7 @@ sauf les correctifs sûrs, faits tout de suite à ta demande.
 | 24/11 | Synthèse « cerveau en 4D » (graphe daté, mémoire par MCP, vue 3D avec le temps) ; « fais le plan et passe à Opus 5.5 » | Bloc E, étapes 10 à 13. Tes réponses du 24/11 : les quatre manques, reprendre les idées de Graphiti et mem0 sans les installer, rappel lexical avec filtre par date, tu changes le modèle toi-même |
 | 24/11 | Passage sur Opus 5.5, « GO étape 10 » | Étape 10 faite : `CLAUDE.md` à la racine, hook de vérification en fin de tâche (E20 appliquée telle que recommandée) |
 | 24/11 | « Go étape 11 » | Étape 11 faite (8.34.0) ; E19 et E21 appliquées telles que recommandées |
-| 24/11 | « Continue le plan » | Étape 12 faite (8.35.0), piliers livrés après mesure ; étape 13 ensuite |
+| 24/11 | « Continue le plan » | Étapes 12 (8.35.0, piliers livrés après mesure) et 13 (8.36.0) faites : Bloc E terminé |
 
 ## 2. Comment l'audit a été fait, et ses limites
 
@@ -711,7 +711,8 @@ plan de l'étape.
   - Tests : `tests/test_temps.py` passe à 68 vérifications (étape 12 : validité, contradictions, revue, piliers,
     fin déjà passée gardée). Les 37 scripts passent.
 
-**Étape 13 — La vue 3D rejouable** (cerveau 8.36.0, après l'étape 11)
+**Étape 13 — La vue 3D rejouable** (cerveau 8.36.0, après l'étape 11) : **faite le 24/11** (PR #32). Détail après
+le plan de l'étape.
 1. *Données.* `viz.render` ajoute aux souvenirs leur début et leur fin, aux liens leur création et leur fin, la
    raison d'un remplacement, le domaine et le niveau, et les souvenirs archivés qui ont une date de fin (les
    2 000 plus récents au plus). Le poids de la page est mesuré avant et après.
@@ -727,6 +728,27 @@ plan de l'étape.
   bibliothèques intégrées ne changent pas.
 - Fini quand : dans le test en navigateur, à une date passée, un souvenir remplacé depuis est visible et son
   remplaçant absent ; curseur à droite, la page affiche les mêmes nœuds et liens qu'en 8.33.0.
+- ✅ Fait le 24/11 (cerveau 8.36.0) :
+  - Données : `DATA.nodes` et `DATA.edges` restent le présent ; le passé arrive à part (`DATA.past` : souvenirs
+    archivés qui ont une fin, 2 000 au plus ; `DATA.pastEdges` : liens vers eux et liens terminés). La vue 2D, le
+    tableau, la légende et les compteurs ne le voient donc pas, sans y toucher. Chaque souvenir ne porte que les
+    champs de temps qu'il a (début, fin, raison, remplaçant, domaine, niveau corrigé, dernier usage).
+  - Comparé au vrai code de la 8.33.0 tiré de git, sur le même cerveau : mêmes souvenirs, mêmes liens, mêmes
+    compteurs dans les données. Dans Chromium, curseur à droite : exactement le présent (aucun nœud en plus ni en
+    moins, aucun lien du passé). Le passé caché tient à peine dans la disposition (liens de force 0,02, répulsion
+    -12 au lieu de -190), pour ne pas déformer la vue d'aujourd'hui.
+  - À une date passée : le souvenir remplacé depuis est visible, son remplaçant pas encore ; un lien terminé est
+    visible avant sa fin, plus après. Le curseur s'arrête aussi au lendemain de chaque fin, pour voir l'extinction.
+  - Lecture ▶ : naissances (effet existant), extinctions en fondu (0,76 s), impulsion de l'ancien vers le nouveau ;
+    rien de tout cela si le système demande moins d'animations ou si les effets sont coupés.
+  - Couleurs « domaine » et « chaleur » (dernier usage : semaine, mois, trimestre, plus ancien) ; bouton ☷ des
+    couches (vision, architecture, procédure, détail, de haut en bas) ; le panneau d'un souvenir donne sa validité,
+    son niveau, son domaine et sa lignée.
+  - Poids de la page, sur le cerveau du banc du rappel avec 20 remplacements et 30 liens retirés : 2 039 043
+    octets au lieu de 2 022 093 (+0,8 %). Les bibliothèques intégrées ne changent pas.
+  - Tests : `test_vue3d` passe à 68 vérifications (dont la comparaison avec la 8.33.0 et, quand Playwright est là,
+    `tests/vue3d_chronologie.js` dans Chromium : présent, passé, lien terminé, couches, couleurs, lecture). La CI
+    n'a pas Playwright : ces vérifications-là y sont sautées, comme celles du navigateur existantes.
 
 **Ordre.** L'étape 10 d'abord : elle sert aux trois autres. Puis la 11. Les étapes 12 et 13 s'appuient sur la 11
 et se font dans l'ordre que tu veux.
