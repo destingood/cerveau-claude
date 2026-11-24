@@ -53,7 +53,7 @@ sauf les correctifs sûrs, faits tout de suite à ta demande.
    par MCP et une vue 3D avec le temps. Le cerveau en a déjà la plus grande part : graphe à liens typés,
    « A remplace B » avec date de fin, PageRank, vue 3D avec curseur. Il reste quatre manques, donc quatre
    étapes (10 à 13) : les réglages Claude Code du dépôt, le temps dans le modèle de données, le rappel et
-   les piliers, la vue 3D rejouable. Étapes 10 et 11 faites le 24/11, sur Opus 5.5 (cerveau 8.34.0) ; les étapes 12 et 13 attendent ton GO.
+   les piliers, la vue 3D rejouable. Étapes 10 à 12 faites le 24/11, sur Opus 5.5 (cerveau 8.35.0) ; l'étape 13 suit.
 
 ## 1. Ce que tu as demandé
 
@@ -78,6 +78,7 @@ sauf les correctifs sûrs, faits tout de suite à ta demande.
 | 24/11 | Synthèse « cerveau en 4D » (graphe daté, mémoire par MCP, vue 3D avec le temps) ; « fais le plan et passe à Opus 5.5 » | Bloc E, étapes 10 à 13. Tes réponses du 24/11 : les quatre manques, reprendre les idées de Graphiti et mem0 sans les installer, rappel lexical avec filtre par date, tu changes le modèle toi-même |
 | 24/11 | Passage sur Opus 5.5, « GO étape 10 » | Étape 10 faite : `CLAUDE.md` à la racine, hook de vérification en fin de tâche (E20 appliquée telle que recommandée) |
 | 24/11 | « Go étape 11 » | Étape 11 faite (8.34.0) ; E19 et E21 appliquées telles que recommandées |
+| 24/11 | « Continue le plan » | Étape 12 faite (8.35.0), piliers livrés après mesure ; étape 13 ensuite |
 
 ## 2. Comment l'audit a été fait, et ses limites
 
@@ -676,7 +677,8 @@ plan de l'étape.
   - Tests : nouveau `tests/test_temps.py` (49 vérifications), dont la 8.33.0 qui lit, écrit et garde un graphe
     récent, et un cache du wiki refait depuis les seules pages. Les 37 scripts passent.
 
-**Étape 12 — Rappel et piliers** (cerveau 8.35.0, après l'étape 11)
+**Étape 12 — Rappel et piliers** (cerveau 8.35.0, après l'étape 11) : **faite le 24/11** (PR #32). Détail après le
+plan de l'étape.
 1. *Filtre par validité.* Le rappel automatique et `brain q` écartent un souvenir pas encore valable ou échu,
    même encore actif ; `--archived` le montre.
 2. *Souvenirs en conflit.* Deux souvenirs actifs liés par `contradicts` et rappelés ensemble : le plus récent
@@ -689,6 +691,25 @@ plan de l'étape.
    le délai double : 30, 60, 120 jours…), corrigé, ou archivé. Trois par jour au plus ; rien dans la conversation.
 - Fichiers : `search.py`, `hooks_message.py`, `index.py`, `dream.py`, `store.py`.
 - Tests : `test_rappel`, `test_demarrage`, `test_consommation`, `brain bench` avant et après.
+- ✅ Fait le 24/11 (cerveau 8.35.0) :
+  - `search.py` découpé d'abord : le filtre d'acceptation du rappel part dans `search_filtre.py` (127 lignes), réexporté
+    sous les mêmes noms ; `search.py` passe de 997 à 894 lignes.
+  - Filtre par validité (`search.valid_today`) : rappel automatique, `brain q`, question datée et voisins du graphe.
+    Un souvenir sans date écrite n'est pas regardé (coût nul). Trouvé en l'écrivant, un défaut de l'étape 11 corrigé :
+    un remplacement repoussait à aujourd'hui une fin déjà écrite et passée.
+  - Contradictions (`temps.contradictions`) : dans le rappel automatique et dans `brain q`, le plus récent passe juste
+    devant, l'autre reçoit « ⚠ contredit par … ».
+  - Piliers : **livrés**, la mesure ayant tenu les deux critères. Poids de la centralité 10 (`index.PILLAR_W`), dans
+    l'index et dans la fiche du projet. Mesuré sur le cerveau du banc du rappel, avec le vrai hook de démarrage depuis
+    chaque projet : les 3 souvenirs les plus centraux de chaque projet sont à l'écran 11 fois sur 15 au lieu de 9
+    (10, 20 ou 30 donnent pareil), pour un peu moins de texte (24 533 caractères au lieu de 24 961) ; rappel inchangé
+    (58/62, mêmes faux rappels). Temps du démarrage à 3 000 souvenirs : hors projet inchangé (≈ 95 ms), dans un projet
+    100 ms au lieu de 88 (l'analyse en cache est lue une fois de plus) ; budget 150.
+  - Revue espacée (`temps.to_review`) : section « À revoir » du rêve, trois au plus ; `brain edit <id> --revu` note la
+    date et double le délai (30, 60, 120… 480 j). Écart avec le plan : c'est le rêve habituel qui la présente (le
+    même dossier que les doublons et les conflits), pas un passage à part de l'archiviste.
+  - Tests : `tests/test_temps.py` passe à 68 vérifications (étape 12 : validité, contradictions, revue, piliers,
+    fin déjà passée gardée). Les 37 scripts passent.
 
 **Étape 13 — La vue 3D rejouable** (cerveau 8.36.0, après l'étape 11)
 1. *Données.* `viz.render` ajoute aux souvenirs leur début et leur fin, aux liens leur création et leur fin, la
