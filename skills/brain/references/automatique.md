@@ -45,7 +45,8 @@ Ce que font les hooks du cerveau, et le sens de chaque ligne qu'ils ajoutent au 
   remplacés via `supersedes`, fins de validité passées, secrets) puis **rêve** (dates relatives rendues absolues,
   observations de plus de 7 jours condensées en un résumé par semaine et par projet, dossier `REVE.md` des points à
   trancher, dont « À revoir » : trois souvenirs importants au plus qui n'ont plus servi depuis 30 j, puis 60, 120…
-  — toujours vrai : `edit <id> --revu` ; sinon corriger ou archiver ; s'il y en a assez, une
+  — toujours vrai : `edit <id> --revu` ; sinon corriger ou archiver ; et un « motif » à écrire pour un gros sujet
+  qui n'en a pas, relié à ses souvenirs ; s'il y en a assez, une
   ligne 🌙 au démarrage propose de le confier à un sous-agent en arrière-plan :
   `dream` → appliquer ce qui est sûr → `dream --done`), avec instantané pris avant, et sauvegarde hors de ~/.claude
   (second disque sous Windows, sinon `~/Sauvegardes-cerveau-Claude`, dit une fois ; réglage `backup.dir`).
