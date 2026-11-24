@@ -765,7 +765,8 @@ API payante (extraction par LLM à chaque ajout, rerankers, `claude -p` en boucl
 Licences : Graphiti, mem0 Apache-2.0 ; best-practices, skills de Matt Pocock, obra, tapestry, l'auditeur de skills,
 3d-force-graph MIT ; le guide de F. Bruniaux CC BY-SA 4.0 (on reprend des idées, pas son texte).
 
-**Étape 14 — Une mémoire plus juste** (Graphiti, mem0). Tout en code déterministe, à l'écriture ou au rêve : aucun
+**Étape 14 — Une mémoire plus juste** (Graphiti, mem0) : **points 1 à 4, 6 et 8 faits le 24/11** (cerveau
+8.38.0) ; 5, 7 et 9 reportés (raisons dans le détail). Tout en code déterministe, à l'écriture ou au rêve : aucun
 coût pour le rappel.
 1. Dates tirées du texte à l'ajout : « depuis le », « à partir du », « jusqu'au », et le futur (« va », « prévu »,
    « d'ici le ») ; une échéance n'est pas une fin. Proposées à Claude, pas posées en silence. (S, graphiti
@@ -788,6 +789,28 @@ coût pour le rappel.
 9. Usage : un facteur de déclin d'après les derniers rappels (ACT-R), comme trait du neurone, jamais comme filtre ;
    diversité des souvenirs rappelés (MMR) au lieu de l'élimination des seuls quasi-doublons. (S, mem0, graphiti,
    guide Bruniaux §9) — mesuré sur le banc du rappel avant d'être gardé, comme les piliers.
+
+- ✅ Fait le 24/11 (cerveau 8.38.0) :
+  - Dates dites dans le texte (`temps.text_dates`) : proposées après `add` (ligne 📅 avec la commande), jamais posées
+    seules ; « d'ici le » reste une échéance.
+  - Remplacement daté (`temps.end_for`) : l'ancien finit la veille du `--depuis` du nouveau ; un remplaçant qui ne
+    commence que plus tard laisse l'ancien vrai et actif jusque-là (l'entretien du jour l'archive après sa fin, et ne
+    l'archive plus avant) ; un « nouveau » qui commence avant l'ancien est refusé (`supersede`) ou ignoré (`add
+    --replaces`, remplacement automatique).
+  - Réconciliation : deux souvenirs aux périodes écrites distinctes ne se fusionnent ni ne se remplacent ; les
+    variantes d'un même nom comptent pour un (`reconcile.names` : « Mondial Relay », « MondialRelay » → mondialrelay) ;
+    un souvenir qui partage un nom propre rare (3 souvenirs au plus le portent) est suggéré (« remplace peut-être »),
+    jamais remplacé tout seul. Le banc des remplacements de `brain bench` reste à 12 sur 12, sans faux remplacement.
+    Pas fait : la règle « un événement ne contredit jamais un état » (les types du cerveau ne disent pas assez
+    nettement ce qui est un événement).
+  - Rappel de fin de tâche : « Un souvenir tient seul : noms, chiffres et dates exacts ; un changement : « X → Y,
+    parce que… » » (593 caractères, budget 600).
+  - Rêve : un « motif » à écrire par sujet d'au moins 8 souvenirs qui n'en a pas, un par rêve, avec la commande qui
+    le relie à ses preuves ; le titre « Motif : … » évite les doublons.
+  - Reportés : 5 (l'index des noms n'accélère que `brain q`, pas le rappel des hooks), 7 (la provenance par session
+    demande l'identifiant de session dans chaque commande ; à vérifier d'abord), 9 (déclin d'usage et diversité :
+    un nouveau trait du neurone rendrait inutilisable le modèle déjà appris sur ton PC).
+  - Tests : nouveau `tests/test_justesse.py` (16 vérifications). Les 39 scripts passent.
 
 **Étape 15 — La mémoire protégée** (guides Claude Code) : **points 1 à 4 faits le 24/11** (cerveau 8.37.0) ;
 le point 5 après l'étape 18, qui change les skills. Détail après la liste.
