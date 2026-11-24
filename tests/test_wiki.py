@@ -540,6 +540,7 @@ check((WIKI / "Cerveau.md").is_file() and (WIKI / "Carte du cerveau.canvas").is_
       and "Rappeler le torréfacteur" not in page("Cerveau.md"), "démarrage : page Cerveau et carte écrites au réglage du coffre")
 hook("session-end", {"session_id": "s1", "cwd": str(WORK)})
 check("session | hors projet" in page("log.md"), "fin de session : entrée « session » au journal", page("log.md")[-400:])
+brain("vues", "--attendre")  # page Cerveau, index.md et carte : refaits par la tâche de fond des vues
 check("Rappeler le torréfacteur de Shizuoka" in page("Cerveau.md"), "fin de session : page Cerveau à jour (nouvel à-faire)",
       page("Cerveau.md")[:800])
 # rêve (v8.15) : une source du wiki à ingérer suffit pour la ligne du démarrage, et Claude la traite lui-même

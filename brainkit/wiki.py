@@ -618,23 +618,36 @@ def init(path, migrate=True, push=True) -> list:
     return report
 
 
-def session_close(brain, project=None) -> str:
-    """Fin de session (mode wiki) : index à jour, entrée « session » au journal si des pages ont changé."""
-    from .wiki_journal import write_journal
-    root = ws.root()
+def write_derived(brain, root=None) -> None:
+    """index.md, page « Cerveau » et carte du coffre Obsidian, refaits d'après les pages. Aucun n'est dans git (chaque PC
+    a les siens) et chacun se refait à tout moment : la fin de session les confie à la tâche de fond des vues (vues.py),
+    car ils coûtaient 250 à 300 ms dans le hook à 3 000 pages (la page Cerveau passe tout le wiki au contrôle de santé)."""
+    root = root or ws.root()
     if not root:
-        return ""
+        return
     write_index(brain, root)
-    try:
-        write_journal(root)
-    except Exception as exc:
-        log(f"wiki : journal : {exc!r}")
-    try:  # coffre Obsidian : page « Cerveau » et carte des thèmes, lues sans Claude (≈ 0,15 s)
+    try:  # coffre Obsidian : page « Cerveau » et carte des thèmes, lues sans Claude
         from . import obsidian
         obsidian.write_status(brain, root)
         obsidian.write_canvas(brain, root)
     except Exception as exc:
         log(f"wiki : obsidian : {exc!r}")
+
+
+def session_close(brain, project=None, derived=True) -> str:
+    """Fin de session (mode wiki) : journal du wiki de ce PC et entrée « session » de log.md si des pages ont changé —
+    sur le disque avant la synchronisation git qui suit, et avant que le PC puisse s'éteindre. `derived` : refaire aussi
+    index.md, la page Cerveau et la carte (write_derived) ; le hook de fin de session les laisse à la tâche des vues."""
+    from .wiki_journal import write_journal
+    root = ws.root()
+    if not root:
+        return ""
+    if derived:
+        write_derived(brain, root)
+    try:
+        write_journal(root)
+    except Exception as exc:
+        log(f"wiki : journal : {exc!r}")
     if not is_repo(root):
         return ""
     rows = [p for _, p in _changes(root) if p.startswith((ws.PAGES + "/", ws.ARCHIVE + "/", ws.RAW + "/"))]

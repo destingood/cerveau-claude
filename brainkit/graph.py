@@ -151,7 +151,19 @@ def concept_tags(text, limit=4):
     return out[:limit]
 
 
+CONCEPTS_KEPT = 40  # concepts gardés dans l'analyse : index de démarrage, vues, `brain concept`, rapport
+
+
 def _concepts(nodes):
+    """Les CONCEPTS_KEPT concepts les plus cités : ceux que l'analyse garde (et que les hooks lisent)."""
+    return concepts_all(nodes)[:CONCEPTS_KEPT]
+
+
+def concepts_all(nodes):
+    """Tous les concepts, du plus cité au moins cité. `brain regroupe` y cherche ses fiches (un sujet de 3 à 12
+    souvenirs n'est presque jamais parmi les 40 plus cités d'un gros cerveau) ; il les calcule lui-même, à la demande :
+    l'analyse en cache, lue par les hooks, ne change pas. 0,3 s à 3 000 souvenirs, 0,75 s à 10 000 (mesuré le
+    23/11/2026)."""
     found, disp, kind = defaultdict(set), defaultdict(Counter), {}
     lower = set()  # mots déjà vus en minuscules : écrits en capitales, ce sont des mots normaux (PUBLIER, NOTE…)
     for n in nodes:
@@ -222,7 +234,7 @@ def _concepts(nodes):
     for c in final:
         c["id"] = "concept:" + slugify(c["key"], 40)
     del keys
-    return final[:40]
+    return final
 
 
 # ------------------------------------------------------------------------------------------ algorithmes
