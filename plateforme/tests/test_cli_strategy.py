@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import asyncio
 import dataclasses
+import hashlib
 import json
 import math
 import shutil
@@ -55,6 +56,11 @@ def make_home(root: Path, **changes: Any) -> Path:
     (root / MODULE).parent.mkdir(parents=True)
     shutil.copyfile(REPO / MODULE, root / MODULE)
     return root
+
+
+def sha256_of(value: Any) -> str:
+    data = json.dumps(value, sort_keys=True, separators=(",", ":"), ensure_ascii=False)
+    return "sha256:" + hashlib.sha256(data.encode("utf-8")).hexdigest()
 
 
 def entries(journal: Path) -> list[tuple[str, dict[str, Any]]]:
@@ -322,9 +328,12 @@ def test_the_protocol_counts_each_copilot_backtest_once(home: Path) -> None:
     """ADR-027: a backtest asked of the Copilot is a trial of the family, replayed and counted."""
     window = {"as_of": "2026-10-20T12:00:00Z", "debut": "2020-01-02", "fin": "2021-12-31"}
     asked = copilot_backtest(home, params={"short": 20, "long": 50}, **window)
-    [(event, call)] = entries(default_journal_path(home))
+    [(before, started), (event, call)] = entries(default_journal_path(home))
+    assert (before, started["status"]) == ("TOOL_CALL", "en_cours")  # G-6
     assert event == "TOOL_CALL" and call["status"] == "ok"
-    assert call["arguments"]["params"] == '{"short": 20, "long": 50}'
+    # ADR-071: digests only, the trial's own arguments kept apart for the replay
+    assert call["arguments"]["params"] == sha256_of({"short": 20, "long": 50})
+    assert call["replay_arguments"]["params"] == '{"short": 20, "long": 50}'
     first = strategy("protocol", "croisement_mm", *CONFIG)
     assert first.exit_code == 0, first.output
     assert "Essais du Copilote rejoués depuis le journal d'audit et comptés dans N : 1." in (
@@ -337,7 +346,7 @@ def test_the_protocol_counts_each_copilot_backtest_once(home: Path) -> None:
     assert [d["essais_copilote"] for d in decisions] == [1, 0]
     with FinanceStore.open(strategy_cli.synthetic_store_path(home), read_only=True) as db:
         [replayed] = [t.trial for t in db.trials("croisement_mm") if t.trial.origin == "copilote"]
-    assert replayed.source is not None and replayed.source.startswith("audit#1 ")
+    assert replayed.source is not None and replayed.source.startswith("audit#2 ")  # the outcome
     assert replayed.params == {"short": 20, "long": 50}
     assert (replayed.start.isoformat(), replayed.end.isoformat()) == (
         asked["backtest"]["debut"],
@@ -358,4 +367,8 @@ def test_a_copilot_backtest_that_no_longer_replays_refuses_the_protocol(home: Pa
     assert result.exit_code == 1, result.output
     assert "non rejouable" in result.output
     assert not default_reports_dir(home).exists()
-    assert [e for e, _ in entries(default_journal_path(home))] == ["TOOL_CALL", "ERROR"]
+    assert [e for e, _ in entries(default_journal_path(home))] == [
+        "TOOL_CALL",
+        "TOOL_CALL",
+        "ERROR",
+    ]

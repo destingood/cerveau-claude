@@ -82,6 +82,7 @@ sauf les correctifs sûrs, faits tout de suite à ta demande.
 | 24/11 | « Regarde chaque lien GitHub que je t'ai envoyé et mets dans le cerveau ce qui est utile » | Bloc F, étapes 14 à 19 ; tu as choisi les quatre groupes |
 | 24/11 | « Mets à jour et publie » | Étape 17 réunie et publiée (8.42.0) ; Bloc F fait, sauf ce qui est reporté. Tes réponses : fusionner la PR une fois la CI verte ; le garde-fou shell (étape 19, point 3) reste tel quel |
 | 24/11 | « L'organisation du cerveau est bordélique » | Étape 20 (8.43.0) : amas par projet à l'ouverture. Tes réponses : une grosse pelote, un amas par projet, 200 à 1 000 souvenirs |
+| 26/11 | « Continue le plan » | Bloc B, étape B1 : le pont MCP réparé avant d'être branché (vérificateur de chiffres, journal en empreintes, plafonds, kill switch). Tes réponses : 200 appels par session et 1 000 par jour ; pas de budget en euros pour le pont ; exception `strategy_lab` gardée ; empreintes à clé plus tard |
 
 ## 2. Comment l'audit a été fait, et ses limites
 
@@ -315,7 +316,7 @@ ci-dessus sont faites.
   - mission de `CLAUDE.md` réécrite (Claude Code dirige par le pont MCP, LangGraph en place sans tourner) ; règles
     et interdits inchangés ;
   - un vrai README pour la plateforme.
-- **Toi** : les 7 retraits R9 validés le 23/11 (ADR-021, 046, 050, 057, 060, 063 et 068). Restent 35 ADR
+- **Toi** : les 7 retraits R9 validés le 23/11 (ADR-021, 046, 050, 057, 060, 063 et 068). Restent 37 ADR
   « proposé » à relire, une ligne chacun dans `docs/adr/A-VALIDER.md` : réponds en une fois (« tout validé », ou
   les numéros à revoir).
 
@@ -495,7 +496,7 @@ hook au-dessus de 150 ms, premier démarrage après un changement compris ; `bra
 - ADR-002 et ADR-013 mis à jour ; `CLAUDE.md` (mission seulement) et un README pour la plateforme.
 - Page des réglages : 123 réglages expliqués et 17 entrées tenues par le cerveau, générée depuis le code (aucune dérive
   possible : `test_page_reglages`, 46 vérifications) ; `brain config --page [clé]`. Rien au démarrage de session.
-- Reste à toi : relire les 35 ADR de `docs/adr/A-VALIDER.md`.
+- Reste à toi : relire les 37 ADR de `docs/adr/A-VALIDER.md`.
 
 ### Bloc B — Unifier la plateforme (plan v2, étapes 2 et 4 à 8)
 
@@ -509,13 +510,39 @@ hook au-dessus de 150 ms, premier démarrage après un changement compris ; `bra
      refusés passent. Exemples : « 10'000'000 € » reconstitué à partir de trois morceaux pris
      ailleurs ; « 0 Md€ » ; un chiffre lu sur une page web présenté comme une VaR. À l'inverse, 7
      textes justes sur 18 sont refusés (la date du jour, « Étape 2 », tes propres chiffres).
+     ✅ Fait le 26/11 (B1.1, ADR-070). Les 39 brouillons de l'audit n'étaient pas gardés : un corpus
+     refait (21 inventés, 18 justes, avec leurs sorties d'outils) donnait 5 refus sur 21 et 9
+     acceptations sur 18 ; il donne 21 sur 21 et 18 sur 18, planchers du test. Un nombre groupé
+     (« 10'000'000 », espaces fines, gras, caractères invisibles) se lit d'un bloc ; un zéro demande
+     une source nulle, un arrondi garde l'ordre de grandeur ; un pourcentage ne s'apparie plus à
+     une fraction écrite sans % ; une mesure (VaR, volatilité, Sharpe, TWR…) ne vient que d'une
+     figure de cette mesure, jamais d'une page. La date du jour compte ; « Étape 2 » n'est pas un
+     chiffre ; tes chiffres passent par `citations_utilisateur`, écrits à l'identique, listés à
+     part. Chaque vérification va au journal, par ses seuls comptes. Reste : Claude écrit lui-même
+     ces citations (un chiffre inventé recopié là passe, mais reste visible), `verifier` reste
+     facultatif, et l'orchestrateur n'a pas la règle des mesures (B360, B361).
   2. **Le journal d'audit garde les arguments en clair** (R6) : nom, adresse, IBAN, jeton dans une
      URL. Il doit n'en garder que les noms et des empreintes.
+     ✅ Fait le 26/11 (B1.2, ADR-071) : chaque argument n'y laisse que son nom et le SHA-256 de sa
+     valeur, pour le pont comme pour l'orchestrateur ; ce que tu as écrit est pris sous sa forme
+     masquée. Une exception, écrite : les arguments d'un backtest du Copilote restent en clair, car
+     le protocole les rejoue (ADR-027). Reste : une empreinte de valeur courte se devine ; une
+     empreinte à clé demanderait une clé hors du dépôt.
   3. Une entrée au journal pour chaque appel, refus et pannes compris (R11) ; une limite de temps au
      démarrage d'un plugin (un démarrage bloqué tenait l'appel plus de 37 s) ; le kill switch qui
      arrête aussi un appel en cours, et qui reste engagé si son dossier est remplacé par un fichier
      (R4) ; un plafond par session et par jour, et le contrôle du budget quotidien jamais appelé
      (R7) ; le texte des pages web marqué comme donnée (R5) ; les messages d'erreur sans chemins.
+     ✅ Fait le 26/11 (B1.2, B1.3, ADR-071) : une entrée « en cours » avant l'appel, puis son
+     résultat ; refus, nom d'outil ambigu (`plugin` à préciser) et démarrage raté journalisés ;
+     démarrage coupé à 30 s ; kill switch relu toutes les 0,2 s pendant l'appel, qui est annulé, et
+     engagé si son dossier est un fichier ou illisible ; ta décision, 200 appels par session et
+     1 000 par jour (`budgets.yaml › per_bridge`), le jour compté dans le journal ; sortie d'un
+     outil web marquée « données externes » ; erreurs sans chemins. Tes décisions du 26/11 : le
+     budget quotidien en euros ne s'applique pas au pont (il ne dépense aucun euro d'API ; les
+     plafonds d'appels suffisent) ; l'exception `strategy_lab` (ses essais gardés en clair pour
+     rejouer et compter les backtests, ADR-027) est acceptée ; les empreintes à clé viendront
+     avant de brancher le pont (B362).
   4. Plus tard : `proposer_action` ne mène à rien (le résumé est perdu, son empreinte se devine) ; il
      faudra une file d'intentions hors de portée de Claude (étape de la chaîne d'approbation). Chaque
      appel lance un nouveau processus : 1,2 à 1,6 s pour un outil de 8 ms.
@@ -986,7 +1013,7 @@ il fait doublon avec le cerveau.
 | E12 | `brain.exe` (Rust 8.18.2) tant que son code source n'est pas dans le dépôt | **Tranché le 20/11 : Python partout, puis optimiser en Rust.** Fait : `brain.exe` ne tourne plus que sur demande (`BRAIN_IMPL=rust`), tous les correctifs valent sous Windows. Ensuite (D2) : tu ajoutes le code Rust au dépôt ; Claude y reporte les correctifs faits depuis la 8.18.2, l'optimise, et l'exe est construit en CI |
 | E13 | ADR-013 (« pas de yfinance ») contre l'étape 9 du plan v2 | **Tranché le 21/11 : l'ADR-013 fait foi**, le plan v2 corrigé (étape 9) |
 | E14 | Retraits de cas d'évaluation réservés par R9 | **Validés le 23/11** : ADR-021, 046, 050, 057, 060, 063 (le retrait) et 068 |
-| E15 | 35 ADR encore « proposé » | À relire dans `docs/adr/A-VALIDER.md` (ta réponse du 23/11 : relire d'abord) |
+| E15 | 37 ADR encore « proposé » | À relire dans `docs/adr/A-VALIDER.md` (ta réponse du 23/11 : relire d'abord) |
 | E16 | Graphiti, mem0 ou une base de graphe pour le cerveau en 4D | **Tranché le 24/11 : reprendre leurs idées, ne rien installer** (Bloc E) |
 | E17 | Recherche par embeddings | **Tranché le 24/11 : le rappel reste lexical**, avec un filtre par validité en plus (étape 12) |
 | E18 | Modèle qui exécute le Bloc E | **Tranché le 24/11 : Opus 5.5**, tu changes le modèle de la session toi-même |
@@ -1096,14 +1123,14 @@ et `brain optimize` sous-estiment (rep.). Étape 4 : les ✅ du 21/11.
 K-14 `brain/SKILL.md:22-27` · K-15 ancienne skill claude.ai.
 
 **Pont MCP** — G-1 `core/verification/numbers.py:50-64, 91-109, 221-229`, `trace.py:139-141`,
-`server.py:207` chiffres inventés acceptés (rep.) · G-2 `core/mcp/adapter.py:354, 438, 455`,
+`server.py:207` chiffres inventés acceptés (rep., ✅ 26/11) · G-2 `core/mcp/adapter.py:354, 438, 455`,
 `server.py:198` arguments en clair au journal (rep.) · G-3 `server.py:175-200` refus non journalisés
 (rep.) · G-4 `adapter.py:213-216` démarrage sans limite de temps (rep.) · G-5 `adapter.py:378` kill
 switch et appel en cours (rep.) · G-6 `adapter.py:394-460` journal écrit après l'appel (rep.) · G-7
 `server.py:181-192` aucun plafond, `BudgetGate` jamais appelé (rep.) · G-8 `server.py:204` texte web
-rendu tel quel (rep.) · G-9 `verifier` facultatif, non journalisé (rep.) · G-10 faux refus (rep.) ·
-G-11 deux plugins, même nom d'outil (rep.) · G-12 `core/policy/engine.py:126-132` kill switch ouvert
-si son dossier est un fichier (rep.) · G-13 `server.py:215-248` `proposer_action` sans suite (rep.) ·
+rendu tel quel (rep.) · G-9 `verifier` facultatif, non journalisé (rep. ; journalisé le 26/11,
+encore facultatif) · G-10 faux refus (rep., ✅ 26/11) · G-11 deux plugins, même nom d'outil
+(rep.) · G-12 `core/policy/engine.py:126-132` kill switch ouvert si son dossier est un fichier (rep.) · G-13 `server.py:215-248` `proposer_action` sans suite (rep.) ·
 G-14 1,2 à 1,6 s par appel (rep.) · G-15 `adapter.py:436-438, 462` chemins dans les erreurs (rep.).
 
 **Plateforme** — P-1 B228 · P-2 aucune mesure réelle (B60) · P-3 B353 · P-4 README et `cerveau ask` ·

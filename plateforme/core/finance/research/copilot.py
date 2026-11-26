@@ -178,9 +178,15 @@ class CopilotRequest:
     end: date | None
 
 
+def replayed(payload: Mapping[str, Any]) -> Any:
+    """The arguments of a journaled call as sent: ``replay_arguments`` since the journal keeps
+    only digests of the others (ADR-071), ``arguments`` in an entry written before."""
+    return payload.get("replay_arguments", payload.get("arguments"))
+
+
 def _request(entry: Mapping[str, Any], payload: Mapping[str, Any]) -> CopilotRequest:
     source = f"audit#{int(entry['seq'])} {entry['hash']}"
-    arguments = payload["arguments"]
+    arguments = replayed(payload)
     raw = arguments.get("params")
     try:
         params = json.loads(raw) if isinstance(raw, str) else raw
@@ -226,7 +232,7 @@ def copilot_requests(journal: Path, strategy_id: str) -> list[CopilotRequest]:
                 "ok",
             ):
                 continue
-            arguments = payload.get("arguments")
+            arguments = replayed(payload)
             if not isinstance(arguments, dict) or (
                 arguments.get("mode"),
                 arguments.get("strategie"),

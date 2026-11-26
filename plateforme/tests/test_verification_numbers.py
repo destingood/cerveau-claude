@@ -163,3 +163,78 @@ def test_any_grouped_number_reads_back(integer: int, cents: int) -> None:
     expected = Decimal(f"{integer}.{cents:02d}")
     for text in (english, french):
         assert expected in values(f"total {text} euros")[0]
+
+
+@pytest.mark.parametrize(
+    ("text", "expected"),
+    [
+        ("10'000'000", D("10000000")),
+        ("10’000’000,50", D("10000000.50")),
+        ("10 000 000", D("10000000")),  # figure space
+        ("10 000", D("10000")),  # hair space
+        ("**1**0 000", D("10000")),
+        ("1​00", D("100")),  # zero-width space
+        ("1­234", D("1234")),  # soft hyphen
+        ("`12`,5", D("12.5")),
+        ("10⁶", D("106")),  # never 10
+    ],
+)
+def test_one_number_is_never_read_as_pieces(text: str, expected: set[Decimal]) -> None:
+    """B1.1, G-1: grouping, invisible characters and emphasis do not split a number."""
+    assert values(f"soit {text} environ") == [expected]
+
+
+def test_a_split_number_keeps_its_written_text_and_place() -> None:
+    text = "soit **1**0 000 € environ"
+    (mention,) = extract_numbers(text)
+    assert mention.text == "1**0 000 €" == text[mention.start : mention.end]
+    assert values("**12** %") == [D("12", "0.12")]  # the percent sign stays with its number
+
+
+@pytest.mark.parametrize(
+    "text",
+    ["Étape 2 :", "phase 3", "section 4", "au chapitre 5", "étapes 2 et 3", "Step 1", "option 2"],
+)
+def test_labels_are_not_read(text: str) -> None:
+    """B1.1, G-10: « Étape 2 » names a part of the answer, it claims nothing."""
+    assert unmatched_numbers(f"{text} relire le texte.", ["rien"]) == []
+
+
+@pytest.mark.parametrize(
+    "text", ["article 1240", "phase 3 000 €", "section 4 %", "étape 2,5", "2 étapes"]
+)
+def test_numbers_near_a_label_word_stay_checked(text: str) -> None:
+    assert len(unmatched_numbers(f"Voir {text} ici.", ["rien"])) == 1
+
+
+@pytest.mark.parametrize(
+    ("draft", "source"),
+    [
+        ("0 Md€", "300 millions d'euros"),  # a zero needs a zero
+        ("0 €", "0,4 €"),
+        ("0,0 %", "0,04 %"),
+        ("1", "0,87"),  # a rounding to another order of magnitude
+        ("0,1 %", "0,06 %"),
+        ("1 Md€", "520 millions"),
+        ("0,031 %", "0.031"),  # a fraction is not a percentage
+        ("100 %", "1"),  # nor an integer a fraction
+        ("12", "12 %"),  # nor a percentage a bare number
+    ],
+)
+def test_rounding_and_readings_keep_the_magnitude(draft: str, source: str) -> None:
+    """B1.1, G-1: the tolerance of a rounding never reaches another order of magnitude."""
+    assert [m.text for m in unmatched_numbers(f"Soit {draft} ici.", [source])] == [draft]
+
+
+@pytest.mark.parametrize(
+    ("draft", "source"),
+    [
+        ("0 Md€", "0 €"),
+        ("10 %", "9,62 %"),  # half a unit is 5 % of the draft: still a rounding
+        ("1,0", "0,96"),
+        ("3,1 %", "0,031"),
+        ("1 Md€", "1,2 milliard"),
+    ],
+)
+def test_roundings_that_keep_the_magnitude(draft: str, source: str) -> None:
+    assert unmatched_numbers(f"Soit {draft} ici.", [source]) == []

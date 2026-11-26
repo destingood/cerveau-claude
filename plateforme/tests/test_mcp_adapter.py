@@ -5,6 +5,7 @@ signatures the SDK reads at runtime.
 """
 
 import asyncio
+import hashlib
 import json
 import shutil
 import sys
@@ -137,6 +138,16 @@ def entries(scope: RequestScope) -> list[dict[str, Any]]:
     ]
 
 
+def statuses(scope: RequestScope) -> list[str]:
+    return [entry["payload"]["status"] for entry in entries(scope)]
+
+
+def digest(value: Any) -> str:
+    """The journal's form of an argument (G-2): the SHA-256 of its canonical JSON."""
+    data = json.dumps(value, sort_keys=True, separators=(",", ":"), ensure_ascii=False)
+    return "sha256:" + hashlib.sha256(data.encode("utf-8")).hexdigest()
+
+
 @pytest.mark.parametrize("domain", ["finance", "generaliste"])
 def test_a_computing_tool_is_kept_in_the_finance_pack_only(tmp_path: Path, domain: str) -> None:
     store = reference_store(tmp_path / "finance.db")
@@ -171,17 +182,22 @@ def test_a_search_returns_an_artifact_and_is_journaled(scope: RequestScope) -> N
     assert message.status == "success"
     assert message.artifact["results"][0]["url"] == "https://a.example/"
     assert "Extrait externe" not in message.content  # external text only travels as the artifact
-    (entry,) = entries(scope)
+    started, entry = entries(scope)  # G-6: a trace before the call, then its outcome
+    assert started["request_id"] == entry["request_id"] == "req-test"
+    assert started["payload"]["status"] == "en_cours"
+    assert started["payload"]["arguments"] == {"query": digest("thé")}
     assert (entry["actor"], entry["event"], entry["request_id"]) == (
         "orchestrator",
         "TOOL_CALL",
         "req-test",
     )
     assert entry["versions"] == {"plugin": "web_research@0.1.0"}
-    assert entry["redactions"] == ["result_content"]
+    assert entry["redactions"] == ["result_content", "arguments"]
     payload = entry["payload"]
     assert payload["status"] == "ok"
-    assert payload["arguments"] == {"query": "thé"}
+    assert payload["arguments"] == {"query": digest("thé")}  # names and digests only (R6)
+    assert "replay_arguments" not in payload
+    assert "thé" not in scope.journal.path.read_text(encoding="utf-8")
     assert payload["action_class"] == "LECTURE"
     assert payload["search"]["provider"] == "brave"
     assert payload["tool_calls"] == 1
@@ -197,9 +213,13 @@ def test_the_journal_keeps_the_masked_arguments(scope: RequestScope) -> None:
 
     _content, result = session(scope, search)
     assert result["query"] == "thé chez Jean Dupont"  # the plugin got the real arguments
-    (entry,) = entries(scope)
-    assert entry["payload"]["arguments"] == {"query": "thé chez <PERSON_1>"}
-    assert "Dupont" not in json.dumps(entry, ensure_ascii=False)
+    started, entry = entries(scope)
+    # the digest of the masked form: the journal cannot even confirm a guess of the name
+    assert started["payload"]["arguments"] == {"query": digest("thé chez <PERSON_1>")}
+    assert entry["payload"]["arguments"] == {"query": digest("thé chez <PERSON_1>")}
+    assert entry["payload"]["arguments"] != {"query": digest("thé chez Jean Dupont")}
+    assert "Dupont" not in json.dumps([started, entry], ensure_ascii=False)
+    assert "PERSON_1" not in json.dumps([started, entry], ensure_ascii=False)
 
 
 def test_no_page_content_reaches_the_journal(scope: RequestScope) -> None:
@@ -213,7 +233,8 @@ def test_no_page_content_reaches_the_journal(scope: RequestScope) -> None:
     )
     assert "Contenu confidentiel" not in stored
     assert "Extrait externe" not in stored
-    read_entry = entries(scope)[1]["payload"]
+    assert statuses(scope) == ["en_cours", "ok", "en_cours", "ok"]
+    read_entry = entries(scope)[3]["payload"]
     assert read_entry["search"] is None
     assert read_entry["result_bytes"] > 0
 
@@ -223,8 +244,8 @@ def test_tool_errors_go_back_to_the_model_and_the_journal(scope: RequestScope) -
     message = session(scope, lambda p: invoke(p, "web_read", {"url": "http:///"}), server)
     assert message.status == "error"
     assert "hôte absent" in message.content
-    payload = entries(scope)[0]["payload"]
-    assert payload["status"] == "erreur"
+    assert statuses(scope) == ["en_cours", "erreur"]
+    payload = entries(scope)[1]["payload"]
     assert "hôte absent" in payload["error"]
 
 
@@ -235,7 +256,7 @@ def test_a_slow_call_is_cut_at_the_timeout(scope: RequestScope) -> None:
     )
     assert message.status == "error"
     assert "délai" in message.content
-    assert entries(scope)[0]["payload"]["status"] == "delai"
+    assert statuses(scope) == ["en_cours", "delai"]
 
 
 def _sent_limits(scope: RequestScope, directory: Path = PLUGIN) -> list[Any]:
@@ -321,7 +342,7 @@ def test_the_request_tool_budget_is_enforced(tmp_path: Path) -> None:
 
     with pytest.raises(RequestBudgetExceeded):
         session(scope, twice)
-    assert [e["payload"]["status"] for e in entries(scope)] == ["ok", "budget_depasse"]
+    assert statuses(scope) == ["en_cours", "ok", "budget_depasse"]  # refused: never started
     assert len(scope.meter.search_calls) == 1
 
 
@@ -546,9 +567,10 @@ def test_a_read_off_the_list_is_refused_before_the_call(
     else:
         with pytest.raises(ToolException, match=r"web_read : adresse hors de la liste"):
             session(listed, go)
-    [entry] = entries(listed)
+    *started, entry = entries(listed)
+    assert [e["payload"]["status"] for e in started] == (["en_cours"] if status == "ok" else [])
     assert entry["payload"]["status"] == status
-    assert entry["payload"]["arguments"] == {"url": url}
+    assert entry["payload"]["arguments"] == {"url": digest(url)}
     if status == "hors_liste":
         assert entry["payload"]["error"] == OFF_LIST_REFUSAL
         assert listed.budget.tool_calls == 0  # never sent, never counted
@@ -559,7 +581,7 @@ def test_without_a_list_every_public_address_may_be_asked(scope: RequestScope) -
         return await plugin.call(spec(plugin, "web_read"), {"url": "https://example.org/a"})
 
     session(scope, go)
-    assert entries(scope)[0]["payload"]["status"] == "ok"
+    assert statuses(scope) == ["en_cours", "ok"]
 
 
 def test_a_search_is_never_checked_against_the_list_by_the_adapter(scope: RequestScope) -> None:
@@ -570,7 +592,7 @@ def test_a_search_is_never_checked_against_the_list_by_the_adapter(scope: Reques
         return await plugin.call(spec(plugin, "web_search"), {"query": "bail"})
 
     session(listed, go)
-    assert entries(listed)[0]["payload"]["status"] == "ok"
+    assert statuses(listed) == ["en_cours", "ok"]
 
 
 def test_the_real_server_over_stdio(scope: RequestScope) -> None:
@@ -635,7 +657,7 @@ def test_a_planned_plugin_gives_its_tools_before_its_server_starts(scope: Reques
     assert names == ["web_read", "web_search"]
     assert starts == ["|", "web_research"]
     assert result["results"][0]["url"] == HITS[0].url
-    assert [e["payload"]["status"] for e in entries(scope)] == ["ok"]
+    assert statuses(scope) == ["en_cours", "ok"]  # the trace comes before the server's start
 
 
 def test_concurrent_first_calls_start_the_server_once(scope: RequestScope) -> None:
@@ -649,7 +671,8 @@ def test_concurrent_first_calls_start_the_server_once(scope: RequestScope) -> No
         return starts
 
     assert asyncio.run(go()) == ["web_research"]
-    assert [e["payload"]["status"] for e in entries(scope)] == ["ok"] * 4
+    assert sorted(statuses(scope)) == ["en_cours"] * 4 + ["ok"] * 4
+    assert statuses(scope)[:4] == ["en_cours"] * 4  # all four traced before the first answer
 
 
 def test_a_tool_published_differently_is_refused_at_its_call(scope: RequestScope) -> None:
@@ -666,9 +689,8 @@ def test_a_tool_published_differently_is_refused_at_its_call(scope: RequestScope
     names, error = asyncio.run(go())
     assert names == ["web_read", "web_search"]
     assert "schéma d'entrée publié différent du manifeste" in error
-    payload = entries(scope)[0]["payload"]
-    assert payload["status"] == "indisponible"
-    assert "schéma d'entrée" in payload["error"]
+    assert statuses(scope) == ["en_cours", "indisponible"]
+    assert "schéma d'entrée" in entries(scope)[1]["payload"]["error"]
 
 
 def test_a_planned_server_that_cannot_start_is_reported_at_each_call(
@@ -688,7 +710,7 @@ def test_a_planned_server_that_cannot_start_is_reported_at_each_call(
         return starts
 
     assert asyncio.run(go()) == ["web_research"]  # one attempt, its reason kept
-    assert [e["payload"]["status"] for e in entries(scope)] == ["demarrage_impossible"] * 2
+    assert statuses(scope) == ["en_cours", "demarrage_impossible"] * 2
 
 
 def test_a_start_beyond_the_time_limit_is_cut(scope: RequestScope) -> None:
@@ -700,7 +722,7 @@ def test_a_start_beyond_the_time_limit_is_cut(scope: RequestScope) -> None:
     plugin.plan(never)
     with pytest.raises(McpAdapterError, match="démarrage au-delà"):
         asyncio.run(plugin.call(spec(plugin, "web_search"), {"query": "q"}))
-    assert entries(scope)[0]["payload"]["status"] == "demarrage_impossible"
+    assert statuses(scope) == ["en_cours", "demarrage_impossible"]
 
 
 def test_a_start_cut_short_leaves_no_task_behind() -> None:
@@ -912,7 +934,8 @@ def test_an_isolated_call_charges_the_spend_it_reports(tmp_path: Path) -> None:
     assert (call.role, call.tier, call.model) == ("web_research", "agent", TASK.model)
     assert call.usd == Decimal("0.003000")
     assert scope.meter.total_tokens == 1100  # counted against the task's budget
-    [entry] = entries(scope)
+    started, entry = entries(scope)
+    assert started["payload"]["status"] == "en_cours"
     assert entry["payload"]["status"] == "ok"
     assert entry["payload"]["spend"] == [call.to_payload()]
 
@@ -938,7 +961,8 @@ def test_a_sent_task_without_a_readable_report_costs_its_ceiling(
     )
     [call] = scope.meter.llm_calls
     assert (call.tier, call.usd) == (CEILING_TIER, Decimal("2.000000"))
-    [entry] = entries(scope)
+    started, entry = entries(scope)
+    assert started["payload"]["status"] == "en_cours"
     assert entry["payload"]["status"] == status
     assert entry["payload"]["spend"] == [call.to_payload()]
 
@@ -955,7 +979,8 @@ def test_a_task_whose_server_cannot_start_costs_nothing(tmp_path: Path) -> None:
     with pytest.raises(McpAdapterError, match="démarrage impossible"):
         asyncio.run(plugin.call(spec(plugin, "agent_task"), {"task": "corrige"}))
     assert scope.meter.llm_calls == ()
-    [entry] = entries(scope)
+    started, entry = entries(scope)
+    assert started["payload"]["status"] == "en_cours"
     assert entry["payload"]["status"] == "demarrage_impossible"
     assert "spend" not in entry["payload"]
 
@@ -963,8 +988,9 @@ def test_a_task_whose_server_cannot_start_costs_nothing(tmp_path: Path) -> None:
 def test_a_tool_of_another_class_charges_no_spend(scope: RequestScope) -> None:
     session(scope, lambda p: invoke(p, "web_search", {"query": "q"}))
     assert scope.meter.llm_calls == ()
-    assert entries(scope)[0]["payload"]["spend"] is None
-    assert "patch_sha256" not in entries(scope)[0]["payload"]
+    assert statuses(scope) == ["en_cours", "ok"]
+    assert entries(scope)[1]["payload"]["spend"] is None
+    assert "patch_sha256" not in entries(scope)[1]["payload"]
 
 
 DIGEST = "0123456789abcdef" * 4
@@ -992,7 +1018,8 @@ def test_an_isolated_call_journals_the_digest_of_its_patch(
         [{"patch": patch, "depense": SPEND}],
         lambda p: invoke(p, "agent_task", {"task": "corrige"}),
     )
-    [entry] = entries(scope)
+    started, entry = entries(scope)
+    assert started["payload"]["status"] == "en_cours"
     assert entry["payload"]["patch_sha256"] == digest
 
 
@@ -1004,7 +1031,8 @@ def test_a_failed_isolated_call_journals_no_digest(tmp_path: Path) -> None:
         [ValueError("échec de la tâche")],
         lambda p: invoke(p, "agent_task", {"task": "corrige"}),
     )
-    [entry] = entries(scope)
+    started, entry = entries(scope)
+    assert started["payload"]["status"] == "en_cours"
     assert (entry["payload"]["status"], entry["payload"]["patch_sha256"]) == ("erreur", None)
 
 
@@ -1032,7 +1060,7 @@ def test_a_request_sends_one_isolated_task_at_most(tmp_path: Path, concurrent: b
     assert scope.budget.tool_calls == 1
     assert scope.isolation is not None and scope.isolation.sent == 1
     payloads = sorted((entry["payload"] for entry in entries(scope)), key=lambda p: p["status"])
-    assert [p["status"] for p in payloads] == ["budget_depasse", "ok"]
+    assert [p["status"] for p in payloads] == ["budget_depasse", "en_cours", "ok"]
     assert payloads[0]["limit"] == "isolated_tasks"
     assert "spend" not in payloads[0]
 
@@ -1092,7 +1120,8 @@ def test_a_task_cut_at_its_timeout_costs_its_ceiling(tmp_path: Path) -> None:
     assert message.status == "error"
     [call] = scope.meter.llm_calls
     assert (call.tier, call.usd) == (CEILING_TIER, Decimal("2.000000"))
-    [entry] = entries(scope)
+    started, entry = entries(scope)
+    assert started["payload"]["status"] == "en_cours"
     assert entry["payload"]["status"] == "delai"
     assert entry["payload"]["spend"] == [call.to_payload()]
 
@@ -1114,3 +1143,132 @@ def test_the_policy_reads_the_manifest_ceiling(
     ]
     assert plugin.tools
     assert seen and set(seen) == {ceiling}
+
+
+# --- B1.2, B1.3 (plan, Bloc B « Le pont MCP », points 2 et 3) ---------------------------------
+
+
+def test_no_argument_value_reaches_the_journal(scope: RequestScope) -> None:
+    """G-2: a token in an address, an IBAN in a query: the journal keeps names and digests."""
+    url = "https://example.org/a?token=jeton-tres-secret"
+    query = "virement FR7630006000011234567890189 Jean Dupont"
+
+    async def both(plugin: McpPlugin) -> None:
+        await plugin.call(spec(plugin, "web_read"), {"url": url})
+        await plugin.call(spec(plugin, "web_search"), {"query": query})
+
+    session(scope, both)
+    stored = scope.journal.path.read_text(encoding="utf-8") + "".join(
+        path.read_text(encoding="utf-8") for path in scope.journal.payload_dir.glob("*.json")
+    )
+    for secret in ("jeton-tres-secret", "FR7630006000011234567890189", "Dupont", "example.org"):
+        assert secret not in stored
+    arguments = [entry["payload"]["arguments"] for entry in entries(scope)]
+    assert arguments == [{"url": digest(url)}] * 2 + [{"query": digest(query)}] * 2
+
+
+def test_an_entry_is_written_before_the_server_answers(scope: RequestScope) -> None:
+    """G-6: a process that dies mid-call still leaves the call in the journal."""
+    seen: list[list[str]] = []
+
+    async def go(plugin: McpPlugin) -> Any:
+        client = plugin._client
+        assert client is not None
+        original = client.call_tool
+
+        async def looking(*args: Any, **kwargs: Any) -> Any:
+            seen.append(statuses(scope))  # what the journal holds while the server works
+            return await original(*args, **kwargs)
+
+        client.call_tool = looking  # type: ignore[method-assign]
+        return await plugin.call(spec(plugin, "web_search"), {"query": "q"})
+
+    session(scope, go)
+    assert seen == [["en_cours"]]
+    assert statuses(scope) == ["en_cours", "ok"]
+
+
+def test_a_server_that_never_starts_is_cut_at_the_start_limit(
+    scope: RequestScope, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """G-4: opening a plugin is time-limited too, not only a planned start."""
+
+    class Stuck:
+        def __init__(self, _target: Any) -> None:
+            pass
+
+        async def __aenter__(self) -> Any:
+            await asyncio.sleep(30)
+
+        async def __aexit__(self, *_exc: Any) -> None:
+            return None
+
+    monkeypatch.setattr(adapter_module, "Client", Stuck)
+    monkeypatch.setattr(adapter_module, "START_TIMEOUT_S", 0.2)
+
+    async def go() -> float:
+        loop = asyncio.get_running_loop()
+        begin = loop.time()
+        with pytest.raises(McpAdapterError, match="démarrage au-delà de 0 s"):
+            async with McpPlugin(PLUGIN, scope, target=object()):
+                pass
+        return loop.time() - begin
+
+    assert asyncio.run(go()) < 2.0
+
+
+def test_the_start_limit_is_the_limit_of_a_call() -> None:
+    """ADR-052: a server's start has the default limit of a call, 30 s."""
+    assert adapter_module.START_TIMEOUT_S == TOOL_TIMEOUT_S == 30.0
+
+
+def test_the_kill_switch_cancels_a_running_call(scope: RequestScope, tmp_path: Path) -> None:
+    """G-5: engaged during a call, the kill switch cancels it and stops the request (R4)."""
+    server = build_server(FakeProvider(), FakeReader(delay_s=10))
+
+    async def go(plugin: McpPlugin) -> float:
+        loop = asyncio.get_running_loop()
+        begin = loop.time()
+        call = asyncio.ensure_future(plugin.call(spec(plugin, "web_read"), {"url": PAGE.url}))
+        await asyncio.sleep(0.3)
+        assert not call.done()
+        (tmp_path / KILL_SWITCH_FILE).parent.mkdir(parents=True)
+        (tmp_path / KILL_SWITCH_FILE).write_text("", encoding="utf-8")
+        with pytest.raises(ToolRefusedError, match="kill switch"):
+            await call
+        return loop.time() - begin
+
+    elapsed = session(scope, go, server)
+    assert elapsed < 0.3 + 2 * adapter_module.KILL_SWITCH_POLL_S + 1.0
+    assert statuses(scope) == ["en_cours", "arret_urgence"]
+    payload = entries(scope)[1]["payload"]
+    assert payload["error"] == adapter_module.KILL_SWITCH_STOP
+    assert payload["result_bytes"] is None
+
+
+def test_no_absolute_path_reaches_an_error(scope: RequestScope) -> None:
+    """G-15: a server's error that names a file loses its folders, returned and journaled."""
+    error = "lecture impossible : /home/jean/cerveau/var/cache/page.html et C:\\Users\\Jean\\x.db"
+    server = build_server(FakeProvider(), FakeReader(error=error))
+    message = session(scope, lambda p: invoke(p, "web_read", {"url": PAGE.url}), server)
+    assert message.status == "error"
+    stored = entries(scope)[1]["payload"]["error"]
+    for text in (str(message.content), stored):
+        assert "…/page.html" in text and "…/x.db" in text
+        assert "/home/jean" not in text and "Users" not in text
+
+
+@pytest.mark.parametrize(
+    ("text", "expected"),
+    [
+        ("absent : /home/jean/projet/config/a.yaml (2)", "absent : …/a.yaml (2)"),
+        ("C:\\Users\\Jean\\cerveau\\var\\a.db introuvable", "…/a.db introuvable"),
+        ("\\\\serveur\\partage\\f.txt", "…/f.txt"),
+        ("file:///tmp/a/b.txt", "…/b.txt"),
+        ("'~/secret/f'", "'…/f'"),
+        ("voir https://example.org/a/b?x=1", "voir https://example.org/a/b?x=1"),
+        ("1/2, km/h et config/research.yaml", "1/2, km/h et config/research.yaml"),
+    ],
+)
+def test_the_path_scrubber(text: str, expected: str) -> None:
+    assert adapter_module.scrub_paths(text) == expected

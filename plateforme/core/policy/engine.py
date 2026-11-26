@@ -24,6 +24,7 @@ everything, since no live adapter exists (R3).
 
 from __future__ import annotations
 
+import os
 from collections.abc import Mapping
 from pathlib import Path
 from types import MappingProxyType
@@ -123,12 +124,38 @@ def phase_action_classes(domain: str) -> frozenset[ActionClass]:
     return PHASE_DOMAIN_ACTION_CLASSES.get(domain, PHASE_ACTION_CLASSES)
 
 
+def _a_parent_is_not_a_directory(directory: Path, project_root: Path) -> bool:
+    """True when ``directory`` or one of its parents up to ``project_root`` exists as a file."""
+    parent = directory
+    while parent not in (project_root, parent.parent):
+        if parent.exists() and not parent.is_dir():
+            return True
+        parent = parent.parent
+    return False
+
+
 def kill_switch_engaged(project_root: Path) -> bool:
-    """True when ``governance/kill_switch/KILL`` exists, or when that cannot be known (R4)."""
+    """True when ``governance/kill_switch/KILL`` exists, or when that cannot be known (R4).
+
+    Fail closed (G-12): a ``kill_switch`` (or ``governance``) replaced by a file, or a directory
+    that cannot be listed, engages the switch, since nobody could then tell whether ``KILL`` is
+    there; so does a ``kill_switch`` that is a dangling link. Only a ``governance/kill_switch``
+    that does not exist at all reads as open: a fresh project root has none until the switch is
+    first engaged.
+    """
     path = project_root / KILL_SWITCH_FILE
     try:
-        return path.exists() or path.is_symlink()
-    except OSError:
+        if path.exists() or path.is_symlink():
+            return True
+        try:
+            os.listdir(path.parent)
+        except FileNotFoundError:
+            # Windows says « not found », not « not a directory », when a parent is a file
+            return path.parent.is_symlink() or _a_parent_is_not_a_directory(
+                path.parent, project_root
+            )
+        return False
+    except OSError:  # NotADirectoryError, PermissionError…: unknown, so engaged
         return True
 
 
