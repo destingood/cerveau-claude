@@ -57,6 +57,7 @@ jobs:
           uv run pytest --cov=core/risk_gate --cov=core/policy --cov=core/approvals
           --cov=core/governance
           --cov=core.execution.live --cov=core/net --cov=core/research --cov=core/code
+          --cov=core/memory
           --cov-branch
           --cov-fail-under=100
           --cov-report=term-missing:skip-covered
