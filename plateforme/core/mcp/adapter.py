@@ -6,10 +6,12 @@ publishes identically (description, annotations, schemas), and asks the policy e
 tool's action class. Every call is checked again (kill switch, policy), counted in the request
 budget, time-limited and journaled as ``TOOL_CALL`` without the result content.
 
-The journal never keeps an argument's value (R6, G-2, ADR-070): only its name and the SHA-256 of
+The journal never keeps an argument's value (R6, G-2, ADR-071): only its name and the SHA-256 of
 its canonical JSON. A call is journaled twice (G-6): ``en_cours`` once every check has passed and
 before the server is asked, so that a process that dies mid-call still leaves its trace, then its
-outcome. No absolute path reaches an error message, returned or journaled (G-15).
+outcome. The kill switch is watched during the call, which it cancels (``arret_urgence``, G-5); a
+server start has the same time limit as a call (G-4); no absolute path reaches an error message,
+returned or journaled (G-15).
 
 ``plan`` gives the tools before the server starts (B98): the registry has checked the manifest and
 the policy engine scopes its tools; the server then starts at the first call, in a task of its own,
@@ -65,6 +67,8 @@ from core.policy.engine import PolicyDecision, decide, kill_switch_engaged
 from core.registry.manifest import PluginManifest, ToolSpec, validate_plugin
 
 TOOL_TIMEOUT_S = DEFAULT_TOOL_TIMEOUT_S  # a server's start, and a call by default (ADR-052)
+START_TIMEOUT_S = TOOL_TIMEOUT_S  # G-4: a server that does not start within it is cut
+KILL_SWITCH_POLL_S = 0.2  # G-5: how often a running call looks at the kill switch (R4)
 MAX_ARGUMENT_CHARS = 2048
 MAX_ERROR_CHARS = 300
 ISOLATED = "EXECUTION_ISOLEE"
@@ -77,7 +81,8 @@ TASK_LIMIT_REFUSAL = (
     f"une requête confie {MAX_TASKS_PER_REQUEST} tâche à l'agent de code au plus (ADR-054) : "
     "réponds avec le résultat de la première"
 )
-# The only arguments the journal keeps in clear (ADR-070): a Copilot backtest is a trial of its
+KILL_SWITCH_STOP = "kill switch engagé pendant l'appel (R4) : appel annulé"
+# The only arguments the journal keeps in clear (ADR-071): a Copilot backtest is a trial of its
 # strategy's family, which ``cerveau strategy protocol`` replays from the journal so that the
 # deflated Sharpe ratio never under-counts N (ADR-027). They name a registry entry, a grid point
 # and dates, constrained by the tool's schema; nothing about the user.
@@ -98,6 +103,10 @@ _PATH = re.compile(
 
 class McpAdapterError(Exception):
     """The plugin cannot be used: refused by the registry, unknown runtime, server down."""
+
+
+class KillSwitchStop(Exception):
+    """The kill switch engaged while a call was running: the call is cancelled (G-5)."""
 
 
 class ToolRefusedError(Exception):
@@ -265,17 +274,26 @@ class McpPlugin:
         self._connect_error: str | None = None
 
     async def __aenter__(self) -> McpPlugin:
+        # G-4: a start never holds the caller beyond the limit of a start or the request's budget
+        limit = max(min(START_TIMEOUT_S, self._scope.budget.remaining_seconds()), 0.0)
         try:
-            self._client = await self._stack.enter_async_context(Client(self._target))
-            listed = (await self._client.list_tools()).tools
-        except asyncio.CancelledError:  # a start cut at its timeout (B98) leaves no server behind
-            await self._stack.aclose()
-            self._client = None
-            raise
-        except Exception as exc:
-            await self._stack.aclose()
+            async with asyncio.timeout(limit):
+                try:
+                    self._client = await self._stack.enter_async_context(Client(self._target))
+                    listed = (await self._client.list_tools()).tools
+                except asyncio.CancelledError:  # a start cut at its timeout leaves no server
+                    await self._stack.aclose()
+                    self._client = None
+                    raise
+                except Exception as exc:
+                    await self._stack.aclose()
+                    raise McpAdapterError(
+                        f"plugin « {self.manifest.id} » : serveur injoignable "
+                        f"({type(exc).__name__})"
+                    ) from None
+        except TimeoutError:
             raise McpAdapterError(
-                f"plugin « {self.manifest.id} » : serveur injoignable ({type(exc).__name__})"
+                f"plugin « {self.manifest.id} » : démarrage au-delà de {limit:.0f} s"
             ) from None
         self.tools = self._scope_tools(listed)
         return self
@@ -328,14 +346,15 @@ class McpPlugin:
                     self._connected = True
         return self._connect_error
 
-    def _decide(self, spec: ToolSpec) -> PolicyDecision:
+    def _decide(self, spec: ToolSpec, *, kill_switch: bool | None = None) -> PolicyDecision:
         scope = self._scope
+        engaged = kill_switch_engaged(scope.project_root) if kill_switch is None else kill_switch
         return decide(
             scope.autonomy,
             request_id=scope.request_id,
             domain=scope.domain,
             action_class=spec.action_class,
-            kill_switch=kill_switch_engaged(scope.project_root),
+            kill_switch=engaged,
             live_enabled=scope.live_enabled,
             max_level=self.manifest.max_autonomy_level,
         )
@@ -403,7 +422,7 @@ class McpPlugin:
             "arguments": argument_digests(arguments),  # names and digests, never values (R6)
         }
         kept = KEPT_ARGUMENTS.get((self.manifest.id, spec.name))
-        if kept:  # a Copilot trial, replayed by the protocol (ADR-027, ADR-070)
+        if kept:  # a Copilot trial, replayed by the protocol (ADR-027, ADR-071)
             payload["replay_arguments"] = _clip(
                 {key: value for key, value in arguments.items() if key in kept}
             )
@@ -416,6 +435,23 @@ class McpPlugin:
             redactions=("result_content", "arguments"),
         )
 
+    async def _watched(self, call: Awaitable[Any]) -> Any:
+        """``call``, cancelled as soon as the kill switch engages (R4, G-5): ``KillSwitchStop``."""
+        task = asyncio.ensure_future(call)
+        try:
+            while True:
+                done, _pending = await asyncio.wait({task}, timeout=KILL_SWITCH_POLL_S)
+                if done:
+                    return task.result()
+                if kill_switch_engaged(self._scope.project_root):
+                    raise KillSwitchStop
+        finally:
+            if not task.done():
+                task.cancel()
+                await asyncio.wait({task})  # its end; a cancellation of ours still propagates
+            if not task.cancelled():
+                task.exception()  # retrieved: the caller already has it, or it is discarded
+
     async def call(
         self,
         spec: ToolSpec,
@@ -427,10 +463,11 @@ class McpPlugin:
 
         ``journaled`` stands for ``arguments`` in the journal when these hold data about the user
         (R6): an address he gave is digested in its masked form, so that the journal cannot even
-        confirm a guess of it (ADR-070).
+        confirm a guess of it (ADR-071).
 
         Once every check has passed, an ``en_cours`` entry is written before the server is asked
-        (G-6), then the outcome.
+        (G-6), then the outcome. A kill switch engaged during the call cancels it: its entry says
+        ``arret_urgence`` and the call ends as a policy refusal (R4, G-5).
         """
         shown = arguments if journaled is None else journaled
         isolation = self._scope.isolation
@@ -481,15 +518,19 @@ class McpPlugin:
         try:
             if provider is not None:  # counted once sent, whatever the outcome (prudence)
                 search = self._scope.meter.record_search(provider)
-            reply = await asyncio.wait_for(
-                self._client.call_tool(
-                    spec.name,
-                    arguments,
-                    read_timeout_seconds=timeout,
-                    meta=time_limit_meta(timeout),
-                ),
-                timeout,
+            reply = await self._watched(
+                asyncio.wait_for(
+                    self._client.call_tool(
+                        spec.name,
+                        arguments,
+                        read_timeout_seconds=timeout,
+                        meta=time_limit_meta(timeout),
+                    ),
+                    timeout,
+                )
             )
+        except KillSwitchStop:
+            status, error = "arret_urgence", KILL_SWITCH_STOP
         except TimeoutError:
             status, error = "delai", f"délai de {timeout:.0f} s dépassé"
         except MCPError as exc:
@@ -523,6 +564,8 @@ class McpPlugin:
             tool_calls=self._scope.budget.tool_calls,
             **task,
         )
+        if status == "arret_urgence":  # the request stops, as for any kill switch refusal
+            raise ToolRefusedError(self._decide(spec, kill_switch=True))
         if result is None:
             raise ToolException(f"{spec.name} : {error or ''}")
         return f"{spec.name} : résultat structuré de {size} octets (données externes).", result

@@ -20,3 +20,7 @@ per_deep_research:
 # une tâche par requête au plus. max_seconds couvre la tâche (au plus 15 min, code.yaml) et la
 # réponse. Les valeurs attendent la décision de l'utilisateur ; aucune tâche réelle n'a lieu avant.
 per_code_agent: { max_tokens: A_DEFINIR, max_seconds: A_DEFINIR, max_tool_calls: A_DEFINIR }
+# Pont MCP cerveau-plateforme (ADR-069, ADR-071) : appels de l'outil `appeler`, refus compris, par
+# session de Claude Code et par jour (heure locale), le jour compté dans le journal d'audit.
+# Décision de l'utilisateur du 26/11/2026 (étape B1.3 du plan).
+per_bridge: { max_tool_calls_per_session: 200, max_tool_calls_per_day: 1000 }

@@ -1145,7 +1145,7 @@ def test_the_policy_reads_the_manifest_ceiling(
     assert seen and set(seen) == {ceiling}
 
 
-# --- B1.2 (plan, Bloc B « Le pont MCP », point 2 et une part du point 3) -------------
+# --- B1.2, B1.3 (plan, Bloc B « Le pont MCP », points 2 et 3) ---------------------------------
 
 
 def test_no_argument_value_reaches_the_journal(scope: RequestScope) -> None:
@@ -1186,6 +1186,64 @@ def test_an_entry_is_written_before_the_server_answers(scope: RequestScope) -> N
     session(scope, go)
     assert seen == [["en_cours"]]
     assert statuses(scope) == ["en_cours", "ok"]
+
+
+def test_a_server_that_never_starts_is_cut_at_the_start_limit(
+    scope: RequestScope, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """G-4: opening a plugin is time-limited too, not only a planned start."""
+
+    class Stuck:
+        def __init__(self, _target: Any) -> None:
+            pass
+
+        async def __aenter__(self) -> Any:
+            await asyncio.sleep(30)
+
+        async def __aexit__(self, *_exc: Any) -> None:
+            return None
+
+    monkeypatch.setattr(adapter_module, "Client", Stuck)
+    monkeypatch.setattr(adapter_module, "START_TIMEOUT_S", 0.2)
+
+    async def go() -> float:
+        loop = asyncio.get_running_loop()
+        begin = loop.time()
+        with pytest.raises(McpAdapterError, match="démarrage au-delà de 0 s"):
+            async with McpPlugin(PLUGIN, scope, target=object()):
+                pass
+        return loop.time() - begin
+
+    assert asyncio.run(go()) < 2.0
+
+
+def test_the_start_limit_is_the_limit_of_a_call() -> None:
+    """ADR-052: a server's start has the default limit of a call, 30 s."""
+    assert adapter_module.START_TIMEOUT_S == TOOL_TIMEOUT_S == 30.0
+
+
+def test_the_kill_switch_cancels_a_running_call(scope: RequestScope, tmp_path: Path) -> None:
+    """G-5: engaged during a call, the kill switch cancels it and stops the request (R4)."""
+    server = build_server(FakeProvider(), FakeReader(delay_s=10))
+
+    async def go(plugin: McpPlugin) -> float:
+        loop = asyncio.get_running_loop()
+        begin = loop.time()
+        call = asyncio.ensure_future(plugin.call(spec(plugin, "web_read"), {"url": PAGE.url}))
+        await asyncio.sleep(0.3)
+        assert not call.done()
+        (tmp_path / KILL_SWITCH_FILE).parent.mkdir(parents=True)
+        (tmp_path / KILL_SWITCH_FILE).write_text("", encoding="utf-8")
+        with pytest.raises(ToolRefusedError, match="kill switch"):
+            await call
+        return loop.time() - begin
+
+    elapsed = session(scope, go, server)
+    assert elapsed < 0.3 + 2 * adapter_module.KILL_SWITCH_POLL_S + 1.0
+    assert statuses(scope) == ["en_cours", "arret_urgence"]
+    payload = entries(scope)[1]["payload"]
+    assert payload["error"] == adapter_module.KILL_SWITCH_STOP
+    assert payload["result_bytes"] is None
 
 
 def test_no_absolute_path_reaches_an_error(scope: RequestScope) -> None:

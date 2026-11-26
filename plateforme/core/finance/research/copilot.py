@@ -180,7 +180,7 @@ class CopilotRequest:
 
 def replayed(payload: Mapping[str, Any]) -> Any:
     """The arguments of a journaled call as sent: ``replay_arguments`` since the journal keeps
-    only digests of the others (ADR-070), ``arguments`` in an entry written before."""
+    only digests of the others (ADR-071), ``arguments`` in an entry written before."""
     return payload.get("replay_arguments", payload.get("arguments"))
 
 

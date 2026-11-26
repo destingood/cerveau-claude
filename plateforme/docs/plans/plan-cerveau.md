@@ -522,11 +522,24 @@ hook au-dessus de 150 ms, premier démarrage après un changement compris ; `bra
      facultatif, et l'orchestrateur n'a pas la règle des mesures (B360, B361).
   2. **Le journal d'audit garde les arguments en clair** (R6) : nom, adresse, IBAN, jeton dans une
      URL. Il doit n'en garder que les noms et des empreintes.
+     ✅ Fait le 26/11 (B1.2, ADR-071) : chaque argument n'y laisse que son nom et le SHA-256 de sa
+     valeur, pour le pont comme pour l'orchestrateur ; ce que tu as écrit est pris sous sa forme
+     masquée. Une exception, écrite : les arguments d'un backtest du Copilote restent en clair, car
+     le protocole les rejoue (ADR-027). Reste : une empreinte de valeur courte se devine ; une
+     empreinte à clé demanderait une clé hors du dépôt.
   3. Une entrée au journal pour chaque appel, refus et pannes compris (R11) ; une limite de temps au
      démarrage d'un plugin (un démarrage bloqué tenait l'appel plus de 37 s) ; le kill switch qui
      arrête aussi un appel en cours, et qui reste engagé si son dossier est remplacé par un fichier
      (R4) ; un plafond par session et par jour, et le contrôle du budget quotidien jamais appelé
      (R7) ; le texte des pages web marqué comme donnée (R5) ; les messages d'erreur sans chemins.
+     ✅ Fait le 26/11 (B1.2, B1.3, ADR-071) : une entrée « en cours » avant l'appel, puis son
+     résultat ; refus, nom d'outil ambigu (`plugin` à préciser) et démarrage raté journalisés ;
+     démarrage coupé à 30 s ; kill switch relu toutes les 0,2 s pendant l'appel, qui est annulé, et
+     engagé si son dossier est un fichier ou illisible ; ta décision, 200 appels par session et
+     1 000 par jour (`budgets.yaml › per_bridge`), le jour compté dans le journal ; sortie d'un
+     outil web marquée « données externes » ; erreurs sans chemins. Reste à toi : le contrôle du
+     budget quotidien n'est pas branché, car `llm_budget_eur` vaut `A_DEFINIR` et il refuserait
+     tout ; le pont ne dépense aucun euro d'API, à toi de dire s'il doit s'y appliquer.
   4. Plus tard : `proposer_action` ne mène à rien (le résumé est perdu, son empreinte se devine) ; il
      faudra une file d'intentions hors de portée de Claude (étape de la chaîne d'approbation). Chaque
      appel lance un nouveau processus : 1,2 à 1,6 s pour un outil de 8 ms.

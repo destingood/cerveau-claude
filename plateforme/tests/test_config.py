@@ -512,6 +512,40 @@ def test_budget_alerts_must_increase_and_end_at_100(config_dir: Path, alerts: li
         load_config(config_dir)
 
 
+def test_the_bridge_caps_are_the_user_decision() -> None:
+    """B1.3 (26/11): 200 calls per session and 1 000 per day through the MCP bridge (ADR-071)."""
+    config = load_config(REPO_ROOT / "config")
+    limits = config.budgets.per_bridge
+    assert (limits.max_tool_calls_per_session, limits.max_tool_calls_per_day) == (200, 1000)
+    assert config.blockers("mcp.bridge") == []
+
+
+@pytest.mark.parametrize(
+    "caps",
+    [
+        {"max_tool_calls_per_session": 1001, "max_tool_calls_per_day": 1000},
+        {"max_tool_calls_per_session": 0, "max_tool_calls_per_day": 1000},
+        {"max_tool_calls_per_session": 200, "max_tool_calls_per_day": 1000.5},
+        {"max_tool_calls_per_session": True, "max_tool_calls_per_day": 1000},
+        {"max_tool_calls_per_session": 200},
+    ],
+    ids=["session-above-day", "zero", "not-an-integer", "boolean", "missing"],
+)
+def test_invalid_bridge_caps_are_refused(config_dir: Path, caps: dict) -> None:
+    edit_yaml(config_dir / "budgets.yaml", lambda d: d.update(per_bridge=caps))
+    with pytest.raises(ConfigError, match="per_bridge"):
+        load_config(config_dir)
+
+
+def test_a_bridge_cap_marker_blocks_the_bridge(config_dir: Path) -> None:
+    edit_yaml(
+        config_dir / "budgets.yaml",
+        lambda d: d["per_bridge"].update(max_tool_calls_per_day="A_DEFINIR"),
+    )
+    reasons = load_config(config_dir).blockers("mcp.bridge")
+    assert reasons == ["budgets.yaml › per_bridge.max_tool_calls_per_day = A_DEFINIR"]
+
+
 def test_unknown_budget_overrun_action_is_refused(config_dir: Path) -> None:
     edit_yaml(config_dir / "budgets.yaml", lambda d: d.update(on_exceeded=["keep_spending"]))
     with pytest.raises(ConfigError, match="on_exceeded"):

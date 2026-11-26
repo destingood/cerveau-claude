@@ -331,7 +331,7 @@ def test_the_protocol_counts_each_copilot_backtest_once(home: Path) -> None:
     [(before, started), (event, call)] = entries(default_journal_path(home))
     assert (before, started["status"]) == ("TOOL_CALL", "en_cours")  # G-6
     assert event == "TOOL_CALL" and call["status"] == "ok"
-    # ADR-070: digests only, the trial's own arguments kept apart for the replay
+    # ADR-071: digests only, the trial's own arguments kept apart for the replay
     assert call["arguments"]["params"] == sha256_of({"short": 20, "long": 50})
     assert call["replay_arguments"]["params"] == '{"short": 20, "long": 50}'
     first = strategy("protocol", "croisement_mm", *CONFIG)

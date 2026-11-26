@@ -652,6 +652,44 @@ def test_repository_kill_switch_is_not_engaged() -> None:
     assert kill_switch_engaged(REPO_ROOT) is False
 
 
+def test_an_empty_kill_switch_directory_is_open(tmp_path: Path) -> None:
+    (tmp_path / KILL_SWITCH_FILE).parent.mkdir(parents=True)
+    assert kill_switch_engaged(tmp_path) is False
+
+
+@pytest.mark.parametrize("replaced", ["kill_switch", "governance"])
+def test_a_kill_switch_directory_replaced_by_a_file_engages(tmp_path: Path, replaced: str) -> None:
+    """G-12: with its directory replaced by a file, nobody can tell whether KILL is there."""
+    directory = tmp_path / KILL_SWITCH_FILE.parent
+    target = directory if replaced == "kill_switch" else directory.parent
+    target.parent.mkdir(parents=True, exist_ok=True)
+    target.write_text("", encoding="utf-8")
+    assert kill_switch_engaged(tmp_path) is True
+
+
+def test_an_unreadable_kill_switch_directory_engages(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """G-12: a directory that cannot be listed fails closed (R4)."""
+    (tmp_path / KILL_SWITCH_FILE).parent.mkdir(parents=True)
+
+    def refused(_path: object) -> list[str]:
+        raise PermissionError("accès refusé")
+
+    monkeypatch.setattr("core.policy.engine.os.listdir", refused)
+    assert kill_switch_engaged(tmp_path) is True
+
+
+def test_a_kill_switch_directory_that_is_a_dangling_link_engages(tmp_path: Path) -> None:
+    directory = tmp_path / KILL_SWITCH_FILE.parent
+    directory.parent.mkdir(parents=True)
+    try:
+        directory.symlink_to(tmp_path / "ailleurs", target_is_directory=True)
+    except OSError:  # Windows without the right to create links
+        pytest.skip("liens symboliques indisponibles")
+    assert kill_switch_engaged(tmp_path) is True
+
+
 # The plugin's max_autonomy_level caps the domain's level, never raises it (B292) ----------------
 
 

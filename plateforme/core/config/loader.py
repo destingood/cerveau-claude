@@ -310,6 +310,20 @@ class PerDeepResearch(PerCommittee):
     max_reads: int = Field(gt=0, le=12)
 
 
+class PerBridge(_Strict):
+    # ADR-069, ADR-071: tool calls through the MCP bridge (`appeler`), refusals included, per
+    # Claude Code session and per local day, the day counted from the audit journal.
+    max_tool_calls_per_session: Annotated[int, Field(strict=True, gt=0)] | Marker
+    max_tool_calls_per_day: Annotated[int, Field(strict=True, gt=0)] | Marker
+
+    @model_validator(mode="after")
+    def _session_within_day(self) -> PerBridge:
+        session, day = self.max_tool_calls_per_session, self.max_tool_calls_per_day
+        if isinstance(session, int) and isinstance(day, int) and session > day:
+            raise ValueError("max_tool_calls_per_session must not exceed max_tool_calls_per_day")
+        return self
+
+
 class BudgetsConfig(_Strict):
     llm_budget_eur: LlmBudget
     alerts_pct: list[Annotated[int, Field(gt=0, le=100)]] = Field(min_length=1)
@@ -319,6 +333,7 @@ class BudgetsConfig(_Strict):
     # ADR-054, F5: one code agent task, its counted tokens included (a ceiling charged counts none);
     # no real task until the user decides.
     per_code_agent: PerCommittee
+    per_bridge: PerBridge
     on_exceeded: list[
         Literal["refuse_new_requests", "downgrade_to_fast_or_local", "stop_non_critical_tasks"]
     ] = Field(min_length=1)
@@ -980,6 +995,11 @@ FEATURES: dict[str, Feature] = {
     "llm.local": Feature("Modèle local Ollama", ("models:tiers.local",)),
     "budgets": Feature(
         "Plafonds de dépense LLM", ("budgets:llm_budget_eur", "budgets:per_request")
+    ),
+    # ADR-069, ADR-071: the bridge refuses every call while its caps hold a marker (R7).
+    "mcp.bridge": Feature(
+        "Pont MCP cerveau-plateforme (plafonds d'appels par session et par jour)",
+        ("budgets:per_bridge", "budgets:per_request"),
     ),
     # An approval is asked on Discord and answered through the local API (ADR-035, ADR-037).
     "approvals": Feature(
