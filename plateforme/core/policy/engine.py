@@ -126,11 +126,11 @@ def phase_action_classes(domain: str) -> frozenset[ActionClass]:
 
 def _a_parent_is_not_a_directory(directory: Path, project_root: Path) -> bool:
     """True when ``directory`` or one of its parents up to ``project_root`` exists as a file."""
-    for parent in (directory, *directory.parents):
-        if parent == project_root:
-            return False
+    parent = directory
+    while parent not in (project_root, parent.parent):
         if parent.exists() and not parent.is_dir():
             return True
+        parent = parent.parent
     return False
 
 
