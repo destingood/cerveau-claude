@@ -82,6 +82,7 @@ sauf les correctifs sûrs, faits tout de suite à ta demande.
 | 24/11 | « Regarde chaque lien GitHub que je t'ai envoyé et mets dans le cerveau ce qui est utile » | Bloc F, étapes 14 à 19 ; tu as choisi les quatre groupes |
 | 24/11 | « Mets à jour et publie » | Étape 17 réunie et publiée (8.42.0) ; Bloc F fait, sauf ce qui est reporté. Tes réponses : fusionner la PR une fois la CI verte ; le garde-fou shell (étape 19, point 3) reste tel quel |
 | 24/11 | « L'organisation du cerveau est bordélique » | Étape 20 (8.43.0) : amas par projet à l'ouverture. Tes réponses : une grosse pelote, un amas par projet, 200 à 1 000 souvenirs |
+| 26/11 | « Continue le plan » | Bloc B, étape B1 : le pont MCP réparé avant d'être branché (vérificateur de chiffres, journal en empreintes, plafonds, kill switch). Tes réponses : 200 appels par session et 1 000 par jour ; pas de budget en euros pour le pont ; exception `strategy_lab` gardée ; empreintes à clé plus tard |
 
 ## 2. Comment l'audit a été fait, et ses limites
 
@@ -537,9 +538,11 @@ hook au-dessus de 150 ms, premier démarrage après un changement compris ; `bra
      démarrage coupé à 30 s ; kill switch relu toutes les 0,2 s pendant l'appel, qui est annulé, et
      engagé si son dossier est un fichier ou illisible ; ta décision, 200 appels par session et
      1 000 par jour (`budgets.yaml › per_bridge`), le jour compté dans le journal ; sortie d'un
-     outil web marquée « données externes » ; erreurs sans chemins. Reste à toi : le contrôle du
-     budget quotidien n'est pas branché, car `llm_budget_eur` vaut `A_DEFINIR` et il refuserait
-     tout ; le pont ne dépense aucun euro d'API, à toi de dire s'il doit s'y appliquer.
+     outil web marquée « données externes » ; erreurs sans chemins. Tes décisions du 26/11 : le
+     budget quotidien en euros ne s'applique pas au pont (il ne dépense aucun euro d'API ; les
+     plafonds d'appels suffisent) ; l'exception `strategy_lab` (ses essais gardés en clair pour
+     rejouer et compter les backtests, ADR-027) est acceptée ; les empreintes à clé viendront
+     avant de brancher le pont (B362).
   4. Plus tard : `proposer_action` ne mène à rien (le résumé est perdu, son empreinte se devine) ; il
      faudra une file d'intentions hors de portée de Claude (étape de la chaîne d'approbation). Chaque
      appel lance un nouveau processus : 1,2 à 1,6 s pour un outil de 8 ms.
