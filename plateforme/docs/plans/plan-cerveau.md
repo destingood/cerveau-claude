@@ -315,7 +315,7 @@ ci-dessus sont faites.
   - mission de `CLAUDE.md` réécrite (Claude Code dirige par le pont MCP, LangGraph en place sans tourner) ; règles
     et interdits inchangés ;
   - un vrai README pour la plateforme.
-- **Toi** : les 7 retraits R9 validés le 23/11 (ADR-021, 046, 050, 057, 060, 063 et 068). Restent 35 ADR
+- **Toi** : les 7 retraits R9 validés le 23/11 (ADR-021, 046, 050, 057, 060, 063 et 068). Restent 37 ADR
   « proposé » à relire, une ligne chacun dans `docs/adr/A-VALIDER.md` : réponds en une fois (« tout validé », ou
   les numéros à revoir).
 
@@ -495,7 +495,7 @@ hook au-dessus de 150 ms, premier démarrage après un changement compris ; `bra
 - ADR-002 et ADR-013 mis à jour ; `CLAUDE.md` (mission seulement) et un README pour la plateforme.
 - Page des réglages : 123 réglages expliqués et 17 entrées tenues par le cerveau, générée depuis le code (aucune dérive
   possible : `test_page_reglages`, 46 vérifications) ; `brain config --page [clé]`. Rien au démarrage de session.
-- Reste à toi : relire les 35 ADR de `docs/adr/A-VALIDER.md`.
+- Reste à toi : relire les 37 ADR de `docs/adr/A-VALIDER.md`.
 
 ### Bloc B — Unifier la plateforme (plan v2, étapes 2 et 4 à 8)
 
@@ -1010,7 +1010,7 @@ il fait doublon avec le cerveau.
 | E12 | `brain.exe` (Rust 8.18.2) tant que son code source n'est pas dans le dépôt | **Tranché le 20/11 : Python partout, puis optimiser en Rust.** Fait : `brain.exe` ne tourne plus que sur demande (`BRAIN_IMPL=rust`), tous les correctifs valent sous Windows. Ensuite (D2) : tu ajoutes le code Rust au dépôt ; Claude y reporte les correctifs faits depuis la 8.18.2, l'optimise, et l'exe est construit en CI |
 | E13 | ADR-013 (« pas de yfinance ») contre l'étape 9 du plan v2 | **Tranché le 21/11 : l'ADR-013 fait foi**, le plan v2 corrigé (étape 9) |
 | E14 | Retraits de cas d'évaluation réservés par R9 | **Validés le 23/11** : ADR-021, 046, 050, 057, 060, 063 (le retrait) et 068 |
-| E15 | 35 ADR encore « proposé » | À relire dans `docs/adr/A-VALIDER.md` (ta réponse du 23/11 : relire d'abord) |
+| E15 | 37 ADR encore « proposé » | À relire dans `docs/adr/A-VALIDER.md` (ta réponse du 23/11 : relire d'abord) |
 | E16 | Graphiti, mem0 ou une base de graphe pour le cerveau en 4D | **Tranché le 24/11 : reprendre leurs idées, ne rien installer** (Bloc E) |
 | E17 | Recherche par embeddings | **Tranché le 24/11 : le rappel reste lexical**, avec un filtre par validité en plus (étape 12) |
 | E18 | Modèle qui exécute le Bloc E | **Tranché le 24/11 : Opus 5.5**, tu changes le modèle de la session toi-même |
