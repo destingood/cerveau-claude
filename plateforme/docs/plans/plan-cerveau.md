@@ -509,6 +509,17 @@ hook au-dessus de 150 ms, premier démarrage après un changement compris ; `bra
      refusés passent. Exemples : « 10'000'000 € » reconstitué à partir de trois morceaux pris
      ailleurs ; « 0 Md€ » ; un chiffre lu sur une page web présenté comme une VaR. À l'inverse, 7
      textes justes sur 18 sont refusés (la date du jour, « Étape 2 », tes propres chiffres).
+     ✅ Fait le 26/11 (B1.1, ADR-070). Les 39 brouillons de l'audit n'étaient pas gardés : un corpus
+     refait (21 inventés, 18 justes, avec leurs sorties d'outils) donnait 5 refus sur 21 et 9
+     acceptations sur 18 ; il donne 21 sur 21 et 18 sur 18, planchers du test. Un nombre groupé
+     (« 10'000'000 », espaces fines, gras, caractères invisibles) se lit d'un bloc ; un zéro demande
+     une source nulle, un arrondi garde l'ordre de grandeur ; un pourcentage ne s'apparie plus à
+     une fraction écrite sans % ; une mesure (VaR, volatilité, Sharpe, TWR…) ne vient que d'une
+     figure de cette mesure, jamais d'une page. La date du jour compte ; « Étape 2 » n'est pas un
+     chiffre ; tes chiffres passent par `citations_utilisateur`, écrits à l'identique, listés à
+     part. Chaque vérification va au journal, par ses seuls comptes. Reste : Claude écrit lui-même
+     ces citations (un chiffre inventé recopié là passe, mais reste visible), `verifier` reste
+     facultatif, et l'orchestrateur n'a pas la règle des mesures (B360, B361).
   2. **Le journal d'audit garde les arguments en clair** (R6) : nom, adresse, IBAN, jeton dans une
      URL. Il doit n'en garder que les noms et des empreintes.
   3. Une entrée au journal pour chaque appel, refus et pannes compris (R11) ; une limite de temps au
@@ -1096,14 +1107,14 @@ et `brain optimize` sous-estiment (rep.). Étape 4 : les ✅ du 21/11.
 K-14 `brain/SKILL.md:22-27` · K-15 ancienne skill claude.ai.
 
 **Pont MCP** — G-1 `core/verification/numbers.py:50-64, 91-109, 221-229`, `trace.py:139-141`,
-`server.py:207` chiffres inventés acceptés (rep.) · G-2 `core/mcp/adapter.py:354, 438, 455`,
+`server.py:207` chiffres inventés acceptés (rep., ✅ 26/11) · G-2 `core/mcp/adapter.py:354, 438, 455`,
 `server.py:198` arguments en clair au journal (rep.) · G-3 `server.py:175-200` refus non journalisés
 (rep.) · G-4 `adapter.py:213-216` démarrage sans limite de temps (rep.) · G-5 `adapter.py:378` kill
 switch et appel en cours (rep.) · G-6 `adapter.py:394-460` journal écrit après l'appel (rep.) · G-7
 `server.py:181-192` aucun plafond, `BudgetGate` jamais appelé (rep.) · G-8 `server.py:204` texte web
-rendu tel quel (rep.) · G-9 `verifier` facultatif, non journalisé (rep.) · G-10 faux refus (rep.) ·
-G-11 deux plugins, même nom d'outil (rep.) · G-12 `core/policy/engine.py:126-132` kill switch ouvert
-si son dossier est un fichier (rep.) · G-13 `server.py:215-248` `proposer_action` sans suite (rep.) ·
+rendu tel quel (rep.) · G-9 `verifier` facultatif, non journalisé (rep. ; journalisé le 26/11,
+encore facultatif) · G-10 faux refus (rep., ✅ 26/11) · G-11 deux plugins, même nom d'outil
+(rep.) · G-12 `core/policy/engine.py:126-132` kill switch ouvert si son dossier est un fichier (rep.) · G-13 `server.py:215-248` `proposer_action` sans suite (rep.) ·
 G-14 1,2 à 1,6 s par appel (rep.) · G-15 `adapter.py:436-438, 462` chemins dans les erreurs (rep.).
 
 **Plateforme** — P-1 B228 · P-2 aucune mesure réelle (B60) · P-3 B353 · P-4 README et `cerveau ask` ·

@@ -4,7 +4,7 @@ Liste préparée le 21/11/2026 (étape 9 du plan, `docs/plans/plan-cerveau.md`).
 toi de répondre, en une fois si tu veux (« tout validé », ou les numéros à refuser ou à revoir). Une fois ta
 réponse donnée, chaque ADR passe à « accepté » (ou « refusé ») avec la date, dans son propre fichier.
 
-## 1. Les 35 ADR encore « proposé »
+## 1. Les 36 ADR encore « proposé »
 
 41 le 21/11 ; le 23/11/2026, tu as validé les retraits R9 (section 2) : les ADR-021, 046, 050, 057, 060 et
 068 sont acceptés, l'ADR-063 reste ici pour le reste de sa décision.
@@ -90,6 +90,7 @@ Le détail de chaque décision est dans son fichier (`docs/adr/ADR-NNN-….md`).
 | ADR | Titre | Décision en une ligne |
 |---|---|---|
 | 069 | Claude Code comme chef d'orchestre | Pont MCP `cerveau-plateforme` à cinq outils, sous la même gouvernance ; le graphe LangGraph reste en place (il modifie l'ADR-002) |
+| 070 | Les règles de `verifier` (26/11) | Un nombre groupé se lit d'un bloc, un zéro demande un zéro, une mesure ne vient que de sa figure ; date du jour, « Étape 2 » et tes chiffres (`citations_utilisateur`, listés à part) acceptés ; chaque vérification au journal |
 
 ## 2. Les 5 retraits de cas d'évaluation (règle R9 : à toi seul)
 
