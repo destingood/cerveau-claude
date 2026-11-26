@@ -8,7 +8,7 @@ import pytest
 from hypothesis import assume, given
 from hypothesis import strategies as st
 
-from core.verification.figures import amount, count, fx_rate, percent
+from core.verification.figures import amount, count, fx_rate, percent, plain
 from core.verification.trace import Evidence, ToolOutput, Traced, tool_output, trace
 
 NOW = "2026-10-18T15:00+02:00"
@@ -158,6 +158,89 @@ def test_tool_output_splits_figures_and_texts() -> None:
     output = tool_output("performance_report#1", "performance_report", payload)
     assert [f.id for f in output.figures] == ["mesures/twr"]
     assert output.texts == ("2025-01-01", "364", "2025", "année")
+
+
+RISK = ToolOutput(
+    call="risk_report#1",
+    tool="risk_report",
+    figures=(
+        percent("var/historique/99/1/confiance", 0.99),
+        amount("var/historique/99/1/eur", Decimal("23456.78"), "EUR"),
+        amount("var/historique/99/1/cvar_eur", Decimal("31002.40"), "EUR"),
+        percent("volatilite/annualisee", 0.1432),
+        plain("volatilite/garch/beta", 0.912, "coefficient", 3),
+        amount("total_eur", Decimal("7412.35"), "EUR"),
+    ),
+    texts=("Le CAC 40 a clôturé à 7 412,35 points.",),
+)
+METRICS = Evidence([("source [1]", "une volatilité implicite de 18 %")], [RISK, REPORT])
+
+
+def metric_origins(draft: str) -> list[str | None]:
+    return [row.origin if row.traced else None for row in trace(draft, METRICS, metrics=True)]
+
+
+@pytest.mark.parametrize(
+    ("draft", "origin"),
+    [
+        ("La VaR à 99 % : 23 456,78 €", ["risk_report#1 › var/historique/99/1/confiance"]),
+        ("la CVaR est de 31 002,40 €", ["risk_report#1 › var/historique/99/1/cvar_eur"]),
+        ("14,32 % de volatilité", ["risk_report#1 › volatilite/annualisee"]),
+        ("un TWR de 8,80 %", ["performance_report#1 › mesures/twr"]),
+    ],
+)
+def test_a_metric_traces_to_a_figure_of_that_metric(draft: str, origin: list[str]) -> None:
+    assert metric_origins(draft)[: len(origin)] == origin
+    assert all(metric_origins(draft))
+
+
+@pytest.mark.parametrize(
+    "draft",
+    [
+        "la volatilité est de 18 %",  # a page
+        "la VaR est de 7 412,35 €",  # a text leaf, and a figure of no metric
+        "la VaR est de 31 002,40 €",  # a CVaR
+        "la volatilité GARCH vaut 0,912",  # a beta of the GARCH model
+        "la volatilité est de 8,80 %",  # the TWR of another call
+    ],
+)
+def test_a_metric_from_a_text_or_another_metric_is_not_traced(draft: str) -> None:
+    """B1.1, G-1: with ``metrics``, a computed metric comes from its own figure only."""
+    assert metric_origins(draft)[-1] is None
+    assert origins(draft, METRICS)[-1] is not None  # without the option, as before
+
+
+def test_the_user_words_support_a_number_written_the_same_way() -> None:
+    said = ["J'ai 25 000 € sur mon livret depuis le 3 décembre 2024, je perds 2 %."]
+    found = trace(
+        "Tes 25 000 € depuis le 3 décembre 2024 ; une perte de 2 % ; TWR de 8,80 %.",
+        EVIDENCE,
+        user=said,
+    )
+    assert [(row.text, row.origin, row.user) for row in found] == [
+        ("25 000 €", "utilisateur", True),
+        ("3 décembre 2024", "utilisateur", True),
+        ("2 %", "utilisateur", True),
+        ("8,80 %", "performance_report#1 › mesures/twr", False),
+    ]
+
+
+@pytest.mark.parametrize(
+    "draft",
+    [
+        "Tes 25 k€",  # another scale
+        "Tes 25 000",  # another form
+        "Tes 25 001 €",
+        "Une hausse de 2 %",  # the contrary sign
+        "Ta VaR de 25 000 €",  # never a metric
+        "Le 4 décembre 2024",
+        "TWR de -8,80 %",  # a source contradicts it: still contrary
+    ],
+)
+def test_the_user_words_support_nothing_else(draft: str) -> None:
+    said = ["J'ai 25 000 € sur mon livret depuis le 3 décembre 2024, je perds 2 %, -8,80 %."]
+    rows = trace(draft, EVIDENCE, metrics=True, user=said)
+    assert not any(row.traced for row in rows)
 
 
 @given(st.integers(-(10**11), 10**11))

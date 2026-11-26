@@ -13,6 +13,17 @@ The evidence of a request, in order of priority:
 supports it, or none. A number that a source matches with the contrary sign is *contrary*: it is
 not traced. The audit keeps the table without the numbers themselves (R11), so the share of
 traced numbers is measured on every request.
+
+Two options of ``trace`` (B1.1), used by the MCP bridge:
+
+- ``metrics``: a number given as a computed metric (VaR, volatilité, Sharpe…, ``metrics.py``) is
+  supported by a tool figure of that metric only, never by a text, a page or a search result;
+- ``user``: the user's own words, as the caller quotes them. A number or a date that no evidence
+  supports is traced to them (origin ``utilisateur``) when they write it in the same form: the
+  same digits, scale, percent and currency, no rounding (``25 000 €`` for ``25 000 €``, not
+  ``25 k€``), with a sign that agrees. They never support a metric, nor a number that a source
+  contradicts. The caller writes these quotes itself: they say what the user said only as far
+  as the caller is honest, which is why their rows stay apart (``Traced.user``).
 """
 
 from __future__ import annotations
@@ -26,17 +37,21 @@ from pydantic import BaseModel, ConfigDict, Field
 
 from core.verification.dates import DateKey, derived, extract_dates
 from core.verification.figures import FIGURE_KEYS, Figure
+from core.verification.metrics import figure_metric
 from core.verification.numbers import (
+    NumberMention,
     Sign,
     Support,
     extract_numbers,
     masked,
+    sign_agrees,
     supporting,
     text_supports,
 )
 
 TraceKind = Literal["nombre", "date", "mois", "jour", "heure"]
 FIGURE_ORIGIN = " › "  # call › figure id
+USER_ORIGIN = "utilisateur"  # the user's own words, as the caller quotes them
 CallId = Annotated[str, Field(min_length=1, max_length=120)]
 
 
@@ -99,14 +114,25 @@ def figure_supports(figure: Figure, origin: str) -> list[Support]:
     sign = _figure_sign(figure)
     percent = figure.unit == "%"
     value = abs(Decimal(repr(figure.value)))
+    metric = figure_metric(figure.id)
     supports = [
-        Support(frozenset({value}), origin, percent, _currencies(figure.unit), sign, exact=True)
+        Support(
+            frozenset({value}),
+            origin,
+            percent,
+            _currencies(figure.unit),
+            sign,
+            exact=True,
+            metric=metric,
+        )
     ]
     for shown in extract_numbers(figure.display):
         french = shown.readings[: 2 if shown.percent else 1]  # 1,175 is never 1175 here
         values = frozenset(r.value for r in french if r.fraction is shown.percent)
         currencies = frozenset({shown.currency}) if shown.currency else frozenset()
-        supports.append(Support(values, origin, shown.percent, currencies, sign, exact=True))
+        supports.append(
+            Support(values, origin, shown.percent, currencies, sign, exact=True, metric=metric)
+        )
     return supports
 
 
@@ -118,6 +144,7 @@ class Traced:
     end: int
     origin: str | None  # the supporting evidence, or the contrary one
     contrary: bool = False  # a source matches the value with the contrary sign
+    user: bool = False  # supported by the user's words only (USER_ORIGIN)
 
     @property
     def traced(self) -> bool:
@@ -144,22 +171,55 @@ class Evidence:
                 self.dates.setdefault(key, (rank, origin))
 
 
-def trace(draft: str, evidence: Evidence) -> list[Traced]:
-    """The numbers and dates of ``draft``, in order, each with its origin or none."""
+def _spaced(text: str) -> str:
+    return " ".join(text.split())  # 25 000 € with any space is 25 000 €
+
+
+def _said(mention: NumberMention, said: list[NumberMention]) -> bool:
+    """The user wrote ``mention`` in the same form, with a sign that agrees."""
+    if mention.metric is not None:
+        return False
+    written = _spaced(mention.text)
+    return any(
+        _spaced(other.text) == written
+        and sign_agrees(mention, Support(frozenset(), USER_ORIGIN, sign=other.sign))
+        for other in said
+    )
+
+
+def trace(
+    draft: str, evidence: Evidence, *, metrics: bool = False, user: Iterable[str] = ()
+) -> list[Traced]:
+    """The numbers and dates of ``draft``, in order, each with its origin or none; ``metrics``
+    and ``user``: see the module docstring."""
+    quotes = list(user)
+    said = [m for quote in quotes for m in extract_numbers(quote)]
+    said_dates = {key for quote in quotes for d in extract_dates(masked(quote)) for key in d.keys}
     rows: list[Traced] = []
     for mention in extract_numbers(draft):
-        support, contrary = supporting(mention, evidence.supports)
+        support, contrary = supporting(mention, evidence.supports, metrics=metrics)
         origin = support.origin if support is not None else None
+        if origin is None and _said(mention, said):
+            rows.append(
+                Traced("nombre", mention.text, mention.start, mention.end, USER_ORIGIN, user=True)
+            )
+            continue
         rows.append(Traced("nombre", mention.text, mention.start, mention.end, origin, contrary))
     for found in extract_dates(masked(draft)):
         known = [evidence.dates.get(key) for key in found.keys]
         origin = min(o for o in known if o is not None)[1] if all(known) else None
+        if origin is None and found.keys and found.keys <= said_dates:
+            rows.append(
+                Traced(found.kind, found.text, found.start, found.end, USER_ORIGIN, user=True)
+            )
+            continue
         rows.append(Traced(found.kind, found.text, found.start, found.end, origin))
     return sorted(rows, key=lambda row: row.start)
 
 
 __all__ = [
     "FIGURE_ORIGIN",
+    "USER_ORIGIN",
     "Evidence",
     "ToolOutput",
     "TraceKind",

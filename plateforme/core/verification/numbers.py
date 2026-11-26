@@ -7,13 +7,23 @@ from the tool outputs, the question and the pages.
 
 - A notation that is ambiguous alone (``1,234`` or ``1.234``) gives both readings, and so does
   ``billion`` (10^9 in English, 10^12 in French).
+- Grouping separators (B1.1): spaces of any width (``1 234``, narrow no-break, figure space),
+  apostrophes (``10'000'000``, ``10’000’000``), commas or dots; a number so grouped is one
+  number, never three pieces. Invisible characters (zero-width space, soft hyphen) and Markdown
+  emphasis between digits are dropped (``**1**0 000`` is ``10 000``); superscript digits glued to
+  a number are its digits (``10⁶`` reads ``106``, never ``10``).
 - A draft number may be a rounding of a source number: written with d decimals, it matches a
   source value within half a unit of its last digit (``12 %`` matches ``12,4 %``, ``1,5 million``
-  matches ``1 512 000``). A draft more precise than every source does not match.
+  matches ``1 512 000``). A draft more precise than every source does not match. A rounding keeps
+  the order of magnitude (B1.1): a zero, with or without scale (``0 €``, ``0 Md€``), needs a source
+  that is zero; ``1`` does not round ``0,87``, though ``10 %`` rounds ``9,62 %`` (half a unit of
+  the draft is at most 5 % of it).
 - Against a text, a percentage also reads as a fraction (``12 %`` and ``0,12``) and the currency
-  is not compared. A tool figure says what it is: a draft percentage matches a percentage figure
-  only, through its fraction reading, a draft number without % a figure that is not one, and a
-  draft amount with a currency (``12 €``, ``$3``) a figure in that currency only.
+  is not compared; but a draft percentage matches a source percentage, or through its fraction
+  reading a source fraction written with decimals: ``0,031 %`` never matches ``0.031``, nor
+  ``100 %`` a bare ``1`` (B1.1). A tool figure says what it is: a draft percentage matches a
+  percentage figure only, through its fraction reading, a draft number without % a figure that
+  is not one, and a draft amount with a currency (``12 €``, ``$3``) a figure in that currency only.
 - The sign (B35) is the written minus or plus, else the direction word right after the number
   (``3 % de hausse``) or the nearest one among the words before it in the same clause (``un
   recul de 3 %``). A draft number whose sign contradicts the one of its source is *contrary*:
@@ -30,13 +40,20 @@ from the tool outputs, the question and the pages.
 - Not read: dates and times (``dates.py`` checks them; a year alone is a number, supported by
   the years of the source dates), citation markers ``[n]``, pseudonyms ``<PERSONNE_1>``, URLs,
   list markers at the start of a line, ordinals (``1er``, ``2e``, ``3rd``) and numbers glued to
-  a word (``H2O``, ``COVID-19``, ``Q3``).
+  a word (``H2O``, ``COVID-19``, ``Q3``), and labels (B1.1): a small integer right after
+  ``étape``, ``phase``, ``section``, ``chapitre``, ``partie``, ``annexe``, ``tableau``, ``figure``,
+  ``scénario``, ``option``, ``question``, ``step``, ``chapter`` or ``appendix`` (``Étape 2``,
+  ``étapes 2 et 3``), without unit, scale or decimals. A legal article (``article 1240``) stays a
+  number to check.
+- A number given as a computed metric (``metrics.py``) is supported by a tool figure of that
+  metric only, when the caller asks for it (``supporting(..., metrics=True)``).
 - Numbers written in words ("trois millions") are not read: the system prompt asks for digits.
 """
 
 from __future__ import annotations
 
 import re
+import unicodedata
 from collections.abc import Iterable
 from dataclasses import dataclass
 from decimal import Decimal
@@ -44,14 +61,19 @@ from typing import Literal
 
 from core.verification.citations import CITATION
 from core.verification.dates import date_spans, extract_dates, years
+from core.verification.metrics import draft_metric
 
 Sign = Literal["-", "+"]
+Form = Literal["pourcent", "fraction", "decimal", "entier"]  # how a text writes a number
 
-_SPACE = " \u00a0\u202f\u2009"  # space, no-break, narrow no-break, thin
+# space, no-break, narrow no-break, thin, figure, punctuation, hair, medium mathematical
+_SPACE = " \u00a0\u202f\u2009\u2007\u2008\u200a\u205f"
+_APOSTROPHE = "'\u2019\u02bc"  # Swiss grouping: 10'000'000, 10’000’000
 _NUMBER = re.compile(
     r"(?<![\w.,/:])"
     r"(?P<body>"
     rf"\d{{1,3}}(?:[{_SPACE}]\d{{3}})+(?:[.,]\d+)?"
+    rf"|\d{{1,3}}(?:[{_APOSTROPHE}]\d{{3}})+(?:[.,]\d+)?"
     r"|\d{1,3}(?:,\d{3})+(?:\.\d+)?"
     r"|\d{1,3}(?:\.\d{3})+(?:,\d+)?"
     r"|\d+(?:[.,]\d+)?"
@@ -107,6 +129,18 @@ _NOT_NUMBERS = re.compile(
         ]
     )
 )
+_LABEL_WORDS = (
+    r"[ée]tapes?|phases?|sections?|chapitres?|parties?|annexes?|tableaux?|figures?"
+    r"|sc[ée]narios?|options?|questions?|steps?|chapters?|appendix|appendices"
+)
+_LABEL = re.compile(  # what stands before a label number: "étapes 2 et " before "3"
+    rf"(?i:\b(?:{_LABEL_WORDS})\s+(?:n[°o]\s*)?(?:\d{{1,3}}\s*(?:,|-|–|et|à|ou|and|or|to)\s*)*)$"
+)
+_EMPHASIS = frozenset("*_~`")  # Markdown emphasis and code marks
+_GLUE = frozenset(_SPACE + _APOSTROPHE + ".,")  # what may stand between the digits of one number
+_SUPERSCRIPT_DIGITS = "⁰¹²³⁴⁵⁶⁷⁸⁹"
+_SUPERSCRIPTS = str.maketrans(_SUPERSCRIPT_DIGITS, "0123456789")
+_UNITS = frozenset("%€$£")
 _UP = (
     r"hausses?|progress\w*|augment\w*|croissances?|gains?|gagn\w*|rebond\w*|mont[ée]es?"
     r"|grimp\w*|positi(?:f|ve|fs|ves)|plus-values?|rises?|rising|rose|increas\w*|grew|growth|up"
@@ -142,6 +176,7 @@ class NumberMention:
     bare: bool = True  # no scale, percent or currency
     sign: Sign | None = None
     explicit: bool = False  # the sign is written (-3 %, +3 %), not read from a word
+    metric: str | None = None  # the computed metric the number is given as (metrics.py)
 
     @property
     def negative(self) -> bool:
@@ -170,6 +205,8 @@ class Support:
     sign: Sign | None = None
     exact: bool = False  # a tool figure: its sign must be kept
     years_only: bool = False  # the years of the source dates: a bare four-digit draft number
+    form: Form | None = None  # a text: how it wrote the number (None for a tool figure)
+    metric: str | None = None  # a tool figure: the metric its id names (metrics.py)
 
 
 def _blank(match: re.Match[str]) -> str:
@@ -188,9 +225,64 @@ def _without_dates(text: str) -> str:
     return "".join(chars)
 
 
+def _digit(ch: str) -> bool:
+    return ch.isdecimal() or ch in _SUPERSCRIPT_DIGITS
+
+
+def _between_digits(before: str, after: str) -> bool:
+    """``before`` ends with a digit, maybe then a separator; ``after`` starts the same way, or
+    with the unit of the number (``**12** %``)."""
+    left = bool(before) and (
+        _digit(before[-1]) or (len(before) == 2 and before[-1] in _GLUE and _digit(before[0]))
+    )
+    right = bool(after) and (
+        _digit(after[0])
+        or after[0] in _UNITS
+        or (len(after) == 2 and after[0] in _GLUE and (_digit(after[1]) or after[1] in _UNITS))
+    )
+    return left and right
+
+
+def _joined(text: str) -> tuple[str, list[int]]:
+    """``text`` without what splits the digits of one number, and the position in ``text`` of
+    each kept character: invisible characters everywhere, Markdown emphasis between digits
+    (``**1**0 000``); superscript digits glued to a digit become digits (``10⁶``)."""
+    kept = [(ch, i) for i, ch in enumerate(text) if unicodedata.category(ch) != "Cf"]
+    chars: list[str] = []
+    index: list[int] = []
+    n = 0
+    while n < len(kept):
+        ch, i = kept[n]
+        if ch in _EMPHASIS:
+            run = n
+            while run < len(kept) and kept[run][0] in _EMPHASIS:
+                run += 1
+            after = "".join(c for c, _ in kept[run : run + 2])
+            if _between_digits("".join(chars[-2:]), after):
+                n = run  # dropped
+                continue
+        if ch in _SUPERSCRIPT_DIGITS and chars and chars[-1].isdecimal():
+            ch = ch.translate(_SUPERSCRIPTS)
+        chars.append(ch)
+        index.append(i)
+        n += 1
+    index.append(len(text))
+    return "".join(chars), index
+
+
+def _label(text: str, start: int, match: re.Match[str]) -> bool:
+    """A small integer that names a part: ``Étape 2``, ``phase 3``, ``étapes 2 et 3``."""
+    if match.group("scale") or match.group("percent") or match.group("currency"):
+        return False
+    body = match.group("body")
+    if not body.isdecimal() or len(body) > 3:
+        return False
+    return _LABEL.search(text[max(0, start - 80) : start]) is not None
+
+
 def _plain_readings(body: str) -> list[tuple[Decimal, int]]:
     """(value, decimals) of each possible reading of a written number without its scale."""
-    compact = "".join(ch for ch in body if ch not in _SPACE)
+    compact = "".join(ch for ch in body if ch not in _SPACE and ch not in _APOSTROPHE)
     if compact != body:  # grouped by spaces: the only separator left is the decimal one
         integer, _, fraction = compact.replace(",", ".").partition(".")
         return [(Decimal(f"{integer}.{fraction or 0}"), len(fraction))]
@@ -263,40 +355,79 @@ def _written_sign(text: str, start: int) -> Sign | None:
 
 
 def extract_numbers(text: str) -> list[NumberMention]:
-    cleaned = _NOT_NUMBERS.sub(_blank, _without_dates(masked(text)))
+    joined, index = _joined(masked(text))
+    cleaned = _NOT_NUMBERS.sub(_blank, _without_dates(joined))
     mentions: list[NumberMention] = []
     for match in _NUMBER.finditer(cleaned):
         start, end = match.span()
+        if _label(cleaned, start, match):
+            continue
         before = cleaned[start - 1] if start else ""
         currency = _currency(match.group("currency")) or _currency(before)
         written = _written_sign(cleaned, start)
         sign = written or _word_sign(cleaned, start, end)
+        first, last = index[start], index[end - 1] + 1
         mentions.append(
             NumberMention(
-                text=text[start:end].strip(),
-                start=start,
-                end=end,
+                text=text[first:last].strip(),
+                start=first,
+                end=last,
                 readings=_readings(match),
                 percent=bool(match.group("percent")),
                 currency=currency,
                 bare=not (match.group("scale") or match.group("percent") or currency),
                 sign=sign,
                 explicit=written is not None,
+                metric=draft_metric(cleaned, start, end),
             )
         )
     return mentions
 
 
+def _form(mention: NumberMention, reading: Reading) -> Form:
+    if mention.percent:
+        return "fraction" if reading.fraction else "pourcent"
+    return "decimal" if reading.tolerance < Decimal("0.5") else "entier"
+
+
 def text_supports(text: str, origin: str) -> list[Support]:
-    """The numbers of a source text, each with its sign, and the years of its dates."""
-    supports = [
-        Support(frozenset(r.value for r in m.readings), origin, sign=m.sign)
-        for m in extract_numbers(text)
-    ]
+    """The numbers of a source text, each with its sign and the way it is written, and the
+    years of its dates."""
+    supports: list[Support] = []
+    for m in extract_numbers(text):
+        forms: dict[Form, set[Decimal]] = {}
+        for r in m.readings:
+            forms.setdefault(_form(m, r), set()).add(r.value)
+        supports += [
+            Support(frozenset(values), origin, sign=m.sign, form=form)
+            for form, values in forms.items()
+        ]
     keys = {key for d in extract_dates(masked(text), lenient=True) for key in d.keys}
     if found := years(keys):
-        supports.append(Support(frozenset(Decimal(y) for y in found), origin, years_only=True))
+        found_years = frozenset(Decimal(y) for y in found)
+        supports.append(Support(found_years, origin, years_only=True, form="entier"))
     return supports
+
+
+def _fits(mention: NumberMention, reading: Reading, form: Form | None) -> bool:
+    """B1.1: a draft reading against the way a text wrote its number."""
+    if form is None:
+        return True
+    if mention.percent and not reading.fraction:  # the 12 of 12 %: a percentage only
+        return form == "pourcent"
+    if reading.fraction:  # the 0,12 of 12 %: a percentage, or a fraction written with decimals
+        return form in ("fraction", "decimal")
+    return form != "pourcent"
+
+
+def _close(reading: Reading, value: Decimal) -> bool:
+    """Within the rounding of the draft, and of the same order of magnitude (B1.1)."""
+    if reading.value == 0 or value == 0:
+        return reading.value == value
+    if abs(value - reading.value) > reading.tolerance:
+        return False
+    same_order = value.adjusted() == reading.value.adjusted()
+    return same_order or reading.tolerance * 20 <= reading.value  # 9,62 % -> 10 %
 
 
 def _magnitude(mention: NumberMention, support: Support) -> bool:
@@ -305,16 +436,14 @@ def _magnitude(mention: NumberMention, support: Support) -> bool:
     if support.exact and mention.currency and mention.currency not in support.currencies:
         return False
     if support.percent is None:
-        readings: Iterable[Reading] = mention.readings
+        readings: Iterable[Reading] = (
+            r for r in mention.readings if _fits(mention, r, support.form)
+        )
     elif support.percent != mention.percent:
         return False
     else:
         readings = (r for r in mention.readings if r.fraction is support.percent)
-    return any(
-        abs(value - reading.value) <= reading.tolerance
-        for reading in readings
-        for value in support.values
-    )
+    return any(_close(reading, value) for reading in readings for value in support.values)
 
 
 def sign_agrees(mention: NumberMention, support: Support) -> bool:
@@ -329,11 +458,16 @@ def sign_agrees(mention: NumberMention, support: Support) -> bool:
     return support.exact and not mention.explicit  # a loss given as a magnitude
 
 
-def supporting(mention: NumberMention, supports: Iterable[Support]) -> tuple[Support | None, bool]:
+def supporting(
+    mention: NumberMention, supports: Iterable[Support], *, metrics: bool = False
+) -> tuple[Support | None, bool]:
     """The first support of ``mention`` and ``False``; else the first source that matches its
-    value with the contrary sign and ``True``; else ``(None, False)``."""
+    value with the contrary sign and ``True``; else ``(None, False)``. With ``metrics``, a
+    number given as a computed metric counts only the tool figures of that metric (B1.1)."""
     contrary: Support | None = None
     for support in supports:
+        if metrics and mention.metric and not (support.exact and support.metric == mention.metric):
+            continue
         if _magnitude(mention, support):
             if sign_agrees(mention, support):
                 return support, False
@@ -354,6 +488,7 @@ def unmatched_numbers(draft: str, sources: Iterable[str]) -> list[NumberMention]
 
 __all__ = [
     "WORDS_BEFORE",
+    "Form",
     "NumberMention",
     "Reading",
     "Sign",
