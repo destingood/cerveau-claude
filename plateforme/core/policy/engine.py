@@ -124,6 +124,16 @@ def phase_action_classes(domain: str) -> frozenset[ActionClass]:
     return PHASE_DOMAIN_ACTION_CLASSES.get(domain, PHASE_ACTION_CLASSES)
 
 
+def _a_parent_is_not_a_directory(directory: Path, project_root: Path) -> bool:
+    """True when ``directory`` or one of its parents up to ``project_root`` exists as a file."""
+    for parent in (directory, *directory.parents):
+        if parent == project_root:
+            return False
+        if parent.exists() and not parent.is_dir():
+            return True
+    return False
+
+
 def kill_switch_engaged(project_root: Path) -> bool:
     """True when ``governance/kill_switch/KILL`` exists, or when that cannot be known (R4).
 
@@ -140,7 +150,10 @@ def kill_switch_engaged(project_root: Path) -> bool:
         try:
             os.listdir(path.parent)
         except FileNotFoundError:
-            return path.parent.is_symlink()
+            # Windows says « not found », not « not a directory », when a parent is a file
+            return path.parent.is_symlink() or _a_parent_is_not_a_directory(
+                path.parent, project_root
+            )
         return False
     except OSError:  # NotADirectoryError, PermissionError…: unknown, so engaged
         return True

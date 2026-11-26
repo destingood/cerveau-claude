@@ -667,6 +667,23 @@ def test_a_kill_switch_directory_replaced_by_a_file_engages(tmp_path: Path, repl
     assert kill_switch_engaged(tmp_path) is True
 
 
+@pytest.mark.parametrize("replaced", ["kill_switch", "governance"])
+def test_a_directory_replaced_by_a_file_engages_as_windows_reports_it(
+    tmp_path: Path, replaced: str, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """G-12 under Windows: listing a path under a file is « not found », not « not a directory »."""
+    directory = tmp_path / KILL_SWITCH_FILE.parent
+    target = directory if replaced == "kill_switch" else directory.parent
+    target.parent.mkdir(parents=True, exist_ok=True)
+    target.write_text("", encoding="utf-8")
+
+    def windows_listdir(path: object) -> list[str]:
+        raise FileNotFoundError(3, "Le chemin d'accès spécifié est introuvable", str(path))
+
+    monkeypatch.setattr("core.policy.engine.os.listdir", windows_listdir)
+    assert kill_switch_engaged(tmp_path) is True
+
+
 def test_an_unreadable_kill_switch_directory_engages(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
