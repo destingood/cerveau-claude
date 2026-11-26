@@ -8,19 +8,22 @@ request only gets a policy decision, refused at N0. No network: the risk plugin 
 from __future__ import annotations
 
 import asyncio
+import hashlib
 import json
+import sys
 from collections.abc import Awaitable, Callable
 from pathlib import Path
 from typing import Any
 
 import pytest
-from mcp import Client
+from mcp import Client, StdioServerParameters
 from mcp.types import CallToolResult
 
 from core.audit import AuditJournal
 from core.finance.fixtures import REFERENCE_READ_AT, reference_store
+from core.registry.manifest import ToolSpec
 from core.verification.figures import figures_in
-from interfaces.mcp_server.server import NAME, Bridge, build_server
+from interfaces.mcp_server.server import CALL_PREFIX, NAME, Bridge, build_server
 from plugins.finance_risk.server import build_server as risk_server
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -152,4 +155,95 @@ def test_an_unknown_tool_or_domain_is_an_error(tmp_path: Path) -> None:
     )
     unknown_domain = call(session, "outils", {"domaine": "astrologie"})
     assert unknown_tool.is_error and unknown_domain.is_error
-    assert entries(session.log) == []  # refused before any plugin starts
+    # G-3: the refused call has its entry, written by the bridge before any plugin starts
+    [entry] = entries(session.log)
+    assert (entry["actor"], entry["event"]) == ("interface", "TOOL_CALL")
+    assert entry["request_id"].startswith(CALL_PREFIX)
+    assert entry["payload"]["status"] == "absent_ou_refuse"
+    assert entry["payload"]["tool"] == "passer_un_ordre"
+
+
+def digest(value: Any) -> str:
+    data = json.dumps(value, sort_keys=True, separators=(",", ":"), ensure_ascii=False)
+    return "sha256:" + hashlib.sha256(data.encode("utf-8")).hexdigest()
+
+
+def appeler(session: Bridge, **arguments: Any) -> CallToolResult:
+    return call(session, "appeler", arguments)
+
+
+def statuses(session: Bridge) -> list[tuple[str, str]]:
+    return [(e["actor"], e["payload"]["status"]) for e in entries(session.log)]
+
+
+# --- B1.2 : le journal ne garde rien en clair, chaque appel a son entrée (G-2, G-3, G-6, G-11) ---
+
+
+def test_a_call_is_journaled_before_and_after_without_its_values(
+    tmp_path: Path, store: Path
+) -> None:
+    session = bridge(tmp_path, store)
+    data = content(
+        appeler(session, domaine="finance", outil="risk_report", arguments={"jeton": "s3cr3t"})
+    )
+    assert data["appel"] == "risk_report#1"
+    assert statuses(session) == [("orchestrator", "en_cours"), ("orchestrator", "ok")]
+    started, done = entries(session.log)
+    assert started["request_id"] == done["request_id"]
+    assert started["request_id"].startswith(CALL_PREFIX)
+    assert done["payload"]["arguments"] == {"jeton": digest("s3cr3t")}
+    assert "s3cr3t" not in json.dumps(entries(session.log))
+
+
+def test_every_failed_call_has_its_entry(tmp_path: Path) -> None:
+    """G-3: an unknown domain, a plugin whose server does not start: journaled, values aside."""
+    session = bridge(tmp_path)
+    session.targets = {
+        "finance_risk": StdioServerParameters(
+            command=sys.executable, args=["-c", "raise SystemExit(3)"]
+        )
+    }
+    domain = appeler(session, domaine="astrologie", outil="x", arguments={"iban": "FR76 3000"})
+    down = appeler(session, domaine="finance", outil="risk_report", arguments={})
+    assert domain.is_error and down.is_error
+    assert statuses(session) == [
+        ("interface", "domaine_inconnu"),
+        ("interface", "demarrage_impossible"),
+    ]
+    first, second = entries(session.log)
+    assert first["payload"]["arguments"] == {"iban": digest("FR76 3000")}
+    assert "serveur injoignable" in second["payload"]["error"]
+    assert "FR76" not in json.dumps(entries(session.log))
+
+
+class Twins(Bridge):
+    """finance with two plugins that publish ``risk_report`` (G-11)."""
+
+    def allowed(self, domain: str) -> list[tuple[str, ToolSpec, Path]]:
+        found = super().allowed(domain)
+        twin = [("finance_risk_bis", s, d) for p, s, d in found if s.name == "risk_report"]
+        return found + twin
+
+
+def test_a_tool_name_two_plugins_share_needs_its_plugin(tmp_path: Path, store: Path) -> None:
+    targets = {"finance_risk": risk_server(store, ROOT / "config", lambda: REFERENCE_READ_AT)}
+    session = Twins(journal=AuditJournal(tmp_path / "audit" / "journal.jsonl"), targets=targets)
+    rows = [
+        row
+        for row in content(call(session, "outils", {"domaine": "finance"}))["outils"]
+        if row["outil"] == "risk_report"
+    ]
+    assert [row["ambigu"] for row in rows] == [["finance_risk", "finance_risk_bis"]] * 2
+    vague = appeler(session, domaine="finance", outil="risk_report", arguments={})
+    assert vague.is_error and "précise `plugin`" in vague.content[0].text  # type: ignore[union-attr]
+    named = appeler(
+        session, domaine="finance", outil="risk_report", arguments={}, plugin="finance_risk"
+    )
+    assert content(named)["appel"] == "risk_report#1"
+    assert statuses(session) == [
+        ("interface", "ambigu"),
+        ("orchestrator", "en_cours"),
+        ("orchestrator", "ok"),
+    ]
+    others = content(call(session, "outils", {"domaine": "finance"}))["outils"]
+    assert all("ambigu" not in row for row in others if row["outil"] != "risk_report")

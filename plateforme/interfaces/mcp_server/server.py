@@ -33,7 +33,14 @@ from core.audit.chain import default_journal_path
 from core.budget.gate import RequestBudget, RequestBudgetExceeded
 from core.config.loader import AutonomyConfig, Config, load_config
 from core.governance.signatures import effective_autonomy
-from core.mcp.adapter import McpAdapterError, McpPlugin, RequestScope, ToolRefusedError
+from core.mcp.adapter import (
+    McpAdapterError,
+    McpPlugin,
+    RequestScope,
+    ToolRefusedError,
+    argument_digests,
+    scrub_paths,
+)
 from core.models.costs import CostCalculator
 from core.models.meter import Meter
 from core.orchestrator.packs import Pack, load_packs
@@ -48,6 +55,8 @@ ISOLATED = "EXECUTION_ISOLEE"  # l'agent de code, dans son conteneur : jamais pa
 ActionClass = Literal["ECRITURE_INTERNE", "COMMUNICATION_EXTERNE", "IRREVERSIBLE", "FINANCIERE"]
 MAX_CITATIONS = 10  # citations de l'utilisateur par vérification
 MAX_CITATION_CHARS = 1000
+# The request_id of an `appeler` request (ADR-071).
+CALL_PREFIX = "mcp-appel-"
 
 INSTRUCTIONS = (
     "Outils de la plateforme CERVEAU. `domaines` liste les domaines et leur niveau d'autonomie ; "
@@ -162,31 +171,93 @@ class Bridge:
         return rows
 
     def tools(self, domain: str) -> list[dict[str, Any]]:
+        allowed = self.allowed(domain)
+        owners: dict[str, list[str]] = {}
+        for plugin, spec, _directory in allowed:
+            owners.setdefault(spec.name, []).append(plugin)
         rows = []
-        for plugin, spec, directory in self.allowed(domain):
+        for plugin, spec, directory in allowed:
             schema = json.loads((directory / spec.input_schema).read_text(encoding="utf-8"))
             schema.pop("$schema", None)
-            rows.append(
-                {
-                    "outil": spec.name,
-                    "plugin": plugin,
-                    "classe": spec.action_class,
-                    "description": spec.description,
-                    "arguments": schema,
-                }
-            )
+            row: dict[str, Any] = {
+                "outil": spec.name,
+                "plugin": plugin,
+                "classe": spec.action_class,
+                "description": spec.description,
+                "arguments": schema,
+            }
+            if len(owners[spec.name]) > 1:  # G-11: `appeler` needs `plugin` for this name
+                row["ambigu"] = owners[spec.name]
+            rows.append(row)
         return rows
 
-    async def call(self, domain: str, tool: str, arguments: Mapping[str, Any]) -> dict[str, Any]:
-        match = next(((p, s, d) for p, s, d in self.allowed(domain) if s.name == tool), None)
-        if match is None:
-            raise ToolError(
-                f"outil « {tool} » absent ou refusé dans le domaine « {domain} » : voir `outils`"
+    def _journal_call(
+        self,
+        request_id: str,
+        *,
+        domain: str,
+        tool: str,
+        plugin: str | None,
+        arguments: Mapping[str, Any],
+        status: str,
+        error: str,
+    ) -> None:
+        """A bridge request that never reached the adapter's call (G-3): refused or not started.
+        Its arguments go there as names and digests only (R6)."""
+        self.log.append(
+            actor="interface",
+            event="TOOL_CALL",
+            request_id=request_id,
+            payload={
+                "source": NAME,
+                "domain": domain[:64],
+                "tool": tool[:64],
+                "plugin": plugin,
+                "arguments": argument_digests(arguments),
+                "status": status,
+                "error": scrub_paths(error)[:300],
+            },
+            redactions=("arguments",),
+        )
+
+    async def call(
+        self,
+        domain: str,
+        tool: str,
+        arguments: Mapping[str, Any],
+        plugin: str | None = None,
+    ) -> dict[str, Any]:
+        """One `appeler` request, journaled whatever its outcome (G-3), refused when ``tool``
+        names tools of several plugins and ``plugin`` does not say which (G-11)."""
+        context = {"domain": domain, "tool": tool, "plugin": plugin, "arguments": arguments}
+        request_id = f"{CALL_PREFIX}{uuid.uuid4().hex[:16]}"
+        try:
+            allowed = self.allowed(domain)
+        except ToolError as exc:
+            self._journal_call(request_id, status="domaine_inconnu", error=str(exc), **context)
+            raise
+        found = [(p, s, d) for p, s, d in allowed if s.name == tool and plugin in (None, p)]
+        if len(found) != 1:
+            status, reason = (
+                (
+                    "ambigu",
+                    f"outil « {tool} » ambigu dans le domaine « {domain} » : précise `plugin` "
+                    f"parmi {', '.join(p for p, _s, _d in found)}",
+                )
+                if found
+                else (
+                    "absent_ou_refuse",
+                    f"outil « {tool} » absent ou refusé dans le domaine « {domain} » : voir "
+                    "`outils`",
+                )
             )
-        plugin, spec, directory = match
+            self._journal_call(request_id, status=status, error=reason, **context)
+            raise ToolError(reason)
+        [(owner, spec, directory)] = found
+        context["plugin"] = owner
         meter = Meter(CostCalculator(self.cfg.pricing))
         scope = RequestScope(
-            request_id=f"mcp-{uuid.uuid4().hex[:16]}",
+            request_id=request_id,
             domain=domain,
             autonomy=self.autonomy(),
             journal=self.log,
@@ -196,14 +267,23 @@ class Bridge:
             live_enabled=self.cfg.live.enabled,
             web_allowlist=self.cfg.data_sources.web_allowlist(domain),
         )
-        target = self.targets.get(plugin)
+        target = self.targets.get(owner)
+        called = False  # once the adapter's call runs, it journals the outcome itself
         try:
             async with McpPlugin(directory, scope, target=target, environ=self.environ) as opened:
                 if spec.name in opened.skipped:
-                    raise ToolError(f"outil « {tool} » refusé : {opened.skipped[spec.name]}")
+                    reason = f"outil « {tool} » refusé : {opened.skipped[spec.name]}"
+                    self._journal_call(request_id, status="indisponible", error=reason, **context)
+                    raise ToolError(scrub_paths(reason))
+                called = True
                 status, structured = await opened.call(spec, dict(arguments))
         except (McpAdapterError, ToolException, ToolRefusedError, RequestBudgetExceeded) as exc:
-            raise ToolError(str(exc)) from None
+            reason = scrub_paths(str(exc))  # G-15
+            if not called:  # the plugin was refused by the registry or did not start
+                self._journal_call(
+                    request_id, status="demarrage_impossible", error=reason, **context
+                )
+            raise ToolError(reason) from None
         self.counts[tool] += 1
         call_id = f"{tool}#{self.counts[tool]}"
         self.outputs.append(tool_output(call_id, tool, structured))
@@ -323,7 +403,8 @@ def build_server(bridge: Bridge | None = None) -> MCPServer:
         name="appeler",
         description=(
             "Lance un outil permis d'un domaine. Politique, kill switch et budget s'appliquent ; "
-            "l'appel est écrit au journal d'audit. Rend l'identifiant de l'appel et la sortie."
+            "l'appel est écrit au journal d'audit, refus compris. Rend l'identifiant de l'appel "
+            "et la sortie."
         ),
         annotations=CALLS,
         structured_output=True,
@@ -334,8 +415,16 @@ def build_server(bridge: Bridge | None = None) -> MCPServer:
         arguments: Annotated[
             dict[str, Any] | None, Field(description="Arguments de l'outil, voir `outils`")
         ] = None,
+        plugin: Annotated[
+            str | None,
+            Field(
+                min_length=1,
+                max_length=64,
+                description="Plugin de l'outil, requis si `outils` le dit ambigu",
+            ),
+        ] = None,
     ) -> dict[str, Any]:
-        return await session.call(domaine, outil, arguments or {})
+        return await session.call(domaine, outil, arguments or {}, plugin)
 
     @server.tool(
         name="verifier",
