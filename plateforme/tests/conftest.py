@@ -33,6 +33,17 @@ def _no_interface_secrets(monkeypatch: pytest.MonkeyPatch) -> None:
         monkeypatch.delenv(name, raising=False)
 
 
+@pytest.fixture(autouse=True)
+def _no_user_brain(
+    monkeypatch: pytest.MonkeyPatch, tmp_path_factory: pytest.TempPathFactory
+) -> None:
+    """The user's own brain (plugin « cerveau ») is never read by a test (ADR-072): tests that
+    need one build it under tmp_path and point the reader to it."""
+    monkeypatch.setenv("BRAIN_HOME", str(tmp_path_factory.getbasetemp() / "pas-de-cerveau"))
+    for name in ("BRAIN_WIKI", "CLAUDE_CONFIG_DIR"):
+        monkeypatch.delenv(name, raising=False)
+
+
 QUESTIONS_XML = (
     "<evaluation>\n"
     + "".join(

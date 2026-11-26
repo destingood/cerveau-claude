@@ -1,0 +1,34 @@
+# Mémoire (section 11, étape B2 du plan, ADR-072) : la plateforme lit, en lecture seule, le cerveau
+# du plugin « cerveau » de Claude Code. Rien n'est écrit, copié ni gardé entre deux lectures : un
+# souvenir oublié dans le plugin disparaît pour la plateforme à la lecture suivante. Lu par
+# core/config/loader.py et core/memory/ ; `cerveau memoire chercher` montre ce qui serait lu.
+enabled: true
+# Dossier du cerveau. null : la variable d'environnement BRAIN_HOME, sinon ~/.claude/brain (comme
+# le plugin). Un chemin ici remplace les deux.
+brain_home: null
+# Souvenirs du domaine rendus pour une requête (les mieux classés par mots communs, BM25), et
+# préférences générales ajoutées à part (une préférence vaut pour toute requête).
+top_k: 5
+preferences_k: 3
+# Texte d'un souvenir coupé au-delà (titre et corps), pour borner le prompt.
+max_chars_per_memory: 600
+# Confiance minimale (faible, moyen, eleve), tirée de la source du souvenir : eleve pour ce que tu
+# as dit ou vérifié (utilisateur, verifie, obsidian), moyen pour ce que Claude a noté (claude, mcp,
+# import, wiki), faible pour l'automatique et le déduit (auto, deduit). « moyen » écarte le déduit.
+min_confidence: moyen
+# Types du plugin lus comme des préférences générales quand ils n'ont pas de domaine : « feedback »
+# (Règle : préférences, consignes de travail). Le profil (« user ») décrit la personne : il n'est
+# pas lu par défaut.
+preference_types: [feedback]
+# Domaines du plugin (décision E19 : code, business, contenu, finance, infra, recherche, perso) que
+# voit chaque pack de la plateforme, en plus des préférences générales. « perso » n'est jamais
+# listé ici : il n'est lu que sur demande explicite (`cerveau memoire chercher --perso`). Un pack
+# absent de cette liste ne voit que les préférences générales.
+packs:
+  generaliste: []           # questions de tout ordre : préférences générales seulement
+  finance: [finance]
+  recherche: [recherche]
+  code: [code, infra]       # le code et l'infrastructure où il tourne
+  cyber: [infra]            # défense de tes machines et services : leur description
+  juridique_fr: []          # questions juridiques : souvent personnelles, rien par défaut
+  business: [business, contenu]

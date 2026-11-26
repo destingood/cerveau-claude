@@ -38,6 +38,7 @@ from core.committee.engine import CommitteeSpec, Sitting, run_committee
 from core.config.loader import Config
 from core.guardrails.pii import PiiAnalyzer, Pseudonymiser
 from core.learning.errors import decision_errors, journal_errors
+from core.memory import BrainMemory
 from core.models.router import ModelRouter
 from core.notify.alerts import Alerts
 from core.observability.tracing import NoTracer, Tracer
@@ -166,6 +167,12 @@ def audit_payload(run: Run, state: CerveauState, *, status: str | None = None) -
             "tools": list(route.tools),
             "skipped": sorted(route.skipped),
             "mode": route.mode,
+        }
+    if run.recall is not None:  # counts only: no memory text or id (R6)
+        payload["memory"] = {
+            "mode": run.recall.mode,
+            "read": len(run.recall.candidates),
+            "given": run.memory_given,
         }
     if (committee := state.committee) is not None:
         payload["committee"] = {
@@ -503,6 +510,7 @@ class Orchestrator:
         committees: Mapping[str, CommitteeSpec] | None = None,  # pack → spec; None: its agent
         researches: Mapping[str, ResearchSpec] | None = None,  # pack → spec; None: its agent
         alerts: Alerts | None = None,  # budget thresholds (B46); None: journal and console only
+        memory: BrainMemory | None = None,  # the plugin's brain (ADR-072); None: no memory
     ) -> None:
         self.config = config
         self.project_root = project_root
@@ -519,6 +527,7 @@ class Orchestrator:
         self._budget_clock = budget_clock
         self._tz = tz
         self.alerts = alerts
+        self.memory = memory
         self._analyzer: PiiAnalyzer | None = None
         self._committees: dict[str, CommitteeSpec | None] = dict(committees or {})
         self._given_committees = committees is not None
@@ -597,6 +606,7 @@ class Orchestrator:
             research_forced=research,
             research_for=self.research_spec,
             budget_clock=self._budget_clock,
+            memory=self.memory,
         )
         start = {"config": self.config.digest}
         with self.tracer.request(

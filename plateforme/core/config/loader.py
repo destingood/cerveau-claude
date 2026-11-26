@@ -958,6 +958,80 @@ class BusinessConfig(_Strict):
     vat: VatConfig
 
 
+# --- memory.yaml (plan step B2, ADR-072) --------------------------------------------------------
+
+# The vocabulary of the « cerveau » plugin, read from its code (brainkit/temps.py, decision E19, and
+# brainkit/store.py): the platform only reads it. « perso » is never listed in memory.yaml: it is
+# read on an explicit request only.
+PLUGIN_DOMAINS: tuple[str, ...] = (
+    "code",
+    "business",
+    "contenu",
+    "finance",
+    "infra",
+    "recherche",
+    "perso",
+)
+PERSONAL_DOMAIN = "perso"
+PLUGIN_TYPES: tuple[str, ...] = (
+    "user",
+    "feedback",
+    "project",
+    "decision",
+    "fact",
+    "learning",
+    "reference",
+    "entity",
+    "todo",
+    "source",
+    "concept",
+    "topic",
+    "analysis",
+)
+MemoryConfidence = Literal["faible", "moyen", "eleve"]
+
+
+class MemoryConfig(_Strict):
+    enabled: bool
+    brain_home: str | None = None  # None: BRAIN_HOME, else ~/.claude/brain
+    top_k: Annotated[int, Field(strict=True, ge=1, le=20)]
+    preferences_k: Annotated[int, Field(strict=True, ge=0, le=10)]
+    max_chars_per_memory: Annotated[int, Field(strict=True, ge=50, le=4000)]
+    min_confidence: MemoryConfidence
+    preference_types: list[str]
+    packs: dict[str, list[str]]
+
+    @field_validator("brain_home")
+    @classmethod
+    def _home_not_empty(cls, value: str | None) -> str | None:
+        if value is not None and not value.strip():
+            raise ValueError("chemin vide : null pour BRAIN_HOME ou ~/.claude/brain")
+        return value
+
+    @field_validator("preference_types")
+    @classmethod
+    def _known_types(cls, value: list[str]) -> list[str]:
+        unknown = [kind for kind in value if kind not in PLUGIN_TYPES]
+        if unknown:
+            raise ValueError(f"types inconnus du plugin : {unknown} (connus : {PLUGIN_TYPES})")
+        return value
+
+    @field_validator("packs")
+    @classmethod
+    def _known_packs_and_domains(cls, value: dict[str, list[str]]) -> dict[str, list[str]]:
+        for pack, domains in value.items():
+            if pack not in DOMAIN_MAX_LEVELS:
+                raise ValueError(f"packs.{pack} : pack inconnu")
+            if PERSONAL_DOMAIN in domains:
+                raise ValueError(
+                    f"packs.{pack} : « perso » n'est lu que sur demande explicite (--perso)"
+                )
+            unknown = [domain for domain in domains if domain not in PLUGIN_DOMAINS]
+            if unknown:
+                raise ValueError(f"packs.{pack} : domaines inconnus du plugin : {unknown}")
+        return value
+
+
 FILES: dict[str, tuple[str, type[BaseModel]]] = {
     "models": ("models.yaml", ModelsConfig),
     "autonomy": ("autonomy.yaml", AutonomyConfig),
@@ -976,6 +1050,7 @@ FILES: dict[str, tuple[str, type[BaseModel]]] = {
     "interfaces": ("interfaces.yaml", InterfacesConfig),
     "code": ("code.yaml", CodeConfig),
     "business": ("business.yaml", BusinessConfig),
+    "memory": ("memory.yaml", MemoryConfig),
 }
 
 
@@ -1176,6 +1251,8 @@ FEATURES: dict[str, Feature] = {
         ),
     ),
     # The allow list of repositories (E2) and the pinned image with its bounds (E4, E5).
+    # The plugin's brain, read only (ADR-072); a marker anywhere in memory.yaml blocks it.
+    "memory": Feature("Mémoire : lecture seule du cerveau du plugin (ADR-072)", ("memory:",)),
     "code.repositories": Feature("Lecture des dépôts de la liste blanche", ("code:repositories",)),
     "code.checks": Feature(
         "Contrôles ruff et pytest dans un conteneur sans réseau",
@@ -1267,6 +1344,7 @@ class Config:
     interfaces: InterfacesConfig
     code: CodeConfig
     business: BusinessConfig
+    memory: MemoryConfig
     markers: tuple[MarkerHit, ...]
     digest: str
 
@@ -1448,6 +1526,7 @@ def load_config(directory: Path) -> Config:
         interfaces=parsed["interfaces"],  # type: ignore[arg-type]
         code=parsed["code"],  # type: ignore[arg-type]
         business=parsed["business"],  # type: ignore[arg-type]
+        memory=parsed["memory"],  # type: ignore[arg-type]
         markers=tuple(markers),
         digest=config_digest(directory),
     )

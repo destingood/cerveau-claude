@@ -30,6 +30,7 @@ from core.budget.gate import RequestBudget
 from core.config.loader import BlockedFeatureError
 from core.guardrails.input import InputRefusedError, check_question
 from core.mcp.spend import IsolatedTask
+from core.memory import BrainMemory, Recall, paris_today
 from core.orchestrator.packs import DEFAULT_DOMAIN
 from core.orchestrator.runtime import WEB_PLUGIN, Run
 from core.orchestrator.state import (
@@ -67,6 +68,8 @@ def paris_time(now: datetime) -> str:
 
 async def context_node(run: Run, state: CerveauState) -> dict[str, Any]:
     kill = kill_switch_engaged(run.project_root)
+    if run.memory is not None and not kill:  # read once; scoped once the pack is known (node 3)
+        run.recall = run.memory.read(paris_today(run.now))
     level = run.config.autonomy.domains[DEFAULT_DOMAIN].level
     context = RequestContext(
         request_id=run.request_id,
@@ -255,6 +258,16 @@ def _isolate(run: Run) -> str | None:
     return None
 
 
+def _memory_snippets(run: Run, memory: BrainMemory, recall: Recall, domain: str) -> str:
+    """The routed pack's memories for the question, pseudonymised like it (ADR-072, ADR-010).
+
+    The question ranks them here, on the machine; only the rendered memories reach a model.
+    """
+    selection = memory.select(recall, run.raw_question, domain)
+    run.memory_given = len(selection.found)
+    return memory.render(selection, run.pseudonymiser.pseudonymise)
+
+
 def _prudent_route(reason: str) -> RouteVerdict:
     return RouteVerdict(complexite="complexe", importance="elevee", web=True, raison=reason)
 
@@ -320,7 +333,10 @@ async def route_node(run: Run, state: CerveauState) -> dict[str, Any]:
     )
     context = required(state.context, "contexte")
     level = "N0" if context.kill_switch else run.config.autonomy.domains[domain].level
-    routed = context.model_copy(update={"domain": domain, "autonomy_level": level})
+    update: dict[str, Any] = {"domain": domain, "autonomy_level": level}
+    if run.memory is not None and run.recall is not None:
+        update["memory"] = _memory_snippets(run, run.memory, run.recall, domain)
+    routed = context.model_copy(update=update)
     if refused is not None:
         return {"route": plan, "context": routed, "guarded": refused}
     return {"route": plan, "context": routed}
