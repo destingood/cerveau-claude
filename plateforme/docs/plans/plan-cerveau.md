@@ -567,6 +567,19 @@ hook au-dessus de 150 ms, premier démarrage après un changement compris ; `bra
   la CI sur le `Makefile` (B364).
 - **Réglages** : 42 fonctions bloquées ; Claude propose une valeur prudente par marqueur, tu fixes
   celles de gouvernance (courtier, capital, limites de perte, seuils d'autonomie, comptes à créer).
+  ✅ Étape B3 faite le 27/11 (ton GO du 27/11) : 42 → 26 fonctions bloquées, 19 → 35 disponibles.
+  - Partie 1, faits vérifiés à la source, lus le 27/11 : régime fiscal des plus-values et déclaration
+    des comptes à l'étranger (brochure IR 2026, BOFiP, CGI), empreinte SHA-256 du fichier ATT&CK épinglé,
+    conditions de FRED et d'OpenBB (ces deux sources restent désactivées : à toi de les activer).
+  - Partie 2, 14 réglages techniques du côté prudent, à valider dans la PR : kill switch sur perte des
+    données 30 s, plugin hors SLO coupé au premier jour, rotation des clés 90 jours, z modifié 3,5,
+    mouvement inexpliqué 0,20 (plus strict que les 0,30 de l'ADR-016), régression des évals 0,02, motifs
+    3 et 3, 50 cas tenus à l'écart, Presidio 0,4 (masque autant ou plus), port de l'API locale 8427.
+  - Partie 3, gouvernance : `docs/reglages-a-trancher.md`, rien d'appliqué. Restent aussi à ta décision :
+    les fenêtres de crise (propositions sourcées : 2008-09-12 → 2009-03-09, 2020-02-19 → 2020-03-23,
+    2022-07-27 → 2023-09-20), l'ISIN de l'indice de référence (5 cas d'évals à revoir, R9), la
+    plateforme crypto (liste blanche AMF), l'environnement PISTE de Légifrance (H4) et le nouveau commit
+    du tag ATT&CK v20.0 (même fichier, date de création corrigée, ADR-056).
 - **Une chaîne d'approbation** : B228 d'abord (le secret des codes à usage unique hors de portée de
   Claude), puis B353 (la porte du live lue depuis `live.yaml`).
 - **Mesurer pour de vrai à 0 €** : les jeux de cas passés dans Claude Code, un autre modèle juge ; le
@@ -1036,6 +1049,7 @@ il fait doublon avec le cerveau.
 | E19 | Liste des domaines, pour l'axe « domaine » (étape 11) | **Appliquée le 24/11 telle que recommandée**, proposée et non imposée (le `--domaine` libre existait déjà). Sept domaines portés par le projet : code, business, contenu, finance, infra, recherche, perso. À toi de corriger la liste |
 | E20 | Vérification en fin de tâche dans ce dépôt (étape 10) | **Appliquée le 24/11 telle que recommandée** (ton GO, sans autre consigne) : le lint et les tests des fichiers touchés ; tous les scripts (3 min 50 mesurées le 24/11 sous Linux) restent pour la CI. À changer si tu veux tout lancer |
 | E21 | Où garder un lien terminé en mode wiki (étape 11) | **Appliquée le 24/11 telle que recommandée.** Dans une propriété `anciens_liens` de la page, pour qu'il survive à une reconstruction de `graph.json` |
+| E22 | Réglages de gouvernance (étape B3) | Voir `docs/reglages-a-trancher.md`. Les réponses qui débloquent le plus : ton courtier et ses frais, ton identifiant Discord, tes dépôts et l'image des contrôles, puis l'univers paper et tes exclusions. Budgets en euros, promotion N4 et fenêtre de retour arrière : rester à `A_DEFINIR` |
 
 Toujours ouvertes depuis le plan v2 : D4 (ton nom dans l'historique public), D5 (ordre des domaines),
 D6 (ta boutique), D7 (réseaux sociaux visés), D8 (canal des approbations), D9 (modèle local),
