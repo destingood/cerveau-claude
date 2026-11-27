@@ -5,7 +5,6 @@ from __future__ import annotations
 import asyncio
 import json
 import os
-import shutil
 from collections.abc import Awaitable, Callable
 from pathlib import Path
 from typing import Any
@@ -18,6 +17,7 @@ from mcp.types import CallToolResult
 from core.cyber.attack import NOTICE, TERMS_URL, AttackIndex, index_path, write_index
 from core.cyber.fetch import SOURCES_FILE, record_sha256
 from core.evals.attack_sample import BUILT_AT, COMMIT, VERSION, build, bundle, sha256_of
+from core.evals.cyber_fixtures import cyber_config
 from core.registry.manifest import validate_plugin
 from plugins.cyber_attack import server as server_module
 from plugins.cyber_attack.models import MAX_RESULTS
@@ -40,7 +40,7 @@ MISSING = "index ATT&CK 20.0 absent : lancer `cerveau cyber attack-fetch --versi
 
 def _home(tmp_path: Path, *, recorded: bool = True, indexed: bool = True) -> Path:
     """A project as `cerveau cyber attack-fetch` leaves it, here from the synthetic bundle."""
-    shutil.copytree(ROOT / "config", tmp_path / "config")
+    cyber_config(ROOT / "config", tmp_path)  # the recorded digest back to its marker
     if recorded:
         record_sha256(tmp_path / "config", SHA256)
     if indexed:

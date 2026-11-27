@@ -993,3 +993,9 @@ def test_the_report_flags_the_cases_that_did_not_run(tmp_path: Path) -> None:
     assert {path.suffix for path in written} == {".md", ".json"}
     assert RUN in (tmp_path / "copie.md").read_text(encoding="utf-8")
     assert json.loads((tmp_path / "copie.json").read_text(encoding="utf-8"))
+    # regression_block_delta is set (plan step B3), the comparison is not written: say so (R12).
+    stated = json.loads((tmp_path / "copie.json").read_text(encoding="utf-8"))["regression"]
+    assert stated.startswith("non faite") and "0.02" in stated
+    assert f"référence : {stated}." in (tmp_path / "copie.md").read_text(encoding="utf-8")
+    unset = dataclasses.replace(report, regression_delta=None)
+    assert unset.regression().startswith("bloquée : regression_block_delta vaut A_DEFINIR")

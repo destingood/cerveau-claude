@@ -627,6 +627,10 @@ def test_serving_needs_the_interfaces_defined(
 ) -> None:
     monkeypatch.setenv("CERVEAU_HOME", str(root))
     monkeypatch.setenv(TOKEN_ENV, TOKEN)
+    path = config_dir / "interfaces.yaml"  # the port is set in the repository (plan step B3)
+    data = yaml.safe_load(path.read_text(encoding="utf-8"))
+    data["api"]["port"] = "A_DEFINIR"
+    path.write_text(yaml.safe_dump(data), encoding="utf-8")
     result = runner.invoke(cli, ["api", "serve", "--config-dir", str(config_dir)])
     assert result.exit_code == 2
     assert "interfaces.api" in result.output or "A_DEFINIR" in result.output

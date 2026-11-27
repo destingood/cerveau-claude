@@ -2,8 +2,15 @@
 pii:
   language: fr
   spacy_model: fr_core_news_md
-  # Seuil de score Presidio : décision de l'utilisateur (valeur proposée dans le plan : 0.5).
-  score_threshold: A_DEFINIR
+  # Seuil de score Presidio : une entité dont le score est sous le seuil n'est pas masquée
+  # (presidio-analyzer 2.2.364, AnalyzerEngine.analyze, lu le 27/11/2026). Étape B3 du plan, proposé
+  # par Claude, à valider dans la PR : 0,4 plutôt que les 0,5 proposés depuis la phase 1. Prudent :
+  # il masque autant ou plus. Nos recognizers donnent 0,6 (téléphone, IP), 0,85 (noms et lieux de
+  # spaCy) ou 1,0 (e-mail, IBAN, carte, NIR validés) : tout est masqué à 0,4 comme à 0,5 ; 0,4 est le
+  # plancher que Presidio donne à une détection appuyée par un mot de contexte, si bien qu'un futur
+  # recognizer faible masque encore dès qu'un tel mot l'entoure. Plus bas, des nombres ordinaires
+  # seraient masqués, ce qui gênerait le contrôle des chiffres (R1).
+  score_threshold: 0.4
   # Libellé du pseudonyme (<PERSONNE_1>...) par type d'entité ; toutes sont pseudonymisées.
   entities:
     PERSON: PERSONNE

@@ -6,6 +6,7 @@ from __future__ import annotations
 
 import asyncio
 import json
+import re
 import shutil
 from datetime import datetime
 from pathlib import Path
@@ -15,9 +16,9 @@ import httpx
 import pytest
 from pydantic import ValidationError
 
+from core.config.loader import load_config
 from core.cyber import fetch
 from core.cyber.attack import AttackError
-from core.cyber.fetch import record_sha256
 from core.evals import harness
 from core.evals.attack_sample import BUILT_AT, COMMIT, SAMPLE, VERSION, bundle, sha256_of
 from core.evals.cases import Case, CyberFixture, load_cases
@@ -266,7 +267,12 @@ def test_a_digest_already_recorded_goes_back_to_its_marker_in_the_copy(tmp_path:
     source.mkdir()
     for path in (REPO_ROOT / "config").glob("*.yaml"):
         shutil.copyfile(path, source / path.name)
-    record_sha256(source, "ab" * 32)  # the user has run attack-fetch
+    # The repository records the digest of the real bundle; here another one stands in for it.
+    sources = source / "data_sources.yaml"
+    real = load_config(source).data_sources.sources["attack"].sha256
+    assert real is not None and re.fullmatch(r"[0-9a-f]{64}", real)
+    sources.write_bytes(sources.read_bytes().replace(real.encode(), b"ab" * 32, 1))
+    assert load_config(source).data_sources.sources["attack"].sha256 == "ab" * 32
     (source / "notes.txt").write_text("pas une configuration", encoding="utf-8")
     recorded = (source / "data_sources.yaml").read_bytes()
     folder = tmp_path / "cas"

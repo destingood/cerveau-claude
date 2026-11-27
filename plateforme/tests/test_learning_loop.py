@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+import re
 import shutil
 from datetime import datetime, timedelta
 from functools import partial
@@ -67,8 +68,8 @@ def set_thresholds(config_dir: Path, **extra: str) -> Path:
         "regression_block_delta": "0.02",
         **extra,
     }
-    for key, value in values.items():
-        text = text.replace(f"{key}: A_DEFINIR", f"{key}: {value}")
+    for key, value in values.items():  # whatever the repository holds (plan step B3 set some)
+        text = re.sub(rf"^(\s*{key}):.*$", rf"\g<1>: {value}", text, count=1, flags=re.MULTILINE)
     evals.write_text(text, encoding="utf-8")
     budgets = config_dir / "budgets.yaml"
     budgets.write_text(
@@ -435,8 +436,9 @@ def _json(path: Path, content: Any) -> str:
     return str(path)
 
 
-def test_cli_patterns_blocked_without_thresholds(cli: Path) -> None:
-    result = _invoke("patterns")
+def test_cli_patterns_blocked_without_thresholds(cli: Path, config_dir: Path) -> None:
+    set_thresholds(config_dir, min_support="A_DEFINIR")  # set in the repository since step B3
+    result = _invoke("patterns", "--config-dir", str(config_dir))
     assert result.exit_code == 2 and "min_support" in result.output
 
 

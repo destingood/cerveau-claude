@@ -244,6 +244,17 @@ class Report:
     suites: list[SuiteReport]
     review_sample: int
     learned: str | None = None  # digest of the learned layer the run used (ADR-065)
+    # regression_block_delta of evals.yaml, None while it is a marker (R7).
+    regression_delta: float | None = None
+
+    def regression(self) -> str:
+        """The state of the comparison with the reference run, as the report states it."""
+        if self.regression_delta is None:
+            return "bloquée : regression_block_delta vaut A_DEFINIR (config/evals.yaml)"
+        return (
+            "non faite : la comparaison à l'exécution de référence n'est pas encore écrite "
+            f"(seuil fixé : une baisse de plus de {self.regression_delta} bloque, R9)"
+        )
 
     @property
     def gates(self) -> list[Gate]:
@@ -296,7 +307,7 @@ class Report:
             "passed": self.passed,
             "costs": {**self.costs(), "simulated": self.mode == "offline"},
             "latency": self.latency(),
-            "regression": "bloquée : regression_block_delta vaut A_DEFINIR (config/evals.yaml)",
+            "regression": self.regression(),
             "suites": [suite.as_dict() for suite in self.suites],
             "review": [
                 {"case": r["case"], **{k: v for k, v in r["judgement"].items() if k != "case"}}
@@ -341,7 +352,12 @@ def build_report(
         suites=reports,
         review_sample=int(config.evals.judge_human_review_sample_weekly),
         learned=layer_digest(snapshot(learned_dir)),
+        regression_delta=_delta(config.evals.thresholds.regression_block_delta),
     )
+
+
+def _delta(value: float | str) -> float | None:
+    return None if isinstance(value, str) else value  # a marker: not set (R7)
 
 
 def write_report(report: Report, *paths: Path) -> list[Path]:
@@ -392,9 +408,7 @@ def _markdown(report: Report) -> list[str]:
     ]
     lines += [
         "",
-        "Comparaison à la dernière exécution de référence : **bloquée**, "
-        "`regression_block_delta` vaut `A_DEFINIR` dans `config/evals.yaml` (décision de "
-        "l'utilisateur).",
+        f"Comparaison à la dernière exécution de référence : {report.regression()}.",
         "",
         "## Suites",
         "",

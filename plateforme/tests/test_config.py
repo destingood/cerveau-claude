@@ -20,6 +20,7 @@ from core.config.loader import (
     UNSIGNED_LEVELS,
     EvalThresholds,
 )
+from core.cyber.fetch import PINS
 from core.registry.manifest import DOMAINS
 from tests.conftest import REPO_ROOT
 
@@ -60,16 +61,9 @@ def test_every_marker_dependent_feature_is_blocked_by_default() -> None:
         "budgets",
         "approvals",
         "llm.local",
-        "kill_switch.data_loss",
-        "evals.gate.generaliste",
-        "evals.gate.recherche",
-        "evals.gate.code",
-        "evals.gate.cyber",
-        "data.attack",
         "code.repositories",
         "code.checks",
-        "compliance.fiscal",
-        "guardrails.pii",
+        "compliance.crypto",
         "finance.historical_stress",
         "finance.benchmark",
         "finance.trading_costs",
@@ -132,14 +126,92 @@ def test_paper_trading_waits_for_the_fees_and_the_execution_parameters(config_di
     )
 
 
-def test_the_kill_switch_target_is_set_and_the_data_loss_timeout_is_not() -> None:
-    """ADR-034: 5 s set by the user; a continuous data connection does not exist yet (D11)."""
+def test_the_kill_switch_target_and_the_data_loss_timeout_are_set() -> None:
+    """ADR-034: 5 s set by the user; 30 s on a data loss (plan step B3), stricter than the 60 s
+    proposed on 17/11, for a continuous data connection that does not exist yet (D11)."""
     config = load_config(REPO_ROOT / "config")
     config.require("kill_switch")
+    config.require("kill_switch.data_loss")
     assert config.risk.kill_switch.target_seconds == 5
-    assert config.blockers("kill_switch.data_loss") == [
-        "risk.yaml › kill_switch.data_loss_timeout_seconds = A_DEFINIR"
-    ]
+    assert config.risk.kill_switch.data_loss_timeout_seconds == 30
+
+
+# The technical values of plan step B3 (27/11/2026), proposed by Claude and set on the prudent side;
+# the user validates them in the pull request. Each one is a value, never a loosened bound.
+B3_TECHNICAL_FEATURES = (
+    "kill_switch.data_loss",
+    "plugin_health",
+    "keys.rotation",
+    "data.quality_gate",
+    *(f"evals.gate.{pack}" for pack in DOMAIN_MAX_LEVELS),
+    "learning.patterns",
+    "guardrails.pii",
+    "interfaces.api",
+)
+
+
+def test_the_technical_values_of_step_b3_are_set() -> None:
+    config = load_config(REPO_ROOT / "config")
+    for feature in B3_TECHNICAL_FEATURES:
+        config.require(feature)
+    assert config.risk.plugin_health.slo_breach_days_before_disable == 1  # 6.5: default 2
+    assert config.risk.keys.rotation_days == 90  # CIS: 90 days or less
+    assert config.data_sources.quality.outlier_robust_z == 3.5  # Iglewicz and Hoaglin
+    assert config.data_sources.quality.max_unexplained_move == 0.20  # a 5-for-4 split shows
+    assert config.evals.thresholds.regression_block_delta == 0.02
+    learning = config.evals.learning
+    assert (learning.min_support, learning.max_feedback_per_user) == (3, 3)
+    assert learning.min_held_out_cases == 50
+    assert config.guardrails.pii.score_threshold == 0.4
+    assert config.interfaces.api.port == 8427
+
+
+def test_step_b3_leaves_every_governance_marker_in_place() -> None:
+    """What steers money, risk, autonomy or access stays the user's (plan step B3, part 3)."""
+    config = load_config(REPO_ROOT / "config")
+    for feature in (
+        "budgets",
+        "learning.promotion",  # promotion_margin and rollback_window_days: the user's (D4)
+        "learning.calibration_drift",  # a demotion trigger not wired yet (B351)
+        "notify.ntfy",  # a third-party server receives the alerts (D14)
+        "interfaces.discord",
+        "finance.mean_variance",
+        "paper_trading",
+        "promotion.finance.N3_to_N4",
+    ):
+        assert config.blockers(feature), feature
+    learning = config.evals.learning
+    assert learning.promotion_margin == "A_DEFINIR"
+    assert learning.rollback_window_days == "A_DEFINIR"  # unset: every promotion stays watched
+    assert config.interfaces.ntfy.server == "A_DEFINIR"
+
+
+@pytest.mark.parametrize(
+    ("section", "field", "value"),
+    [
+        ("plugin_health", "slo_breach_days_before_disable", 0),
+        ("plugin_health", "slo_breach_days_before_disable", -2),
+        ("plugin_health", "slo_breach_days_before_disable", 1.5),
+        ("keys", "rotation_days", 0),
+        ("keys", "rotation_days", -90),
+        ("keys", "rotation_days", 30.5),
+    ],
+)
+def test_day_counts_of_the_risk_file_are_whole_and_positive(
+    config_dir: Path, section: str, field: str, value: float
+) -> None:
+    edit_yaml(config_dir / "risk.yaml", lambda d: d[section].update({field: value}))
+    with pytest.raises(ConfigError, match=field):
+        load_config(config_dir)
+
+
+@pytest.mark.parametrize("value", [-0.01, 1.5, float("inf"), float("nan")])
+def test_the_regression_delta_is_a_drop_of_score(config_dir: Path, value: float) -> None:
+    edit_yaml(
+        config_dir / "evals.yaml", lambda d: d["thresholds"].update(regression_block_delta=value)
+    )
+    with pytest.raises(ConfigError, match="regression_block_delta"):
+        load_config(config_dir)
 
 
 PAPER_PCT = (
@@ -818,14 +890,45 @@ def test_finance_read_only_features_are_available() -> None:
     assert config.data_sources.sources["yfinance"].enabled is False  # R15, ADR-013
 
 
-def test_the_cyber_sources_are_available_but_the_attack_copy_waits_for_its_digest() -> None:
+def test_the_cyber_sources_are_available_and_the_attack_copy_has_the_pinned_digest() -> None:
+    """The SHA-256 of the file pinned in core/cyber/fetch.py, read on 2026-11-27: attack-fetch
+    compares the body it downloads with it instead of trusting the first one it reads (G5)."""
     config = load_config(REPO_ROOT / "config")
-    for feature in ("data.nvd", "data.cisa_kev", "data.epss"):
-        config.require(feature)  # G1, G2
-    assert config.blockers("data.attack") == [
-        "data_sources.yaml › sources.attack.sha256 = A_VERIFIER"  # written by attack-fetch (G5)
+    for feature in ("data.nvd", "data.cisa_kev", "data.epss", "data.attack"):
+        config.require(feature)  # G1, G2, G5
+    attack = config.data_sources.sources["attack"]
+    assert attack.version == "20.0"
+    assert attack.sha256 == "81113ba98afa2928f3dcff62022539f7ce30c315c32e14422f11ff95ce534352"
+    pin = PINS["20.0"]
+    text = (REPO_ROOT / "config" / "data_sources.yaml").read_text(encoding="utf-8")
+    assert f"commit {pin.commit[:8]}" in text and f"git {pin.blob_sha1[:8]}" in text
+    assert f"{pin.size:,} octets".replace(",", " ") in text
+
+
+def test_the_sources_left_disabled_wait_only_for_the_user() -> None:
+    """Their conditions are read at the source (R14, R15); enabling them is the user's decision."""
+    config = load_config(REPO_ROOT / "config")
+    for name in ("openbb", "fred"):
+        assert config.blockers(f"data.{name}") == [
+            f"data_sources.yaml › sources.{name}.enabled = false"
+        ]
+        assert re.search(r"lue?s le 2026-11-27\)$", config.data_sources.sources[name].terms or "")
+    assert config.data_sources.sources["openbb"].url == "http://127.0.0.1:8001/mcp"
+    assert "This product uses the FRED® API" in (config.data_sources.sources["fred"].terms or "")
+
+
+def test_the_fiscal_reminder_is_sourced_and_dated() -> None:
+    """R12: each fiscal rule names its source and the day it was read; the crypto platform waits
+    for the user's choice (registers of the AMF and ESMA)."""
+    config = load_config(REPO_ROOT / "config")
+    config.require("compliance.fiscal")
+    fiscal = config.compliance.fiscal
+    for text in (fiscal.regime_plus_values, fiscal.comptes_etrangers_declaration):
+        assert re.search(r"lus le \d{4}-\d{2}-\d{2}$", text)
+        assert "CGI art." in text and "impots.gouv.fr" in text
+    assert config.blockers("compliance.crypto") == [
+        "compliance.yaml › crypto.plateforme_autorisee_france = A_VERIFIER"
     ]
-    assert config.data_sources.sources["attack"].version == "20.0"
 
 
 def test_a_written_attack_digest_unblocks_the_frozen_copy(config_dir: Path) -> None:
@@ -849,9 +952,15 @@ def test_an_attack_digest_is_64_lowercase_hex_digits(config_dir: Path, value: ob
         load_config(config_dir)
 
 
-def test_the_quality_gate_waits_for_the_two_check_cut_offs() -> None:
-    blockers = load_config(REPO_ROOT / "config").blockers("data.quality_gate")
-    assert len(blockers) == 2  # ADR-016: proposed, not decided by the user
+def test_the_quality_gate_waits_for_the_two_check_cut_offs(config_dir: Path) -> None:
+    edit_yaml(
+        config_dir / "data_sources.yaml",
+        lambda d: d["quality"].update(
+            outlier_robust_z="A_DEFINIR", max_unexplained_move="A_DEFINIR"
+        ),
+    )
+    blockers = load_config(config_dir).blockers("data.quality_gate")
+    assert len(blockers) == 2  # ADR-016: either one unset blocks
     assert all("outlier_robust_z" in b or "max_unexplained_move" in b for b in blockers)
 
 
@@ -935,6 +1044,47 @@ def test_historical_stress_unblocks_once_dates_and_sources_are_checked(config_di
 
     edit_yaml(config_dir / "risk.yaml", fill)
     load_config(config_dir).require("finance.historical_stress")
+
+
+@pytest.mark.parametrize(
+    ("window", "message"),
+    [
+        ({"start": "2020-03-23", "end": "2020-02-19", "source": "x"}, "n'est pas avant"),
+        ({"start": "2020-03-23", "end": "2020-03-23", "source": "x"}, "n'est pas avant"),
+        ({"start": "2020-02-19", "end": "2020-03-23", "source": ""}, "source"),
+    ],
+    ids=["inverted", "empty", "unsourced"],
+)
+def test_a_crisis_window_is_ordered_and_sourced(
+    config_dir: Path, window: dict[str, str], message: str
+) -> None:
+    """A filled window is refused at load time rather than read as a blocked scenario (D10)."""
+    edit_yaml(
+        config_dir / "risk.yaml",
+        lambda d: d["market_risk"]["historical_stress"]["covid_2020"].update(window),
+    )
+    with pytest.raises(ConfigError, match=message):
+        load_config(config_dir)
+
+
+@pytest.mark.parametrize("isin", ["IE00B4L5Y983", "LU1681043599", "US0378331005"])
+def test_a_benchmark_isin_with_its_check_digit_unblocks_the_beta(
+    config_dir: Path, isin: str
+) -> None:
+    edit_yaml(config_dir / "risk.yaml", lambda d: d["market_risk"]["benchmark"].update(isin=isin))
+    config = load_config(config_dir)
+    config.require("finance.benchmark")
+    assert config.risk.market_risk.benchmark.isin == isin
+
+
+@pytest.mark.parametrize(
+    "isin", ["IE00B4L5Y984", "LU1681043598", "ie00b4l5y983", "IE00B4L5Y98", "1E00B4L5Y983"]
+)
+def test_a_mistyped_benchmark_isin_is_refused(config_dir: Path, isin: str) -> None:
+    """ISO 6166: a wrong check digit or shape is a typo, never a benchmark (D8)."""
+    edit_yaml(config_dir / "risk.yaml", lambda d: d["market_risk"]["benchmark"].update(isin=isin))
+    with pytest.raises(ConfigError, match="ISIN invalide"):
+        load_config(config_dir)
 
 
 # --- phase 3: research protocol and investment committee ---------------------------------------
@@ -1116,9 +1266,7 @@ def test_approval_and_promotion_values_validated_by_owner() -> None:
     assert promotion.max_paper_drawdown_pct == 10
 
 
-@pytest.mark.parametrize(
-    "feature", ["approvals", "interfaces.api", "interfaces.discord", "notify.ntfy"]
-)
+@pytest.mark.parametrize("feature", ["approvals", "interfaces.discord", "notify.ntfy"])
 def test_interfaces_stay_blocked_until_owner_sets_them(feature: str) -> None:
     reasons = load_config(REPO_ROOT / "config").blockers(feature)
     assert reasons
