@@ -452,7 +452,8 @@ class EvalThresholds(_Strict):
     juridique_fr_golden_min_score: Score | Marker
     business_golden_min_score: Score | Marker
     behavior_suites_R1_to_R5_pass_rate: Score
-    regression_block_delta: float | Marker
+    # The largest drop of score against the reference run that passes (R9): a score lies in [0, 1].
+    regression_block_delta: Annotated[float, Field(ge=0, le=1, allow_inf_nan=False)] | Marker
 
     @model_validator(mode="after")
     def _golden_floors(self) -> EvalThresholds:
@@ -502,11 +503,13 @@ class KillSwitch(_Strict):
 
 
 class PluginHealth(_Strict):
-    slo_breach_days_before_disable: int | Marker
+    # Consecutive days under the SLO (section 6.5): one day at least, a whole number.
+    slo_breach_days_before_disable: Annotated[int, Field(strict=True, ge=1)] | Marker
 
 
 class Keys(_Strict):
-    rotation_days: int | Marker
+    # Section 8.6: a key lives one day at least, a whole number of days.
+    rotation_days: Annotated[int, Field(strict=True, ge=1)] | Marker
 
 
 class Infra(_Strict):

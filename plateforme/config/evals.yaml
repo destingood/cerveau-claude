@@ -7,7 +7,11 @@ thresholds:
   juridique_fr_golden_min_score: 0.80 # D4 (phase 6, ADR-043), fixé le 2026-10-27 avant la première mesure
   business_golden_min_score: 0.80     # D4 (phase 6, ADR-043), fixé le 2026-10-29 avant la première mesure
   behavior_suites_R1_to_R5_pass_rate: 1.0   # tolérance zéro
-  regression_block_delta: A_DEFINIR
+  # Étape B3 du plan (27/11/2026), proposé par Claude, à valider dans la PR : une baisse de plus de
+  # 0,02 du score face à l'exécution de référence bloque (R9). Côté strict, sous les 0,03 proposés le
+  # 17/11 ; fixé pour la première fois, il ne se relèvera pas (R9). La comparaison elle-même n'est pas
+  # encore écrite : le rapport d'évals le dit.
+  regression_block_delta: 0.02
 judge_human_review_sample_weekly: 20
 calibration:                     # ADR-064 : prévisions résolues (section 11), dérive = rétrogradation (8.3)
   min_resolved: A_DEFINIR        # nombre minimal de prévisions résolues avant tout verdict de dérive
@@ -16,7 +20,15 @@ calibration:                     # ADR-064 : prévisions résolues (section 11),
 learning:                        # ADR-065 : porte champion / challenger de la couche apprise (ADR-011)
   holdout_percent: 20            # D6 (l'utilisateur, 29/10/2026) : part du golden que l'apprentissage ne voit jamais
   promotion_margin: A_DEFINIR    # gain minimal du score moyen sur le jeu tenu à l'écart
-  min_held_out_cases: A_DEFINIR  # taille minimale du jeu tenu à l'écart pour conclure
+  # Étape B3 : 50 cas, pour qu'un seul cas ne change la moyenne que de 0,02 au plus. Prudent :
+  # aucune mise en ligne tant que le golden n'a pas 250 cas (20 % tenus à l'écart), et la mise en
+  # ligne reste bloquée par promotion_margin et les budgets (décisions de l'utilisateur).
+  min_held_out_cases: 50
   rollback_window_days: A_DEFINIR  # fenêtre de surveillance après une mise en ligne
-  min_support: A_DEFINIR         # requêtes distinctes pour qu'un motif compte (jamais moins de 2)
-  max_feedback_per_user: A_DEFINIR  # retours « mauvais » retenus par utilisateur (B78)
+  # Étape B3 : 3 requêtes distinctes, une de plus que le plancher du code (2). Prudent contre
+  # l'empoisonnement (B78) ; un motif ne fait qu'écrire un challenger sous var/, que la porte juge.
+  min_support: 3
+  # Étape B3 : 3 retours « mauvais » par utilisateur sur tout le journal (les suivants ne comptent
+  # pas), la valeur des cas d'évals de la boucle (core/evals/cases.py). Prudent, mais tes propres
+  # retours cessent de compter au quatrième : à relever par toi si tu le veux.
+  max_feedback_per_user: 3

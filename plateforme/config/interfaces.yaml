@@ -7,7 +7,11 @@ discord:
   owner_user_id: A_DEFINIR   # identifiant numérique du compte Discord de l'utilisateur, entre guillemets
 api:
   host: 127.0.0.1            # boucle locale seule (D16)
-  port: A_DEFINIR            # port local de l'API et du dashboard (1024 à 65535)
+  # Port local de l'API et du dashboard (1024 à 65535). Étape B3 du plan, proposé par Claude, à
+  # valider dans la PR : 8427, absent des ports du dépôt (3000, 5432, 8001, 9090) et des serveurs de
+  # développement courants (8000, 8080, 8787). Le registre de l'IANA n'a pas pu être lu depuis la
+  # session : un port déjà pris empêche seulement l'API de démarrer. Seul toi la lances (D22).
+  port: 8427
 ntfy:
   server: A_DEFINIR          # URL https du serveur, sans barre finale (ntfy.sh jusqu'au VPS, D14)
   timeout_seconds: 3         # un envoi ne bloque jamais un arrêt (ADR-038)

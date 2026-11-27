@@ -4,6 +4,8 @@ from __future__ import annotations
 
 import importlib.util
 import json
+import re
+import shutil
 from datetime import UTC, datetime
 from decimal import Decimal
 from pathlib import Path
@@ -384,10 +386,16 @@ def test_cli_refuses_an_unknown_verdict(home: Path) -> None:
     assert _events(home) == ["DECISION"]
 
 
-def test_cli_blocks_a_note_while_pii_is_unset(home: Path) -> None:
-    config_dir = str(REPO / "config")  # pii.score_threshold: A_DEFINIR
+def test_cli_blocks_a_note_while_pii_is_unset(home: Path, tmp_path: Path) -> None:
+    config_dir = tmp_path / "config-sans-seuil"  # the repository sets it since plan step B3
+    shutil.copytree(REPO / "config", config_dir)
+    guardrails = config_dir / "guardrails.yaml"
+    text = guardrails.read_text(encoding="utf-8")
+    guardrails.write_text(
+        re.sub(r"score_threshold: .*", "score_threshold: A_DEFINIR", text), encoding="utf-8"
+    )
     result = runner.invoke(
-        app, ["feedback", "req-1", "bon", "une note", "--config-dir", config_dir]
+        app, ["feedback", "req-1", "bon", "une note", "--config-dir", str(config_dir)]
     )
     assert result.exit_code == 2, result.output
     assert "Bloqué (R7)" in result.stderr

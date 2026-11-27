@@ -131,5 +131,13 @@ quality:
   min_quality_score_above_N1: 0.90    # D12
   # ADR-016 : seuils des contrôles « cours aberrants » et « opérations sur titres ». Tant qu'ils
   # ne sont pas fixés, ces deux sous-scores et le score sont « non évaluables ».
-  outlier_robust_z: A_DEFINIR         # proposé : 3,5 (z modifié, Iglewicz et Hoaglin)
-  max_unexplained_move: A_DEFINIR     # proposé : 0,30, un cours multiplié ou divisé par 1,30
+  # Étape B3 du plan (27/11/2026), proposés par Claude, à valider dans la PR.
+  # 3,5 : seuil d'Iglewicz et Hoaglin (1993) pour le z modifié, repris par le NIST/SEMATECH
+  # e-Handbook (§ 1.3.5.17, lu le 27/11/2026). Un seuil plus bas n'aurait pas de source ; c'est le
+  # score minimal de D12 (0,90) qui décide de l'usage au-delà de N1.
+  outlier_robust_z: 3.5
+  # 0,20 plutôt que les 0,30 de l'ADR-016 : un cours multiplié ou divisé par 1,20 en une séance.
+  # Prudent : un split de 5 pour 4 ou une attribution gratuite d'une action pour quatre oubliés
+  # (facteur 1,25) se voient aussi ; à 0,30 ils passaient. Un grand mouvement réel bloque la série
+  # au-delà de N1 (B86) : c'est le côté sûr.
+  max_unexplained_move: 0.20

@@ -2,11 +2,22 @@
 # et absents de l'Annexe B. Regroupés ici pour respecter R7 : une valeur inconnue bloque la fonction.
 kill_switch:
   target_seconds: 5                      # R4, ADR-034 : fixée par l'utilisateur le 20/10/2026 (D11)
-  data_loss_timeout_seconds: A_DEFINIR   # 8.5 : perte de connexion aux données
+  # 8.5, ADR-034. Étape B3 du plan (27/11/2026), proposé par Claude, à valider dans la PR : 30 s, la
+  # moitié des 60 s proposées le 17/11 (docs/archive/plans/etape-1-reglages.md). Prudent : le kill
+  # switch s'engage plus tôt ; un faux départ ne fait qu'arrêter (réarmement par toi seul). Aucune
+  # connexion continue n'existe encore (D11) : la valeur ne sert qu'à son arrivée, à revoir alors.
+  data_loss_timeout_seconds: 30
 plugin_health:
-  slo_breach_days_before_disable: A_DEFINIR   # 6.5 : défaut documenté 2 jours
+  # 6.5 (défaut documenté : 2 jours). Étape B3 : 1, le plus court possible. Prudent : un plugin hors
+  # SLO sort dès le premier jour (une fonction coupée plutôt qu'un plugin défaillant). Rien ne le
+  # désactive encore : les SLO des plugins ne sont pas fixés (B349).
+  slo_breach_days_before_disable: 1
 keys:
-  rotation_days: A_DEFINIR               # 8.6
+  # 8.6. Étape B3 : 90 jours, la durée maximale du contrôle « clés d'accès tournées tous les 90 jours
+  # ou moins » du CIS AWS Foundations Benchmark (repris par AWS Security Hub, contrôle IAM.3, lu le
+  # 27/11/2026). Prudent face à « jamais » ; plus court, aucune source, et c'est toi qui tournes les
+  # clés à la main. Aucun rappel n'est encore branché.
+  rotation_days: 90
 infra:
   private_network: A_DEFINIR             # 13 : réseau privé de type WireGuard
 

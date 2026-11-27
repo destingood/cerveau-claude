@@ -60,16 +60,10 @@ def test_every_marker_dependent_feature_is_blocked_by_default() -> None:
         "budgets",
         "approvals",
         "llm.local",
-        "kill_switch.data_loss",
-        "evals.gate.generaliste",
-        "evals.gate.recherche",
-        "evals.gate.code",
-        "evals.gate.cyber",
         "data.attack",
         "code.repositories",
         "code.checks",
         "compliance.fiscal",
-        "guardrails.pii",
         "finance.historical_stress",
         "finance.benchmark",
         "finance.trading_costs",
@@ -132,14 +126,92 @@ def test_paper_trading_waits_for_the_fees_and_the_execution_parameters(config_di
     )
 
 
-def test_the_kill_switch_target_is_set_and_the_data_loss_timeout_is_not() -> None:
-    """ADR-034: 5 s set by the user; a continuous data connection does not exist yet (D11)."""
+def test_the_kill_switch_target_and_the_data_loss_timeout_are_set() -> None:
+    """ADR-034: 5 s set by the user; 30 s on a data loss (plan step B3), stricter than the 60 s
+    proposed on 17/11, for a continuous data connection that does not exist yet (D11)."""
     config = load_config(REPO_ROOT / "config")
     config.require("kill_switch")
+    config.require("kill_switch.data_loss")
     assert config.risk.kill_switch.target_seconds == 5
-    assert config.blockers("kill_switch.data_loss") == [
-        "risk.yaml › kill_switch.data_loss_timeout_seconds = A_DEFINIR"
-    ]
+    assert config.risk.kill_switch.data_loss_timeout_seconds == 30
+
+
+# The technical values of plan step B3 (27/11/2026), proposed by Claude and set on the prudent side;
+# the user validates them in the pull request. Each one is a value, never a loosened bound.
+B3_TECHNICAL_FEATURES = (
+    "kill_switch.data_loss",
+    "plugin_health",
+    "keys.rotation",
+    "data.quality_gate",
+    *(f"evals.gate.{pack}" for pack in DOMAIN_MAX_LEVELS),
+    "learning.patterns",
+    "guardrails.pii",
+    "interfaces.api",
+)
+
+
+def test_the_technical_values_of_step_b3_are_set() -> None:
+    config = load_config(REPO_ROOT / "config")
+    for feature in B3_TECHNICAL_FEATURES:
+        config.require(feature)
+    assert config.risk.plugin_health.slo_breach_days_before_disable == 1  # 6.5: default 2
+    assert config.risk.keys.rotation_days == 90  # CIS: 90 days or less
+    assert config.data_sources.quality.outlier_robust_z == 3.5  # Iglewicz and Hoaglin
+    assert config.data_sources.quality.max_unexplained_move == 0.20  # a 5-for-4 split shows
+    assert config.evals.thresholds.regression_block_delta == 0.02
+    learning = config.evals.learning
+    assert (learning.min_support, learning.max_feedback_per_user) == (3, 3)
+    assert learning.min_held_out_cases == 50
+    assert config.guardrails.pii.score_threshold == 0.4
+    assert config.interfaces.api.port == 8427
+
+
+def test_step_b3_leaves_every_governance_marker_in_place() -> None:
+    """What steers money, risk, autonomy or access stays the user's (plan step B3, part 3)."""
+    config = load_config(REPO_ROOT / "config")
+    for feature in (
+        "budgets",
+        "learning.promotion",  # promotion_margin and rollback_window_days: the user's (D4)
+        "learning.calibration_drift",  # a demotion trigger not wired yet (B351)
+        "notify.ntfy",  # a third-party server receives the alerts (D14)
+        "interfaces.discord",
+        "finance.mean_variance",
+        "paper_trading",
+        "promotion.finance.N3_to_N4",
+    ):
+        assert config.blockers(feature), feature
+    learning = config.evals.learning
+    assert learning.promotion_margin == "A_DEFINIR"
+    assert learning.rollback_window_days == "A_DEFINIR"  # unset: every promotion stays watched
+    assert config.interfaces.ntfy.server == "A_DEFINIR"
+
+
+@pytest.mark.parametrize(
+    ("section", "field", "value"),
+    [
+        ("plugin_health", "slo_breach_days_before_disable", 0),
+        ("plugin_health", "slo_breach_days_before_disable", -2),
+        ("plugin_health", "slo_breach_days_before_disable", 1.5),
+        ("keys", "rotation_days", 0),
+        ("keys", "rotation_days", -90),
+        ("keys", "rotation_days", 30.5),
+    ],
+)
+def test_day_counts_of_the_risk_file_are_whole_and_positive(
+    config_dir: Path, section: str, field: str, value: float
+) -> None:
+    edit_yaml(config_dir / "risk.yaml", lambda d: d[section].update({field: value}))
+    with pytest.raises(ConfigError, match=field):
+        load_config(config_dir)
+
+
+@pytest.mark.parametrize("value", [-0.01, 1.5, float("inf"), float("nan")])
+def test_the_regression_delta_is_a_drop_of_score(config_dir: Path, value: float) -> None:
+    edit_yaml(
+        config_dir / "evals.yaml", lambda d: d["thresholds"].update(regression_block_delta=value)
+    )
+    with pytest.raises(ConfigError, match="regression_block_delta"):
+        load_config(config_dir)
 
 
 PAPER_PCT = (
@@ -849,9 +921,15 @@ def test_an_attack_digest_is_64_lowercase_hex_digits(config_dir: Path, value: ob
         load_config(config_dir)
 
 
-def test_the_quality_gate_waits_for_the_two_check_cut_offs() -> None:
-    blockers = load_config(REPO_ROOT / "config").blockers("data.quality_gate")
-    assert len(blockers) == 2  # ADR-016: proposed, not decided by the user
+def test_the_quality_gate_waits_for_the_two_check_cut_offs(config_dir: Path) -> None:
+    edit_yaml(
+        config_dir / "data_sources.yaml",
+        lambda d: d["quality"].update(
+            outlier_robust_z="A_DEFINIR", max_unexplained_move="A_DEFINIR"
+        ),
+    )
+    blockers = load_config(config_dir).blockers("data.quality_gate")
+    assert len(blockers) == 2  # ADR-016: either one unset blocks
     assert all("outlier_robust_z" in b or "max_unexplained_move" in b for b in blockers)
 
 
@@ -1116,9 +1194,7 @@ def test_approval_and_promotion_values_validated_by_owner() -> None:
     assert promotion.max_paper_drawdown_pct == 10
 
 
-@pytest.mark.parametrize(
-    "feature", ["approvals", "interfaces.api", "interfaces.discord", "notify.ntfy"]
-)
+@pytest.mark.parametrize("feature", ["approvals", "interfaces.discord", "notify.ntfy"])
 def test_interfaces_stay_blocked_until_owner_sets_them(feature: str) -> None:
     reasons = load_config(REPO_ROOT / "config").blockers(feature)
     assert reasons
