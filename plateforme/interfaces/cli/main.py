@@ -1,5 +1,6 @@
 """`cerveau` command line: ask, feedback, eval, audit, config, registry, finance, portfolio,
-strategy, committee, promotion, forecast, learn, paper, approvals, api, status, kill, rearm."""
+strategy, committee, promotion, forecast, learn, memoire, paper, approvals, api, status, kill,
+rearm."""
 
 from __future__ import annotations
 
@@ -23,6 +24,7 @@ from core.finance.research.registry import RegistryError
 from core.governance.signatures import effective_autonomy, promoted_domains
 from core.learning import FeedbackError, default_feedback_path, give_feedback
 from core.learning.feedback import NotePseudonymiser
+from core.memory import BrainMemory, paris_today
 from core.notify import alerts_from
 from core.observability import build_tracer
 from core.orchestrator.packs import PACKS_DIR, PackError, load_packs, pack_problems
@@ -47,6 +49,7 @@ from interfaces.cli.finance import finance_app
 from interfaces.cli.forecast import forecast_app
 from interfaces.cli.kill_switch import kill_command, rearm_command
 from interfaces.cli.learn import learn_app
+from interfaces.cli.memory import describe, memory_app
 from interfaces.cli.paper import paper_app, status_command
 from interfaces.cli.portfolio import portfolio_app
 from interfaces.cli.promotion import promotion_app
@@ -73,6 +76,7 @@ app.add_typer(committee_app, name="committee")
 app.add_typer(promotion_app, name="promotion")
 app.add_typer(forecast_app, name="forecast")
 app.add_typer(learn_app, name="learn")
+app.add_typer(memory_app, name="memoire")
 app.add_typer(report_app, name="report")
 app.add_typer(paper_app, name="paper")
 app.add_typer(approvals_app, name="approvals")
@@ -100,7 +104,8 @@ def build_orchestrator(config: Config, root: Path, tracer: Tracer | None = None)
     from core.orchestrator.graph import Orchestrator  # langgraph and spaCy load only for `ask`
 
     alerts, _ = alerts_from(config, root, os.environ)  # `cerveau config check` says what is off
-    return Orchestrator(config, project_root=root, tracer=tracer, alerts=alerts)
+    memory = BrainMemory.from_config(config)  # read only (ADR-072); `cerveau memoire chercher`
+    return Orchestrator(config, project_root=root, tracer=tracer, alerts=alerts, memory=memory)
 
 
 def _decimal(value: object, places: int) -> str:
@@ -513,6 +518,7 @@ def config_check(
     typer.echo(f"\nCanaux d'alerte (ADR-038) : {channels}")
     for note in notes:
         typer.echo(f"  ⚠ {note}")
+    _echo_memory(config)
     try:
         count, refusals = registry_errors(project_root())
     except RegistryError as exc:
@@ -524,6 +530,17 @@ def config_check(
         typer.echo(f"  ✗ {refusal}", err=True)
     if refusals:
         raise typer.Exit(1)
+
+
+def _echo_memory(config: Config) -> None:
+    """Where the platform reads the plugin's brain, what one read gives, each pack's scope."""
+    memory = BrainMemory.from_config(config)
+    typer.echo("\nMémoire (ADR-072) :")
+    for line in describe(memory, memory.read(paris_today(datetime.now().astimezone()))):
+        typer.echo(f"  {line}")
+    for pack in sorted(config.memory.packs):
+        domains = ", ".join(config.memory.packs[pack]) or "aucun"
+        typer.echo(f"  · {pack} : domaines {domains}, plus les préférences générales")
 
 
 @registry_app.command("validate")

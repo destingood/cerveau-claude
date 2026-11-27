@@ -37,6 +37,7 @@ from core.policy.engine import kill_switch_engaged
 
 if TYPE_CHECKING:
     from core.committee.engine import CommitteeSpec
+    from core.memory import BrainMemory, Recall
     from core.research.engine import ResearchSpec
 
 # Output ceilings per role, below what is left of the request's token budget (R9: a change here
@@ -265,6 +266,11 @@ class Run:
     research_for: Callable[[str], ResearchSpec | None] | None = field(default=None, repr=False)
     budget_clock: Callable[[], float] | None = field(default=None, repr=False)
     isolation: IsolatedTask | None = None  # a code agent task, set by the routing (ADR-054)
+    # The plugin's brain, read only (ADR-072): read by node 1, scoped to the pack by node 3. None:
+    # no memory for this request (tests, evals). Nothing of it outlives the request.
+    memory: BrainMemory | None = field(default=None, repr=False)
+    recall: Recall | None = field(default=None, repr=False)
+    memory_given: int = 0  # memories rendered into the system prompt, for the journal
     _holders: list[_Holder] = field(default_factory=list, repr=False)
 
     def __post_init__(self) -> None:

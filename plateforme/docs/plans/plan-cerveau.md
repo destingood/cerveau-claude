@@ -83,6 +83,7 @@ sauf les correctifs sûrs, faits tout de suite à ta demande.
 | 24/11 | « Mets à jour et publie » | Étape 17 réunie et publiée (8.42.0) ; Bloc F fait, sauf ce qui est reporté. Tes réponses : fusionner la PR une fois la CI verte ; le garde-fou shell (étape 19, point 3) reste tel quel |
 | 24/11 | « L'organisation du cerveau est bordélique » | Étape 20 (8.43.0) : amas par projet à l'ouverture. Tes réponses : une grosse pelote, un amas par projet, 200 à 1 000 souvenirs |
 | 26/11 | « Continue le plan » | Bloc B, étape B1 : le pont MCP réparé avant d'être branché (vérificateur de chiffres, journal en empreintes, plafonds, kill switch). Tes réponses : 200 appels par session et 1 000 par jour ; pas de budget en euros pour le pont ; exception `strategy_lab` gardée ; empreintes à clé plus tard |
+| 26/11 | « Continue le plan » (après la fusion de B1) | Bloc B, étape B2 : la plateforme lit la mémoire du plugin, en lecture seule (ADR-072). Tes réponses : GO sans outil sur le pont ; seulement le domaine traité et tes préférences générales, jamais « perso » sans demande |
 
 ## 2. Comment l'audit a été fait, et ses limites
 
@@ -549,6 +550,20 @@ hook au-dessus de 150 ms, premier démarrage après un changement compris ; `bra
   - Puis tu le branches (`.mcp.json`, liste des outils de `guard_mcp.py`, ADR-069). Point à savoir : le
     pont dépend encore de `langchain_core`.
 - **Une seule mémoire** : la plateforme lit celle du plugin ; `core/memory/` est vide aujourd'hui.
+  ✅ Fait le 26/11 (B2, ADR-072) : `core/memory/` lit le cerveau du plugin en lecture seule à chaque
+  requête (`graph.json`, ou son cache en mode wiki tant que les pages n'ont pas bougé), sans rien
+  écrire, copier ni garder : un souvenir oublié disparaît à la lecture suivante. Il ne rend que des
+  souvenirs actifs, valables ce jour, jamais `a_verifier`, d'une confiance au moins moyenne, chacun
+  avec sa source, sa date, sa confiance et sa fin, marqué comme donnée, clés et jetons masqués ;
+  une tournure de consigne venue d'une autre source que toi est écartée. Ta décision : le domaine
+  du pack plus les préférences générales, jamais « perso » sans `--perso` ; la correspondance
+  proposée est dans `config/memory.yaml` (généraliste et juridique : préférences seules ; cyber :
+  infra ; code : code et infra ; business : business et contenu). Le nœud 1 lit, le nœud 3 trie
+  pour le pack routé et pseudonymise ; `cerveau memoire chercher "<texte>" --domaine <pack>` montre
+  ce qui serait lu. Mesuré : 51 à 73 ms par requête sur un cerveau d'essai de 3 000 souvenirs ; 59
+  tests, dont un qui vérifie qu'aucun fichier du cerveau ne change. Reste : valider la
+  correspondance des packs, mesurer la qualité du classement (B363), et aligner la couverture de
+  la CI sur le `Makefile` (B364).
 - **Réglages** : 42 fonctions bloquées ; Claude propose une valeur prudente par marqueur, tu fixes
   celles de gouvernance (courtier, capital, limites de perte, seuils d'autonomie, comptes à créer).
 - **Une chaîne d'approbation** : B228 d'abord (le secret des codes à usage unique hors de portée de

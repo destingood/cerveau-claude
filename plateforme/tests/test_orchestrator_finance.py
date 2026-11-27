@@ -249,7 +249,10 @@ def test_the_kill_switch_brings_the_general_pack_to_n0(tmp_path: Path, config_di
     config = _config(config_dir)
     assert config.autonomy.domains["generaliste"].level == "N1"
     run = cast(
-        Any, SimpleNamespace(project_root=tmp_path, config=config, request_id="req-1", now=NOW)
+        Any,
+        SimpleNamespace(
+            project_root=tmp_path, config=config, request_id="req-1", now=NOW, memory=None
+        ),
     )
 
     def level() -> str:

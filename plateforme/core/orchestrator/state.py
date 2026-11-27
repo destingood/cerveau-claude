@@ -59,7 +59,8 @@ class RequestContext(_Node):  # node 1
     autonomy_level: str
     environment: str = "dev"
     app_context: str = "interface en ligne de commande (CLI), un seul utilisateur"
-    memory: str = "aucune (mémoire désactivée en phase 1)"
+    # The pack's memories, read only from the plugin's brain and wrapped as data (ADR-072).
+    memory: str = "aucune (mémoire non lue pour cette requête)"
     kill_switch: bool
     live_enabled: bool = False  # no live adapter exists: refused before any call (R3)
 
