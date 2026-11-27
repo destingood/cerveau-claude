@@ -42,10 +42,10 @@ market_risk:
     rates_bp: 100
     equity_shock: -0.20
     fx_eurusd_shocks: [-0.10, 0.10]
-  historical_stress:                  # D10 : dates relevées avec leur source avant usage
-    crise_2008:  { label: "Crise financière (faillite de Lehman)", start: A_VERIFIER, end: A_VERIFIER, source: A_VERIFIER }
-    covid_2020:  { label: "Krach du Covid", start: A_VERIFIER, end: A_VERIFIER, source: A_VERIFIER }
-    taux_2022:   { label: "Hausse des taux", start: A_VERIFIER, end: A_VERIFIER, source: A_VERIFIER }
+  historical_stress:                  # D10 : dates relevées avec leur source ; choisies par l'utilisateur le 27/11 (étape B3)
+    crise_2008:  { label: "Crise financière (faillite de Lehman)", start: 2008-09-12, end: 2009-03-09, source: "faillite le 15/09/2008 (Form 8-K, sec.gov) ; creux du MSCI World le 09/03/2009 (fiche MSCI World Index, msci.com, 30/10/2026), lus le 2026-11-27" }
+    covid_2020:  { label: "Krach du Covid", start: 2020-02-19, end: 2020-03-23, source: "perte maximale du MSCI World (EUR, net), fiche MSCI du 30/10/2026, lue le 2026-11-27" }
+    taux_2022:   { label: "Hausse des taux", start: 2022-07-27, end: 2023-09-20, source: "hausses des taux directeurs BCE, dates d'effet (ecb.europa.eu, key_ecb_interest_rates), lues le 2026-11-27" }
   cross_check:                        # D11
     rel_tolerance: 1.0e-9
     monte_carlo_rel_tolerance: 0.02

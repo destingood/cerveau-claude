@@ -15,7 +15,7 @@
 {"id": "fr-015", "tool": "risk_report", "arguments": {}, "expected": {"is_error": false, "contains": "\"display\":\"-2\u202f896,17\u00a0€\""}}
 {"id": "fr-016", "tool": "risk_report", "arguments": {}, "expected": {"is_error": false, "contains": "\"display\":\"-1\u202f844,66\u00a0€\""}}
 {"id": "fr-017", "tool": "risk_report", "arguments": {}, "expected": {"is_error": false, "contains": "\"display\":\"-677,12\u00a0€\""}}
-{"id": "fr-018", "tool": "risk_report", "arguments": {}, "expected": {"is_error": false, "contains": "\"scenario\":\"historique/crise_2008\",\"label\":\"Crise financière (faillite de Lehman)\",\"status\":\"bloque\""}}
+{"id": "fr-018", "tool": "risk_report", "arguments": {}, "expected": {"is_error": false, "contains": "\"scenario\":\"historique/crise_2008\",\"label\":\"Crise financière (faillite de Lehman)\",\"status\":\"non_couvert\""}}
 {"id": "fr-019", "tool": "risk_report", "arguments": {}, "expected": {"is_error": false, "contains": "\"scenario\":\"actions_beta\",\"label\""}}
 {"id": "fr-020", "tool": "risk_report", "arguments": {}, "expected": {"is_error": false, "contains": "\"reason\":\"indice de référence bloqué : ISIN A_VERIFIER (D8)\""}}
 {"id": "fr-021", "tool": "risk_report", "arguments": {"measures": ["facteurs"]}, "expected": {"is_error": false, "contains": "\"reason\":\"régression factorielle non disponible : aucune source de facteurs validée (D9)\""}}

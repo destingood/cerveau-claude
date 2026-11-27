@@ -575,9 +575,11 @@ hook au-dessus de 150 ms, premier démarrage après un changement compris ; `bra
     données 30 s, plugin hors SLO coupé au premier jour, rotation des clés 90 jours, z modifié 3,5,
     mouvement inexpliqué 0,20 (plus strict que les 0,30 de l'ADR-016), régression des évals 0,02, motifs
     3 et 3, 50 cas tenus à l'écart, Presidio 0,4 (masque autant ou plus), port de l'API locale 8427.
+  - Fenêtres de crise : tes choix du 27/11 appliqués (2008-09-12 → 2009-03-09, 2020-02-19 → 2020-03-23,
+    2022-07-27 → 2023-09-20, sources dans `risk.yaml`) ; le cas `fr-018` attend désormais « non couvert »
+    (la base d'essai n'a pas de prix si anciens), avec ton accord (R9). 25 fonctions bloquées.
   - Partie 3, gouvernance : `docs/reglages-a-trancher.md`, rien d'appliqué. Restent aussi à ta décision :
-    les fenêtres de crise (propositions sourcées : 2008-09-12 → 2009-03-09, 2020-02-19 → 2020-03-23,
-    2022-07-27 → 2023-09-20), l'ISIN de l'indice de référence (5 cas d'évals à revoir, R9), la
+    l'ISIN de l'indice de référence (celui que tu détiens ; 5 cas d'évals à revoir, R9), la
     plateforme crypto (liste blanche AMF), l'environnement PISTE de Légifrance (H4) et le nouveau commit
     du tag ATT&CK v20.0 (même fichier, date de création corrigée, ADR-056).
 - **Une chaîne d'approbation** : B228 d'abord (le secret des codes à usage unique hors de portée de
