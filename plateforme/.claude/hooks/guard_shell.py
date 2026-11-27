@@ -9,7 +9,9 @@ refused; creating an absent KILL stays allowed, since it stops CERVEAU. Approval
 D22): `cerveau approvals enroll`, any write under var/approvals or var/promotion, and starting
 the Discord bot (anything but its tests, installation or inspection) are refused. The bot's
 package.json, whose scripts `make bot-test` runs, is written by the user alone (B229): naming it in
-a writing command, or a package manager that would rewrite it, is refused.
+a writing command, or a package manager that would rewrite it, is refused. Reading the value of a
+secret of the interfaces (B228: whole-environment dumps, expansions, the env: drive, the registry,
+/proc/*/environ...) is refused by the rules of `_env_secrets`; naming one as plain text is not.
 
 The shell grammar is approximated on purpose: ambiguous constructs are refused rather than
 guessed. This is a convenience guard-rail; the effective protection of config/live.yaml
@@ -25,6 +27,7 @@ import subprocess
 from dataclasses import dataclass, field
 
 import _common as c
+import _env_secrets as env_secrets
 
 MAX_DEPTH = 3
 PROTECTED_BRANCHES = frozenset({"main", "master"})
@@ -1160,6 +1163,9 @@ def check_segment(seg: Segment, ctx: Context, segments: list[Segment]) -> str | 
         lambda: check_reserved(seg, tokens, cmd),
         lambda: check_bot_launch(seg, tokens, cmd, ctx),
         lambda: check_api_launch(seg, tokens, cmd),
+        lambda: env_secrets.check_segment(
+            seg.raw, seg.heredoc, tokens, cmd_index, cmd, cmd in INTERPRETERS
+        ),
         lambda: check_recursive_delete(tokens, cmd, ctx.powershell),
         lambda: check_force_and_bypass(tokens, cmd, assignments),
         lambda: check_git(git) if git else None,
@@ -1178,6 +1184,8 @@ def analyse(command: str, powershell: bool, cwd: str | None, depth: int = 0) -> 
     """Reason to refuse `command`, or None when no rule applies."""
     if depth > MAX_DEPTH:
         return "commande trop imbriquée pour être analysée : refus par précaution"
+    if reason := env_secrets.check_text(command):
+        return reason
     scanner = Scanner(command, powershell).scan()
     for substitution in scanner.substitutions:
         if reason := analyse(substitution, powershell, cwd, depth + 1):
