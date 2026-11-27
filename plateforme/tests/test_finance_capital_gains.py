@@ -20,6 +20,7 @@ from hypothesis import strategies as st
 from typer.testing import CliRunner
 
 from core.audit import AuditJournal
+from core.config.loader import load_config
 from core.finance.capital_gains import (
     COLUMNS,
     NOTICE,
@@ -398,6 +399,10 @@ def test_cli_writes_the_export_under_var_finance_exports_and_nowhere_else(home: 
     data = export.read_bytes()
     assert data.startswith(b"\xef\xbb\xbf")
     assert len(rows(data.decode("utf-8-sig"))) == 4
+    # The sourced reminder of compliance.yaml, copied in each row; no marker left (R12).
+    rules = load_config(REPO_ROOT / "config").compliance.fiscal.regime_plus_values
+    assert "A_VERIFIER" not in rules + NOTICE
+    assert {row[17] for row in rows(data.decode("utf-8-sig"))[1:]} == {rules}
     assert "plus-values-2025.csv : 3 cession(s) du 01/01/2025 au 31/12/2025" in result.output
     assert "Somme des plus-values brutes : 513,25 EUR" in result.output
     assert "taux du 24/12/2025 retenu [Hypothèse]" in result.output

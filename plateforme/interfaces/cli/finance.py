@@ -322,8 +322,9 @@ def capital_gains_command(
     """Exporter les cessions d'une année civile : var/finance/exports/plus-values-AAAA.csv.
 
     Pour chaque vente : prix moyen pondéré, frais, produit net, prix de revient et plus-value
-    brute, dans la devise et en euros au taux BCE de la date de cession. Les règles fiscales sont
-    A_VERIFIER : aucun calcul d'impôt ni de déclaration. Un export de la même année est remplacé.
+    brute, dans la devise et en euros au taux BCE de la date de cession. Les règles fiscales de
+    config/compliance.yaml sont recopiées pour mémoire : aucun calcul d'impôt ni de déclaration.
+    Un export de la même année est remplacé.
 
     Codes de sortie : 0 exporté, 1 refus (base absente, taux BCE inconnu, année future).
     """

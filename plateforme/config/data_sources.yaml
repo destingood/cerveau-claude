@@ -1,10 +1,34 @@
 sources:
-  openbb:   { enabled: false, url: A_VERIFIER, categories: [equity, news, economy], terms: A_VERIFIER }
-            # reporté au backlog (ADR-013, D3) ; défaut documenté : `openbb-mcp` écoute sur
-            # 127.0.0.1:8001 en streamable HTTP
+  # Reporté au backlog (ADR-013, D3, reconfirmé le 21/11/2026) : ne s'active que par un ADR que
+  # l'utilisateur accepte. L'adresse est le défaut documenté du serveur, lancé en local.
+  openbb:
+    enabled: false
+    url: http://127.0.0.1:8001/mcp
+    categories: [equity, news, economy]
+    terms: >-
+      Logiciel sous Apache-2.0 (openbb 5.0.0, openbb-core 2.0.1, openbb-mcp-server 2.0.1) ; OpenBB
+      ne fournit aucune donnée : chaque fournisseur appelé garde ses propres conditions (FRED, BCE,
+      SEC...), et l'extension openbb-yfinance, sous AGPL-3.0-only et liée aux CGU de Yahoo, reste
+      exclue (ADR-013) ; le serveur écoute par défaut sur 127.0.0.1:8001 en streamable HTTP
+      (chemin /mcp) et expose un outil install_skill qui écrit sur le disque, à exclure par le
+      manifeste ; son authentification ne couvre pas stdio (pypi.org/project/openbb-mcp-server et
+      pypi.org/project/openbb, lus le 2026-11-27)
   yfinance: { enabled: false, usage: personnel, terms: "refusé : les CGU de Yahoo interdisent la collecte automatisée (R15, ADR-013, vérifié le 2026-10-18)" }
   ccxt:     { enabled: false }
-  fred:     { enabled: false, terms: A_VERIFIER }
+  # Utilisable sous ses conditions, par un ADR qui l'ajoutera (plan, §7.4) : l'activer reste la
+  # décision de l'utilisateur.
+  fred:
+    enabled: false
+    usage: personnel
+    terms: >-
+      Clé API gratuite et personnelle, obligatoire à chaque requête ; mention exigée en évidence :
+      « This product uses the FRED® API but is not endorsed or certified by the Federal Reserve
+      Bank of St. Louis. » ; les séries de tiers (« Copyright » dans leurs notes) ne servent qu'à
+      l'usage personnel, toute autre utilisation demande l'accord de leur propriétaire ; ni logo
+      ni marque FRED, mentions de droits gardées ; interdit de reproduire l'expérience du site ;
+      licence révocable à tout moment, copies à détruire à la résiliation ; au plus 120 requêtes
+      par minute, sous peine d'un blocage temporaire (fred.stlouisfed.org/docs/api/terms_of_use.html
+      et docs/api/fred/errors.html, lues le 2026-11-27)
   ecb:
     enabled: true                     # D2
     url: https://data-api.ecb.europa.eu/service/
@@ -62,9 +86,13 @@ sources:
     categories: [enterprise]
     usage: personnel
     version: "20.0"
-    # Empreinte du bundle Enterprise, inscrite par `cerveau cyber attack-fetch` que l'utilisateur lance
-    # (G5) ; tant qu'elle manque, cyber_attack ne répond pas.
-    sha256: A_VERIFIER
+    # Empreinte du fichier épinglé (core/cyber/fetch.py : commit 20664a88, 55 271 014 octets, blob
+    # git b39ce73c), relevée le 2026-11-27 sur raw.githubusercontent.com/mitre-attack/
+    # attack-stix-data/20664a889568dce884a1dac0ec7b12ae3a199f51/enterprise-attack/
+    # enterprise-attack-20.0.json, taille et blob vérifiés. `cerveau cyber attack-fetch`, que
+    # l'utilisateur lance (G5), la compare au fichier lu ; tant que l'index manque, cyber_attack
+    # ne répond pas. Le tag v20.0 désigne depuis le commit 5bbae6aa (date « created » corrigée).
+    sha256: 81113ba98afa2928f3dcff62022539f7ce30c315c32e14422f11ff95ce534352
     licence: >-
       Licence de MITRE, non exclusive et gratuite ; toute copie reproduit « © 2026 The MITRE
       Corporation. This work is reproduced and distributed with the permission of The MITRE

@@ -164,7 +164,7 @@ utilise la source (`core/orchestrator/notices.py`, G9) : aucun modèle ne peut l
 | Descriptions du programme CVE, reprises par le NVD | [Conditions du programme CVE](https://www.cve.org/Legal/TermsOfUse) : page rendue en JavaScript, non lue ; forme exacte de la mention `A_VERIFIER` (backlog) | descriptions citées en données (R5), avec un renvoi aux conditions du programme |
 | Catalogue KEV de la CISA, flux JSON | CC0 1.0 (`licenses/kev/license.txt` de la CISA) : ni le logo, ni un aval de la CISA ou du DHS | `cyber_cve` : catalogue lu en entier (10 Mo au plus) ; les champs `notes` et `forensicTriage` ne sont pas gardés ; mention « aucun aval » |
 | EPSS de FIRST, `api.first.org/data/v1/epss` | Scores publiés librement ; « Attribution is requested » dans une publication ou un produit ([FAQ](https://www.first.org/epss/faq)) ; forme exacte non publiée (`A_VERIFIER`) ; aucun débit publié trouvé (`A_VERIFIER`) | `cyber_cve` : score et centile de chaque CVE lue ; attribution à FIRST et à l'EPSS SIG |
-| MITRE ATT&CK Enterprise v20.0, `mitre-attack/attack-stix-data` | Licence propre à MITRE, non exclusive et gratuite ([conditions](https://attack.mitre.org/resources/legal-and-branding/terms-of-use/), `LICENSE.txt` du dépôt) : toute copie reproduit « © 2026 The MITRE Corporation. This work is reproduced and distributed with the permission of The MITRE Corporation. » et la licence ; ATT&CK est une marque déposée | bundle de 55 Mo téléchargé par l'utilisateur seul (`cerveau cyber attack-fetch`, commit figé, SHA-256 consigné), index local sous `var/`, jamais dans git ; mention dans l'index, dans chaque résultat d'`attack_lookup` et sous la réponse |
+| MITRE ATT&CK Enterprise v20.0, `mitre-attack/attack-stix-data` | Licence propre à MITRE, non exclusive et gratuite ([conditions](https://attack.mitre.org/resources/legal-and-branding/terms-of-use/), `LICENSE.txt` du dépôt) : toute copie reproduit « © 2026 The MITRE Corporation. This work is reproduced and distributed with the permission of The MITRE Corporation. » et la licence ; ATT&CK est une marque déposée | bundle de 55 Mo téléchargé par l'utilisateur seul (`cerveau cyber attack-fetch`, commit figé, SHA-256 du fichier épinglé consigné le 2026-11-27 dans `config/data_sources.yaml`), index local sous `var/`, jamais dans git ; mention dans l'index, dans chaque résultat d'`attack_lookup` et sous la réponse |
 | OWASP Top 10 for LLM Applications 2025 (LLM01 à LLM10), `genai.owasp.org` | CC BY-SA 4.0, « unless otherwise specified » : citation avec lien et mention ; une adaptation devrait garder la même licence | pages lues à la demande par `web_read` (`domain_packs/cyber/knowledge/sources.yaml`) ; aucun contenu adapté n'est stocké ; mention CC BY-SA sous la réponse |
 | Guides de l'ANSSI, de la CISA et du NIST CSRC | ANSSI : Licence Ouverte 2.0 d'Etalab (source secondaire, `A_VERIFIER` guide par guide) ; CISA et NIST : non vérifiées | non utilisés en P4 : ajoutés aux guides une fois leur licence vérifiée (backlog) ; la plupart sont des PDF, que `web_read` ne lit pas |
 
@@ -247,7 +247,10 @@ Aucune nouvelle dépendance : `httpx` et Pydantic lisent les API. Conditions lue
 Licences annoncées par l'Annexe A, à revérifier au moment de l'intégration (vectorbt et
 NautilusTrader sont vérifiées et listées plus haut depuis la phase 3) :
 - OpenBB : Apache-2.0 (openbb 5.0.0, openbb-mcp-server 2.0.1), mais l'extension
-  `openbb-yfinance` est sous AGPL-3.0 ; OpenBB est reporté au backlog (ADR-013) ;
+  `openbb-yfinance` est sous AGPL-3.0 ; OpenBB est reporté au backlog (ADR-013) ; revérifié sur
+  PyPI le 2026-11-27 : openbb 5.0.0, openbb-core 2.0.1 et openbb-mcp-server 2.0.1 sous
+  Apache-2.0, `openbb-yfinance` 2.1.0 sous AGPL-3.0-only et absente des dépendances par défaut
+  d'openbb 5.0.0 ; conditions reprises dans `config/data_sources.yaml` › `sources.openbb.terms` ;
 - Arize Phoenix : Elastic License 2.0, alternative non retenue (ADR-004) ;
 - `openbq-org/OpenBB` : l'Annexe A indique « redirection vérifiée » depuis
   `OpenBB-finance/OpenBB`, mais le nom « openbq » ressemble à une faute de frappe ou à un dépôt

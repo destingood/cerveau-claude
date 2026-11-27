@@ -543,12 +543,41 @@ class CrisisWindow(_Strict):
     label: str
     start: date | Marker
     end: date | Marker
-    source: str | Marker
+    source: Annotated[str, Field(min_length=1)] | Marker
+
+    @model_validator(mode="after")
+    def _start_before_end(self) -> CrisisWindow:
+        start, end = self.start, self.end
+        if isinstance(start, date) and isinstance(end, date) and start >= end:
+            raise ValueError(f"fenêtre de crise : le début {start} n'est pas avant la fin {end}")
+        return self
+
+
+ISIN_RE = re.compile(r"[A-Z]{2}[A-Z0-9]{9}[0-9]")
+
+
+def isin_check_digit_ok(isin: str) -> bool:
+    """ISO 6166: letters become 10 to 35, then the Luhn check runs on the digits."""
+    if not ISIN_RE.fullmatch(isin):
+        return False
+    digits = "".join(str(int(char, 36)) for char in isin)
+    total = 0
+    for i, char in enumerate(reversed(digits)):
+        value = int(char) * (2 if i % 2 else 1)
+        total += value - 9 if value > 9 else value
+    return total % 10 == 0
 
 
 class Benchmark(_Strict):
     description: str
     isin: str | Marker
+
+    @field_validator("isin")
+    @classmethod
+    def _valid_isin(cls, value: str) -> str:
+        if value not in MARKERS and not isin_check_digit_ok(value):
+            raise ValueError(f"ISIN invalide (forme ou chiffre de contrôle ISO 6166) : {value}")
+        return value
 
 
 class CrossCheck(_Strict):

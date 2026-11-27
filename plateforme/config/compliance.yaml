@@ -1,6 +1,31 @@
+# Règles fiscales relevées à la source (R12) : un rappel daté, pas un calcul d'impôt. L'export des
+# plus-values recopie `regime_plus_values` dans chaque ligne et n'applique aucune de ces règles (R16).
 fiscal:
-  regime_plus_values: A_VERIFIER          # impots.gouv.fr ou professionnel
-  comptes_etrangers_declaration: A_VERIFIER
+  regime_plus_values: >-
+    Résident fiscal français, titres hors PEA : prélèvement forfaitaire unique de 12,8 % d'impôt
+    sur le revenu, plus 18,6 % de prélèvements sociaux (CSG 10,6 %, LFSS 2026 art. 12), soit
+    31,4 % ; ou, sur option globale et annuelle (case 2OP), barème progressif, seul cas où les
+    abattements pour durée de détention des titres acquis avant 2018 s'appliquent (CGI art. 200 A
+    et 150-0 D). Prix d'acquisition : prix moyen pondéré des titres de même nature, qui peut être
+    calculé compte par compte chez chaque intermédiaire (CGI art. 150-0 D 3 ;
+    BOI-RPPM-PVBMI-20-10-20-40). Moins-values imputables sur les gains de même nature de l'année
+    et des 10 années suivantes. PEA : gain d'un retrait avant 5 ans imposé à 12,8 % (case 3VT),
+    exonéré d'impôt sur le revenu après 5 ans, prélèvements sociaux dus quelle que soit la date du
+    retrait. Sources : brochure IR 2026 de la DGFiP, chapitre « Plus-values et gains divers », et
+    page « L'assurance-vie et le PEA » (impots.gouv.fr), service-public.gouv.fr F21618 et F2329,
+    bofip.impots.gouv.fr, lus le 2026-11-27
+  comptes_etrangers_declaration: >-
+    Chaque compte bancaire, et chaque compte d'actifs numériques, ouvert, détenu, utilisé ou clos
+    à l'étranger pendant l'année se déclare avec la déclaration de revenus (formulaire 3916 /
+    3916-bis). Amende : 1 500 € par compte bancaire non déclaré, 10 000 € dans un État sans
+    convention d'assistance administrative (CGI art. 1649 A, 1736 IV-2) ; 750 € par compte
+    d'actifs numériques non déclaré ou 125 € par omission, 10 000 € au plus par déclaration,
+    portés à 1 500 € et 250 € au-delà de 50 000 € de valeur dans l'année (CGI art. 1649 bis C,
+    1736 X). Dispense : un compte lié à un compte ouvert en France, servant seulement à des achats
+    en ligne ou à encaisser des ventes de biens, avec moins de 10 000 € encaissés dans l'année.
+    Sources : formulaire 3916 (impots.gouv.fr, version 2025) et
+    impots.gouv.fr/particulier/questions/dois-je-declarer-mon-compte-paypal-ou-un-compte-bancaire-ouvert-letranger-et,
+    lus le 2026-11-27
 crypto:
   plateforme_autorisee_france: A_VERIFIER # registres AMF / ESMA (MiCA)
 exclusions_personnelles: [A_DEFINIR]      # secteurs, émetteurs ; [] = aucune exclusion

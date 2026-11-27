@@ -3,9 +3,9 @@
 For each sale of a security the export gives the weighted average price of the position it came
 from (account by account, as the book keeps it), the fees and the gross gain, in the trade
 currency and in euros at the ECB reference rate of the trade date. It states what the ledger
-says; it is not a tax computation. The tax rules (art. 150-0 D of the CGI) are ``A_VERIFIER`` in
-``config/compliance.yaml`` and nothing here applies them: no allowance, no offset of losses, no
-tax and no return (R7, R16).
+says; it is not a tax computation. The tax rules (art. 150-0 D of the CGI) are recalled, with
+their sources and the day they were read, in ``config/compliance.yaml`` and copied in each row;
+nothing here applies them: no allowance, no offset of losses, no tax and no return (R16).
 
 Amounts stay exact decimals until they are written. Each amount is then rounded to the cent
 (half up), the gain being the difference of the rounded amounts, so every row adds up as printed;
@@ -29,11 +29,12 @@ from core.finance.portfolio import EUR, RealizedGain, build_book
 from core.finance.store import FinanceStore
 
 NOTICE = (
-    "règles fiscales A_VERIFIER (art. 150-0 D du CGI, à confirmer avec sa source) : aucun calcul "
-    "d'impôt ni de déclaration"
+    "règles fiscales rappelées avec leurs sources dans config/compliance.yaml (art. 150-0 D du "
+    "CGI) et recopiées pour mémoire : aucun calcul d'impôt ni de déclaration"
 )
 ASSUMPTIONS = (
-    "prix moyen pondéré compte par compte, frais d'achat compris, comme le livre [Hypothèse]",
+    "prix moyen pondéré compte par compte, admis par BOI-RPPM-PVBMI-20-10-20-40 ; frais d'achat "
+    "compris, comme le livre [Hypothèse]",
     "produit net et prix de revient convertis au taux de référence BCE de la date de cession "
     "(le dernier publié avant si la BCE n'en publie pas ce jour-là) [Hypothèse]",
     "montants arrondis au centime (demi supérieur) ; plus-value = produit net − prix de revient "

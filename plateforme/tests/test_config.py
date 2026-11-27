@@ -20,6 +20,7 @@ from core.config.loader import (
     UNSIGNED_LEVELS,
     EvalThresholds,
 )
+from core.cyber.fetch import PINS
 from core.registry.manifest import DOMAINS
 from tests.conftest import REPO_ROOT
 
@@ -60,10 +61,9 @@ def test_every_marker_dependent_feature_is_blocked_by_default() -> None:
         "budgets",
         "approvals",
         "llm.local",
-        "data.attack",
         "code.repositories",
         "code.checks",
-        "compliance.fiscal",
+        "compliance.crypto",
         "finance.historical_stress",
         "finance.benchmark",
         "finance.trading_costs",
@@ -890,14 +890,45 @@ def test_finance_read_only_features_are_available() -> None:
     assert config.data_sources.sources["yfinance"].enabled is False  # R15, ADR-013
 
 
-def test_the_cyber_sources_are_available_but_the_attack_copy_waits_for_its_digest() -> None:
+def test_the_cyber_sources_are_available_and_the_attack_copy_has_the_pinned_digest() -> None:
+    """The SHA-256 of the file pinned in core/cyber/fetch.py, read on 2026-11-27: attack-fetch
+    compares the body it downloads with it instead of trusting the first one it reads (G5)."""
     config = load_config(REPO_ROOT / "config")
-    for feature in ("data.nvd", "data.cisa_kev", "data.epss"):
-        config.require(feature)  # G1, G2
-    assert config.blockers("data.attack") == [
-        "data_sources.yaml › sources.attack.sha256 = A_VERIFIER"  # written by attack-fetch (G5)
+    for feature in ("data.nvd", "data.cisa_kev", "data.epss", "data.attack"):
+        config.require(feature)  # G1, G2, G5
+    attack = config.data_sources.sources["attack"]
+    assert attack.version == "20.0"
+    assert attack.sha256 == "81113ba98afa2928f3dcff62022539f7ce30c315c32e14422f11ff95ce534352"
+    pin = PINS["20.0"]
+    text = (REPO_ROOT / "config" / "data_sources.yaml").read_text(encoding="utf-8")
+    assert f"commit {pin.commit[:8]}" in text and f"git {pin.blob_sha1[:8]}" in text
+    assert f"{pin.size:,} octets".replace(",", " ") in text
+
+
+def test_the_sources_left_disabled_wait_only_for_the_user() -> None:
+    """Their conditions are read at the source (R14, R15); enabling them is the user's decision."""
+    config = load_config(REPO_ROOT / "config")
+    for name in ("openbb", "fred"):
+        assert config.blockers(f"data.{name}") == [
+            f"data_sources.yaml › sources.{name}.enabled = false"
+        ]
+        assert re.search(r"lue?s le 2026-11-27\)$", config.data_sources.sources[name].terms or "")
+    assert config.data_sources.sources["openbb"].url == "http://127.0.0.1:8001/mcp"
+    assert "This product uses the FRED® API" in (config.data_sources.sources["fred"].terms or "")
+
+
+def test_the_fiscal_reminder_is_sourced_and_dated() -> None:
+    """R12: each fiscal rule names its source and the day it was read; the crypto platform waits
+    for the user's choice (registers of the AMF and ESMA)."""
+    config = load_config(REPO_ROOT / "config")
+    config.require("compliance.fiscal")
+    fiscal = config.compliance.fiscal
+    for text in (fiscal.regime_plus_values, fiscal.comptes_etrangers_declaration):
+        assert re.search(r"lus le \d{4}-\d{2}-\d{2}$", text)
+        assert "CGI art." in text and "impots.gouv.fr" in text
+    assert config.blockers("compliance.crypto") == [
+        "compliance.yaml › crypto.plateforme_autorisee_france = A_VERIFIER"
     ]
-    assert config.data_sources.sources["attack"].version == "20.0"
 
 
 def test_a_written_attack_digest_unblocks_the_frozen_copy(config_dir: Path) -> None:
@@ -1013,6 +1044,47 @@ def test_historical_stress_unblocks_once_dates_and_sources_are_checked(config_di
 
     edit_yaml(config_dir / "risk.yaml", fill)
     load_config(config_dir).require("finance.historical_stress")
+
+
+@pytest.mark.parametrize(
+    ("window", "message"),
+    [
+        ({"start": "2020-03-23", "end": "2020-02-19", "source": "x"}, "n'est pas avant"),
+        ({"start": "2020-03-23", "end": "2020-03-23", "source": "x"}, "n'est pas avant"),
+        ({"start": "2020-02-19", "end": "2020-03-23", "source": ""}, "source"),
+    ],
+    ids=["inverted", "empty", "unsourced"],
+)
+def test_a_crisis_window_is_ordered_and_sourced(
+    config_dir: Path, window: dict[str, str], message: str
+) -> None:
+    """A filled window is refused at load time rather than read as a blocked scenario (D10)."""
+    edit_yaml(
+        config_dir / "risk.yaml",
+        lambda d: d["market_risk"]["historical_stress"]["covid_2020"].update(window),
+    )
+    with pytest.raises(ConfigError, match=message):
+        load_config(config_dir)
+
+
+@pytest.mark.parametrize("isin", ["IE00B4L5Y983", "LU1681043599", "US0378331005"])
+def test_a_benchmark_isin_with_its_check_digit_unblocks_the_beta(
+    config_dir: Path, isin: str
+) -> None:
+    edit_yaml(config_dir / "risk.yaml", lambda d: d["market_risk"]["benchmark"].update(isin=isin))
+    config = load_config(config_dir)
+    config.require("finance.benchmark")
+    assert config.risk.market_risk.benchmark.isin == isin
+
+
+@pytest.mark.parametrize(
+    "isin", ["IE00B4L5Y984", "LU1681043598", "ie00b4l5y983", "IE00B4L5Y98", "1E00B4L5Y983"]
+)
+def test_a_mistyped_benchmark_isin_is_refused(config_dir: Path, isin: str) -> None:
+    """ISO 6166: a wrong check digit or shape is a typo, never a benchmark (D8)."""
+    edit_yaml(config_dir / "risk.yaml", lambda d: d["market_risk"]["benchmark"].update(isin=isin))
+    with pytest.raises(ConfigError, match="ISIN invalide"):
+        load_config(config_dir)
 
 
 # --- phase 3: research protocol and investment committee ---------------------------------------

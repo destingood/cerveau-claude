@@ -4,7 +4,6 @@ from __future__ import annotations
 
 import hashlib
 import json
-import shutil
 from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
@@ -19,6 +18,7 @@ from core.cyber import fetch
 from core.cyber.attack import index_path, read_index
 from core.cyber.fetch import BUNDLE_HOST, SOURCES_FILE, Pin, git_blob_sha1, record_sha256
 from core.evals.attack_sample import COMMIT, SAMPLE_RELATIONSHIPS, VERSION, bundle
+from core.evals.cyber_fixtures import cyber_config
 from core.policy.engine import KILL_SWITCH_FILE
 from interfaces.cli import cyber as cyber_cli
 from interfaces.cli.common import EXIT_BLOCKED, EXIT_ERROR
@@ -34,7 +34,8 @@ runner = CliRunner()
 @pytest.fixture
 def home(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Path:
     root = tmp_path / "home"
-    shutil.copytree(ROOT / "config", root / "config")
+    # The digest of the real bundle goes back to its marker: these runs fetch the synthetic one.
+    cyber_config(ROOT / "config", root)
     monkeypatch.setenv("CERVEAU_HOME", str(root))
     monkeypatch.setattr(cyber_cli, "now", lambda: NOW)
     return root

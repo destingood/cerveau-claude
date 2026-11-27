@@ -4,7 +4,6 @@ from __future__ import annotations
 
 import asyncio
 import hashlib
-import shutil
 from collections.abc import Callable
 from pathlib import Path
 
@@ -25,6 +24,7 @@ from core.cyber.fetch import (
     verify,
 )
 from core.evals.attack_sample import COMMIT, VERSION, bundle
+from core.evals.cyber_fixtures import cyber_config
 from tests.net_doubles import PUBLIC_V4, FakeDns, FakeWeb
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -185,8 +185,7 @@ def test_an_interrupt_stops_the_download_between_chunks() -> None:
 
 
 def copy_config(tmp_path: Path, *, crlf: bool | None = None) -> Path:
-    target = tmp_path / "config"
-    shutil.copytree(ROOT / "config", target)
+    target = cyber_config(ROOT / "config", tmp_path)  # the recorded digest back to its marker
     if crlf is not None:
         path = target / SOURCES_FILE
         lf = path.read_bytes().replace(b"\r\n", b"\n")
