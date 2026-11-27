@@ -1,7 +1,9 @@
 """`cerveau api serve`: the local internal API, on the loopback only (D1, D16, ADR-037).
 
-The user starts it himself, with ``CERVEAU_API_TOKEN`` set as a user environment variable; Claude
-Code's hooks refuse to start it (D22). Without a long enough token the API does not start.
+The user starts it himself, under the service account of the bot and the API, with
+``CERVEAU_API_TOKEN`` set in that account's environment (docs/procedure-live.md, prerequisite 5);
+Claude Code's hooks refuse to start it (D22) and its settings blank the token (B228). Without a
+long enough token the API does not start.
 """
 
 from __future__ import annotations

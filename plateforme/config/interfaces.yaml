@@ -1,8 +1,11 @@
 # Interfaces de supervision (phase 5 : ADR-037, ADR-038, ADR-041). Seul l'utilisateur lance l'API et le
 # bot (D22) ; Claude Code ne se connecte ni à Discord ni à ntfy.
-# Les secrets vivent dans des variables d'environnement de l'utilisateur, jamais ici (R6) :
-# DISCORD_BOT_TOKEN, CERVEAU_API_TOKEN, CERVEAU_TOTP_SECRET, NTFY_TOKEN et NTFY_TOPIC (au moins
-# 32 caractères aléatoires : sur ntfy.sh, le sujet vaut un mot de passe).
+# Les secrets vivent dans l'environnement du compte de service qui lance le bot et l'API
+# (docs/procedure-live.md, prérequis 5), jamais ici (R6) ni en variables du compte où tourne
+# Claude Code : DISCORD_BOT_TOKEN, CERVEAU_API_TOKEN, CERVEAU_TOTP_SECRET, NTFY_TOKEN et NTFY_TOPIC
+# (au moins 32 caractères aléatoires : sur ntfy.sh, le sujet vaut un mot de passe). Claude Code
+# n'en lit jamais la valeur (hook guard_shell) et son environnement masque les trois premiers
+# (clé env de .claude/settings.json) ; la paire ntfy y reste, pour qu'une alerte parte (B228).
 discord:
   owner_user_id: A_DEFINIR   # identifiant numérique du compte Discord de l'utilisateur, entre guillemets
 api:

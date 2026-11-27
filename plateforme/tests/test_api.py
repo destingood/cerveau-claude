@@ -695,4 +695,9 @@ def test_enrolling_happens_at_owner_terminal_only(
     assert shown.exit_code == 0, shown.output
     assert "otpauth://totp/" in shown.output
     assert SECRET_ENV in shown.output
+    # B228: the secret goes into the service account's environment, never a user variable of the
+    # account where Claude Code runs, whose environment masks it.
+    message = " ".join(shown.output.split())
+    assert "compte de service" in message and "masque (B228)" in message
+    assert "variable d'environnement utilisateur" not in message
     assert list(root.iterdir()) == []
