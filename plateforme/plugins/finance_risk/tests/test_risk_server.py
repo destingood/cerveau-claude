@@ -45,6 +45,10 @@ COVID = (
     'covid_2020:  { label: "Krach du Covid", start: A_VERIFIER, end: A_VERIFIER, '
     "source: A_VERIFIER }"
 )
+TAUX = (
+    'taux_2022:   { label: "Hausse des taux", start: A_VERIFIER, end: A_VERIFIER, '
+    "source: A_VERIFIER }"
+)
 
 
 @pytest.fixture(scope="module")
@@ -56,6 +60,21 @@ def store(tmp_path_factory: pytest.TempPathFactory) -> Path:
 def config_dir(tmp_path: Path) -> Path:
     """A copy of config/ a test may change."""
     return Path(shutil.copytree(ROOT / "config", tmp_path / "config"))
+
+
+@pytest.fixture
+def undated_config(config_dir: Path) -> Path:
+    """config/ with the three historical windows back to their markers (D10), as before the user
+    chose them on 27/11 (plan step B3): what the tool says while a window is not dated."""
+    path = config_dir / "risk.yaml"
+    lines = path.read_text(encoding="utf-8").splitlines(keepends=True)
+    markers = {"crise_2008:": LEHMAN, "covid_2020:": COVID, "taux_2022:": TAUX}
+    for i, line in enumerate(lines):
+        key = line.strip().split(" ", 1)[0]
+        if key in markers:
+            lines[i] = line[: len(line) - len(line.lstrip())] + markers[key] + "\n"
+    path.write_text("".join(lines), encoding="utf-8")
+    return config_dir
 
 
 def edit_risk(config_dir: Path, old: str, new: str) -> None:
@@ -159,8 +178,10 @@ def test_the_default_measures_leave_out_the_correlations(store: Path) -> None:
     assert only["var"] is None and only["stress"] is None and only["drawdown"] is not None
 
 
-def test_a_measure_that_cannot_be_computed_is_said_not_estimated(store: Path) -> None:
-    content = report(store, {"measures": ["beta", "facteurs", "stress"]})
+def test_a_measure_that_cannot_be_computed_is_said_not_estimated(
+    store: Path, undated_config: Path
+) -> None:
+    content = report(store, {"measures": ["beta", "facteurs", "stress"]}, config_dir=undated_config)
     reasons = {u["measure"]: u["reason"] for u in content["unavailable"]}
     assert reasons["beta"] == "indice de référence bloqué : ISIN A_VERIFIER (D8)"
     assert "D9" in reasons["facteurs"]
@@ -223,11 +244,11 @@ def test_a_marker_in_a_typed_parameter_is_an_invalid_configuration(
 
 
 def test_a_blocked_feature_is_refused_with_its_reasons(
-    store: Path, monkeypatch: pytest.MonkeyPatch
+    store: Path, undated_config: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    """The historical windows of the versioned configuration are still A_VERIFIER (D10)."""
+    """Historical windows still A_VERIFIER (D10): the feature is refused with its markers."""
     monkeypatch.setattr(server_module, "FEATURE", "finance.historical_stress")
-    text = error_text(call(store))
+    text = error_text(call(store, config_dir=undated_config))
     assert "fonction bloquée « finance.historical_stress »" in text and "A_VERIFIER" in text
 
 
@@ -238,8 +259,9 @@ def test_a_broken_configuration_is_not_echoed(store: Path, config_dir: Path) -> 
 
 
 def test_a_dated_historical_window_is_computed_or_said_uncovered(
-    store: Path, config_dir: Path
+    store: Path, undated_config: Path
 ) -> None:
+    config_dir = undated_config
     edit_risk(
         config_dir,
         LEHMAN,
@@ -260,6 +282,22 @@ def test_a_dated_historical_window_is_computed_or_said_uncovered(
     uncovered = scenario(content, "historique/covid_2020")
     assert uncovered["status"] == "non_couvert" and uncovered["impact_eur"] is None
     assert scenario(content, "historique/taux_2022")["status"] == "bloque"
+
+
+def test_the_windows_chosen_on_27_11_are_dated_and_said_uncovered_here(store: Path) -> None:
+    """Versioned config: the three windows the user chose (step B3) are dated and sourced; the
+    reference store holds no prices that old, so each is said uncovered, never estimated."""
+    content = report(store, {"measures": ["stress"]})
+    expected = {
+        "crise_2008": ("2008-09-12", "2009-03-09"),
+        "covid_2020": ("2020-02-19", "2020-03-23"),
+        "taux_2022": ("2022-07-27", "2023-09-20"),
+    }
+    for name, (start, end) in expected.items():
+        window = scenario(content, f"historique/{name}")
+        assert (window["start"], window["end"]) == (start, end)
+        assert window["status"] == "non_couvert" and window["impact_eur"] is None
+        assert "ne couvre pas cette fenêtre" in window["note"]
 
 
 def test_a_missing_store_says_how_to_fill_it(tmp_path: Path) -> None:

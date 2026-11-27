@@ -64,7 +64,6 @@ def test_every_marker_dependent_feature_is_blocked_by_default() -> None:
         "code.repositories",
         "code.checks",
         "compliance.crypto",
-        "finance.historical_stress",
         "finance.benchmark",
         "finance.trading_costs",
         "finance.mean_variance",
@@ -1479,3 +1478,17 @@ def test_a_malformed_vat_table_stops_the_configuration(
     edit_yaml(config_dir / "business.yaml", change)
     with pytest.raises(ConfigError, match=message):
         load_config(config_dir)
+
+
+def test_the_historical_windows_chosen_on_27_11_are_dated_and_sourced() -> None:
+    """Plan step B3: the user chose the three crisis windows; each is dated and sourced."""
+    config = load_config(REPO_ROOT / "config")
+    config.require("finance.historical_stress")
+    text = (REPO_ROOT / "config" / "risk.yaml").read_text(encoding="utf-8")
+    for start, end in (
+        ("2008-09-12", "2009-03-09"),
+        ("2020-02-19", "2020-03-23"),
+        ("2022-07-27", "2023-09-20"),
+    ):
+        assert f"start: {start}, end: {end}" in text
+    assert text.count("lue le 2026-11-27") + text.count("lus le 2026-11-27") >= 2
