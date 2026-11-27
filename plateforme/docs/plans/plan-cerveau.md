@@ -84,6 +84,7 @@ sauf les correctifs sûrs, faits tout de suite à ta demande.
 | 24/11 | « L'organisation du cerveau est bordélique » | Étape 20 (8.43.0) : amas par projet à l'ouverture. Tes réponses : une grosse pelote, un amas par projet, 200 à 1 000 souvenirs |
 | 26/11 | « Continue le plan » | Bloc B, étape B1 : le pont MCP réparé avant d'être branché (vérificateur de chiffres, journal en empreintes, plafonds, kill switch). Tes réponses : 200 appels par session et 1 000 par jour ; pas de budget en euros pour le pont ; exception `strategy_lab` gardée ; empreintes à clé plus tard |
 | 26/11 | « Continue le plan » (après la fusion de B1) | Bloc B, étape B2 : la plateforme lit la mémoire du plugin, en lecture seule (ADR-072). Tes réponses : GO sans outil sur le pont ; seulement le domaine traité et tes préférences générales, jamais « perso » sans demande |
+| 27/11 | Fusionner la PR #35 ; « continue le plan » | B2 fusionnée. Tes réponses : correspondance pack → domaines gardée telle que proposée, confiance minimale « moyenne », profil hors de la plateforme. Puis étape B3, les réglages bloqués : faits vérifiés, réglages techniques proposés, fiche de gouvernance (ton GO du 27/11) |
 
 ## 2. Comment l'audit a été fait, et ses limites
 
