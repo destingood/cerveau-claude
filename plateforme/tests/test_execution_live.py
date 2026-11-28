@@ -30,12 +30,14 @@ from core.execution.live import (
     Condition,
     LiveAdapter,
     LiveDisabled,
+    LiveRiskGate,
     Verdict,
     live_incomplete,
     live_limits,
 )
 from core.governance.signatures import SIGNATURES_DIR
 from core.policy.engine import KILL_SWITCH_FILE
+from core.risk_gate.gate import RiskGateResult
 from tests.execution_cases import MemoryJournal, make_intent
 from tests.signing import sign
 
@@ -154,14 +156,50 @@ def adapter(
 ) -> LiveAdapter:
     check = ActivationCheck(root, store, owner=lambda _path: owner, limits=gate_passes)
     return LiveAdapter(
-        client, store, check, call_timeout_s=timeout, kill_target_s=10, clock=lambda: now
+        client,
+        store,
+        check,
+        **SEAM,
+        call_timeout_s=timeout,
+        kill_target_s=10,
+        clock=lambda: now,
     )
 
 
 def gate_passes(live: LiveConfig, intent: OrderIntent) -> str | None:
-    """A live risk gate that accepts every whitelisted order: none exists yet (B353)."""
+    """A seventh condition opened for every whitelisted order, as the user's decision would
+    open it (B353): the conditions are then tested on their own."""
     reason = live_limits(live, intent)
     return None if reason == NO_LIVE_GATE else reason
+
+
+def gate_accepts(_gate: LiveRiskGate, intent: OrderIntent) -> RiskGateResult:
+    """The test seam (m5): the adapter's own gate, made to accept every order as it is, so
+    that the seven conditions are tested on their own; the real gate is tested in
+    ``test_execution_live_gate``."""
+    return RiskGateResult(
+        result="ACCEPTE",
+        intent_id=intent.intent_id,
+        intent_sha256=intent.sha256(),
+        requested_quantity=intent.quantity,
+        quantity=intent.quantity,
+        checks=(),
+        reasons=("toutes les vérifications passent",),
+    )
+
+
+# The adapter's root (only its lock lives there) and journal, renewed for each test.
+SEAM: dict[str, Any] = {}
+
+
+def accept_every_order(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
+    monkeypatch.setattr(LiveRiskGate, "__call__", gate_accepts)
+    SEAM.update(root=tmp_path / "adapter", journal=MemoryJournal())
+
+
+@pytest.fixture(autouse=True)
+def accepting_gate(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
+    accept_every_order(monkeypatch, tmp_path)
 
 
 def failing(caught: pytest.ExceptionInfo[LiveDisabled]) -> set[Condition]:
@@ -252,7 +290,13 @@ def test_a_file_the_current_account_owns_refuses(tmp_path: Path, approvals: Appr
 
     check = ActivationCheck(root, approvals, owner=owner, limits=gate_passes)
     live = LiveAdapter(
-        Client(), approvals, check, call_timeout_s=5, kill_target_s=10, clock=lambda: NOW
+        Client(),
+        approvals,
+        check,
+        **SEAM,
+        call_timeout_s=5,
+        kill_target_s=10,
+        clock=lambda: NOW,
     )
     with pytest.raises(LiveDisabled) as caught:
         live.submit(intent, now=NOW)
@@ -272,7 +316,13 @@ def test_a_signature_file_left_writable_is_named(tmp_path: Path, approvals: Appr
         root, approvals, owner=lambda path: path != signature, limits=gate_passes
     )
     live = LiveAdapter(
-        Client(), approvals, check, call_timeout_s=5, kill_target_s=10, clock=lambda: NOW
+        Client(),
+        approvals,
+        check,
+        **SEAM,
+        call_timeout_s=5,
+        kill_target_s=10,
+        clock=lambda: NOW,
     )
     with pytest.raises(LiveDisabled) as caught:
         live.submit(intent, now=NOW)
@@ -356,7 +406,13 @@ def test_a_configuration_without_finance_refuses(tmp_path: Path, approvals: Appr
         root, approvals, owner=lambda _path: True, load=load, limits=gate_passes
     )
     live = LiveAdapter(
-        Client(), approvals, check, call_timeout_s=5, kill_target_s=10, clock=lambda: NOW
+        Client(),
+        approvals,
+        check,
+        **SEAM,
+        call_timeout_s=5,
+        kill_target_s=10,
+        clock=lambda: NOW,
     )
     with pytest.raises(LiveDisabled) as caught:
         live.submit(intent, now=NOW)
@@ -378,7 +434,13 @@ def test_an_unreadable_configuration_refuses(
         root, approvals, owner=lambda _path: True, load=load, limits=gate_passes
     )
     live = LiveAdapter(
-        Client(), approvals, check, call_timeout_s=5, kill_target_s=10, clock=lambda: NOW
+        Client(),
+        approvals,
+        check,
+        **SEAM,
+        call_timeout_s=5,
+        kill_target_s=10,
+        clock=lambda: NOW,
     )
     with pytest.raises(LiveDisabled) as caught:
         live.submit(intent, now=NOW)
@@ -446,7 +508,13 @@ def fixed(verdict: Verdict) -> Any:
 def test_a_condition_left_out_of_the_verdict_refuses(approvals: ApprovalStore) -> None:
     verdict = {c: None for c in Condition if c is not Condition.ACL}
     live = LiveAdapter(
-        Client(), approvals, fixed(verdict), call_timeout_s=5, kill_target_s=10, clock=lambda: NOW
+        Client(),
+        approvals,
+        fixed(verdict),
+        **SEAM,
+        call_timeout_s=5,
+        kill_target_s=10,
+        clock=lambda: NOW,
     )
     with pytest.raises(LiveDisabled) as caught:
         live.submit(make_intent(0), now=NOW)
@@ -456,7 +524,13 @@ def test_a_condition_left_out_of_the_verdict_refuses(approvals: ApprovalStore) -
 def test_a_request_gone_before_sending_refuses(approvals: ApprovalStore) -> None:
     client = Client()
     live = LiveAdapter(
-        client, approvals, fixed(ALL_HOLD), call_timeout_s=5, kill_target_s=10, clock=lambda: NOW
+        client,
+        approvals,
+        fixed(ALL_HOLD),
+        **SEAM,
+        call_timeout_s=5,
+        kill_target_s=10,
+        clock=lambda: NOW,
     )
     with pytest.raises(LiveDisabled, match="demande disparue") as caught:
         live.submit(make_intent(0), now=NOW)
@@ -469,7 +543,13 @@ def test_an_approval_that_cannot_be_spent_refuses(approvals: ApprovalStore) -> N
     granted(approvals, intent, sha="b" * 64)  # consume refuses another content
     client = Client()
     live = LiveAdapter(
-        client, approvals, fixed(ALL_HOLD), call_timeout_s=5, kill_target_s=10, clock=lambda: NOW
+        client,
+        approvals,
+        fixed(ALL_HOLD),
+        **SEAM,
+        call_timeout_s=5,
+        kill_target_s=10,
+        clock=lambda: NOW,
     )
     with pytest.raises(LiveDisabled, match="autre intention") as caught:
         live.submit(intent, now=NOW)
@@ -483,7 +563,13 @@ def test_cancelling_and_reading_need_no_condition(approvals: ApprovalStore) -> N
 
     client = Client()
     live = LiveAdapter(
-        client, approvals, refuse, call_timeout_s=5, kill_target_s=10, clock=lambda: NOW
+        client,
+        approvals,
+        refuse,
+        **SEAM,
+        call_timeout_s=5,
+        kill_target_s=10,
+        clock=lambda: NOW,
     )
     assert live.cancel_all(reason="kill switch", now=NOW) == ()
     assert live.cancel(make_intent(0).intent_id, reason="test", now=NOW)
@@ -505,7 +591,13 @@ def test_a_broker_that_does_not_answer_times_out(approvals: ApprovalStore) -> No
     client = Client()
     client.hold = threading.Event()
     live = LiveAdapter(
-        client, approvals, fixed(ALL_HOLD), call_timeout_s=0.05, kill_target_s=1, clock=lambda: NOW
+        client,
+        approvals,
+        fixed(ALL_HOLD),
+        **SEAM,
+        call_timeout_s=0.05,
+        kill_target_s=1,
+        clock=lambda: NOW,
     )
     try:
         with pytest.raises(TimeoutError, match=r"submit sans réponse après 0\.05 s"):
@@ -521,7 +613,13 @@ def test_a_broker_error_reaches_the_caller(approvals: ApprovalStore) -> None:
     client = Client()
     client.error = ConnectionError("coupé")
     live = LiveAdapter(
-        client, approvals, fixed(ALL_HOLD), call_timeout_s=5, kill_target_s=10, clock=lambda: NOW
+        client,
+        approvals,
+        fixed(ALL_HOLD),
+        **SEAM,
+        call_timeout_s=5,
+        kill_target_s=10,
+        clock=lambda: NOW,
     )
     with pytest.raises(ConnectionError, match="coupé"):
         live.submit(intent, now=NOW)
@@ -546,7 +644,12 @@ def test_the_timeout_stays_under_the_kill_switch_target(
 ) -> None:
     with pytest.raises(ValueError, match=message):
         LiveAdapter(
-            Client(), approvals, fixed(ALL_HOLD), call_timeout_s=timeout, kill_target_s=target
+            Client(),
+            approvals,
+            fixed(ALL_HOLD),
+            **SEAM,
+            call_timeout_s=timeout,
+            kill_target_s=target,
         )
 
 
@@ -561,7 +664,13 @@ def test_without_a_live_gate_every_order_is_refused(
     client = Client()
     check = ActivationCheck(project(tmp_path), approvals, owner=lambda _path: True)
     live = LiveAdapter(
-        client, approvals, check, call_timeout_s=5, kill_target_s=10, clock=lambda: NOW
+        client,
+        approvals,
+        check,
+        **SEAM,
+        call_timeout_s=5,
+        kill_target_s=10,
+        clock=lambda: NOW,
     )
     with pytest.raises(LiveDisabled) as caught:
         live.submit(intent, now=NOW)
@@ -592,7 +701,13 @@ def test_the_adapter_reads_its_own_clock(tmp_path: Path, approvals: ApprovalStor
     )
     later = NOW + timedelta(days=30)
     live = LiveAdapter(
-        client, approvals, check, call_timeout_s=5, kill_target_s=10, clock=lambda: later
+        client,
+        approvals,
+        check,
+        **SEAM,
+        call_timeout_s=5,
+        kill_target_s=10,
+        clock=lambda: later,
     )
     with pytest.raises(LiveDisabled) as caught:
         live.submit(intent, now=NOW)

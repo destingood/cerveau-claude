@@ -266,19 +266,48 @@ class ExecutionConfig(_Strict):
     max_participation_pct: Pct | Marker
 
 
-class LiveLimits(_Strict):
+class _StrictLive(BaseModel):
+    """``live.yaml`` read without coercion (ADR-075, m1): ``enabled: 1``, ``"on"`` or ``"true"``
+    is not ``true``, ``"2"`` is not a number, ``true`` is not a count. Such a file does not load,
+    and an unloaded configuration refuses every real order."""
+
+    model_config = ConfigDict(extra="forbid", frozen=True, strict=True)
+
+
+class LiveLimits(_StrictLive):
     max_order_pct: float = Field(ge=0)
     max_position_pct: float = Field(ge=0)
     max_daily_loss_pct: float = Field(ge=0)
     max_orders_per_day: int = Field(ge=0)
 
 
-class LiveConfig(_Strict):
+class LiveAllow(_StrictLive):
+    """``allow`` of ``live.yaml``: the paper limits keep their own :class:`Allow`."""
+
+    leverage: bool
+    short_selling: bool
+    derivatives: bool
+
+
+PositiveFinite = Annotated[float, Field(gt=0, allow_inf_nan=False)]
+
+
+class LiveConfig(_StrictLive):
     enabled: bool
     broker: str
     limits: LiveLimits
-    allow: Allow
+    allow: LiveAllow
     instruments_whitelist: list[str]
+    # B353, ADR-075: what the live Risk Gate needs beyond the limits, written by the user alone
+    # (R3): the capital its percentages are of, the IANA zone that bounds a trading day, and the
+    # oldest a book or a rate may be, in seconds. Absent (None) or a marker, the gate refuses
+    # every order (R7).
+    capital_reference_eur: PositiveFinite | Marker | None = None
+    timezone: str | None = None
+    max_book_age_s: PositiveFinite | Marker | None = None
+
+
+LIVE_GATE_FIELDS = ("capital_reference_eur", "timezone", "max_book_age_s")
 
 
 # --- budgets / compliance / data sources / evals / risk --------------------------------------
@@ -1147,6 +1176,17 @@ FEATURES: dict[str, Feature] = {
     "live_trading": Feature(
         "Exécution live (R3 : activée à la main par l'utilisateur)", ("live:",)
     ),
+    # B353, ADR-075: the live gate also refuses while one of its two fields is absent.
+    "live_trading.risk_gate": Feature(
+        "Porte live : capital de référence, fuseau horaire, âge du livre et limites de live.yaml",
+        (
+            "live:capital_reference_eur",
+            "live:timezone",
+            "live:max_book_age_s",
+            "live:limits",
+            "live:allow",
+        ),
+    ),
     "kill_switch": Feature("Kill switch (cible de temps)", ("risk:kill_switch.target_seconds",)),
     "kill_switch.data_loss": Feature(
         "Kill switch sur perte d'une connexion continue aux données",
@@ -1386,6 +1426,16 @@ class Config:
         reasons: list[str] = []
         if feature == "live_trading" and not self.live.enabled:
             reasons.append("live.yaml › enabled = false (R3)")
+        if feature == "live_trading.risk_gate":
+            reasons.extend(
+                f"live.yaml › {name} absent (A_DEFINIR, B353)"
+                for name in LIVE_GATE_FIELDS
+                if getattr(self.live, name) is None
+            )
+            limits = self.live.limits.model_dump().items()
+            reasons.extend(f"live.yaml › limits.{name} = 0" for name, v in limits if v <= 0)
+            if not self.live.instruments_whitelist:
+                reasons.append("live.yaml › instruments_whitelist vide")
         source = FEATURES[feature].source
         if source is not None:
             known = self.data_sources.sources.get(source)

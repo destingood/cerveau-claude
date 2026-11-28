@@ -100,6 +100,82 @@ def test_live_stays_blocked_while_disabled_even_without_markers(config_dir: Path
     assert reasons == ["live.yaml › enabled = false (R3)"]
 
 
+def test_the_live_gate_lists_what_the_user_has_still_to_write() -> None:
+    """B353, ADR-075: the shipped live.yaml leaves the live Risk Gate nothing to judge with."""
+    reasons = load_config(REPO_ROOT / "config").blockers("live_trading.risk_gate")
+    assert reasons == [
+        "live.yaml › capital_reference_eur absent (A_DEFINIR, B353)",
+        "live.yaml › timezone absent (A_DEFINIR, B353)",
+        "live.yaml › max_book_age_s absent (A_DEFINIR, B353)",
+        "live.yaml › limits.max_order_pct = 0",
+        "live.yaml › limits.max_position_pct = 0",
+        "live.yaml › limits.max_daily_loss_pct = 0",
+        "live.yaml › limits.max_orders_per_day = 0",
+        "live.yaml › instruments_whitelist vide",
+    ]
+
+
+def test_the_live_gate_names_a_marker_until_it_is_written(config_dir: Path) -> None:
+    def fill(data: dict) -> None:
+        data["limits"] = dict.fromkeys(data["limits"], 1)
+        data["instruments_whitelist"] = ["FICT-A"]
+        data["capital_reference_eur"] = "A_DEFINIR"
+        data["timezone"] = "Europe/Paris"
+        data["max_book_age_s"] = "A_DEFINIR"
+
+    edit_yaml(config_dir / "live.yaml", fill)
+    reasons = load_config(config_dir).blockers("live_trading.risk_gate")
+    assert reasons == [
+        "live.yaml › capital_reference_eur = A_DEFINIR",
+        "live.yaml › max_book_age_s = A_DEFINIR",
+    ]
+    written = {"capital_reference_eur": 10_000, "max_book_age_s": 60}
+    edit_yaml(config_dir / "live.yaml", lambda d: d.update(written))
+    assert load_config(config_dir).blockers("live_trading.risk_gate") == []
+
+
+@pytest.mark.parametrize(
+    ("key", "value"),
+    [
+        ("enabled", 1),
+        ("enabled", "on"),
+        ("enabled", "true"),
+        ("capital_reference_eur", "2"),
+        ("capital_reference_eur", True),
+        ("max_book_age_s", True),
+    ],
+)
+def test_live_yaml_is_not_coerced_at_load(config_dir: Path, key: str, value: object) -> None:
+    """m1: what only looks like the right type does not load, and nothing is decided on it."""
+    edit_yaml(config_dir / "live.yaml", lambda d: d.update({key: value}))
+    with pytest.raises(ConfigError, match=r"live\.yaml"):
+        load_config(config_dir)
+
+
+@pytest.mark.parametrize(
+    ("section", "key", "value"),
+    [
+        ("limits", "max_orders_per_day", True),
+        ("limits", "max_order_pct", "2"),
+        ("allow", "leverage", 0),
+        ("allow", "derivatives", "no"),
+    ],
+)
+def test_live_limits_and_allow_are_not_coerced_at_load(
+    config_dir: Path, section: str, key: str, value: object
+) -> None:
+    edit_yaml(config_dir / "live.yaml", lambda d: d[section].update({key: value}))
+    with pytest.raises(ConfigError, match=r"live\.yaml"):
+        load_config(config_dir)
+
+
+def test_paper_allow_keeps_its_own_reading(config_dir: Path) -> None:
+    """The paper limits are untouched by the strict live reading (m1)."""
+    paper = load_config(config_dir).risk_limits_paper
+    assert type(paper.allow).__name__ == "Allow"
+    assert type(load_config(config_dir).live.allow).__name__ == "LiveAllow"
+
+
 def test_filling_markers_unblocks_the_feature(config_dir: Path) -> None:
     def fill(data: dict) -> None:
         for key, value in data.items():

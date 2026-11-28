@@ -1,9 +1,11 @@
-"""The live adapter: a real broker behind seven conditions checked at every submission (ADR-039,
-ADR-067).
+"""The live adapter: a real broker behind the live Risk Gate and seven conditions, checked at
+every submission (ADR-039, ADR-067, ADR-075).
 
 No broker client exists in this phase (D8): :class:`LiveAdapter` wraps any
 :class:`BrokerClient` and refuses to submit an order unless, at that very call (D9), read on its
-own clock (B230):
+own clock (B230), under a lock held across processes until the broker answers, the live Risk
+Gate accepts it first (:class:`LiveRiskGate`, built by the adapter itself: ``live.yaml`` read,
+never written, the book from a source passed in, every decision journaled; B353), then:
 
 1. ``config/live.yaml`` is complete: ``enabled``, a broker named, every limit above 0 and a
    non-empty whitelist (R3, R7);
@@ -15,13 +17,18 @@ own clock (B230):
 5. the kill switch is not engaged (R4);
 6. the intent has a granted, unexpired approval for ``live``, bound to its very content (D4);
 7. the order keeps within ``live.yaml``: its instrument is whitelisted, and its size, the position,
-   the day's loss, the day's order count and ``allow`` are checked by a live risk gate. No such gate
-   exists yet, so this condition fails for every order (B200, B353, R7): live stays closed.
+   the day's loss, the day's order count and ``allow`` are checked. The live Risk Gate checks them
+   in front; this condition stays closed for every order all the same (B200, B353, R7), until the
+   user decides to open live with a broker and a source for its book: live stays closed.
 
-Every condition is read again from disk at each submission: nothing is cached, so a change by
-the user, or the kill switch, applies to the next call. A false condition raises
-:class:`LiveDisabled`, which names every failing condition, and the client is never called. Once
-all seven hold, the approval is spent, once, before the submission (D4).
+The gate and the conditions are two layers, each enough to stop an order: the adapter builds the
+gate from its root and journal, outside the injectable check, so that removing or replacing a
+condition never removes it, and no caller can hand it another gate. Everything is read again
+from disk at each submission: nothing is cached, so a change by the user, or the kill switch,
+applies to the next call. A refusal of the
+gate raises :class:`LiveGateRefused`, a false condition :class:`LiveDisabled`, which names every
+failing condition; either way the client is never called. Once the gate and all seven conditions
+hold, the approval is spent, once, before the submission (D4).
 
 Cancelling and reading never add exposure: ``cancel``, ``cancel_all`` (the kill switch's move)
 and the reads stay allowed whatever the conditions. Every call to the client is bounded by a
@@ -31,24 +38,40 @@ timeout shorter than the kill switch's target, which must be known, and raises
 
 from __future__ import annotations
 
+import contextlib
 import math
 import threading
 from collections.abc import Callable, Mapping
 from datetime import datetime
 from enum import StrEnum
 from pathlib import Path
-from typing import Protocol, TypeVar
+from typing import Any, Protocol, TypeVar
 from uuid import UUID
 
 from core.approvals.store import ApprovalError, ApprovalState, ApprovalStore
+from core.audit.chain import _exclusive_lock
 from core.config.loader import LEVELS, MARKERS, Config, ConfigError, LiveConfig, load_config
 from core.execution.broker import AccountStatement, BrokerAck, BrokerOrder, FillBatch
 from core.execution.intent import OrderIntent
 from core.execution.ownership import protected
 from core.governance.signatures import SIGNATURES_DIR, effective_autonomy, read_signatures
 from core.policy.engine import kill_switch_engaged
+from core.risk_gate.gate import RiskGateResult
+from core.risk_gate.live import (
+    NO_BOOK,
+    JournaledOrder,
+    LiveBook,
+    evaluate_live,
+    fingerprint,
+    live_intent,
+    refusal,
+    schema_refusal,
+)
 
 LIVE_FILE = Path("config") / "live.yaml"
+# Held from the gate to the broker's answer, across processes (M4): never under var/audit.
+LIVE_LOCK = Path("var") / "live" / "gate.lock"
+LIVE_REQUEST = "live-"  # the prefix of the gate's request ids in the journal
 LIVE_DOMAIN = "finance"
 LIVE_FROM = "N3"  # the lowest level that may reach a real broker (ADR-036)
 _T = TypeVar("_T")
@@ -69,6 +92,7 @@ class Condition(StrEnum):
 Verdict = Mapping[Condition, str | None]  # None: the condition holds; else why it does not
 Check = Callable[[OrderIntent, datetime], Verdict]
 Limits = Callable[[LiveConfig, OrderIntent], str | None]  # condition 7: why not, or None
+BookSource = Callable[[OrderIntent, datetime], LiveBook | None]  # None: no source
 
 
 class LiveDisabled(Exception):
@@ -82,6 +106,18 @@ class LiveDisabled(Exception):
     @property
     def conditions(self) -> tuple[Condition, ...]:
         return tuple(condition for condition, _ in self.failures)
+
+
+class LiveGateRefused(LiveDisabled):
+    """A submission the live Risk Gate refused, before any condition is read: its reasons. A
+    :class:`LiveDisabled`, so that whoever stops on one stops on both; no condition failed."""
+
+    def __init__(self, reasons: tuple[str, ...]) -> None:
+        Exception.__init__(
+            self, f"live refusé par la Porte live, aucun appel au courtier ({' ; '.join(reasons)})"
+        )
+        self.failures = ()
+        self.reasons = reasons
 
 
 class BrokerClient(Protocol):
@@ -115,14 +151,16 @@ def live_incomplete(live: LiveConfig) -> str | None:
 
 
 NO_LIVE_GATE = (
-    "taille, position, perte du jour, ordres du jour et allow de live.yaml : aucune Porte live "
-    "pour les vérifier (B200, B353, R7)"
+    "taille, position, perte du jour, ordres du jour et allow de live.yaml : la Porte live les "
+    "vérifie en amont, et cette condition reste fermée jusqu'à la décision de l'utilisateur "
+    "(B200, B353, R7)"
 )
 
 
 def live_limits(live: LiveConfig, intent: OrderIntent) -> str | None:
-    """Why the order does not keep within ``live.yaml``, or None (condition 7). Without a live
-    risk gate the limits cannot be checked: an order that cannot be checked is refused."""
+    """Why the order does not keep within ``live.yaml``, or None (condition 7). The live Risk
+    Gate checks the limits in front of the conditions (B353); this condition stays closed for
+    every order, a second lock that only the user's decision opens (ADR-075)."""
     instrument = intent.instrument
     if not {instrument.symbol, instrument.isin} & set(live.instruments_whitelist):
         return f"{instrument.symbol} hors de la liste blanche"
@@ -207,16 +245,238 @@ class ActivationCheck:
             return f"approbation demandée pour {request.environment}, pas pour live"
         if request.state is not ApprovalState.ACCORDEE:
             return f"approbation {request.state}"  # an overdue one reads EXPIREE
-        if request.intent_sha256 != intent.sha256():
+        if request.intent_sha256 != fingerprint(intent):
             return "approbation accordée pour un autre contenu de l'intention"
         return None
 
 
-class LiveAdapter:
-    """``BrokerAdapter`` over a real client; only ``submit`` needs the seven conditions.
+def no_live_book(intent: OrderIntent, now: datetime) -> LiveBook | None:
+    """The book source while no broker is connected: there is no book, so the gate refuses."""
+    del intent, now
+    return None
 
-    ``submit`` judges the conditions and the approval's expiry on ``clock``, never on the caller's
-    ``now`` (B230): a caller cannot revive an expired approval by passing an earlier time."""
+
+class LiveJournal(Protocol):
+    """What the gate needs of :class:`core.audit.chain.AuditJournal`: append, and read back."""
+
+    def append(
+        self,
+        *,
+        actor: str,
+        event: str,
+        request_id: str | None = None,
+        versions: Mapping[str, str] | None = None,
+        payload: Any = None,
+        now: datetime | None = None,
+    ) -> dict[str, Any]: ...
+
+    def payloads(self, *, actor: str, event: str, request_prefix: str = "") -> list[Any]: ...
+
+
+def bounded[R](name: str, call: Callable[[], R], timeout_s: float) -> R:
+    """``call`` in a daemon thread, waited for at most ``timeout_s`` (B171). A call past it
+    raises TimeoutError, one of ``NETWORK_ERRORS``: whether it reached the broker is unknown,
+    and the thread is left to finish on its own; the next call does not wait for it."""
+    results: list[R] = []
+    errors: list[BaseException] = []
+
+    def run() -> None:
+        try:
+            results.append(call())
+        except BaseException as exc:  # handed to the caller below, whatever it is
+            errors.append(exc)
+
+    worker = threading.Thread(target=run, name=f"live-{name}", daemon=True)
+    worker.start()
+    worker.join(timeout_s)
+    if errors:
+        raise errors[0]
+    if not results:
+        raise TimeoutError(f"courtier : {name} sans réponse après {timeout_s} s (B171)")
+    return results[0]
+
+
+def journaled_orders(payloads: list[Any]) -> tuple[JournaledOrder, ...]:
+    """The orders the live gate accepted, from its own journal entries (M4); an entry that
+    cannot be read back raises, and the gate then refuses (R7)."""
+    orders = []
+    for payload in payloads:
+        if payload["result"] == "ACCEPTE":
+            fields = {
+                "intent_sha256": payload["intent_sha256"],
+                "decided_at": payload["decided_at"],
+            }
+            orders.append(JournaledOrder.model_validate(fields | payload["order"]))
+    return tuple(orders)
+
+
+def _order(intent: OrderIntent) -> dict[str, str | int]:
+    """The order as the journal keeps it: the intent's own data, so that the next decision of
+    the day counts it until the book shows it (M4); nothing of the account."""
+    return {
+        "symbol": intent.instrument.symbol,
+        "side": intent.side,
+        "quantity": intent.quantity,
+        "limit_price": str(intent.limit_price),
+        "currency": intent.instrument.currency,
+    }
+
+
+class LiveRiskGate:
+    """The live Risk Gate over the files under ``root`` (B353, ADR-075), in front of the seven
+    conditions.
+
+    At each call, in this order: the kill switch, which refuses outright and asks nothing more
+    (R4); ``config/live.yaml`` through the loader, never written; the book, from ``book``, waited
+    for at most ``book_timeout_s``; the orders the gate accepted today, read back from the
+    journal; then the decision time, read on ``clock`` once the book is in (m4), and
+    :func:`evaluate_live`. Every decision, accepted or refused, is journaled as a ``POLICY`` entry
+    of the actor ``risk_gate`` (R11): the checks, which hold no figure of the book, the reasons,
+    the order's own data, the book's SHA-256 alone and, for an error, its type's name alone
+    (ADR-071, B197): no broker name, no account, no position. An unreadable configuration or
+    journal, a source in error or late, or a journal that refuses the entry refuses the order."""
+
+    def __init__(
+        self,
+        root: Path,
+        journal: LiveJournal,
+        *,
+        book_timeout_s: float,
+        book: BookSource = no_live_book,
+        load: Callable[[Path], Config] = load_config,
+        clock: Callable[[], datetime] = lambda: datetime.now().astimezone(),
+    ) -> None:
+        if not math.isfinite(book_timeout_s) or book_timeout_s <= 0:
+            raise ValueError("délai de lecture du livre : nombre de secondes > 0 attendu")
+        self.root = root
+        self.journal = journal
+        self.book = book
+        self.load = load
+        self.clock = clock
+        self.book_timeout_s = book_timeout_s
+
+    def __call__(self, given: object) -> RiskGateResult:
+        asked = self.clock()
+        try:
+            intent = live_intent(given)
+        except Exception as exc:  # judged on nothing: refused, and journaled as such
+            result = schema_refusal(exc)
+            return self._journal(None, result, asked, None, None, {"intent": type(exc).__name__})
+        errors: dict[str, str] = {}
+        config: Config | None = None
+        book: LiveBook | None = None
+        now = asked
+        if kill_switch_engaged(self.root):  # first of all, before any read (R4)
+            result = refusal(intent, "kill_switch", "kill switch engagé (R4)")
+        else:
+            try:
+                config = self.load(self.root / "config")
+            except Exception as exc:  # whatever it is, an unread configuration refuses
+                errors["config"] = type(exc).__name__
+            book, missing = self._book(intent, asked, errors)
+            journaled: tuple[JournaledOrder, ...] | None = None
+            try:
+                found = self.journal.payloads(
+                    actor="risk_gate", event="POLICY", request_prefix=LIVE_REQUEST
+                )
+                journaled = journaled_orders(found)
+            except Exception as exc:  # an unread journal could hide today's orders (M4)
+                errors["journal"] = type(exc).__name__
+            now = self.clock()  # once the book is in: its own time is never after it (m4)
+            if config is None:
+                reason = f"configuration illisible ({errors['config']})"
+                result = refusal(intent, "configuration", reason)
+            else:
+                result = evaluate_live(
+                    intent,
+                    config.live,
+                    book,
+                    now=now,
+                    missing_book=missing,
+                    journaled=journaled,
+                )
+        return self._journal(intent, result, now, config, book, errors)
+
+    def _book(
+        self, intent: OrderIntent, asked: datetime, errors: dict[str, str]
+    ) -> tuple[LiveBook | None, str]:
+        try:
+            book = bounded("book", lambda: self.book(intent, asked), self.book_timeout_s)
+        except Exception as exc:  # only its type is kept: its text may name the account
+            errors["book"] = type(exc).__name__
+            return None, f"source du livre live en erreur ({errors['book']})"
+        if book is not None and not isinstance(book, LiveBook):
+            errors["book"] = type(book).__name__
+            return None, f"source du livre live : LiveBook attendu ({errors['book']})"
+        return book, NO_BOOK
+
+    def _journal(
+        self,
+        intent: OrderIntent | None,
+        result: RiskGateResult,
+        now: datetime,
+        config: Config | None,
+        book: LiveBook | None,
+        errors: dict[str, str],
+    ) -> RiskGateResult:
+        """Journal the decision; if the entry cannot be built or written, journal a bare refusal
+        instead, and refuse: a decision without its trace is no decision (R11, m2). ``intent``
+        is None when the object given was no valid intent."""
+        named = None if result.intent_id is None else str(result.intent_id)
+        request_id = f"{LIVE_REQUEST}{named or 'intention-invalide'}"
+        try:
+            payload = {
+                "environment": "live",
+                "decided_at": now.isoformat(),
+                "intent_id": named,
+                "intent_sha256": result.intent_sha256,
+                "requested_quantity": result.requested_quantity,
+                "quantity": result.quantity,
+                "order": None if intent is None else _order(intent),
+                **result.policy_payload(),
+                "reasons": list(result.reasons),
+                "book_sha256": None if book is None else book.sha256(),
+                "errors": errors,
+            }
+            self.journal.append(
+                actor="risk_gate",
+                event="POLICY",
+                request_id=request_id,
+                versions={} if config is None else {"config": config.digest},
+                payload=payload,
+                now=now,
+            )
+            return result
+        except Exception as exc:
+            name = type(exc).__name__
+        reason = f"journal d'audit indisponible ({name}) : aucune décision sans trace (R11)"
+        refused = result if intent is None else refusal(intent, "journal", reason)
+        bare = {
+            "environment": "live",
+            "intent_id": named,
+            "result": "REFUSE",
+            "reasons": list(refused.reasons),
+            "errors": errors | {"journal": name},
+        }
+        with contextlib.suppress(Exception):  # nothing more can be written: the order is refused
+            self.journal.append(
+                actor="risk_gate", event="POLICY", request_id=request_id, payload=bare, now=now
+            )
+        return refused
+
+
+class LiveAdapter:
+    """``BrokerAdapter`` over a real client; only ``submit`` needs the gate and the seven
+    conditions.
+
+    The adapter builds its own :class:`LiveRiskGate` from ``root``, ``journal`` and ``book``: no
+    caller hands it a gate, which could be any callable (m5). ``submit`` holds the lock
+    ``var/live/gate.lock`` from the gate to the broker's answer, across processes, so that two
+    orders are never judged on the same book (M4). It validates the intent again and keeps only
+    that copy (an instance built without validation, or a subclass, is refused, M3); judges the
+    gate, the conditions and the approval's expiry on ``clock``, never on the caller's ``now``
+    (B230); and lets the conditions be read only on an ``ACCEPTE`` of the gate for this very
+    intent, at its very quantity, fingerprinted by :func:`fingerprint`."""
 
     def __init__(
         self,
@@ -224,8 +484,11 @@ class LiveAdapter:
         approvals: ApprovalStore,
         check: Check,
         *,
+        root: Path,
+        journal: LiveJournal,
         call_timeout_s: float,
         kill_target_s: float | None,
+        book: BookSource = no_live_book,
         clock: Callable[[], datetime] = lambda: datetime.now().astimezone(),
     ) -> None:
         if not math.isfinite(call_timeout_s) or call_timeout_s <= 0:
@@ -241,11 +504,24 @@ class LiveAdapter:
         self._client = client
         self._approvals = approvals
         self._check = check
+        self._gate = LiveRiskGate(
+            root, journal, book_timeout_s=call_timeout_s, book=book, clock=clock
+        )
+        self._lock = root / LIVE_LOCK
         self._timeout_s = call_timeout_s
         self._clock = clock
 
     def submit(self, intent: OrderIntent, *, now: datetime) -> BrokerAck:
         del now  # the caller's time is not trusted (B230)
+        try:
+            checked = live_intent(intent)
+        except Exception as exc:  # never this object: a copy validated from its content
+            raise LiveGateRefused((f"intention invalide ({type(exc).__name__})",)) from exc
+        with _exclusive_lock(self._lock):
+            return self._submit(checked)
+
+    def _submit(self, intent: OrderIntent) -> BrokerAck:
+        self._pass_gate(intent)
         now = self._clock()
         verdict = self._check(intent, now)
         reasons = {c: verdict.get(c, "condition non évaluée") for c in Condition}
@@ -256,10 +532,27 @@ class LiveAdapter:
         if request is None:
             raise LiveDisabled(((Condition.APPROBATION, "demande disparue avant l'envoi"),))
         try:
-            self._approvals.consume(request.approval_id, intent_sha256=intent.sha256(), now=now)
+            self._approvals.consume(request.approval_id, intent_sha256=fingerprint(intent), now=now)
         except ApprovalError as exc:
             raise LiveDisabled(((Condition.APPROBATION, str(exc)),)) from exc
         return self._bounded("submit", lambda: self._client.submit(intent, now=now))
+
+    def _pass_gate(self, intent: OrderIntent) -> None:
+        """Raise :class:`LiveGateRefused` unless the gate accepts this very order (B353)."""
+        try:
+            result = self._gate(intent)
+            refused, reasons = result.result == "REFUSE", tuple(result.reasons)
+            accepted = (
+                result.result == "ACCEPTE"
+                and result.intent_sha256 == fingerprint(intent)
+                and result.quantity == intent.quantity
+            )
+        except Exception as exc:  # a gate that cannot answer refuses (R7)
+            raise LiveGateRefused((f"Porte live en erreur ({type(exc).__name__})",)) from exc
+        if refused:
+            raise LiveGateRefused(reasons)
+        if not accepted:  # a reduction, or a verdict on another content: never this order
+            raise LiveGateRefused(("la Porte live n'accepte pas cet ordre tel quel",))
 
     def cancel(self, intent_id: UUID, *, reason: str, now: datetime) -> bool:
         return self._bounded(
@@ -279,23 +572,4 @@ class LiveAdapter:
         return self._bounded("fills_since", lambda: self._client.fills_since(cursor))
 
     def _bounded(self, name: str, call: Callable[[], _T]) -> _T:
-        """``call`` in a daemon thread, waited for at most the timeout (B171). A call past it
-        raises TimeoutError, one of ``NETWORK_ERRORS``: whether it reached the broker is unknown,
-        and the thread is left to finish on its own; the next call does not wait for it."""
-        results: list[_T] = []
-        errors: list[BaseException] = []
-
-        def run() -> None:
-            try:
-                results.append(call())
-            except BaseException as exc:  # handed to the caller below, whatever it is
-                errors.append(exc)
-
-        worker = threading.Thread(target=run, name=f"live-{name}", daemon=True)
-        worker.start()
-        worker.join(self._timeout_s)
-        if errors:
-            raise errors[0]
-        if not results:
-            raise TimeoutError(f"courtier : {name} sans réponse après {self._timeout_s} s (B171)")
-        return results[0]
+        return bounded(name, call, self._timeout_s)

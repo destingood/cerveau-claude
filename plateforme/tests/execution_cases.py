@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import json
 from collections.abc import Mapping
 from datetime import date, datetime
 from decimal import Decimal
@@ -63,6 +64,16 @@ class MemoryJournal:
         entry = {"actor": actor, "event": event, "request_id": request_id, "payload": payload}
         self.entries.append(entry)
         return entry
+
+    def payloads(self, *, actor: str, event: str, request_prefix: str = "") -> list[Any]:
+        """``AuditJournal.payloads``: the payloads as the journal gives them back, from JSON."""
+        return [
+            json.loads(json.dumps(e["payload"]))
+            for e in self.entries
+            if e["actor"] == actor
+            and e["event"] == event
+            and str(e["request_id"]).startswith(request_prefix)
+        ]
 
     @property
     def states(self) -> list[tuple[str, str]]:

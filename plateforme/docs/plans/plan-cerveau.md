@@ -88,6 +88,7 @@ sauf les correctifs sûrs, faits tout de suite à ta demande.
 | 28/11 | « Continue d'autres aspects du cerveau » | Étape 21 (8.44.0) : oublier une session, index des noms ; rappel plus varié mesuré, pas mis en service |
 | 28/11 | « Fusionne et continue le plan » | PR #39 fusionnée ; étape 22 (8.45.0) : le hook « retiens que… » sous ses 150 ms |
 | 28/11 | « Fusionne et continue le plan » (PR #40) | Bloc B, étape B4 : bac à sable borné (B282), 263 cas candidats à valider (B62), banc d'évals dans Claude Code (ADR-074). Tes réponses : les trois, B282 d'abord ; une page à cocher pour valider les cas ; un autre modèle Claude juge |
+| 28/11 | « Fusionne et continue le plan », « fusion et continue, publie et committe tout » | PR #41 et #42 fusionnées ; détecteur d'injection corrigé (ton choix) ; B353, la Porte live (ton GO sur le plan) ; juge des évals : Sonnet ; sessions d'essai archivées |
 
 ## 2. Comment l'audit a été fait, et ses limites
 
@@ -613,6 +614,18 @@ hook au-dessus de 150 ms, premier démarrage après un changement compris ; `bra
     passent hors ligne ; golden, comportements et red team inchangés ; aucune chaîne honnête de plus signalée
     (10 668 chaînes de cas, 246 pages de fixtures, 2 105 paragraphes de docs). Ce qu'on ne peut pas attraper sans
     faux positifs : B369.
+  - ✅ B353 fait le 28/11 (ton GO du 28/11, ADR-075, proposé) : la Porte live (`core/risk_gate/live.py`), construite
+    par `LiveAdapter` lui-même devant les sept conditions de la garde live ; la 7e condition reste fermée. Elle lit
+    `live.yaml` sans jamais l'écrire (lu sans coercition, chaque valeur revérifiée : absente, `A_DEFINIR`, mauvais
+    type, non finie, nulle ou > 100 % refuse) ; liste blanche, taille, position, perte du jour, ordres du jour,
+    découvert, levier et `allow`, dans la journée du fuseau de `live.yaml` (R10). Revue `risk-gate-auditor`
+    indépendante (aucun point bloquant, 4 majeurs, 5 mineurs), tout corrigé le même jour : aucun chiffre du compte
+    au journal ; intention et livre revalidés ; verrou de la Porte au courtier et acceptations du jour comptées tant
+    que le livre ne les montre pas ; livre et taux plus vieux que `max_book_age_s` refusés ; kill switch lu en
+    premier. À toi, dans `live.yaml` : `capital_reference_eur`, `timezone`, `max_book_age_s` (absents, donc tout
+    est refusé), les limites et la liste blanche, puis l'ouverture de la 7e condition avec un client de courtier.
+    Reste : frais du courtier dans le levier, plafond horaire, journal des refus des sept conditions, idempotence
+    côté courtier, âge des derniers cours.
   - ✅ Banc « golden sets passés dans Claude Code » fait le 28/11 (ADR-074, proposé) : `cerveau evals exporter /
     preparer-juge / noter`, skill `evals-claude-code`, sous-agents `repondant-evals` (modèle de la session) et
     `juge-evals` (Sonnet). Le code contrôle ce qui se contrôle (R5, sources, chaque chiffre et date tracés, R1) ;

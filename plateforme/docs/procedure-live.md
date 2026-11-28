@@ -16,7 +16,7 @@ courtier (R3, §8.6).
 | `config/live.yaml` | `enabled: false`, limites à 0, liste blanche vide | condition 1 fausse : tout envoi est refusé |
 | Signature N3 | aucune dans `governance/approvals/` | conditions 3 et 4 fausses |
 | ACL | non posée sur ce poste (B173) | condition 2 fausse |
-| Porte live | aucune (B353) : les limites de `live.yaml` ne sont vérifiées par rien | condition 7 fausse : tout ordre est refusé |
+| Porte live | écrite le 28/11/2026 (B353, ADR-075), devant les sept conditions ; sans source de livre, sans `capital_reference_eur`, `timezone` ni `max_book_age_s` dans `live.yaml` | la Porte refuse tout ordre ; condition 7 toujours fausse |
 | Rotation des clés | `keys.rotation_days: A_DEFINIR` (`config/risk.yaml`) | prérequis 7 non rempli |
 
 Ce document fixe ce qui devra être vrai et l'ordre des gestes. Le client de courtier et la boucle
@@ -80,8 +80,21 @@ courtier n'est pas appelé.
    consommée une seule fois, avant l'envoi. L'expiration se juge à l'horloge de l'adaptateur,
    jamais à l'heure donnée par l'appelant (B230).
 7. Limites de `live.yaml` : instrument (symbole ou ISIN) dans la liste blanche, et taille, position,
-   perte du jour, ordres du jour et `allow` vérifiés par une Porte live. Cette Porte n'existe pas
-   encore (B353) : la condition est fausse pour tout ordre.
+   perte du jour, ordres du jour et `allow` vérifiés par la Porte live. La condition reste fausse
+   pour tout ordre jusqu'à ta décision de l'ouvrir (B353, ADR-075).
+
+Avant ces sept conditions, la Porte live (ADR-075) juge l'ordre sur `live.yaml`, relu à chaque
+envoi et jamais écrit, et sur le livre du compte (positions, cash, P&L et ordres du jour) donné par
+le client de courtier. Elle refuse tout ce qui n'est pas permis explicitement et journalise chaque
+décision, sans aucun chiffre du compte. Elle demande trois champs de `live.yaml`, à écrire
+toi-même : `capital_reference_eur` (les limites en sont des pourcentages), `timezone` (nom IANA, par
+exemple celui de ta place de cotation, qui borne la journée) et `max_book_age_s` (l'âge maximal,
+en secondes, du livre et de ses taux de change au moment de décider). Absents ou à `A_DEFINIR`,
+tout est refusé ; `cerveau config check` les liste sous `live_trading.risk_gate`. `live.yaml` se lit
+sans coercition : `true`/`false` en booléens, nombres sans guillemets. Un drapeau de `allow` à
+`true` refuse aussi tout : la Porte ne modélise ni levier, ni vente à découvert, ni dérivés. Un seul
+envoi à la fois (verrou `var/live/gate.lock`), et un ordre accepté que le livre ne montre pas
+encore compte dans le cash, la position et les ordres du jour.
 
 L'annulation et la lecture restent permises sans condition : elles ne vont que dans le sens sûr.
 
