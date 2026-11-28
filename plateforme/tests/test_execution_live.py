@@ -30,6 +30,7 @@ from core.execution.live import (
     Condition,
     LiveAdapter,
     LiveDisabled,
+    LiveRiskGate,
     Verdict,
     live_incomplete,
     live_limits,
@@ -158,7 +159,7 @@ def adapter(
         client,
         store,
         check,
-        gate=gate_accepts,
+        **SEAM,
         call_timeout_s=timeout,
         kill_target_s=10,
         clock=lambda: now,
@@ -172,9 +173,10 @@ def gate_passes(live: LiveConfig, intent: OrderIntent) -> str | None:
     return None if reason == NO_LIVE_GATE else reason
 
 
-def gate_accepts(intent: OrderIntent, _now: datetime) -> RiskGateResult:
-    """A live Risk Gate that accepts every order as it is, so that the seven conditions are
-    tested on their own; the real gate is tested in ``test_execution_live_gate``."""
+def gate_accepts(_gate: LiveRiskGate, intent: OrderIntent) -> RiskGateResult:
+    """The test seam (m5): the adapter's own gate, made to accept every order as it is, so
+    that the seven conditions are tested on their own; the real gate is tested in
+    ``test_execution_live_gate``."""
     return RiskGateResult(
         result="ACCEPTE",
         intent_id=intent.intent_id,
@@ -184,6 +186,20 @@ def gate_accepts(intent: OrderIntent, _now: datetime) -> RiskGateResult:
         checks=(),
         reasons=("toutes les vérifications passent",),
     )
+
+
+# The adapter's root (only its lock lives there) and journal, renewed for each test.
+SEAM: dict[str, Any] = {}
+
+
+def accept_every_order(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
+    monkeypatch.setattr(LiveRiskGate, "__call__", gate_accepts)
+    SEAM.update(root=tmp_path / "adapter", journal=MemoryJournal())
+
+
+@pytest.fixture(autouse=True)
+def accepting_gate(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
+    accept_every_order(monkeypatch, tmp_path)
 
 
 def failing(caught: pytest.ExceptionInfo[LiveDisabled]) -> set[Condition]:
@@ -277,7 +293,7 @@ def test_a_file_the_current_account_owns_refuses(tmp_path: Path, approvals: Appr
         Client(),
         approvals,
         check,
-        gate=gate_accepts,
+        **SEAM,
         call_timeout_s=5,
         kill_target_s=10,
         clock=lambda: NOW,
@@ -303,7 +319,7 @@ def test_a_signature_file_left_writable_is_named(tmp_path: Path, approvals: Appr
         Client(),
         approvals,
         check,
-        gate=gate_accepts,
+        **SEAM,
         call_timeout_s=5,
         kill_target_s=10,
         clock=lambda: NOW,
@@ -393,7 +409,7 @@ def test_a_configuration_without_finance_refuses(tmp_path: Path, approvals: Appr
         Client(),
         approvals,
         check,
-        gate=gate_accepts,
+        **SEAM,
         call_timeout_s=5,
         kill_target_s=10,
         clock=lambda: NOW,
@@ -421,7 +437,7 @@ def test_an_unreadable_configuration_refuses(
         Client(),
         approvals,
         check,
-        gate=gate_accepts,
+        **SEAM,
         call_timeout_s=5,
         kill_target_s=10,
         clock=lambda: NOW,
@@ -495,7 +511,7 @@ def test_a_condition_left_out_of_the_verdict_refuses(approvals: ApprovalStore) -
         Client(),
         approvals,
         fixed(verdict),
-        gate=gate_accepts,
+        **SEAM,
         call_timeout_s=5,
         kill_target_s=10,
         clock=lambda: NOW,
@@ -511,7 +527,7 @@ def test_a_request_gone_before_sending_refuses(approvals: ApprovalStore) -> None
         client,
         approvals,
         fixed(ALL_HOLD),
-        gate=gate_accepts,
+        **SEAM,
         call_timeout_s=5,
         kill_target_s=10,
         clock=lambda: NOW,
@@ -530,7 +546,7 @@ def test_an_approval_that_cannot_be_spent_refuses(approvals: ApprovalStore) -> N
         client,
         approvals,
         fixed(ALL_HOLD),
-        gate=gate_accepts,
+        **SEAM,
         call_timeout_s=5,
         kill_target_s=10,
         clock=lambda: NOW,
@@ -550,7 +566,7 @@ def test_cancelling_and_reading_need_no_condition(approvals: ApprovalStore) -> N
         client,
         approvals,
         refuse,
-        gate=gate_accepts,
+        **SEAM,
         call_timeout_s=5,
         kill_target_s=10,
         clock=lambda: NOW,
@@ -578,7 +594,7 @@ def test_a_broker_that_does_not_answer_times_out(approvals: ApprovalStore) -> No
         client,
         approvals,
         fixed(ALL_HOLD),
-        gate=gate_accepts,
+        **SEAM,
         call_timeout_s=0.05,
         kill_target_s=1,
         clock=lambda: NOW,
@@ -600,7 +616,7 @@ def test_a_broker_error_reaches_the_caller(approvals: ApprovalStore) -> None:
         client,
         approvals,
         fixed(ALL_HOLD),
-        gate=gate_accepts,
+        **SEAM,
         call_timeout_s=5,
         kill_target_s=10,
         clock=lambda: NOW,
@@ -631,7 +647,7 @@ def test_the_timeout_stays_under_the_kill_switch_target(
             Client(),
             approvals,
             fixed(ALL_HOLD),
-            gate=gate_accepts,
+            **SEAM,
             call_timeout_s=timeout,
             kill_target_s=target,
         )
@@ -651,7 +667,7 @@ def test_without_a_live_gate_every_order_is_refused(
         client,
         approvals,
         check,
-        gate=gate_accepts,
+        **SEAM,
         call_timeout_s=5,
         kill_target_s=10,
         clock=lambda: NOW,
@@ -688,7 +704,7 @@ def test_the_adapter_reads_its_own_clock(tmp_path: Path, approvals: ApprovalStor
         client,
         approvals,
         check,
-        gate=gate_accepts,
+        **SEAM,
         call_timeout_s=5,
         kill_target_s=10,
         clock=lambda: later,

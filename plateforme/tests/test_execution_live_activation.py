@@ -25,14 +25,21 @@ from tests.test_execution_live import (
     NOW,
     REPO,
     RULES,
+    SEAM,
     Client,
-    gate_accepts,
+    accept_every_order,
     gate_passes,
     granted,
     project,
 )
 
 COMBINATIONS = list(itertools.product((True, False), repeat=len(Condition)))
+
+
+@pytest.fixture(autouse=True)
+def accepting_gate(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
+    """The seven conditions on their own: the adapter's gate accepts every order (m5 seam)."""
+    accept_every_order(monkeypatch, tmp_path)
 
 
 def _uncapped(autonomy: Any, root: Path, *, signed: Any = None) -> EffectiveAutonomy:
@@ -76,7 +83,7 @@ def test_only_the_seven_conditions_together_reach_the_broker(
             client,
             store,
             check,
-            gate=gate_accepts,
+            **SEAM,
             call_timeout_s=5,
             kill_target_s=10,
             clock=lambda: NOW,

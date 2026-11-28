@@ -18,9 +18,9 @@ from typing import Any
 from hypothesis import HealthCheck, given, settings
 from hypothesis import strategies as st
 
-from core.config.loader import Allow, LiveConfig, LiveLimits
+from core.config.loader import LiveAllow, LiveConfig, LiveLimits
 from core.finance.model import PARIS
-from core.risk_gate.live import LiveBook, evaluate_live
+from core.risk_gate.live import JournaledOrder, LiveBook, evaluate_live, fingerprint
 from tests.execution_cases import make_intent
 
 NOW = datetime(2026, 10, 17, 14, 10, tzinfo=PARIS)
@@ -44,6 +44,7 @@ FAULTS = (
     "disabled",
     "day",
     "timezone",
+    "stale",
 )
 CENT = Decimal("0.01")
 
@@ -57,6 +58,7 @@ class World:
     held: int
     open_buy: int  # shares of the same instrument still to buy, at the limit price
     open_sell: int
+    accepted: int  # shares of a buy the gate accepted today, not yet in the book (M4)
     cash: Decimal
     day_pnl: Decimal
     orders_today: int
@@ -80,13 +82,14 @@ def worlds(draw: st.DrawFn) -> World:
         held=draw(st.integers(0, 200)),
         open_buy=draw(st.integers(0, 10)),
         open_sell=draw(st.integers(0, 10)),
-        cash=draw(_cents(0, 2_000_000)),
+        accepted=draw(st.integers(0, 10)),
+        cash=draw(_cents(0, 5_000_000)),
         day_pnl=draw(_cents(-100_000, 100_000)),
-        orders_today=draw(st.integers(0, 3)),
-        capital=draw(st.integers(10_000, 200_000).map(float)),
+        orders_today=draw(st.integers(0, 2)),
+        capital=draw(st.integers(50_000, 500_000).map(float)),
         limits={
-            **{name: draw(st.integers(1, 10_000).map(lambda n: n / 100)) for name in PCTS},
-            "max_orders_per_day": draw(st.integers(1, 6)),
+            **{name: draw(st.integers(50, 10_000).map(lambda n: n / 100)) for name in PCTS},
+            "max_orders_per_day": draw(st.integers(1, 8)),
         },
         fault=draw(st.none() | st.sampled_from(FAULTS)),
         fault_key=draw(st.sampled_from((*PCTS, "max_orders_per_day", "capital_reference_eur"))),
@@ -102,6 +105,7 @@ def _live(world: World) -> LiveConfig:
         "instruments_whitelist": ["FICT-ACME"],
         "capital_reference_eur": world.capital,
         "timezone": "Europe/Paris",
+        "max_book_age_s": 600,
     }
     bad = {
         "marker": "A_DEFINIR",
@@ -121,7 +125,7 @@ def _live(world: World) -> LiveConfig:
         fields["enabled"] = False
     elif world.fault == "timezone":
         fields["timezone"] = "A_DEFINIR"
-    fields["allow"] = Allow.model_construct(**fields["allow"])
+    fields["allow"] = LiveAllow.model_construct(**fields["allow"])
     return LiveConfig.model_construct(limits=LiveLimits.model_construct(**limits), **fields)
 
 
@@ -133,14 +137,14 @@ def _book(world: World) -> LiveBook:
     ]
     return LiveBook.model_validate(
         {
-            "as_of": NOW - timedelta(minutes=1),
+            "as_of": NOW - timedelta(seconds=601 if world.fault == "stale" else 60),
             "day": date(2026, 10, 16) if world.fault == "day" else date(2026, 10, 17),
             "instruments": {
                 "FICT-ACME": {
                     "asset_class": "equity",
                     "currency": "EUR",
                     "last_price": world.last_price,
-                    "priced_at": NOW - timedelta(minutes=2),
+                    "priced_at": NOW - timedelta(minutes=20),
                 }
             },
             "fx": {},
@@ -153,13 +157,28 @@ def _book(world: World) -> LiveBook:
     )
 
 
+def _journaled(world: World) -> tuple[JournaledOrder, ...]:
+    if not world.accepted:
+        return ()
+    order = {
+        "intent_sha256": fingerprint(make_intent(1)),
+        "decided_at": NOW - timedelta(minutes=3),
+        "symbol": "FICT-ACME",
+        "side": "BUY",
+        "quantity": world.accepted,
+        "limit_price": world.limit_price,
+        "currency": "EUR",
+    }
+    return (JournaledOrder.model_validate(order),)
+
+
 def within_every_limit(world: World) -> bool:
     """The oracle, in fractions: the order keeps within each limit of ``live.yaml``."""
     capital = Fraction(str(world.capital))
     pct = {name: Fraction(str(world.limits[name])) for name in PCTS}
     unit = Fraction(max(world.limit_price, world.last_price))
     amount = world.quantity * unit
-    buying = world.open_buy * Fraction(world.limit_price)
+    buying = (world.open_buy + world.accepted) * Fraction(world.limit_price)
     loss = max(-Fraction(world.day_pnl), Fraction(0))
     if world.side == "BUY":
         position = world.held * Fraction(world.last_price) + buying + amount
@@ -173,7 +192,7 @@ def within_every_limit(world: World) -> bool:
         and sized
         and covered
         and loss * 100 < pct["max_daily_loss_pct"] * capital
-        and world.orders_today + 1 <= world.limits["max_orders_per_day"]
+        and world.orders_today + bool(world.accepted) + 1 <= world.limits["max_orders_per_day"]
     )
 
 
@@ -186,7 +205,9 @@ def test_no_order_beyond_a_limit_is_ever_accepted() -> None:
         intent = make_intent(
             0, side=world.side, quantity=world.quantity, limit_price=world.limit_price
         )
-        got = evaluate_live(intent, _live(world), _book(world), now=NOW)
+        got = evaluate_live(
+            intent, _live(world), _book(world), now=NOW, journaled=_journaled(world)
+        )
         if world.fault is not None:
             assert got.result == "REFUSE", world
             assert got.quantity == 0

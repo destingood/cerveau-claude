@@ -13,14 +13,25 @@ from typing import Any
 
 import pytest
 
-from core.config.loader import Allow, LiveConfig, LiveLimits, load_config
+from core.config.loader import LiveAllow, LiveConfig, LiveLimits, load_config
+from core.execution.intent import OrderIntent
 from core.finance.model import PARIS
 from core.risk_gate import live as live_gate
-from core.risk_gate.live import CHECK_NAMES, NO_BOOK, LiveBook, evaluate_live
+from core.risk_gate.live import (
+    CHECK_NAMES,
+    MASKED,
+    NO_BOOK,
+    NO_JOURNAL,
+    JournaledOrder,
+    LiveBook,
+    evaluate_live,
+    fingerprint,
+)
 from tests.execution_cases import make_intent
 from tests.test_execution_live import REPO
 
 NOW = datetime(2026, 10, 17, 14, 10, tzinfo=PARIS)  # make_intent(0) is drafted at 14:05
+BOOK_AT = datetime(2026, 10, 17, 14, 6, tzinfo=PARIS)
 LIMITS: dict[str, Any] = {
     "max_order_pct": 2,
     "max_position_pct": 5,
@@ -35,13 +46,14 @@ LIVE: dict[str, Any] = {
     "instruments_whitelist": ["FICT-ACME"],
     "capital_reference_eur": 100_000,
     "timezone": "Europe/Paris",
+    "max_book_age_s": 600,
 }
 
 
 def book_data(**changes: Any) -> dict[str, Any]:
     """20 FICT-ACME held at 120 EUR, 10 000 EUR of cash, 500 EUR lost and one order today."""
     data: dict[str, Any] = {
-        "as_of": datetime(2026, 10, 17, 14, 6, tzinfo=PARIS),
+        "as_of": BOOK_AT,
         "day": date(2026, 10, 17),
         "instruments": {
             "FICT-ACME": {
@@ -61,6 +73,10 @@ def book_data(**changes: Any) -> dict[str, Any]:
     return data | changes
 
 
+def rate(eur_per_unit: str, as_of: datetime = BOOK_AT) -> dict[str, Any]:
+    return {"eur_per_unit": Decimal(eur_per_unit), "as_of": as_of}
+
+
 def config(**changes: Any) -> LiveConfig:
     return LiveConfig.model_validate(LIVE | changes)
 
@@ -70,7 +86,7 @@ def raw(limits: dict[str, Any] | None = None, **changes: Any) -> LiveConfig:
     fields = LIVE | changes
     fields["limits"] = LiveLimits.model_construct(**(LIMITS | (limits or {})))
     if isinstance(fields["allow"], dict):
-        fields["allow"] = Allow.model_construct(**fields["allow"])
+        fields["allow"] = LiveAllow.model_construct(**fields["allow"])
     return LiveConfig.model_construct(**fields)
 
 
@@ -79,12 +95,15 @@ def judge(
     book: dict[str, Any] | LiveBook | None = None,
     *,
     now: datetime = NOW,
+    journaled: tuple[JournaledOrder, ...] | None = (),
     **intent: Any,
 ) -> Any:
     given = LiveBook.model_validate(book_data()) if book is None else book
     if isinstance(given, dict):
         given = LiveBook.model_validate(given)
-    return evaluate_live(make_intent(0, **intent), live or config(), given, now=now)
+    return evaluate_live(
+        make_intent(0, **intent), live or config(), given, now=now, journaled=journaled
+    )
 
 
 def failed(result: Any) -> dict[str, str]:
@@ -93,6 +112,9 @@ def failed(result: Any) -> dict[str, str]:
 
 # The checks a buy passes without a book: a buy sells nothing short.
 BOOKLESS = {"schema", "enabled", "instruments_whitelist", "allow", "short_selling"}
+# The checks of a buy that need the day, hence the zone: the day itself, and those that count
+# the orders accepted today (M4).
+ZONED = ("day", "max_position_pct", "max_orders_per_day", "leverage")
 ORDER = {"symbol": "FICT-ACME", "remaining": 1, "limit_price": Decimal("0.01")}
 
 
@@ -190,8 +212,8 @@ def test_a_bad_reference_capital_refuses_every_sized_check(value: Any, reason: s
 def test_the_loader_keeps_a_marker_and_the_gate_refuses_it(marker: str) -> None:
     got = judge(config(capital_reference_eur=marker, timezone=marker))
     assert failed(got) == {
+        **dict.fromkeys(ZONED, f"timezone vaut {marker} (R7)"),
         **dict.fromkeys(PCTS, f"capital_reference_eur vaut {marker} (R7)"),
-        "day": f"timezone vaut {marker} (R7)",
     }
 
 
@@ -212,7 +234,7 @@ def test_a_live_file_without_limits_refuses() -> None:
     ],
 )
 def test_an_unknown_time_zone_refuses(value: Any, reason: str) -> None:
-    assert failed(judge(raw(timezone=value))) == {"day": reason}
+    assert failed(judge(raw(timezone=value))) == dict.fromkeys(ZONED, reason)
 
 
 @pytest.mark.parametrize("value", [False, None, "true", 1])
@@ -264,7 +286,7 @@ def test_an_instrument_missing_from_the_book_refuses() -> None:
 
 def test_a_currency_other_than_the_book_refuses() -> None:
     facts = book_data()["instruments"]["FICT-ACME"] | {"currency": "USD"}
-    book = book_data(instruments={"FICT-ACME": facts}, fx={"USD": Decimal("0.9")})
+    book = book_data(instruments={"FICT-ACME": facts}, fx={"USD": rate("0.9")})
     reasons = failed(judge(book=book))
     assert reasons["instrument"] == "diffère du livre live : currency"
     assert reasons["max_order_pct"] == "devise de l'intention EUR, du livre USD"
@@ -272,11 +294,16 @@ def test_a_currency_other_than_the_book_refuses() -> None:
 
 def test_a_foreign_order_is_valued_at_its_rate_or_refused_without_one() -> None:
     facts = book_data()["instruments"]["FICT-ACME"] | {"currency": "USD"}
-    book = book_data(instruments={"FICT-ACME": facts}, fx={"USD": Decimal("0.4")})
-    got = judge(book=book, instrument__currency="USD", instrument__venue="XNYS")
-    assert got.result == "ACCEPTE"
-    order = next(check for check in got.checks if check.name == "max_order_pct")
-    assert order.value == "0.4938"  # 10 x 123.45 USD x 0.4 of 100 000 EUR
+    book = book_data(
+        instruments={"FICT-ACME": facts}, fx={"USD": rate("0.4")}, day_pnl_eur=Decimal(0)
+    )
+    usd = {"instrument__currency": "USD", "instrument__venue": "XNYS"}
+    roomy = LIMITS | {"max_position_pct": 100}
+    # 10 x 123.45 USD x 0.4 = 493.80 EUR: 2 % of 24 690 EUR exactly, a cent of capital less over.
+    at = judge(config(capital_reference_eur=24_690, limits=roomy), book, **usd)
+    assert at.result == "ACCEPTE"
+    over = judge(config(capital_reference_eur=24_689.99, limits=roomy), book, **usd)
+    assert failed(over) == {"max_order_pct": "ordre trop gros"}
     no_rate = book_data(instruments={"FICT-ACME": facts})
     got = judge(book=no_rate, instrument__currency="USD", instrument__venue="XNYS")
     assert failed(got)["max_order_pct"] == "taux de change absent pour USD"
@@ -358,9 +385,9 @@ def test_the_open_buys_commit_cash() -> None:
 
 def test_an_open_buy_of_an_instrument_the_book_does_not_know_refuses() -> None:
     buy = ORDER | {"side": "BUY", "symbol": "FICT-OTHER"}
-    assert failed(judge(book=book_data(open_orders=(buy,)))) == {
-        "leverage": "FICT-OTHER absent du livre live"
-    }
+    reason = "FICT-OTHER absent du livre live"
+    got = judge(book=book_data(open_orders=(buy,)))
+    assert failed(got) == dict.fromkeys(("max_position_pct", "leverage"), reason)
 
 
 @pytest.mark.parametrize(
@@ -409,10 +436,9 @@ def test_an_intent_from_after_the_decision_refuses() -> None:
 
 def test_a_decision_time_without_a_zone_refuses() -> None:
     got = judge(now=datetime(2026, 10, 17, 14, 10))  # naive on purpose
-    assert failed(got) == {
-        "point_in_time": "heure de décision sans fuseau horaire",
-        "day": "heure de décision sans fuseau horaire",
-    }
+    reason = "heure de décision sans fuseau horaire"
+    timed = ("point_in_time", "max_book_age_s", *ZONED)
+    assert failed(got) == dict.fromkeys(timed, reason)
 
 
 def test_a_book_of_another_day_refuses() -> None:
@@ -445,7 +471,7 @@ def test_without_a_book_every_check_that_needs_it_refuses() -> None:
 
 @pytest.mark.parametrize(
     "changes",
-    [{"fx": {"EUR": Decimal(1)}}, {"orders_today": -1}, {"open_orders": [1]}],
+    [{"fx": {"EUR": rate("1")}}, {"orders_today": -1}, {"open_orders": [1]}],
     ids=["euro-rate", "negative-count", "bad-order"],
 )
 def test_an_incoherent_book_is_an_unknown_one(changes: dict[str, Any]) -> None:
@@ -454,7 +480,7 @@ def test_an_incoherent_book_is_an_unknown_one(changes: dict[str, Any]) -> None:
 
 
 def test_a_book_priced_after_its_own_time_cannot_be_built() -> None:
-    with pytest.raises(ValueError, match="cours publiés après le livre"):
+    with pytest.raises(ValueError, match="lu après le livre"):
         LiveBook.model_validate(book_data(as_of=datetime(2026, 10, 17, 14, 4, tzinfo=PARIS)))
 
 
@@ -507,3 +533,219 @@ def test_a_permission_that_is_not_a_boolean_refuses(value: Any) -> None:
     allow = type("Allow", (), {"leverage": False, "short_selling": value, "derivatives": False})
     got = judge(raw(allow=allow()))
     assert failed(got) == {"allow": "allow.short_selling : true ou false attendu (R7)"}
+
+
+# M1: no figure of the book in the result ------------------------------------------------------
+
+# Figures no limit, date or fingerprint could spell by chance.
+SECRET_BOOK = book_data(
+    holdings={"FICT-ACME": 437},
+    cash_eur=Decimal("98765.43"),
+    day_pnl_eur=Decimal("-543.21"),
+)
+BOOK_CHECKS = (
+    "max_book_age_s",
+    "max_order_pct",
+    "max_position_pct",
+    "max_daily_loss_pct",
+    "max_orders_per_day",
+    "short_selling",
+    "leverage",
+)
+
+
+@pytest.mark.parametrize("side", ["BUY", "SELL"])
+def test_a_check_that_reads_the_book_records_none_of_its_figures(side: str) -> None:
+    roomy = config(capital_reference_eur=10_000_000)
+    got = judge(roomy, SECRET_BOOK, side=side)
+    assert got.result == "ACCEPTE"
+    checks = {check.name: check for check in got.checks}
+    for name in BOOK_CHECKS:
+        if checks[name].value not in ("achat", "vente"):  # a side's no-op, not a figure
+            assert checks[name].value == MASKED, name
+    text = got.model_dump_json()
+    for figure in ("437", "98765", "543.21", "53674"):
+        assert figure not in text, figure
+
+
+def test_the_limits_recorded_are_those_of_live_yaml() -> None:
+    checks = {check.name: check for check in judge().checks}
+    assert checks["max_order_pct"].limit == "2"
+    assert checks["max_position_pct"].limit == "5"
+    assert checks["max_daily_loss_pct"].limit == "1"
+    assert checks["max_orders_per_day"].limit == "3"
+    assert checks["max_book_age_s"].limit == "600 s"
+    assert checks["leverage"].limit == "cash disponible"
+
+
+# M2: every part of the book is validated again ------------------------------------------------
+
+
+@pytest.mark.parametrize("side", ["BUY", "SELL"])
+def test_an_open_order_built_without_validation_is_refused(side: str) -> None:
+    """A negative remaining would free cash or shares the account does not have."""
+    forged = live_gate.LiveOpenOrder.model_construct(
+        symbol="FICT-ACME", side=side, remaining=-1000, limit_price=Decimal("120")
+    )
+    book = LiveBook.model_construct(
+        **(book_data(cash_eur=Decimal("1000")) | {"open_orders": (forged,)})
+    )
+    got = judge(book=book, side=side)
+    assert got.result == "REFUSE"
+    assert "livre live invalide (ValidationError)" in failed(got).values()
+
+
+def test_an_open_order_of_the_paper_snapshot_is_not_a_live_one() -> None:
+    from core.risk_gate.snapshot import OpenOrder
+
+    paper = OpenOrder.model_construct(
+        symbol="FICT-ACME", side="BUY", remaining=-1000, limit_price=Decimal("120")
+    )
+    with pytest.raises(ValueError, match="open_orders"):
+        LiveBook.model_validate(book_data(open_orders=(paper,)))
+
+
+@pytest.mark.parametrize(
+    "changes",
+    [{"holdings": {"FICT-ACME": -5}}, {"fx": {"USD": rate("-1")}}, {"cash_eur": "beaucoup"}],
+    ids=["negative-holding", "negative-rate", "text-cash"],
+)
+def test_a_book_built_without_validation_is_validated_again(changes: dict[str, Any]) -> None:
+    book = LiveBook.model_construct(**(book_data() | changes))
+    assert judge(book=book).result == "REFUSE"
+
+
+# M3: the intent is validated again, and fingerprinted here ------------------------------------
+
+
+@pytest.mark.parametrize(
+    "changes",
+    [
+        {"quantity": -500},
+        {"quantity": 0},
+        {"limit_price": Decimal("NaN")},
+        {"limit_price": Decimal("-1")},
+        {"side": "HOLD"},
+    ],
+    ids=["negative", "zero", "nan-price", "negative-price", "unknown-side"],
+)
+def test_an_intent_built_without_validation_is_refused(changes: dict[str, Any]) -> None:
+    forged = make_intent(0).model_copy(update=changes)  # model_copy does not validate
+    got = evaluate_live(forged, config(), LiveBook.model_validate(book_data()), now=NOW)
+    assert got.result == "REFUSE"
+    assert [check.name for check in got.checks] == ["schema"]
+
+
+def test_a_subclass_of_the_intent_is_refused() -> None:
+    class Forged(OrderIntent):
+        def sha256(self) -> str:
+            return "a" * 64
+
+    forged = Forged.model_validate(make_intent(0).model_dump())
+    got = evaluate_live(forged, config(), LiveBook.model_validate(book_data()), now=NOW)
+    assert got.reasons == ("schema : intention invalide (TypeError)",)
+
+
+def test_the_fingerprint_is_the_intent_content_hash() -> None:
+    intent = make_intent(0)
+    assert fingerprint(intent) == intent.sha256() == judge().intent_sha256
+
+
+# M4: the orders accepted today, and the book's age ---------------------------------------------
+
+
+def accepted(n: int, **changes: Any) -> JournaledOrder:
+    """The n-th order the gate accepted today: a buy of 10 FICT-ACME at 123.45 EUR."""
+    fields: dict[str, Any] = {
+        "intent_sha256": fingerprint(make_intent(n)),
+        "decided_at": NOW - timedelta(minutes=2),
+        "symbol": "FICT-ACME",
+        "side": "BUY",
+        "quantity": 10,
+        "limit_price": Decimal("123.45"),
+        "currency": "EUR",
+    }
+    return JournaledOrder.model_validate(fields | changes)
+
+
+def test_an_order_accepted_but_not_yet_in_the_book_spends_its_cash() -> None:
+    """Two buys of 1 234.50 EUR judged on the same book of 1 500 EUR: the second is refused."""
+    book = book_data(cash_eur=Decimal("1500"))
+    assert judge(book=book).result == "ACCEPTE"
+    second = judge(book=book, journaled=(accepted(1),))
+    assert failed(second) == {"leverage": "achat au-delà du cash : ce serait du levier"}
+
+
+def test_an_order_accepted_counts_among_the_orders_of_the_day() -> None:
+    sales = (accepted(1, side="SELL", quantity=1), accepted(2, side="SELL", quantity=1))
+    got = judge(book=book_data(orders_today=1), journaled=sales)
+    assert failed(got) == {"max_orders_per_day": "trop d'ordres aujourd'hui"}  # 1 + 2 + 1 > 3
+
+
+def test_an_order_accepted_counts_in_the_position() -> None:
+    # 20 x 120 + 1 234.50 + 1 234.50 = 4 869 EUR: over 5 % of 72 690 EUR.
+    got = judge(config(capital_reference_eur=72_690), journaled=(accepted(1),))
+    assert failed(got) == {"max_position_pct": "la position au-delà de la limite"}
+
+
+def test_a_sale_accepted_counts_against_the_holding() -> None:
+    book = book_data(holdings={"FICT-ACME": 15})
+    sold = accepted(1, side="SELL", quantity=6)
+    got = judge(book=book, side="SELL", journaled=(sold,))
+    assert failed(got) == {"short_selling": "vente au-delà de la position détenue"}
+
+
+@pytest.mark.parametrize(
+    "order",
+    [
+        accepted(1, intent_sha256="b" * 64),  # known to the book, below
+        accepted(0),  # this very intent, judged again
+        accepted(1, decided_at=NOW - timedelta(days=1)),  # another day
+        accepted(1, decided_at=NOW + timedelta(seconds=1)),  # after the decision (R10)
+    ],
+    ids=["in-the-book", "itself", "yesterday", "later"],
+)
+def test_an_order_the_book_shows_or_of_another_day_is_not_counted(order: JournaledOrder) -> None:
+    book = book_data(cash_eur=Decimal("1500"), known_intents=frozenset({"b" * 64}))
+    assert judge(book=book, journaled=(order,)).result == "ACCEPTE"
+
+
+def test_an_order_journaled_twice_is_counted_once() -> None:
+    book = book_data(cash_eur=Decimal("2469"))  # room for exactly two buys
+    assert judge(book=book, journaled=(accepted(1), accepted(1))).result == "ACCEPTE"
+
+
+def test_without_the_journal_the_counted_checks_refuse() -> None:
+    got = judge(journaled=None)
+    assert failed(got) == dict.fromkeys(
+        ("max_position_pct", "max_orders_per_day", "leverage"), NO_JOURNAL
+    )
+
+
+@pytest.mark.parametrize(("age_s", "ok"), [(600, True), (600.001, False)], ids=["at", "over"])
+def test_a_book_older_than_max_book_age_refuses(age_s: float, ok: bool) -> None:
+    as_of = NOW - timedelta(seconds=age_s)
+    facts = book_data()["instruments"]["FICT-ACME"] | {"priced_at": as_of}
+    got = judge(book=book_data(as_of=as_of, instruments={"FICT-ACME": facts}))
+    assert failed(got) == ({} if ok else {"max_book_age_s": "trop ancien : livre"})
+
+
+def test_a_rate_older_than_max_book_age_refuses() -> None:
+    old = rate("0.9", NOW - timedelta(seconds=601))
+    got = judge(book=book_data(fx={"USD": old}))
+    assert failed(got) == {"max_book_age_s": "trop ancien : taux USD"}
+
+
+def test_a_rate_read_after_the_decision_refuses() -> None:
+    later = NOW + timedelta(seconds=5)
+    facts = book_data()["instruments"]["FICT-ACME"] | {"priced_at": later}
+    book = book_data(as_of=later, instruments={"FICT-ACME": facts}, fx={"USD": rate("1", later)})
+    reasons = failed(judge(book=book))
+    assert reasons["point_in_time"] == (
+        "postérieur à la décision (R10) : livre, cours de FICT-ACME, taux USD"
+    )
+
+
+@pytest.mark.parametrize(("value", "reason"), BAD_NUMBERS)
+def test_a_bad_book_age_limit_refuses(value: Any, reason: str) -> None:
+    assert failed(judge(raw(max_book_age_s=value))) == {"max_book_age_s": f"max_book_age_s{reason}"}

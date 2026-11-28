@@ -218,6 +218,33 @@ class AuditJournal:
                 os.fsync(f.fileno())
         return entry
 
+    def payloads(self, *, actor: str, event: str, request_prefix: str = "") -> list[Any]:
+        """The payloads of the complete entries of ``actor`` and ``event`` whose ``request_id``
+        starts with ``request_prefix``, in journal order; None for an entry without payload. A
+        line being written (no final newline) is left out; any other line, or payload, that
+        cannot be read raises :class:`AuditError`: a reader that needs them all must not guess.
+        """
+        try:
+            data = self.path.read_bytes() if self.path.exists() else b""
+        except OSError as exc:
+            raise AuditError(f"{self.path} : journal illisible ({type(exc).__name__})") from exc
+        found: list[Any] = []
+        complete = data[: data.rfind(b"\n") + 1]
+        for lineno, line in enumerate(complete.splitlines(), start=1):
+            try:
+                entry = json.loads(line)
+                ref = entry["payload_ref"]
+                if (
+                    entry["actor"] == actor
+                    and entry["event"] == event
+                    and str(entry["request_id"]).startswith(request_prefix)
+                ):
+                    found.append(None if ref is None else self.read_payload(ref))
+            except (json.JSONDecodeError, KeyError, TypeError, OSError, AuditError) as exc:
+                reason = f"{self.path} : ligne {lineno} illisible ({type(exc).__name__})"
+                raise AuditError(reason) from exc
+        return found
+
     def read_payload(self, payload_ref: str) -> Any:
         if not HASH_RE.match(payload_ref):
             raise AuditError(f"référence de payload invalide : {payload_ref!r}")

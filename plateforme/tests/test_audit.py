@@ -278,3 +278,54 @@ def test_any_permutation_or_deletion_is_detected(
         mutated = original[:drop] + original[drop + 1 :]
     write_lines(journal, mutated)
     assert not verify(journal.path).ok
+
+
+# Reading payloads back (B353, M4: the live gate counts its own acceptances of the day) --------
+
+
+def test_payloads_are_read_back_by_actor_event_and_request_prefix(tmp_path: Path) -> None:
+    journal = AuditJournal(tmp_path / "journal.jsonl")
+    assert journal.payloads(actor="risk_gate", event="POLICY") == []  # no journal yet
+    journal.append(actor="risk_gate", event="POLICY", request_id="live-1", payload={"n": 1})
+    journal.append(actor="risk_gate", event="POLICY", request_id="paper-2", payload={"n": 2})
+    journal.append(actor="policy", event="POLICY", request_id="live-3", payload={"n": 3})
+    journal.append(actor="risk_gate", event="DECISION", request_id="live-4", payload={"n": 4})
+    journal.append(actor="risk_gate", event="POLICY", request_id="live-5")
+    found = journal.payloads(actor="risk_gate", event="POLICY", request_prefix="live-")
+    assert found == [{"n": 1}, None]
+
+
+def test_a_line_being_written_is_left_out(tmp_path: Path) -> None:
+    journal = AuditJournal(tmp_path / "journal.jsonl")
+    journal.append(actor="risk_gate", event="POLICY", request_id="live-1", payload={"n": 1})
+    with journal.path.open("ab") as f:
+        f.write(b'{"actor": "risk_gate"')  # no final newline: an append in progress
+    assert journal.payloads(actor="risk_gate", event="POLICY") == [{"n": 1}]
+
+
+@pytest.mark.parametrize(
+    "line",
+    ["pas du json", '{"actor": "risk_gate"}', "[1, 2]"],
+    ids=["not-json", "missing-keys", "not-an-object"],
+)
+def test_an_unreadable_line_makes_the_payloads_unknown(tmp_path: Path, line: str) -> None:
+    journal = make_journal(tmp_path, 1)
+    with journal.path.open("a", encoding="utf-8") as f:
+        f.write(line + "\n")
+    with pytest.raises(AuditError, match="ligne 2 illisible"):
+        journal.payloads(actor="risk_gate", event="POLICY")
+
+
+def test_a_missing_payload_makes_the_payloads_unknown(tmp_path: Path) -> None:
+    journal = AuditJournal(tmp_path / "journal.jsonl")
+    entry = journal.append(actor="risk_gate", event="POLICY", payload={"n": 1})
+    (journal.payload_dir / (entry["payload_ref"].removeprefix("sha256:") + ".json")).unlink()
+    with pytest.raises(AuditError, match="ligne 1 illisible"):
+        journal.payloads(actor="risk_gate", event="POLICY")
+
+
+def test_an_unreadable_journal_file_makes_the_payloads_unknown(tmp_path: Path) -> None:
+    journal = AuditJournal(tmp_path / "dossier")
+    journal.path.mkdir()  # a directory where the file should be
+    with pytest.raises(AuditError, match="journal illisible"):
+        journal.payloads(actor="risk_gate", event="POLICY")
