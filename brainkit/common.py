@@ -163,6 +163,29 @@ def setup_io() -> None:
             pass
 
 
+def exit_now(code=0):
+    """Fin d'un hook (brain.py), sa sortie écrite : le processus s'arrête sans libérer un à un les objets qu'il a lus (le
+    cerveau, l'index des souvenirs : 20 à 30 ms à 3 000 souvenirs, que Claude Code attendait avant d'envoyer le
+    message). Seulement quand la sortie n'a plus rien à faire : sorties vidées, aucune fonction atexit, aucun fil
+    d'exécution encore en vie hors des fils « daemon » ; sinon, sys.exit comme avant. Les fichiers du cerveau sont tous
+    écrits fermés (with) avant d'arriver ici."""
+    code = code if isinstance(code, int) else 0 if code is None else 1
+    try:
+        sys.stdout.flush()
+        sys.stderr.flush()
+        import atexit
+        busy = getattr(atexit, "_ncallbacks", lambda: 1)()
+        threading = sys.modules.get("threading")
+        if threading is not None:
+            main = threading.main_thread()
+            busy = busy or any(t is not main and not t.daemon and t.is_alive() for t in threading.enumerate())
+    except Exception:
+        busy = True
+    if busy:
+        sys.exit(code)
+    os._exit(code)
+
+
 def read_json(path, default=None):
     for attempt in range(8):
         try:

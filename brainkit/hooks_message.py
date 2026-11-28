@@ -226,14 +226,20 @@ def private_about_other(text) -> str:
 def _known_already(b, text, title):
     """Un souvenir actif qui dit déjà la même chose avec d'autres mots (trouvé par l'index de recherche : au moins 4 mots
     de contenu en commun et 70 % de ceux de la phrase, aucun chiffre nouveau, aucun repère de temps différent, aucun
-    changement de valeur) → son id, sinon None. Un fait dont la valeur change n'est pas un doublon : c'est une mise à jour."""
+    changement de valeur) → son id, sinon None. Un fait dont la valeur change n'est pas un doublon : c'est une mise à jour.
+    L'index est celui du cerveau tel qu'il a été lu (b.pinned_index, remember_now : memidx.bin, rien à reconstruire —
+    avant, l'index entier était refait ici à chaque « retiens… », 220 ms à 3 000 souvenirs) ; les souvenirs déjà écrits
+    ou modifiés par ce même message, qu'il ne contient pas encore, sont regardés en plus."""
     from . import reconcile
     toks = set(tokenize(text))
     if len(toks) < 4:
         return None
     nums = set(reconcile.NUM_RX.findall(text))
-    for r in search.search_memories(b, text, limit=5, expand=False, use_cache=False):
-        n = r["node"]
+    found = [r["node"] for r in search.search_memories(b, text, limit=5, expand=False)]
+    seen = {n["id"] for n in found}
+    found += [b.nodes[i] for i in (getattr(b, "_avant", None) or ()) if i in b.nodes and i not in seen
+              and b.nodes[i].get("status", "active") == "active"]
+    for n in found:
         if n["type"] == "project" or n["id"].startswith("c--"):  # jamais une page d'ami
             continue
         old = f"{n['title']} {n.get('body', '')}"
@@ -278,12 +284,17 @@ def _remember_one(b, text, cwd):
     return "new", node["id"], ntype, title
 
 
-def remember_now(data, raw):
+def remember_now(data, raw, keep=None):
     """Demande explicite (« retiens que… ») : enregistrée par le hook lui-même — zéro token, et rien n'est perdu si Claude
     oublie. Mêmes règles que `brain add` : anti-doublon (même reformulé), jamais de secret ni de vie privée d'un tiers (la
     phrase est alors écartée, et on le dit).
     → (la ligne pour Claude, la ligne vue par l'utilisateur) ; ('', '') si le hook ne peut pas s'en charger (Claude fait
-    alors `add`, comme avant)."""
+    alors `add`, comme avant). `keep` (dict) : reçoit le cerveau tout juste enregistré (« brain »), que le rappel du même
+    message reprend sans relire graph.json ni refaire l'index (search.memory_index, pinned_index).
+    Le hook n'écrit que le souvenir, dans le fichier d'attente (attente.py : lu aussitôt par tous, journal des textes et
+    recents.jsonl compris) ; la tâche de fond qu'il lance le fait entrer dans graph.json, puis refait l'index des
+    souvenirs (memidx.bin) et les vues. Avant, le hook réécrivait graph.json et refaisait deux fois l'index : 0,6 s à
+    3 000 souvenirs, 0,12 s désormais (étape 22 du plan)."""
     from .privacy import find
     found = {t: find(t) for t in remember_texts(raw)}
     leaks = sorted({x for v in found.values() for x in v})
@@ -297,8 +308,22 @@ def remember_now(data, raw):
             f"[{TYPES['todo' if t.startswith(TODO_PREFIX) else 'feedback' if CAPTURE_RX.search(t) else 'fact']}] "
             f"« {short(t.removeprefix(TODO_PREFIX), REM_TITLE)} »" for t in texts), ""
     if texts:
-        with Brain.edit(timeout=2.5) as b:
+        with Brain.edit(timeout=2.5, defer=True) as b:  # (attente.py : graph.json n'est pas réécrit pour ça)
+            try:  # l'index du savoir tel qu'il est lu : doublons cherchés, puis rappel de ce message (voir plus haut)
+                b.pinned_index = search.memory_index(b)
+            except Exception as exc:
+                log(f"mémorisation : index : {exc!r}")
             done = [_remember_one(b, text, data.get("cwd")) for text in texts]
+            wrote = b.dirty
+        if keep is not None:
+            keep["brain"] = b
+        if wrote:
+            try:
+                from . import vues
+                vues.request(attente=True)  # en arrière-plan : le souvenir entre dans graph.json, puis l'index
+                # des souvenirs et les vues sont refaits une fois les écritures calmées
+            except Exception as exc:
+                log(f"mémorisation : vues : {exc!r}")
     ids = [x[1] for x in done if x[0] != "known"]
     known = [x for x in done if x[0] == "known"]
     if done or skipped:
@@ -346,15 +371,15 @@ def on_prompt(data, cfg):
             alert = context_alert(data, cfg)
         except Exception as exc:
             log(f"alerte contexte : {exc!r}")
-    saved = ""
+    saved, keep = "", {}
     if not raw.startswith("/") and not journal.is_auto(raw) and REMEMBER_RX.search(raw):
         try:  # « retiens que… » : enregistré ici même, indépendamment du rappel automatique
-            saved, seen = remember_now(data, raw)
+            saved, seen = remember_now(data, raw, keep)
             alert = f"{alert}\n{seen}".strip() if seen else alert  # ce qui a été retenu (ou pas) : visible de l'utilisateur
         except Exception as exc:
             log(f"mémorisation automatique : {exc!r}")
     # Fin d'une tâche de fond : rien à rappeler (les souvenirs gardent leur place pour un vrai message)
-    ctx = recall_context(data, cfg, raw, saved) if cfg["recall"]["enabled"] and len(raw) >= 6 \
+    ctx = recall_context(data, cfg, raw, saved, keep.get("brain")) if cfg["recall"]["enabled"] and len(raw) >= 6 \
         and not raw.startswith(("/", "<task-notification>", "[SYSTEM NOTIFICATION")) else saved
     if (cfg.get("eco") or {}).get("annonce"):
         try:  # annonce d'une tâche de fond (filtre appris, plugins…) : dite dans la session ouverte, sans attendre un démarrage

@@ -1,9 +1,9 @@
-"""Vues du cerveau refaites en arrière-plan : index injecté (BRAIN.md), export lisible (MEMOIRES.md), vues 3D et 2D
-(cerveau.html, cerveau-2d.html, avec l'analyse du graphe), mots des souvenirs (mots.py), fiches de synthèse et index du
-démarrage des derniers projets (index.prebuild). Les hooks la demandent aussi (fin de session, compaction, analyse
-trouvée périmée) : eux ne calculent jamais l'analyse. Chaque vue n'est refaite que si ses sources ont changé depuis
-qu'elle a été écrite (state/vues-sources.json) : une fin de session qui n'a rien changé ne refait au plus que BRAIN.md
-(sa liste des projets suit leur dernière session).
+"""Vues du cerveau refaites en arrière-plan : index des souvenirs du rappel (memidx.bin), index injecté (BRAIN.md), export
+lisible (MEMOIRES.md), vues 3D et 2D (cerveau.html, cerveau-2d.html, avec l'analyse du graphe), mots des souvenirs
+(mots.py), fiches de synthèse et index du démarrage des derniers projets (index.prebuild). Les hooks la demandent aussi
+(fin de session, compaction, analyse trouvée périmée) : eux ne calculent jamais l'analyse. Chaque vue n'est refaite que
+si ses sources ont changé depuis qu'elle a été écrite (state/vues-sources.json) : une fin de session qui n'a rien changé
+ne refait au plus que BRAIN.md (sa liste des projets suit leur dernière session).
 
 Une écriture (`brain add`, `edit`, `rm`…) n'écrit plus que le graphe et demande ces vues (request) : une tâche détachée
 les refait une fois les écritures calmées, si bien que plusieurs `add` à la suite ne coûtent qu'une régénération. Avant,
@@ -66,10 +66,12 @@ def _spawn() -> bool:
     return spawn_background(["vues", "--fond"])
 
 
-def request(wiki=False) -> bool:
+def request(wiki=False, attente=False) -> bool:
     """Après une écriture du graphe : les vues seront refaites en arrière-plan. `wiki` (fin de session en mode wiki) :
-    aussi index.md, la page Cerveau et la carte du coffre (wiki.write_derived). → False si aucune tâche ne peut s'en
-    charger (lancement impossible) : à l'appelant de les refaire lui-même (run_now, wiki.write_derived)."""
+    aussi index.md, la page Cerveau et la carte du coffre (wiki.write_derived). `attente` (souvenirs en attente d'entrer
+    dans graph.json, attente.py) : une tâche part même si une autre refait déjà les vues, pour qu'ils y entrent tout de
+    suite (la tâche au travail peut en avoir pour des secondes). → False si aucune tâche ne peut s'en charger (lancement
+    impossible) : à l'appelant de les refaire lui-même (run_now, wiki.write_derived)."""
     if wiki:
         try:
             WIKI_MARK.parent.mkdir(parents=True, exist_ok=True)
@@ -78,7 +80,7 @@ def request(wiki=False) -> bool:
             log(f"vues : demande du wiki : {exc!r}")
             return False
     _update(lambda s: s.update(n=s["n"] + 1, t=time.time()))
-    return busy() or _spawn()  # une tâche au travail relit les demandes avant de rendre la main
+    return (busy() and not attente) or _spawn()  # une tâche au travail relit les demandes avant de rendre la main
 
 
 WIKI_MARK = STATE_DIR / "vues-wiki"  # posé par la fin de session en mode wiki : pages dérivées du wiki à refaire
@@ -241,6 +243,7 @@ def regenerate(force=False) -> list:
 
     # (vue, fichiers écrits, fichiers dérivés lus après coup, empreinte des sources avant, étape)
     steps = (
+        ("rappel", None, None, None, lambda: _recall_index(b)),  # d'abord : le prochain message s'en sert
         ("index", None, None, None, brain_md),
         ("wiki", None, None, None, lambda: _wiki_views(b, force)),  # demandé par la fin de session (mode wiki)
         ("mots", [mots.MOTS_FILE, mots.TERMES_FILE], [],
@@ -283,6 +286,14 @@ def regenerate(force=False) -> list:
     return done
 
 
+def _recall_index(b) -> bool:
+    """Index des souvenirs du rappel (search.memory_index : state/memidx.bin) refait pour le graphe tel qu'il est,
+    s'il ne l'est pas déjà : le message suivant une écriture (« retiens que… », `brain add`) le reprend sans rien
+    reconstruire (avant : 150 à 200 ms de ce hook à 3 000 souvenirs). → refait ?"""
+    from . import search
+    return bool(getattr(search.memory_index(b), "rebuilt", False))
+
+
 def _drain(quiet=True) -> None:
     """Sous le verrou des vues : régénère tant qu'il reste des demandes. quiet=True (tâche de fond) : d'abord, attendre
     que les écritures se calment (QUIET s sans demande, au plus MAX_WAIT s)."""
@@ -292,6 +303,7 @@ def _drain(quiet=True) -> None:
         if s["n"] <= s["fait"]:
             return
         while quiet:
+            _absorb()  # (souvenirs en attente : dans graph.json sans attendre que les écritures se calment)
             left = min(QUIET - (time.time() - s["t"]), MAX_WAIT - (time.time() - start))
             if left <= 0:
                 break
@@ -300,14 +312,27 @@ def _drain(quiet=True) -> None:
         if not BRAIN_DIR.is_dir():
             return
         target = s["n"]  # demandes faites jusqu'ici : le graphe lu ensuite contient leurs écritures
+        _absorb()
         regenerate()
         _update(lambda st: st.update(fait=max(st["fait"], target)))
         start = time.time()
 
 
+def _absorb() -> None:
+    """Souvenirs en attente (« retiens que… » du hook, attente.py) → graph.json, au mieux : une écriture suivante du
+    cerveau les y fera entrer de toute façon."""
+    try:
+        from . import attente
+        if attente.FILE.exists():
+            attente.absorb()
+    except Exception as exc:
+        log(f"vues : souvenirs en attente : {exc!r}")
+
+
 def background() -> None:
     """`brain vues --fond` (tâche détachée) : refait les vues demandées, puis rend la main. Une autre tâche déjà au
-    travail verra les demandes : on s'arrête."""
+    travail verra les demandes : on s'arrête. D'abord, les souvenirs en attente entrent dans graph.json (attente.py)."""
+    _absorb()
     while BRAIN_DIR.is_dir():
         try:
             with FileLock(LOCK, timeout=0, stale=STALE):

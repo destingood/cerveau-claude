@@ -127,6 +127,7 @@ check(graph()["nodes"]["colissimo"]["status"] == "archived" and A in sess("colis
 brain("link", "factures", "port")
 c, out = brain("hook", "prompt", sid=None, stdin=json.dumps({"session_id": C, "cwd": str(WORK), "hook_event_name":
                "UserPromptSubmit", "prompt": "retiens que le dépôt de nuit ferme à 22 heures"}).encode())
+brain("vues", "--attendre")  # (le hook met le souvenir en attente, la tâche de fond le fait entrer dans graph.json)
 hooked = [n for n in graph()["nodes"].values() if "22 heures" in n.get("body", "")]
 check(len(hooked) == 1 and hooked[0]["meta"].get("sessions") == [C],
       "hook « retiens que… » : la session de son entrée JSON (session_id)", out[-500:])

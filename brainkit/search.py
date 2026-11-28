@@ -31,6 +31,7 @@ class Index:
     code = False  # index de fichiers et de symboles : toutes les troncatures de 4 lettres y sont gardées (voir expand)
     subword = False  # encodeur de sous-mots (trigrammes) pour un mot inconnu sans autre piste : index des souvenirs
     sig = None  # empreinte du savoir de l'index des souvenirs gardé (memory_index) ; None : construit à la volée
+    rebuilt = False  # index des souvenirs refait par memory_index (savoir changé depuis memidx.bin), pas relu
     # Index des souvenirs relu de memidx.bin : {mot: (n° des documents, fréquences)} en octets, décodés au premier usage
     # de chaque mot (posting). Avant, relire les fréquences de chaque souvenir (un dictionnaire par souvenir) prenait
     # 12 ms à chaque message à 3 000 souvenirs, 45 ms à 10 000 ; une recherche ne lit que les mots de la question.
@@ -381,7 +382,13 @@ def knowledge_sig(brain) -> str:
 
 def memory_index(brain, include_archived=False, use_cache=True) -> Index:
     """Index des souvenirs, relu depuis state/memidx.bin (avec ses tables phonétiques et de fautes) tant que le
-    savoir n'a pas changé : le rappel à chaque message n'a plus rien à reconstruire."""
+    savoir n'a pas changé : le rappel à chaque message n'a plus rien à reconstruire.
+    `brain.pinned_index` (« retiens que… », hooks_message.remember_now) : l'index du savoir tel qu'il était lu juste avant
+    l'écriture du hook, servi tel quel au rappel du même message — les souvenirs que l'écriture a touchés y sont déjà
+    montrés à Claude ou archivés (search_memories les écarte) ; memidx.bin est refait en arrière-plan (vues.py)."""
+    pinned = getattr(brain, "pinned_index", None)
+    if pinned is not None and not include_archived and use_cache:
+        return pinned
     if include_archived or not use_cache:
         return _build_memory_index(brain, include_archived)
     from .common import STATE_DIR
@@ -414,7 +421,7 @@ def memory_index(brain, include_archived=False, use_cache=True) -> Index:
     keep = {}
     idx = _build_memory_index(brain, False, reuse=reuse, keep=keep)
     ph, dl, rt = idx._fuzzy_maps()
-    idx.sig = sig  # (même savoir : les dates citées par les souvenirs se gardent avec lui, voir _cited)
+    idx.sig, idx.rebuilt = sig, True  # (même savoir : les dates citées par les souvenirs se gardent avec lui, voir _cited)
     _LOADED[str(path)] = (sig, idx)
     try:
         blob = {"tag": MEMIDX_TAG, "sig": sig, "keys": idx.keys, "pk": idx.packed(), "lens": idx.lens,
@@ -483,7 +490,9 @@ def search_memories(brain, query, limit=8, project=None, types=None, include_arc
     idx = memory_index(brain, include_archived, use_cache)
     out = []
     for r in idx.search(query, limit=80):
-        n = brain.nodes[r["key"]]
+        n = brain.nodes.get(r["key"])
+        if n is None or (not include_archived and n.get("status", "active") != "active"):
+            continue  # (index d'avant une écriture, brain.pinned_index : souvenir archivé depuis)
         if types and n["type"] not in types:
             continue
         if not include_archived and not valid_today(n, today):
