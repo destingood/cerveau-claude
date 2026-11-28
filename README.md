@@ -3,7 +3,7 @@
 Une mémoire persistante pour Claude Code, faite par destingood : Claude se souvient de toi, de tes projets, de tes
 décisions et de ce qu'il a appris, d'une session à l'autre. Tout reste chez toi, sur ton PC.
 
-![Version 8.43.0](https://img.shields.io/badge/version-8.43.0-2ea44f) ![Python 3.10 ou plus](https://img.shields.io/badge/python-3.10%2B-3776ab) ![Windows, macOS, Linux](https://img.shields.io/badge/Windows_%C2%B7_macOS_%C2%B7_Linux-555)
+![Version 8.44.0](https://img.shields.io/badge/version-8.44.0-2ea44f) ![Python 3.10 ou plus](https://img.shields.io/badge/python-3.10%2B-3776ab) ![Windows, macOS, Linux](https://img.shields.io/badge/Windows_%C2%B7_macOS_%C2%B7_Linux-555)
 
 **Sommaire** — [Installer](#installer-une-seule-fois) · [Au quotidien](#au-quotidien) · [Ce que fait le cerveau](#ce-que-fait-le-cerveau) ·
 [Moins de tokens](#moins-de-tokens) · [Il apprend tout seul](#le-cerveau-apprend-tout-seul) ·
@@ -95,7 +95,8 @@ regroupent par sujet ; ⊞ (touche G) revient à la disposition libre, et la vue
   piliers). Et le rêve te ressort, trois au plus, les souvenirs importants qui ne servent plus, à revoir de plus en
   plus rarement (30 jours, puis 60, 120…) tant qu'ils restent vrais. Un fait qui change à une date à venir
   (« à partir du 1er janvier ») laisse l'ancien vrai jusque-là ; « Mondial Relay » et « MondialRelay » sont reconnus
-  comme le même nom.
+  comme le même nom. Les noms propres de chaque souvenir sont gardés à côté du graphe : sur un gros cerveau, `brain q`
+  et l'outil MCP de recherche répondent trois à quatre fois plus vite, et `brain add` ne relit plus toute la mémoire.
 - **Oublier une session** : chaque souvenir garde les sessions Claude Code qui l'ont écrit, et un journal garde
   l'ancien texte à chaque modification (`brain show <id> --history`). `brain oublier-session <id>` montre ce qu'une
   session a écrit, puis, sur ton accord (`--oui`), archive ce qu'elle seule a créé et remet comme avant ce qu'elle
@@ -356,4 +357,4 @@ invite tes amis (Settings → Collaborators → Add people), puis rejoins-le le 
 
 `/plugin uninstall cerveau@cerveau`. Tes souvenirs restent dans `~/.claude/brain` (supprime ce dossier pour tout effacer).
 
-Version 8.43.0.
+Version 8.44.0.
