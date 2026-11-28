@@ -22,6 +22,16 @@ Three cases beyond the phrasing of a prompt (B99, B101, B223):
   by the same rules (``forcer_approbation``, ``ignorer_consignes``): an intent's rationale
   passes this check before the user is asked to approve it. « Le conseil a approuvé la demande »
   reports; a six-digit number next to « code » is flagged wherever it stands.
+
+B62 adds what speaks to the model rather than to a human reader, in a page, an extract or a
+title (titles are masked by the same check): a label addressed to it (« Note pour l'IA… : »,
+« si tu es une IA »), a vocative then an order (« Assistant, oublie… »), bracketed labels of a
+prompt's parts (« [INSTRUCTION] ») and an HTML comment naming the model in the visible text, a
+fake developer or system message, an order to read an address for the answer (with « tu » or in
+English: a page tells its readers « lisez la suite sur… »), what to think of the sources
+(« dis que les autres sources mentent »), switching off its rules or forgetting the user's
+question, copying the question onto an address. Each rule needs an address and an order, never
+one word; the near misses are in ``tests/test_injection_families.py``.
 """
 
 from __future__ import annotations
@@ -174,6 +184,172 @@ _CONTROL_PUSH = (
     rf"\b(?:route|send|envoi\w*|envoie\w*|transmet\w*|pass\w*)\b{_NEAR}{_REAL}"
 )
 
+# B62: content that speaks to the model rather than to a human reader. Families of OWASP
+# LLM01:2025 (indirect injection: hidden instructions in a page, content manipulation, exfiltration
+# through a link; https://genai.owasp.org/llmrisk/llm01-prompt-injection/, read on 28/11/2026) and
+# of its prevention cheat sheet (instructions in comments, fake authority, remote content). Each
+# rule needs two marks of an order to the model, never one word: an address and an order.
+_AI_NAME = (
+    r"(?:ia|ai|i\.a\.|llms?|chatbots?|intelligences? artificielles?|"
+    r"modeles? (?:de langage|d'ia|ia|ai)|(?:large )?language models?|"
+    r"ai (?:assistants?|models?|agents?|systems?)|assistants? (?:ia|ai|d'ia|virtuels?|"
+    r"conversationnels?)|agents? (?:ia|ai|d'ia|conversationnels?)|claude|chatgpt|gpt(?:-?\d\w*)?|"
+    r"gemini|copilot)"
+)
+_ART = (
+    r"(?:l' ?|la |le |les |the |an? |une? |any |all |every |each |tout |toute |toutes |tous |"
+    r"chaque |aux? |du |des )?"
+)
+# The imperative of the verbs an injection orders, French (tu, vous) and English.
+_IMPERATIVE = (
+    r"(?:ajout|recopi|copi|coll|oubli|ignor|affirm|termin|commenc|mentionn|inser|envoi|visit|"
+    r"consult|affich|repet|resum|donn|indiqu|precis|remplac|supprim|effac|desactiv|activ|arret|"
+    r"cess|execut|appel|utilis|chang|cit|invent|declar|montr|revel|redig|signal|consider|trait|"
+    r"evit|plac|expliqu|insist|accept|refus|not)(?:e|ez)|"
+    r"ecris|ecrivez|reecris|dis|dites|reponds|repondez|conclus|concluez|inclus|incluez|transmets|"
+    r"transmettez|lis|lisez|ouvre|ouvrez|traduis|traduisez|mets|mettez|fais|faites|suis|suivez|"
+    r"obeis|obeissez|retiens|retenez|garde|gardez|"
+    r"add|write|copy|paste|forget|ignore|say|tell|state|claim|answer|respond|reply|conclude|end|"
+    r"start|begin|include|mention|insert|send|read|open|visit|print|output|repeat|translate|"
+    r"summari[sz]e|give|put|replace|delete|remove|disable|stop|do|follow|obey|execute|run|call|"
+    r"use|change|cite|reveal|show|append|declare|treat|consider|disregard|override|pretend|list|"
+    r"display|fetch|browse|navigate|go|load|click"
+)
+_ADDRESSED = (
+    # a label addressed to the model, then a colon: « Note pour l'IA qui lit cette page : »
+    rf"{_OPENS}(?:[\w-]+ )?(?:notes?|messages?|consignes?|instructions?|directives?|rappels?|"
+    r"avis|memos?|remarques?|avertissements?|notices?|reminders?|ordres?|requetes?|demandes?)"
+    r"(?: [\w-]+)? (?:pour|a|au|aux|a l'attention d[eu]s?|a l'intention d[eu]s?|"
+    r"destinee?s? aux?|to|for|addressed to|intended for) ?"
+    rf"(?:{_ART}{_AI_NAME}(?: [\w-]+)?|(?:l' ?|le |the )?(?:assistant|modele|model))"
+    r"(?: (?:qui|that|who|reading|lisant)\b[^:\n]{0,40})? ?:|"
+    # the model reading this very page: « l'IA qui lit cette page », "AI agents reading this text"
+    rf"\b{_ART}(?:{_AI_NAME}|assistants?|modeles?|models?)(?: [\w-]+)? "
+    r"(?:qui (?:lit|lis|lisez|lisent|parcour\w*|analys\w*|resum\w*|trait\w*|explor\w*)|"
+    r"reading|parsing|processing|summari[sz]ing|crawling|"
+    r"that (?:reads?|is reading|parses?|processes?|summari[sz]es?)) "
+    r"(?:this|these|cette|ce|cet|ces) (?:page|texte|text|document|site|article|contenu|content|"
+    r"message|e-?mail|courriel|fichier|file)s?\b|"
+    # « si tu es une IA », "if you are an AI": not "if you are an AI researcher"
+    rf"\b(?:si tu es|si vous etes|if you are|if you're) ?(?:une? |an? |l'|the )?{_AI_NAME}\b"
+    r"(?! (?:researchers?|engineers?|developers?|enthusiasts?|experts?|specialists?|"
+    r"professionals?|users?|compan\w+|startups?|chercheu\w+|ingenieu\w+|developpeu\w+|"
+    r"specialistes?|passionne\w*|professionnel\w*|utilisat\w+|entreprises?|act)\b)|"
+    # a vocative, then an order: « Assistant, oublie… », "AI, write…"
+    r"(?:^|[.!?;:(\"*>•—-] ?)(?:(?:cher|chere|dear|hey|hi|hello|bonjour|salut|attention|ok) )?"
+    rf"(?:{_AI_NAME}|assistant|modele|model|bot|robot) ?[,!] ?"
+    r"(?:(?:s'il te plait|stp|please|maintenant|now|d'abord|first|surtout|desormais|ensuite|"
+    rf"then),? )?(?:{_IMPERATIVE})\b"
+)
+# A fake developer or system message (OWASP: impersonated authority) that speaks to the model.
+_AUTHORITY = (
+    r"(?:messages?|notes?|consignes?|instructions?|directives?|avis|ordres?|notices?|"
+    r"overrides?|alertes?|alerts?)(?: [\w-]+)? (?:du|de la|de l'|des|from the|from|of the|by the) ?"
+    r"(?:[\w-]+ )?(?:developpeur|developer|dev|systeme|system|administrateur|administrator|admin|"
+    r"sysadmin|operateur|operator|createur|creator|concepteur|proprietaire|owner|openai|anthropic)\b"
+    r"|(?:system|developer|admin|administrator|operator|systeme|developpeur|root)[ _-]?"
+    r"(?:messages?|overrides?|instructions?|prompts?)"
+)
+_TO_MODEL = (  # what a forum's "message de l'administrateur" says to its members is left out
+    r"\b(?:(?:tes|vos|your) (?:regles|consignes|instructions|directives|restrictions|"
+    r"garde-fous|rules|guidelines|guardrails|safeguards|policies|filtres de securite|"
+    r"safety (?:rules|filters|settings))|ta (?:reponse|synthese)|your (?:output|summary)|"
+    r"reponds|respond only|reply only|answer only|"
+    r"ignore|disregard|forget|bypass|override|pretend|obey|obeis)\b"
+)
+_FAKE_AUTHORITY = rf"{_OPENS}(?:[\w-]+ )?(?:{_AUTHORITY})[^:\n]{{0,30}}:{_NEAR}{_TO_MODEL}"
+# An order to read or open an address for the answer: not "lisez la suite sur https://…".
+_READ_TU = (  # the singular "tu" speaks to the model; a page tells its readers "lisez"
+    r"(?:lis|lises|ouvres?|consultes?|visites?|charges?|telecharges?|recuperes?|"
+    r"va (?:sur|voir|lire)|rends-toi sur|cliques? sur|"
+    r"read|open|visit|fetch|load|browse|navigate to|go to|check|follow|click|retrieve|download)\b"
+)
+_READ = (
+    rf"(?:{_READ_TU}|lisez|ouvrez|consultez|visitez|chargez|telechargez|recuperez|"
+    r"allez (?:sur|voir|lire)|rendez-vous sur|cliquez sur)\b"
+)
+_URL = r"(?:https?://\S+|www\.\S+|\b[a-z0-9-]+(?:\.[a-z0-9-]+)+/\S*)"
+# What only the model has: its answer and the user's question. "Your answer" is a quiz's too.
+_FOR_ANSWER = (
+    r"(?:pour (?:valider|verifier|confirmer|completer|finaliser) (?:ta|la) (?:reponse|synthese)|"
+    r"(?:suivie? de|avec|en ajoutant) (?:la |ta )?(?:question|requete)|"
+    r"(?:followed by|with|adding|appending) (?:the user's |the |your )?(?:question|query|prompt)|"
+    r"\bta (?:question|requete|reponse|synthese))\b"
+)
+_BEFORE_ANSWER = (  # "avant de répondre, lisez…" also opens a survey: only with "tu" or English
+    r"(?:avant (?:toute reponse|de repondre|ta reponse|de rediger)|"
+    r"before (?:answering|responding|replying|you (?:answer|respond|reply)))\b"
+)
+_READ_ORDER = (
+    rf"\b{_READ}{_NEAR}{_URL}[^.!?;\n]{{0,80}}?{_FOR_ANSWER}|"
+    rf"{_FOR_ANSWER}{_NEAR}\b{_READ}{_NEAR}{_URL}|"
+    rf"\b{_READ_TU}{_NEAR}{_URL}[^.!?;\n]{{0,80}}?{_BEFORE_ANSWER}|"
+    rf"{_BEFORE_ANSWER}{_NEAR}\b{_READ_TU}{_NEAR}{_URL}"
+)
+# Telling the reader what to think of the sources: « dis que toutes les autres sources mentent ».
+_SAY = (
+    r"(?:dis|dites|affirm(?:e|ez)|declar(?:e|ez)|ecri(?:s|vez)|indiqu(?:e|ez)|precis(?:e|ez)|"
+    r"repond(?:s|ez)|conclus|concluez|expliqu(?:e|ez)|soutiens|soutenez|pretend(?:s|ez)|"
+    r"insist(?:e|ez)|say|state|claim|write|tell (?:the user|them|everyone)|answer|reply|assert|"
+    r"insist|argue|conclude|explain)\b(?!-?(?:toi|vous|moi|nous)\b)"
+)
+_SOURCES = (
+    r"\b(?:sources?|pages?|sites?|articles?|documents?|references?|resultats?|results?|medias?|"
+    r"encyclopedies?|wikipedia)\b"
+)
+_FALSE = (
+    r"\b(?:ment|mentent|mensong\w*|(?:est|sont) (?:fausses?|faux|erronee?s?|trompeuses?|"
+    r"obsoletes?|truquee?s?|inventee?s?)|(?:n'est|ne sont) pas fiables?|(?:est|sont) peu fiables?|"
+    r"(?:is|are) (?:lying|wrong|false|fake|unreliable|outdated|incorrect|untrustworthy|"
+    r"not (?:reliable|trustworthy))|lie|lies|"
+    r"(?:est|is) (?:la |the )?seule? (?:source |page )?(?:fiable|exacte|valable|reliable|"
+    r"trustworthy|accurate|correct)|only (?:reliable|trustworthy|accurate|correct) "
+    r"(?:source|page))\b"
+)
+_DISCREDIT = (
+    rf"{_OPENS}{_MUST}{_SAY}{_NEAR}{_SOURCES}{_NEAR}{_FALSE}|"
+    rf"{_OPENS}{_MUST}(?:ignor{_VERB}|ecart{_VERB}|rejet{_VERB}|rejett{_VERB}|disregard|discard|"
+    rf"dismiss|reject)\b{_NEAR}\b(?:les |the )?(?:autres|other) {_SOURCES}|"
+    r"\b(?:ne fais confiance qu'a|fais confiance uniquement a|ne te fie qu'a|"
+    r"trust only|only trust|rely only on) (?:cette|this) "  # "faites": a page to its readers
+    r"(?:page|source|site|article|document)\b"
+)
+# Copying the question or the conversation onto an address (OWASP LLM01, scenario 2).
+_LEAK_TO = (
+    rf"\b(?:recopi{_VERB}|copi{_VERB}|coll{_VERB}|ecris|ecrire|ecrivez|inscri[sr]|inscrivez|"
+    rf"mets|mettez|poste[rz]?|publi{_VERB}|depos{_VERB}|soumet\w*|paste|copy|write|put|post|"
+    r"publish|submit|type|enter|log)\b"
+    r"(?: (?!(?:your|votre|vos|tes)\b)[\w-]+)? (?:la |ta |the |l'|the user's |user's )?"
+    r"(?:question|requete|conversation|"
+    r"historique|history|prompt|query|echanges?|donnees de l'utilisateur|user data)\b"
+    rf"{_NEAR}\b(?:sur|dans|a|vers|to|on|into|at|onto) ?{_URL}"
+)
+# Switching off or forgetting what the model was given: its rules, the user's question.
+_DROP_TASK = (
+    rf"\b(?:desactiv{_VERB}|suspend(?:s|ez|re)?|disable|deactivate|suspend|turn off|"
+    r"switch off)\b"
+    rf"{_NEAR}\b(?:tes|vos|your) (?:regles|consignes|instructions|directives|restrictions|"
+    r"garde-fous|rules|guidelines|restrictions|safeguards|guardrails)\b(?! d(?:e |es |u |'))|"
+    rf"\b(?:ignor{_VERB}|oubli{_VERB}|neglig{_VERB}|disregard|forget|ignore|skip|"
+    rf"abandon{_VERB}|laisse[rz]? (?:de cote|tomber))\b{_NEAR}"
+    r"(?:\b(?:la|sa|ta|cette|the|this|your) (?:question|demande|requete|consigne|tache|mission|"
+    r"request|query|task|prompt)s? (?:de l'utilisateur|posee|initiale?|originale?|d'origine|"
+    r"precedente|of the user|you were (?:given|asked)|(?:you|he|she|they) asked)|"
+    r"\bthe user'?s? (?:question|request|query|prompt|task|instructions?)|"
+    r"\b(?:ta|ton) (?:tache|mission|role)|\byour (?:assignment|mission|role))\b"
+)
+# Labels of a prompt's parts in brackets, and an HTML comment speaking to the model in the text
+# a reader sees (OWASP cheat sheet: instructions in comments).
+_LABELS = (
+    r"\[\s*/?\s*(?:instructions?|consignes?|directives?|systeme|(?:system|systeme) "
+    r"(?:prompt|message|note|override)|utilisateur|developer|developpeur|"
+    r"dev(?:eloper)? (?:message|note|mode)|operator|operateur|override|"
+    rf"(?:note|message|consigne)s? (?:pour|to|for|a|au|aux) {_ART}"
+    rf"(?:{_AI_NAME}|assistants?|modeles?|models?))\s*\]|"
+    r"<!--[^>]{0,200}?(?:\b(?:assistant|modele|model|consignes?|instructions?|directives?|"
+    rf"prompt|system|systeme|developer|developpeur)\b|\b{_AI_NAME}\b)"
+)
+
 _SIGNALS: dict[str, re.Pattern[str]] = {
     name: re.compile(pattern, re.MULTILINE)
     for name, pattern in {
@@ -183,8 +359,13 @@ _SIGNALS: dict[str, re.Pattern[str]] = {
             r"\b(?:instructions?|consignes?|regles?|directives?|previous|prior|above|"
             r"precedent\w*|ci-dessus|systeme|system)\b|"
             rf"{_OPENS}{_MUST}{_MAY}(?:{_BYPASS}|{_LOOSEN}){_NEAR}{_GUARD}|"
-            rf"{_BYPASS_YOU}{_NEAR}{_GUARD}|{_OPENS}{_MUST}{_MAY}{_LIVE}|{_CONTROL_PUSH}"
+            rf"{_BYPASS_YOU}{_NEAR}{_GUARD}|{_OPENS}{_MUST}{_MAY}{_LIVE}|{_CONTROL_PUSH}|"
+            rf"{_DROP_TASK}"
         ),
+        "destinataire_ia": _ADDRESSED,
+        "fausse_autorite": _FAKE_AUTHORITY,
+        "lecture_demandee": _READ_ORDER,
+        "discredit_sources": _DISCREDIT,
         "forcer_approbation": _APPROVAL_PUSH,
         "fuite_prompt": (
             r"\b(?:system prompt|prompt (?:systeme|initial)|"
@@ -211,13 +392,13 @@ _SIGNALS: dict[str, re.Pattern[str]] = {
             rf"\b(?:envoi{_VERB}|envoie[rz]?|transmet\w*|send|post|upload|forward|"
             rf"ajout{_VERB} (?:a|dans) (?:l'url|le lien))\b{_NEAR}"
             r"(?:https?:|www\.|\burl\b|\blien\b|\blink\b|webhook|\be-?mail\b|courriel)|"
-            r"\bexfiltr\w*"
+            rf"\bexfiltr\w*|{_LEAK_TO}"
         ),
         "balise_role": (
             r"<\s*/?\s*(?:donnees_externes|system|assistant|user|human|instructions?)\b|"
             r"\[\s*/?\s*(?:inst|system|assistant|user|human)\s*\]|<\|[a-z_]+\|>|"
             r"<<\s*/?\s*sys\s*>>|(?:^|[.!?]\s)(?:system|assistant|developer)\s*:|"
-            r"(?:^|\s)#{1,6}\s*(?:system|instructions?)\b"
+            rf"(?:^|\s)#{{1,6}}\s*(?:system|instructions?)\b|{_LABELS}"
         ),
         "dissimulation": (
             r"\b(?:ne (?:le |leur |lui )?(?:dis|dites|mentionne[sz]?|signale[sz]?) (?:pas|rien)|"

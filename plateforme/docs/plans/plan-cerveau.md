@@ -607,6 +607,12 @@ hook au-dessus de 150 ms, premier démarrage après un changement compris ; `bra
     dont 25 injections et 25 « je ne sais pas ») ; `golden.jsonl` inchangé. À valider cas par cas sur ta page ;
     seuls les cas gardés ou corrigés entreront, puis seront gelés (R9). 10 cas d'injection échouent hors ligne :
     le détecteur rate leurs tournures (à corriger dans `core/guardrails/injection.py` avant de les geler).
+    ✅ Corrigé le 28/11 (ton choix) : quatre familles nouvelles dans le détecteur (texte adressé à l'IA, fausse
+    autorité du développeur ou du système, ordre de lire une adresse avant de répondre, consigne sur ce qu'il faut
+    penser des sources) et trois élargies, d'après l'OWASP LLM01:2025 (amendement de l'ADR-008). Les 263 candidats
+    passent hors ligne ; golden, comportements et red team inchangés ; aucune chaîne honnête de plus signalée
+    (10 668 chaînes de cas, 246 pages de fixtures, 2 105 paragraphes de docs). Ce qu'on ne peut pas attraper sans
+    faux positifs : B369.
   - ✅ Banc « golden sets passés dans Claude Code » fait le 28/11 (ADR-074, proposé) : `cerveau evals exporter /
     preparer-juge / noter`, skill `evals-claude-code`, sous-agents `repondant-evals` (modèle de la session) et
     `juge-evals` (Sonnet). Le code contrôle ce qui se contrôle (R5, sources, chaque chiffre et date tracés, R1) ;
