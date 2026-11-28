@@ -100,6 +100,34 @@ def test_live_stays_blocked_while_disabled_even_without_markers(config_dir: Path
     assert reasons == ["live.yaml › enabled = false (R3)"]
 
 
+def test_the_live_gate_lists_what_the_user_has_still_to_write() -> None:
+    """B353, ADR-075: the shipped live.yaml leaves the live Risk Gate nothing to judge with."""
+    reasons = load_config(REPO_ROOT / "config").blockers("live_trading.risk_gate")
+    assert reasons == [
+        "live.yaml › capital_reference_eur absent (A_DEFINIR, B353)",
+        "live.yaml › timezone absent (A_DEFINIR, B353)",
+        "live.yaml › limits.max_order_pct = 0",
+        "live.yaml › limits.max_position_pct = 0",
+        "live.yaml › limits.max_daily_loss_pct = 0",
+        "live.yaml › limits.max_orders_per_day = 0",
+        "live.yaml › instruments_whitelist vide",
+    ]
+
+
+def test_the_live_gate_names_a_marker_until_it_is_written(config_dir: Path) -> None:
+    def fill(data: dict) -> None:
+        data["limits"] = dict.fromkeys(data["limits"], 1)
+        data["instruments_whitelist"] = ["FICT-A"]
+        data["capital_reference_eur"] = "A_DEFINIR"
+        data["timezone"] = "Europe/Paris"
+
+    edit_yaml(config_dir / "live.yaml", fill)
+    reasons = load_config(config_dir).blockers("live_trading.risk_gate")
+    assert reasons == ["live.yaml › capital_reference_eur = A_DEFINIR"]
+    edit_yaml(config_dir / "live.yaml", lambda d: d.update(capital_reference_eur=10_000))
+    assert load_config(config_dir).blockers("live_trading.risk_gate") == []
+
+
 def test_filling_markers_unblocks_the_feature(config_dir: Path) -> None:
     def fill(data: dict) -> None:
         for key, value in data.items():

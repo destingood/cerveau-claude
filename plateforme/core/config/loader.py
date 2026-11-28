@@ -279,6 +279,14 @@ class LiveConfig(_Strict):
     limits: LiveLimits
     allow: Allow
     instruments_whitelist: list[str]
+    # B353, ADR-075: what the live Risk Gate needs beyond the limits, written by the user alone
+    # (R3): the capital its percentages are of, and the IANA zone that bounds a trading day.
+    # Absent (None) or a marker, the gate refuses every order (R7).
+    capital_reference_eur: Annotated[float, Field(gt=0, allow_inf_nan=False)] | Marker | None = None
+    timezone: str | None = None
+
+
+LIVE_GATE_FIELDS = ("capital_reference_eur", "timezone")
 
 
 # --- budgets / compliance / data sources / evals / risk --------------------------------------
@@ -1147,6 +1155,11 @@ FEATURES: dict[str, Feature] = {
     "live_trading": Feature(
         "Exécution live (R3 : activée à la main par l'utilisateur)", ("live:",)
     ),
+    # B353, ADR-075: the live gate also refuses while one of its two fields is absent.
+    "live_trading.risk_gate": Feature(
+        "Porte live : capital de référence, fuseau horaire et limites de live.yaml",
+        ("live:capital_reference_eur", "live:timezone", "live:limits", "live:allow"),
+    ),
     "kill_switch": Feature("Kill switch (cible de temps)", ("risk:kill_switch.target_seconds",)),
     "kill_switch.data_loss": Feature(
         "Kill switch sur perte d'une connexion continue aux données",
@@ -1386,6 +1399,16 @@ class Config:
         reasons: list[str] = []
         if feature == "live_trading" and not self.live.enabled:
             reasons.append("live.yaml › enabled = false (R3)")
+        if feature == "live_trading.risk_gate":
+            reasons.extend(
+                f"live.yaml › {name} absent (A_DEFINIR, B353)"
+                for name in LIVE_GATE_FIELDS
+                if getattr(self.live, name) is None
+            )
+            limits = self.live.limits.model_dump().items()
+            reasons.extend(f"live.yaml › limits.{name} = 0" for name, v in limits if v <= 0)
+            if not self.live.instruments_whitelist:
+                reasons.append("live.yaml › instruments_whitelist vide")
         source = FEATURES[feature].source
         if source is not None:
             known = self.data_sources.sources.get(source)

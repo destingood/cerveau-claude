@@ -26,6 +26,7 @@ from tests.test_execution_live import (
     REPO,
     RULES,
     Client,
+    gate_accepts,
     gate_passes,
     granted,
     project,
@@ -72,7 +73,13 @@ def test_only_the_seven_conditions_together_reach_the_broker(
         owned = want[Condition.ACL]
         check = ActivationCheck(root, store, owner=lambda _path: owned, limits=gate_passes)
         live = LiveAdapter(
-            client, store, check, call_timeout_s=5, kill_target_s=10, clock=lambda: NOW
+            client,
+            store,
+            check,
+            gate=gate_accepts,
+            call_timeout_s=5,
+            kill_target_s=10,
+            clock=lambda: NOW,
         )
         failing = {condition for condition, held in want.items() if not held}
         if failing:
