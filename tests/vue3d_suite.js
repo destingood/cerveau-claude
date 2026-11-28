@@ -86,10 +86,16 @@ async function open(browser, file, options, out){
                others: cur.nodes.filter(x => x.__pin && x !== n).map(x => x.id), released: unpinAll() }; }, grabbed);
     out.realDrag.errors = out.errors.length - before;
     // un vrai survol de lien, entre deux nœuds : l'étiquette de 3d-force-graph montre son type (les halos ne le cachent pas)
+    // ses deux nœuds à la longueur d'un lien typé (60, forces()) : la disposition en amas les rapproche plus ou moins
+    // selon le temps qu'a eu la simulation (machine chargée), et deux halos collés couvrent alors tout le lien
     await page.evaluate(() => { const l = cur.links.find(x => x.rel === "uses"), s = l.source, t = l.target;
       const m = {x: (s.x + t.x) / 2, y: (s.y + t.y) / 2, z: (s.z + t.z) / 2};
+      Object.assign(s, {fx: m.x - 30, fy: m.y, fz: m.z}); Object.assign(t, {fx: m.x + 30, fy: m.y, fz: m.z});
+      G.cooldownTime(1500); G.d3ReheatSimulation();
       G.cameraPosition({x: m.x, y: m.y + 30, z: m.z + 200}, m, 0); });
-    await page.waitForTimeout(500);
+    await page.waitForFunction(() => { const l = cur.links.find(x => x.rel === "uses");
+      return Math.abs(l.source.x - l.target.x - (l.source.fx - l.target.fx)) < 1; }, null, { timeout: 10000 }).catch(() => {});
+    await page.waitForTimeout(1700);  // la simulation s'arrête (cooldown) : plus rien ne bouge sous la souris
     out.realHover = [];
     for (const k of [0.35, 0.5, 0.65]){
       const q = await page.evaluate(k => { const l = cur.links.find(x => x.rel === "uses"), s = l.source, t = l.target;
@@ -101,7 +107,9 @@ async function open(browser, file, options, out){
         : "rien (nœud survolé : " + (st.hover ? st.hover.id : "aucun") + ")"));
     }
     await page.mouse.move(5, 790);
-    await page.evaluate(() => { G.cooldownTime(8000); lastInput = performance.now(); });
+    await page.evaluate(() => { const l = cur.links.find(x => x.rel === "uses");
+      for (const n of [l.source, l.target]) { delete n.fx; delete n.fy; delete n.fz; }
+      G.cooldownTime(8000); lastInput = performance.now(); });
     // 3. un nœud lâché reste où on le pose ; libéré par le bouton, puis par un double-clic sur le fond
     out.drag = await page.evaluate(() => {
       const n = cur.byId.get("serveur");

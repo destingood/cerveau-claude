@@ -47,21 +47,22 @@ const spread = () => {
     page.on("pageerror", e => out.errors.push("pageerror: " + (e.message || e)));
     page.on("console", m => { if (m.type() === "error") out.errors.push(m.text()); });
     const url = pathToFileURL(path.resolve(process.argv[2])).href;
-    const settle = () => page.waitForTimeout(9500);  // la simulation s'arrête après 8 s (cooldownTime)
+    const settle = () => page.waitForTimeout(9500);  // à l'ouverture, la simulation s'arrête après 8 s (cooldownTime)
+    const resettle = () => page.waitForTimeout(16500);  // après ⊞ ou G : 15 s de simulation (setClusters)
     await page.goto(url, { waitUntil: "load" });
     await page.waitForFunction(() => document.querySelector("#boot").classList.contains("done"), null, { timeout: 30000 }).catch(() => {});
     await settle();
     out.opened = await page.evaluate(spread);           // à l'ouverture : amas par projet
     if (process.env.CERVEAU_CAPTURE) await page.screenshot({ path: path.join(process.env.CERVEAU_CAPTURE, "amas.png") });
     await page.click("#grpBtn");
-    await settle();
+    await resettle();
     out.free = await page.evaluate(spread);             // ⊞ : disposition libre
     if (process.env.CERVEAU_CAPTURE) await page.screenshot({ path: path.join(process.env.CERVEAU_CAPTURE, "libre.png") });
     await page.reload({ waitUntil: "load" });
     await page.waitForFunction(() => document.querySelector("#boot").classList.contains("done"), null, { timeout: 30000 }).catch(() => {});
     out.reopened = await page.evaluate(() => ({ clusters: st.clusters, pressed: document.querySelector("#grpBtn").getAttribute("aria-pressed") }));
     await page.keyboard.press("g");                     // G : les amas reviennent
-    await settle();
+    await resettle();
     out.back = await page.evaluate(spread);
   } catch (e) {
     out.errors.push("script : " + String(e.message || e));

@@ -32,6 +32,7 @@ CMD = 'python "$HOME/.claude/brain/brain.py"'
 if PLUGIN and BRAIN_DIR != Path.home() / ".claude" / "brain":  # plugin avec un autre dossier Claude (CLAUDE_CONFIG_DIR)
     CMD = f'python "{BRAIN_DIR.as_posix()}/brain.py"'
 HOOK = None  # événement du hook en cours (posé par hooks._run) : le travail lourd n'y attend jamais, il part en arrière-plan
+SESSION = None  # session du hook en cours (son entrée JSON, posée par hooks._run) : provenance.current
 # Commande de lecture rapide (`brain q`, serveur MCP) : comme dans un hook, l'analyse du graphe en cache sert même
 # périmée et la tâche de fond des vues la refait (1 à 4 s de calcul évitées juste après une écriture).
 LAZY = False

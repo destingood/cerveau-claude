@@ -139,6 +139,16 @@ def natural_questions(timeout=180):
         return None
 
 
+def usage_line(brain=None):
+    """Usage des souvenirs (ACT-R, vivant.py) rejoué sur tes échanges étiquetés, sans rien écrire : souvenirs utiles
+    montrés par le classement seul, puis réordonnés d'après l'usage d'avant chaque message."""
+    from . import vivant
+    try:
+        return vivant.line(vivant.measure(brain))
+    except Exception as exc:
+        return f"Usage (ACT-R) : mesure indisponible ({exc!r})"
+
+
 def _hook_cmd():
     try:
         hooks = json.loads((CLAUDE_HOME / "settings.json").read_text(encoding="utf-8")).get("hooks", {})
@@ -436,6 +446,7 @@ def run(quick=False):
                      if "long" in nat else "")]
     else:
         lines.append("Questions en français naturel : mesure indisponible (tests/test_rappel.py absent ou en échec)")
+    lines.append(usage_line(brain))
     s = scenarios(brain)
     pct = lambda a, b: f"{100 * a / max(1, b):.0f} %"  # noqa: E731
     u, nu, fu, nk = s["mise à jour"]

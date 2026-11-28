@@ -111,7 +111,13 @@ def names(text) -> set:
     nom en plusieurs mots réunis, sans espace, tiret ni point — « Mondial Relay », « MondialRelay » et « mondial-relay »
     donnent tous « mondialrelay »."""
     text = str(text or "")
-    spans, out, run = _entity_spans(text), set(), []
+    return names_of(text, _entity_spans(text))
+
+
+def names_of(text, spans) -> set:
+    """names(text), les noms propres du texte déjà repérés (`spans` : _entity_spans(text)) ; l'index des noms
+    (noms.py) en tire aussi entities() sans les repérer deux fois."""
+    out, run = set(), []
     for s, e, f in spans:
         gap = text[run[-1][1]:s] if run else ""
         if run and not (gap and gap.strip(" \t") == ""):  # séparés par autre chose que des espaces : deux noms
@@ -229,15 +235,16 @@ def _same_name(brain, title, body, project, seen, me) -> list:
     """Souvenirs qui partagent un nom propre rare du titre, même rédigés autrement (étape 14, d'après graphiti :
     les faits à invalider se cherchent aussi parmi ceux qui touchent la même entité). Seulement des suggestions
     (« remplace peut-être »), jamais un remplacement automatique. → voisins au format de decide."""
+    from . import noms
     from .temps import overlap
     mine = names(title)
     if not mine:
         return []
-    holders = {}
+    holders, tab = {}, noms.table(brain)  # noms de chaque souvenir : l'index nom → souvenirs gardé, pas tout relu
     for n in brain.active(own=True):
         if n["id"] in seen or n["type"] == "project":
             continue
-        for x in names(f"{n.get('title', '')}\n{n.get('body', '')}") & mine:
+        for x in (x for x in tab.get(n["id"], noms.NONE)[2] if x in mine):
             holders.setdefault(x, []).append(n)
     out = []
     for x, nodes in holders.items():

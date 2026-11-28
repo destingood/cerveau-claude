@@ -520,6 +520,9 @@ def cmd_show(a):
         print("↻ lignée : " + temps.lineage_line(chain))
     if m_.get("keys"):
         print(f"mots-clés : {m_['keys']}")
+    from . import provenance
+    if provenance.sessions_of(n):  # provenance : les sessions qui l'ont écrit (`oublier-session`)
+        print("écrit par les sessions : " + " · ".join(provenance.short_id(x) for x in provenance.sessions_of(n)))
     from .garde import caution, flagged
     if flagged(n):
         print(caution(n).replace(f" ; `show {n['id']}` pour le lire", f" — s'il est sûr : `brain edit {n['id']} --verifie`"))
@@ -543,6 +546,10 @@ def cmd_show(a):
                 print(f"  {when} — modifié : {', '.join(ch) or 'méta'}" + (f" ({delta:+d} car.)" if delta else "")
                       + (f" · {node.get('status')}" if "statut" in ch else ""))
             prev = node
+        lines = provenance.history_lines(n["id"])
+        if lines:  # chaque écriture : sa session, l'ancien et le nouveau texte (history/textes.jsonl)
+            print(f"\nJournal des textes ({len(lines) - sum(x.startswith('      ') for x in lines)}) :")
+            print("\n".join(lines))
     nb = b.neighbors(n["id"])
     if nb:
         print("\nLiens :")

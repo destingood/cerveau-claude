@@ -51,7 +51,8 @@ def rust_exe():
 
 
 # Python seul, jamais brain.exe : le serveur MCP (rien de porté) et ce qui est né après le portage en Rust.
-PYTHON_ONLY = ("mcp", "delegation", "deleguer", "apprendre", "apprentissage", "echange", "skills-communes")
+PYTHON_ONLY = ("mcp", "delegation", "deleguer", "apprendre", "apprentissage", "echange", "skills-communes",
+               "oublier-session", "forget-session")
 PYTHON_HOOKS = ("pre-agent",)  # hook PreToolUse de l'outil Agent (brainkit/delegation.py)
 PLUS_HOOKS = ("session-start", "prompt", "stop", "session-end")  # sortie complétée par brainkit/plus.py
 
