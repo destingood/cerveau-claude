@@ -520,6 +520,8 @@ def cmd_restore(a):
     data = history.load(path)
     if not isinstance(data, dict) or not isinstance(data.get("nodes"), dict):
         die("instantané illisible")
+    from .backup import _absorb
+    _absorb()  # (souvenirs en attente : dans graph.json, donc dans l'instantané d'avant la restauration)
     before = history.snapshot("avant-restauration", force=True)
     try:
         replace_all(data)

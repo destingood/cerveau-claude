@@ -121,6 +121,11 @@ def _terms_of(n) -> tuple:
     return dict(tf), disp
 
 
+def rows() -> dict:
+    """{id: (empreinte du texte, mots du titre, mots du tout)} de mots.bin, tels quels (à vérifier avec digest)."""
+    return _load(MOTS_FILE).get("rows") or {}
+
+
 def prime(brain) -> dict:
     """Entrées de Brain.similar() déjà connues ({id: ((titre, contenu), mots du titre, mots du tout)}), pour les
     souvenirs dont le texte n'a pas changé depuis l'écriture de mots.bin."""

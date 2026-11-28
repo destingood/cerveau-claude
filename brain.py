@@ -174,7 +174,8 @@ if __name__ == "__main__":
             from brainkit.delegation import hook
             sys.exit(hook())
         from brainkit.hooks import run
-        sys.exit(run(sys.argv[2]))
+        from brainkit.common import exit_now
+        exit_now(run(sys.argv[2]))  # (sans libérer le cerveau lu objet par objet : voir exit_now)
     if len(sys.argv) == 2 and sys.argv[1] == "mcp":  # serveur MCP (stdio) : démarrage direct
         from brainkit.mcp_server import serve
         sys.exit(serve())

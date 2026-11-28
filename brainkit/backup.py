@@ -89,6 +89,17 @@ def backups(dest=None):
     return sorted(dest.glob("cerveau-*.zip"), key=lambda p: p.name, reverse=True)
 
 
+def _absorb() -> None:
+    """Avant de copier graph.json (sauvegarde, instantané avant restauration) : les souvenirs en attente y entrent
+    (attente.py), sinon la copie ne les aurait pas."""
+    try:
+        from . import attente
+        attente.absorb()
+    except Exception as exc:
+        from .common import log
+        log(f"sauvegarde : souvenirs en attente : {exc!r}")
+
+
 def run(dest=None, force=False, keep=None):
     """Écrit une archive (une par jour sauf --force). → chemin de l'archive, ou None si rien à faire."""
     cfg = load_config().get("backup", {})
@@ -97,6 +108,7 @@ def run(dest=None, force=False, keep=None):
     today = time.strftime("%Y%m%d")
     if not force and any(p.name.startswith(f"cerveau-{today}") for p in backups(dest)):
         return None
+    _absorb()
     path = dest / f"cerveau-{time.strftime('%Y%m%d-%H%M%S')}.zip"
     tmp = path.with_name(path.name + ".tmp")
     from . import history
@@ -135,6 +147,7 @@ def restore(zip_path):
         graph = json.loads(z.read("graph.json").decode("utf-8"))
         if not isinstance(graph, dict) or not isinstance(graph.get("nodes"), dict):
             raise ValueError("graph.json de l'archive illisible")
+        _absorb()
         history.snapshot("avant-restauration-sauvegarde", force=True)
         from .common import write_json
         from .store import replace_all

@@ -28,6 +28,14 @@ def check(cond, label, detail=""):
         print(f"✗ {label}" + (f" — {str(detail)[-700:]}" if detail else ""))
 
 
+def settled(brain_dir, timeout=30.0):
+    """Le hook « retiens… » met le souvenir en attente (graph-attente.json, attente.py) ; la tâche de fond qu'il lance
+    le fait entrer dans graph.json. Attendu avant de lire graph.json lui-même."""
+    end = time.time() + timeout
+    while (brain_dir / "graph-attente.json").exists() and time.time() < end:
+        time.sleep(0.05)
+
+
 class World:
     """Un faux PC : ~/.claude (réglages, transcripts) et ~/.claude/brain (souvenirs, configuration)."""
 
@@ -80,6 +88,7 @@ class World:
             return {}
 
     def memories(self):
+        settled(self.brain_dir)
         f = self.brain_dir / "graph.json"
         nodes = json.loads(f.read_text(encoding="utf-8"))["nodes"].values() if f.exists() else []
         return [n for n in nodes if n["type"] != "project" and n.get("status", "active") == "active"]

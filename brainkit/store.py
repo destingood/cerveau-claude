@@ -146,17 +146,22 @@ def load_graph():
 
 
 def _load_graph():
-    """load_graph() → (données, empreinte du fichier lu : taille, date, n° de fichier et CRC de ses octets). L'empreinte
-    dit à elle seule ce que contient le cerveau, tant qu'il n'est pas modifié en mémoire (voir Brain.stamp) : None
-    quand les données ne sont pas graph.json lu tel quel (wiki, réparation, fichier absent)."""
+    """load_graph() → (données, empreinte du fichier lu : taille, date, n° de fichier et CRC de ses octets, souvenirs en
+    attente appliqués). L'empreinte dit à elle seule ce que contient le cerveau, tant qu'il n'est pas modifié en mémoire
+    (voir Brain.stamp) : None quand les données ne sont pas graph.json lu tel quel (wiki, réparation, fichier absent) ;
+    avec des souvenirs en attente (attente.py), celle de graph.json, « + », celle du fichier d'attente. Le troisième
+    élément : (époque, numéro jusqu'où les données contiennent l'attente, lignes appliquées, empreinte de graph.json
+    seul), ou None sans fichier d'attente."""
     from . import wikistore
     mode, root = wikistore.resolve()
     if mode == "wiki":
-        return wikistore.load(root), None
+        return wikistore.load(root), None, None
     if mode == "missing":
-        return wikistore.load_missing(root), None
+        return wikistore.load_missing(root), None, None
     if not GRAPH_FILE.exists():
-        return None, None
+        return None, None, None
+    from . import attente
+    pend = attente.read()  # avant graph.json : lu après, il contient au moins ce que le ménage a retiré de l'attente
     last = None
     for attempt in range(10):
         try:
@@ -168,20 +173,24 @@ def _load_graph():
                 # JSON valide mais pas un cerveau ({"nodes": []}, null, []…) : réparé comme un fichier abîmé. Avant,
                 # le cerveau repartait vide et la première écriture remplaçait le fichier, sans aucune copie.
                 raise ValueError("graph.json n'a pas la forme d'un cerveau")
+            stamp = _stamp(raw, st)
             if data.pop("wiki", None) is not None:
                 log("wiki débranché (config wiki.path vide) : le cerveau repart en classique depuis son dernier cache")
-                return data, None
-            return data, _stamp(raw, st)
+                stamp = None
         except ValueError:  # JSON abîmé : réparé sans perdre ce qui est lisible (reparation.py), l'original gardé
             from . import reparation
-            data = reparation.repair(raw)
+            data, stamp = reparation.repair(raw), None
             if data is None:
                 raise RuntimeError("graph.json illisible, et ni instantané, ni sauvegarde, ni souvenir lisible dans le "
                                    "fichier pour le réparer")
-            return data, None
         except OSError as exc:  # verrou passager
             last = exc
             time.sleep(0.03 * (attempt + 1))
+            continue
+        if pend is None:
+            return data, stamp, None
+        held = attente.apply(data, pend[2]) + (stamp,)
+        return data, stamp and f"{stamp}+{_stamp(pend[0], pend[1])}", held
     raise RuntimeError(f"graph.json inaccessible : {last!r}")
 
 
@@ -192,17 +201,40 @@ def _stamp(raw, st) -> str:
     return f"{len(raw)}:{st.st_mtime_ns}:{st.st_ino}:{zlib.crc32(raw):08x}"
 
 
+def _write_graph(data) -> str:
+    """graph.json remplacé d'un coup, comme write_json → l'empreinte du fichier écrit (_stamp), prise avant qu'il ne
+    remplace l'ancien : rien à relire, et jamais celle du fichier d'un autre processus."""
+    raw = json.dumps(data, ensure_ascii=False, indent=1).encode("utf-8")
+    GRAPH_FILE.parent.mkdir(parents=True, exist_ok=True)
+    tmp = GRAPH_FILE.with_name(f"{GRAPH_FILE.name}.{os.getpid()}.tmp")
+    with open(tmp, "wb") as fh:
+        fh.write(raw)
+    st = os.stat(tmp)  # (après la fermeture : Windows peut dater l'écriture à la fermeture)
+    for attempt in range(8):
+        try:
+            os.replace(tmp, GRAPH_FILE)
+            break
+        except PermissionError:  # Windows : fichier momentanément ouvert ailleurs
+            time.sleep(0.05 * (attempt + 1))
+    else:
+        os.replace(tmp, GRAPH_FILE)
+    return _stamp(raw, st)
+
+
 def graph_stamp():
     """Empreinte de graph.json tel qu'il est sur le disque, comme Brain.stamp, sans analyser le JSON (quelques ms au lieu
     de 15 à 60) ; None hors cerveau classique (wiki : les pages font foi) ou s'il est illisible."""
     from . import wikistore
     if wikistore.resolve()[0] != "classic":
         return None
+    from . import attente
+    pend = attente.read()  # (dans le même ordre que _load_graph)
     try:
         with open(GRAPH_FILE, "rb") as fh:
-            return _stamp(fh.read(), os.fstat(fh.fileno()))
+            stamp = _stamp(fh.read(), os.fstat(fh.fileno()))
     except OSError:
         return None
+    return stamp if pend is None else f"{stamp}+{_stamp(pend[0], pend[1])}"
 
 
 class ReadOnly(RuntimeError):
@@ -240,13 +272,15 @@ def replace_all(data):
 class Brain:
     def __init__(self, data=None):
         loaded = data is None
-        stamp = None
+        stamp = held = None
         if loaded:
-            data, stamp = _load_graph()
+            data, stamp, held = _load_graph()
         if not isinstance(data, dict) or not isinstance(data.get("nodes"), dict):
-            data, stamp = {"version": 1, "created": now_iso(), "nodes": {}, "edges": []}, None
+            data, stamp, held = {"version": 1, "created": now_iso(), "nodes": {}, "edges": []}, None, None
         data.setdefault("edges", [])
         self.data = data
+        # souvenirs en attente appliqués (attente.py) ; empreinte de graph.json seul ; liste des liens lue
+        self._attente, self._graph_part, self._edges0 = held, held[3] if held else stamp, data["edges"]
         self.dirty = False
         self._sim_cache = None
         self._adj = None
@@ -275,8 +309,10 @@ class Brain:
     # nœuds directement, pour qu'ils soient enregistrés) : l'empreinte et ce qui en découle tombent alors. None : rien à
     # reprendre (cerveau construit en mémoire, wiki, pages d'amis, modifié). Les compteurs de rappel en attente
     # (compteurs.json, appliqués à la lecture) n'y entrent pas : ni l'index ni les projets n'en dépendent.
-    # _memsig : l'empreinte du savoir, calculée une fois pour ce cerveau.
-    stamp = _memsig = None
+    # _memsig : l'empreinte du savoir, calculée une fois pour ce cerveau. Après Brain.save (cerveau classique), l'empreinte
+    # est celle du graph.json tout juste écrit : le cerveau est de nouveau « graph.json lu tel quel ».
+    # pinned_index : index des souvenirs servi par search.memory_index à la place du sien (voir là-bas).
+    stamp = _memsig = pinned_index = None
 
     @property
     def dirty(self) -> bool:
@@ -294,8 +330,9 @@ class Brain:
 
     @classmethod
     @contextlib.contextmanager
-    def edit(cls, timeout=6.0):
-        """Lecture-modification-écriture sous verrou (plusieurs sessions peuvent tourner en parallèle)."""
+    def edit(cls, timeout=6.0, defer=False):
+        """Lecture-modification-écriture sous verrou (plusieurs sessions peuvent tourner en parallèle). defer : voir
+        save."""
         with FileLock(LOCK_FILE, timeout=timeout):
             _HELD.append(1)  # une réparation faite pendant la lecture n'attend pas le verrou qu'on tient déjà
             try:
@@ -304,14 +341,23 @@ class Brain:
                 _HELD.pop()
             yield brain
             if brain.dirty:
-                brain.save()
+                brain.save(defer)
 
-    def save(self):
-        from . import history
-        history.snapshot("auto")  # état d'avant la modification (au plus un toutes les 30 min)
-        from . import provenance
+    def save(self, defer=False):
+        """defer (« retiens que… », hooks_message) : les souvenirs écrits ou modifiés vont dans le fichier d'attente
+        (attente.py) au lieu de réécrire tout graph.json — quand ce n'est que ça (_can_defer), sinon comme d'habitude."""
+        from . import attente, history, provenance
+        later = defer and attente.can_defer(self)
+        ids = list(self.__dict__.get("_avant") or ()) if later else ()
+        if not later:
+            history.snapshot("auto")  # état d'avant la modification (au plus un toutes les 30 min)
         provenance.on_save(self)  # session dans meta.sessions, ancien et nouveau texte au journal (history/textes.jsonl)
         self.data["updated"] = now_iso()
+        if later and attente.defer(self, ids):
+            return
+        held = self._attente
+        if held and held[2]:  # souvenirs en attente appliqués à la lecture : ce graphe les contient désormais
+            self.data["attente"] = {"id": held[0], "n": held[1]}
         counted = self._counted
         if counted and counted[2]:  # compteurs en attente appliqués à la lecture : ce graphe les contient désormais
             self.data["compteurs"] = {"id": counted[0], "n": counted[1]}
@@ -324,8 +370,13 @@ class Brain:
         else:
             self._note_writes(data, history)
             history.keep_previous()
-            write_json(GRAPH_FILE, data)
+            stamp = _write_graph(data)
         self.dirty = False
+        left = False
+        if held:  # … et quittent le fichier d'attente (un arrêt entre les deux n'applique rien deux fois)
+            self._attente, left = None, attente.settle(held[0], held[1])
+        if not data.get("wiki") and data is self.data and not commun_member():  # (comme à la lecture)
+            self.stamp, self._graph_part = None if left else stamp, stamp
         if counted:  # … et quittent le fichier d'attente (un arrêt entre les deux ne compte rien deux fois)
             self._counted = None
             _settle_counters(counted[0], counted[1])
@@ -467,17 +518,26 @@ class Brain:
         doublons : « Objectif du mois » de la boutique et celui de la chaîne YouTube)."""
         tt = set(tokenize(title))
         bt = set(tokenize(f"{title} {body}"))
-        cache = self._words()
+        near = self._sharing(tt, bt, threshold, whole)
+        cache = self._words() if near is None else self.__dict__.setdefault("_near_words", {})
+        rows = None
+        if near is not None and len(near) > self.NEAR_FEW:  # beaucoup à découper : leurs mots repris de mots.bin
+            from . import mots
+            rows = mots.rows()
         out = []
         for n in self.active(own=True):  # jamais une page d'ami : rien de privé ne doit y fusionner
-            if n["type"] == "project" or n["id"] == exclude:
+            if n["type"] == "project" or n["id"] == exclude or (near is not None and n["id"] not in near):
                 continue
             if ntype and n["type"] != ntype:
                 continue
             text = (n["title"], n.get("body", ""))
             hit = cache.get(n["id"])
             if hit is None or hit[0] != text:
-                hit = (text, set(tokenize(text[0])), set(tokenize(f"{text[0]} {text[1]}")))
+                got = rows.get(n["id"]) if rows else None
+                if got is not None and got[0] == mots.digest(n):  # (même texte, mêmes étiquettes qu'à son écriture)
+                    hit = (text, got[1], got[2])
+                else:
+                    hit = (text, set(tokenize(text[0])), set(tokenize(f"{text[0]} {text[1]}")))
                 cache[n["id"]] = hit
             nt, nb = hit[1], hit[2]
             # Borne exacte : jaccard(a, b) <= min(|a|, |b|) / max(|a|, |b|). Rien à calculer quand les tailles seules
@@ -489,6 +549,27 @@ class Brain:
                 out.append((round(score, 2), n))
         out.sort(key=lambda x: -x[0])
         return out[:limit]
+
+    NEAR_FEW = 60  # candidats au-delà desquels relire mots.bin (14 ms à 3 000 souvenirs) coûte moins que les découper
+
+    def _sharing(self, tt, bt, threshold, whole):
+        """Cerveau dont l'index d'avant toute modification est connu (pinned_index, « retiens que… ») : les seuls
+        souvenirs qui peuvent atteindre `threshold`, plus ceux modifiés depuis la lecture de l'index. Un souvenir qui a k
+        mots de `bt` (l'index le dit sans rien relire ; ses mots y sont tous) a un coefficient de Jaccard d'au plus
+        k / |bt| avec bt, et de même pour le titre : les autres ne sont ni découpés ni vérifiés (avant, tout mots.bin
+        relu et l'empreinte de chaque souvenir calculée : 30 ms à 3 000 souvenirs). None : tous à comparer."""
+        idx = self.pinned_index
+        if idx is None or self._sim_cache is not None or not bt:
+            return None
+        from collections import Counter
+        nb, nt = Counter(), Counter()
+        for words, count in ((bt, nb), (() if whole else tt, nt)):
+            for w in words:
+                count.update(idx.docs(w))
+        need_b, need_t = threshold * len(bt) - 1e-9, threshold * len(tt) - 1e-9 if tt else float("inf")
+        found = set(self.__dict__.get("_avant") or ())
+        found.update(idx.keys[i] for i, k in nb.items() if k >= need_b or nt.get(i, 0) >= need_t)
+        return found
 
     def _words(self) -> dict:
         """Mots de chaque souvenir pour similar() ({id: ((titre, contenu), mots du titre, mots du tout)}) : gardés d'un

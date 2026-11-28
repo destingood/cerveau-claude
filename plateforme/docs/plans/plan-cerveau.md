@@ -86,6 +86,7 @@ sauf les correctifs sûrs, faits tout de suite à ta demande.
 | 26/11 | « Continue le plan » (après la fusion de B1) | Bloc B, étape B2 : la plateforme lit la mémoire du plugin, en lecture seule (ADR-072). Tes réponses : GO sans outil sur le pont ; seulement le domaine traité et tes préférences générales, jamais « perso » sans demande |
 | 27/11 | Fusionner la PR #35 ; « continue le plan » | B2 fusionnée. Tes réponses : correspondance pack → domaines gardée telle que proposée, confiance minimale « moyenne », profil hors de la plateforme. Puis étape B3, les réglages bloqués : faits vérifiés, réglages techniques proposés, fiche de gouvernance (ton GO du 27/11) |
 | 28/11 | « Continue d'autres aspects du cerveau » | Étape 21 (8.44.0) : oublier une session, index des noms ; rappel plus varié mesuré, pas mis en service |
+| 28/11 | « Fusionne et continue le plan » | PR #39 fusionnée ; étape 22 (8.45.0) : le hook « retiens que… » sous ses 150 ms |
 
 ## 2. Comment l'audit a été fait, et ses limites
 
@@ -1053,6 +1054,27 @@ oublier une session, rappel plus varié, recherche par nom plus rapide = points 
 - Au passage : la vue 3D garde ses tests stables sous charge, et un basculement ⊞/G laisse 15 s à la simulation. Le
   hook « retiens que… » dépasse toujours 150 ms à 3 000 souvenirs (≈0,36 s, contre ≈0,7 s avant l'index ; il
   réécrit tout le graphe) : à traiter à part.
+
+**Étape 22 — Le hook « retiens que… » sous son budget** (reste de l'étape 21 : ≈0,36 s, au-delà des 150 ms).
+**Faite le 28/11** (cerveau 8.45.0).
+- Mesuré d'abord (cerveau généré de 3 000 souvenirs, jamais le vrai) : 0,54 s sous Python 3.13, 0,72 s sous 3.10.
+  L'index des souvenirs était refait deux fois (doublons, puis rappel) : 0,42 s. Puis mots.bin relu en entier (36 ms),
+  graph.json lu deux fois (35 ms) et réécrit (19 ms ; 44 ms sous 3.10 à 3.12, encodeur JSON indenté en Python), et 20
+  à 30 ms à libérer la mémoire en sortie.
+- Le hook garde l'index du cerveau tel qu'il l'a lu pour les doublons et le rappel du message. Le rappel est celui du
+  savoir d'avant l'écriture, sans les souvenirs qu'elle touche. L'anti-doublon ne compare que les souvenirs qui peuvent
+  atteindre le seuil, mêmes résultats.
+- Le souvenir va dans `graph-attente.json` (`attente.py`), lu aussitôt par toute lecture du cerveau. La tâche de fond
+  lancée par le hook le fait entrer dans graph.json dans la seconde, puis refait l'index et les vues ; toute écriture
+  aussi. Rien n'est appliqué deux fois. Une version d'avant le voit une fois dans graph.json. Jamais en mode wiki ni
+  pour un membre d'un cerveau commun.
+- Les hooks s'arrêtent sans libérer la mémoire objet par objet.
+- 3 000 souvenirs : 542 → 99 ms (3.13), 723 → 117 ms (3.10). 10 000 : 1,54 s → 0,18 s. Le message suivant ne refait
+  plus l'index (aussi après `brain add`). Banc à 300 souvenirs : message 89 → 52 ms, fin de tâche 69 → 28 ms. Rappel
+  inchangé (58/62).
+- Test `test_retiens_vite` (31) : travail compté, temps (au plus deux fois une question), arrêt avant et pendant
+  l'entrée dans graph.json, lecteur et écrivain 8.44.0, compteurs, fichier d'attente illisible. Pas essayé sous
+  Windows (verrous de fichiers : repli sur la réécriture de graph.json).
 
 ## 10. Décisions demandées
 

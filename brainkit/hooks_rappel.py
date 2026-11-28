@@ -166,21 +166,22 @@ def overview_lines(brain, query, proj, st) -> tuple:
     return out, None
 
 
-def recall_context(data, cfg, raw, saved="") -> str:
+def recall_context(data, cfg, raw, saved="", brain=None) -> str:
     """Rappel automatique du message : souvenirs et fichiers liés (texte pour Claude), ou ''. `saved` : la ligne de
-    l'enregistrement automatique d'une demande « retiens… » (sinon Claude est prié de la mémoriser)."""
+    l'enregistrement automatique d'une demande « retiens… » (sinon Claude est prié de la mémoriser) ; `brain` : le
+    cerveau que cet enregistrement vient d'écrire (pas relu)."""
     rc = cfg["recall"]
     pcline = pc_watch(cfg)
     query = recall_query(raw)
     sid = data.get("session_id")
     st = load_state(sid)
     cwd = data.get("cwd") or st.get("cwd")
-    brain = proj = None
+    proj, given = None, brain
 
     def need():  # le cerveau, lu seulement s'il y a quelque chose à y chercher (« ok merci, on continue » : rien)
-        nonlocal brain, proj
-        if brain is None:
-            brain = Brain.load()
+        nonlocal brain, proj, given
+        if brain is None or given is not None:
+            brain, given = brain or Brain.load(), None
             proj = brain.project_for_path(cwd) if cwd else None
         return brain, proj
 
@@ -292,7 +293,7 @@ def recall_context(data, cfg, raw, saved="") -> str:
         out = sk_lines + out
     if pcline:  # la veille PC passe toujours, avant les souvenirs
         out = [pcline] + out
-    if brain is not None:  # le journal de fin de tour n'aura pas à relire le cerveau (project_of)
+    if brain is not None and given is None:  # le journal de fin de tour n'aura pas à relire le cerveau (project_of)
         note_project(brain, cwd, proj["id"] if proj else None)
     if typed:
         st["recall_hist"] = (hist + [len(shown_mem)])[-window:]

@@ -10,6 +10,7 @@ import os
 import subprocess
 import sys
 import tempfile
+import time
 from pathlib import Path
 
 TMP = Path(tempfile.mkdtemp(prefix="cerveau-capture-test-"))
@@ -24,6 +25,14 @@ def check(cond, label, detail=""):
     (OK if cond else FAIL).append(label)
     if not cond:
         print(f"✗ {label}" + (f" — {str(detail)[-900:]}" if detail else ""))
+
+
+def settled(brain_dir, timeout=30.0):
+    """Le hook « retiens… » met le souvenir en attente (graph-attente.json, attente.py) ; la tâche de fond qu'il lance
+    le fait entrer dans graph.json. Attendu avant de lire graph.json lui-même."""
+    end = time.time() + timeout
+    while (brain_dir / "graph-attente.json").exists() and time.time() < end:
+        time.sleep(0.05)
 
 
 class World:
@@ -60,6 +69,7 @@ class World:
         return c, (msg.get("hookSpecificOutput") or {}).get("additionalContext", ""), msg.get("systemMessage", "")
 
     def nodes(self):
+        settled(self.brain_dir)
         f = self.brain_dir / "graph.json"
         return list(json.loads(f.read_text(encoding="utf-8"))["nodes"].values()) if f.exists() else []
 
