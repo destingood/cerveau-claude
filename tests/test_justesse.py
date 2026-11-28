@@ -3,11 +3,12 @@ un remplacement daté au début du nouveau fait (et un remplaçant futur qui lai
 qui commence avant l'ancien n'est pas son remplaçant ; deux périodes distinctes ne se contredisent pas ; les variantes
 d'un même nom réunies ; un nom propre rare partagé suggère un remplacement ; les règles d'écriture dans le rappel de fin
 de tâche ; un motif proposé par le rêve pour un gros sujet ; l'index nom → souvenirs gardé pour `q` et `add` (mêmes
-résultats, rien relu deux fois, refait s'il manque ou est abîmé, graphe ancien lu tel quel).
-Dans un dossier temporaire.
+résultats, rien relu deux fois, refait s'il manque ou est abîmé, graphe ancien lu tel quel) ; l'usage façon ACT-R mesuré
+par `brain bench` sur les échanges rejoués, sans toucher au modèle appris d'avant. Dans un dossier temporaire.
 
 Lancement : python tests/test_justesse.py   (sortie : « N vérifications OK, M échec(s) »)"""
 import datetime as dt
+import math
 import json
 import os
 import re
@@ -218,6 +219,79 @@ c, out = brain("q", "Chronopost Japon")
 check(c == 0 and "vieux" in out and GF.read_bytes() == raw and NB.is_file(),
       "graphe d'une ancienne version : `q` répond, graph.json inchangé, l'index des noms refait à côté", out)
 GF.write_bytes(saved)
+
+# ------------------------------------------------------------------ 8. usage (ACT-R) : mesuré, pas mis en service
+from brainkit import bench, neurone, vivant  # noqa: E402
+from brainkit.common import load_config  # noqa: E402
+
+NOW = dt.datetime(2026, 11, 28, 12, 0)
+ago = lambda d: (NOW - dt.timedelta(days=d)).isoformat(timespec="seconds")  # noqa: E731
+act = lambda n: vivant.activation(n, NOW)  # noqa: E731
+check(act({"id": "x", "title": "t"}) == 0 and act({"used": "3", "last_used": "hier"}) == 0
+      and act({"used": True, "last_used": ago(1)}) == 0 and act({"used": 0, "last_used": ago(1)}) == 0,
+      "activation : 0 sans reprise, et sans erreur sur les champs absents ou bizarres d'un ancien graphe")
+one = act({"used": 1, "last_used": ago(1), "created": ago(60)})
+check(abs(one - 1.0) < 1e-9 and act({"used": 1, "last_used": ago(30), "created": ago(60)}) < one
+      < act({"used": 5, "last_used": ago(1), "created": ago(60)}),
+      "activation d'ACT-R : une reprise d'hier vaut 1, elle décline avec le temps, grandit avec le nombre")
+hot = {"used": 9, "last_used": ago(0.2), "created": ago(40)}
+check(vivant.order([{}, {}, {}], [10, 9, 5]) == [0, 1, 2] and vivant.order([{}, hot, {}], [10, 9, 5], NOW) == [1, 0, 2]
+      and vivant.order([{}, {}, hot], [10, 9, 5], NOW) == [0, 1, 2],
+      "usage : l'ordre seulement, à pertinence voisine (au plus +20 %) ; rien retiré, sans usage rien ne bouge")
+
+
+def f(score, rank, acc=1):
+    x = [0.0] * len(neurone.NAMES)
+    x[0], x[4], x[11] = round(math.log1p(score), 4), rank / 10, float(acc)
+    return x
+
+
+def month(later=False):
+    """Un mois d'échanges : la question sur D seule (D utile), et une question où D n'arrive que 4e des acceptés."""
+    rows = []
+    for d in range(20):
+        t_d, t_mix = (ago(10 - d / 4), ago(30 - d / 2)) if later else (ago(30 - d), ago(30 - d - 0.5))
+        rows.append({"t": t_d, "s": f"a{d}", "id": "D", "f": f(12, 0), "y": 1, "c": [90, 40], "src": "live"})
+        for k, (nid, sc) in enumerate((("A", 10), ("B", 9.5), ("C", 9), ("D", 8.8))):
+            rows.append({"t": t_mix, "s": f"b{d}", "id": nid, "f": f(sc, k), "y": int(nid == "D"), "c": [90, 40],
+                         "src": "live"})
+    return rows
+
+
+rc = load_config()["recall"]
+res = vivant.replay(month(), rc)
+msgs = {}
+for r in month():
+    msgs.setdefault((r["s"], r["t"]), []).append(r)
+alone = neurone._simulate(sorted(msgs.items(), key=lambda kv: kv[0][1]), neurone._rule_pick(rc), rc)
+check(res["messages"] == 40 and res["regle"] == alone and res["usage"]["utiles"] > res["regle"]["utiles"]
+      and res["usage"]["injectes"] == res["regle"]["injectes"],
+      "rejeu : le souvenir souvent repris passe dans les 3 montrés ; la règle seule comptée comme le neurone la compte",
+      res)
+late = vivant.replay(month(later=True), rc)
+check(late["usage"]["utiles"] == late["regle"]["utiles"],
+      "rejeu : l'usage d'un souvenir ne compte qu'à partir de ses reprises (rien du futur)", late)
+# Modèle déjà appris sur le PC (version 1 des traits) : il sert tel quel, la mesure ne le touche pas.
+model = dict(neurone.Model().to_dict(), v=1, ready=True, n=400, pos=60, at="2026-11-20T10:00:00", bytes=0,
+             bytes_per_row=300)
+neurone.MODEL_FILE.parent.mkdir(parents=True, exist_ok=True)
+neurone.MODEL_FILE.write_text(json.dumps(model), encoding="utf-8")
+neurone.EX_FILE.write_text("".join(json.dumps(r) + "\n" for r in month()), encoding="utf-8")
+before = (neurone.MODEL_FILE.read_bytes(), neurone.EX_FILE.read_bytes())
+neurone._CACHE.clear()
+got = vivant.measure(Brain.load())
+line = bench.usage_line(Brain.load())
+check(neurone.V == 1 and len(neurone.NAMES) == 27 and neurone.load() is not None and got["with"] == "neurone"
+      and got["messages"] == 40 and "rejoué sur tes 40" in line and "le neurone seul" in line,
+      "modèle appris d'avant (27 traits, version 1) : chargé et rejoué tel quel par la mesure de `brain bench`", line)
+r = subprocess.run([sys.executable, "-I", "-S", str(CODE / "brain.py"), "hook", "prompt"], capture_output=True,
+                   cwd=str(WORK), env=dict(os.environ), timeout=60, input=json.dumps(
+                       {"session_id": "vieux-modele", "cwd": str(WORK), "hook_event_name": "UserPromptSubmit",
+                        "prompt": "quand ferme l'atelier Sato cet été ?"}).encode())
+check(r.returncode == 0 and (neurone.MODEL_FILE.read_bytes(), neurone.EX_FILE.read_bytes()) == before,
+      "message avec le modèle d'avant : rappel sans erreur, ni ses poids ni ses exemples réécrits", r.stderr[-400:])
+neurone.EX_FILE.write_text("", encoding="utf-8")
+check("pas encore d'échanges" in bench.usage_line(Brain.load()), "aucun échange étiqueté : `brain bench` le dit")
 
 remove_tree(TMP, wait=30)
 print(f"\n{len(OK)} vérifications OK, {len(FAIL)} échec(s)")
