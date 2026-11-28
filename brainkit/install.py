@@ -198,6 +198,7 @@ Toutes les commandes et options de la mémoire. Commande : `{CMD} <commande>`.
 | Lier | `link <a> <b> [-r relates\\|depends_on\\|fixes\\|supersedes\\|contradicts]` (ou `[[id]]` dans un contenu) · `link --suggest` liens déduits à confirmer · `unlink <a> <b>` : le lien devient un lien terminé, daté (ni le rappel ni l'analyse du graphe ne le voient ; `q --at` et la lignée, si ; en mode wiki, propriété `anciens_liens` de la page) |
 | Archiver | `rm <id>` (réversible : `edit <id> --unarchive`) · `--purge` = définitif (instantané pris avant) |
 | Historique / annuler | `history` (instantanés) · `restore <n°>` (l'état courant est sauvegardé d'abord) |
+| Oublier une session | `oublier-session` (les sessions qui ont écrit) · `oublier-session <id\\|début\\|.>` montre ce qu'elle a écrit ; `--oui` (accord de l'utilisateur) archive ce qu'elle seule a créé (`--purge` : définitif) et remet comme avant ce qu'elle seule a changé ; le reste (repris par une autre session, changé dans Obsidian, projet) est gardé et listé ; `restore 1` annule. Provenance : `meta.sessions` (CLAUDE_CODE_SESSION_ID, ou le `session_id` d'un hook ; rien hors de Claude Code ni en tâche de fond) ; ancien et nouveau texte de chaque modification dans `history/textes.jsonl` (`show <id> --history`) |
 | Sauvegardes (hors de ~/.claude) | `backup` · `backup --list` · `backup --restore <archive.zip>` · `backup --to <dossier>` |
 
 Types : `user` (qui est l'utilisateur), `feedback` (règle/préférence/correction), `project` (un dossier), `decision`,
