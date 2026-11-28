@@ -259,7 +259,8 @@ def test_the_question_holds_the_pages_as_data_and_never_the_expectations(
     for point in case.expect.key_points:
         assert point not in text
     assert "key_points" not in text and "expect" not in text
-    assert str(bench / RUN / cc.ANSWERS_DIR / "tour-eiffel-hauteur.json") in text  # outside root
+    # outside root: the absolute path, forward slashes on every system (shown() uses as_posix)
+    assert (bench / RUN / cc.ANSWERS_DIR / "tour-eiffel-hauteur.json").resolve().as_posix() in text
 
 
 def test_the_manifest_is_journaled_and_flags_the_held_out_cases(
