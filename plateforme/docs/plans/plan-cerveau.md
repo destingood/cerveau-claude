@@ -85,6 +85,7 @@ sauf les correctifs sûrs, faits tout de suite à ta demande.
 | 26/11 | « Continue le plan » | Bloc B, étape B1 : le pont MCP réparé avant d'être branché (vérificateur de chiffres, journal en empreintes, plafonds, kill switch). Tes réponses : 200 appels par session et 1 000 par jour ; pas de budget en euros pour le pont ; exception `strategy_lab` gardée ; empreintes à clé plus tard |
 | 26/11 | « Continue le plan » (après la fusion de B1) | Bloc B, étape B2 : la plateforme lit la mémoire du plugin, en lecture seule (ADR-072). Tes réponses : GO sans outil sur le pont ; seulement le domaine traité et tes préférences générales, jamais « perso » sans demande |
 | 27/11 | Fusionner la PR #35 ; « continue le plan » | B2 fusionnée. Tes réponses : correspondance pack → domaines gardée telle que proposée, confiance minimale « moyenne », profil hors de la plateforme. Puis étape B3, les réglages bloqués : faits vérifiés, réglages techniques proposés, fiche de gouvernance (ton GO du 27/11) |
+| 28/11 | « Continue d'autres aspects du cerveau » | Étape 21 (8.44.0) : oublier une session, index des noms ; rappel plus varié mesuré, pas mis en service |
 
 ## 2. Comment l'audit a été fait, et ses limites
 
@@ -833,7 +834,7 @@ Licences : Graphiti, mem0 Apache-2.0 ; best-practices, skills de Matt Pocock, ob
 3d-force-graph MIT ; le guide de F. Bruniaux CC BY-SA 4.0 (on reprend des idées, pas son texte).
 
 **Étape 14 — Une mémoire plus juste** (Graphiti, mem0) : **points 1 à 4, 6 et 8 faits le 24/11** (cerveau
-8.38.0) ; 5, 7 et 9 reportés (raisons dans le détail). Tout en code déterministe, à l'écriture ou au rêve : aucun
+8.38.0) ; 5, 7 et 9 reportés puis faits ou mesurés à l'étape 21 (28/11, 8.44.0). Tout en code déterministe, à l'écriture ou au rêve : aucun
 coût pour le rappel.
 1. Dates tirées du texte à l'ajout : « depuis le », « à partir du », « jusqu'au », et le futur (« va », « prévu »,
    « d'ici le ») ; une échéance n'est pas une fin. Proposées à Claude, pas posées en silence. (S, graphiti
@@ -1032,6 +1033,26 @@ il fait doublon avec le cerveau.
   libre. Plancher du test : 4,5. Pas de mesure sur ton vrai cerveau : il est sur ton PC.
 - Au passage : le garde-fou shell de la plateforme a pris un script de mesure lancé par `node` pour le bot Discord et
   l'a refusé ; non contourné, la mesure est passée dans le test de la vue 3D.
+
+**Étape 21 — Le cerveau, suite** (ta demande du 28/11 : « continue d'autres aspects du cerveau » ; tes choix :
+oublier une session, rappel plus varié, recherche par nom plus rapide = points 7, 9 et 5 de l'étape 14). **Faite le
+28/11** (cerveau 8.44.0).
+- Oublier une session (point 7) : chaque souvenir garde les sessions qui l'ont écrit (`meta.sessions`, 5 au plus ;
+  `session_id` des hooks ou `CLAUDE_CODE_SESSION_ID` des commandes, d'après la documentation de Claude Code lue le
+  28/11 ; rien pour les tâches de fond ni hors de Claude Code). Journal `history/textes.jsonl` (10 changements par
+  souvenir, 2 Mo, clés masquées ; `brain show <id> --history`). `brain oublier-session [id] [--oui] [--purge]` montre
+  d'abord, archive ce que la session seule a créé, remet ce qu'elle seule a changé, garde et liste le reste ;
+  `brain restore 1` annule. +0,07 ms par sauvegarde à 3 000 souvenirs. Test `test_oubli_session` (50).
+- Recherche par nom (point 5) : index `state/noms.bin`, dérivé, relu tel quel tant que `graph.json` ne change pas.
+  `brain q` 3 à 4 fois plus rapide (3 000 souvenirs : ≈0,52 → ≈0,16 s ; 10 000 : ≈1,45 → ≈0,36 s), `brain add`
+  553 → 207 ms, mêmes résultats sur 1 658 questions.
+- Rappel plus varié (point 9) : mesuré, **pas mis en service**. MMR et déclin d'usage (ACT-R) essayés après le
+  classement, sans toucher au neurone : banc du rappel inchangé (58/62, 2/38 faux rappels) ; MMR fait baisser la longue
+  session (33 → 28 sur 58) ; le déclin ne change rien sur un mois simulé. `brain bench` rejoue désormais l'usage sur
+  tes échanges étiquetés : à revoir si ton PC montre un gain.
+- Au passage : la vue 3D garde ses tests stables sous charge, et un basculement ⊞/G laisse 15 s à la simulation. Le
+  hook « retiens que… » dépasse toujours 150 ms à 3 000 souvenirs (≈0,36 s, contre ≈0,7 s avant l'index ; il
+  réécrit tout le graphe) : à traiter à part.
 
 ## 10. Décisions demandées
 
