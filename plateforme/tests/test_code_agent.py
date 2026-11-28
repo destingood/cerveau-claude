@@ -28,7 +28,13 @@ from core.code.agent import (
     ProxyState,
     RunnerReport,
 )
-from core.code.sandbox import CONTAINER_USER, WORKDIR, Limits, SandboxError
+from core.code.sandbox import (
+    CONTAINER_USER,
+    PROXY_VARIABLES,
+    WORKDIR,
+    Limits,
+    SandboxError,
+)
 from core.config import load_config
 from core.config.loader import ModelPricing, PriceTier
 from tests.test_llm_proxy import STREAM_USAGE, call, make_proxy, upstream_reply
@@ -165,8 +171,9 @@ def test_the_agent_writes_to_its_copy_only(tmp_path: Path) -> None:
         f"type=bind,source={tmp_path / 'task'},target=/task,readonly",
     ]
     assert option(command, "--workdir") == [WORKDIR]
-    # No key, not even by name: the runner hands a dummy one to the CLI.
-    assert option(command, "--env") == ["HOME=/tmp"]
+    # No key, not even by name: the runner hands a dummy one to the CLI. No proxy of the client's
+    # configuration either (B284): the task's proxy is the agent's only way out.
+    assert option(command, "--env") == ["HOME=/tmp", *(f"{name}=" for name in PROXY_VARIABLES)]
     assert command[command.index(IMAGE) :] == [
         IMAGE,
         "--task",

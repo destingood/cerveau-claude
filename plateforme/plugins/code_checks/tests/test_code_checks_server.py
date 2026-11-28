@@ -4,7 +4,10 @@ from __future__ import annotations
 
 import asyncio
 import json
+import math
+import os
 import re
+import tempfile
 from collections.abc import Awaitable, Callable, Mapping, Sequence
 from pathlib import Path
 from typing import Any
@@ -14,6 +17,7 @@ import yaml
 from mcp import Client
 from mcp.types import CallToolResult
 
+import core.code.sandbox as sandbox
 from core.code.git import GitRunner
 from core.code.process import Bounded
 from core.code.repos import RepoReader
@@ -86,7 +90,9 @@ def checks_with(
     **limits: Any,
 ) -> CallToolResult:
     current = settings(repositories, **limits)
-    server = build_server(lambda: current, RepoReader(GitRunner()), docker, runs, docker.clock)
+    server = build_server(
+        lambda: current, RepoReader(GitRunner()), docker, runs, docker.clock, docker.clock
+    )
     arguments = {"repo": "exemple", **(arguments or {})}
     return run(server, lambda c: c.call_tool("run_checks", arguments, meta=meta))
 
@@ -186,14 +192,30 @@ def test_each_container_gets_the_hardened_command(example: Path, tmp_path: Path)
         assert re.fullmatch(r"cerveau-check-[0-9a-f]{12}", call.name)
         mount = call.arguments[call.arguments.index("--mount") + 1]
         source = Path(mount.split(",")[1].removeprefix("source="))
-        assert source.parent == tmp_path / "runs"
+        # The copy, in the call's private folder (B283).
+        assert source.name == "copie"
+        assert source.parent.parent == tmp_path / "runs"
+        assert re.fullmatch(r"cerveau-checks-[0-9a-f]{32}", source.parent.name)
     assert len({call.name for call in docker.calls}) == 3
     limits = server_module.Limits(1.5, 512, 64)
 
     def expected(call: Any, image: str, program: str, arguments: Sequence[str]) -> list[str]:
         mount = call.arguments[call.arguments.index("--mount") + 1]
         source = Path(mount.split(",")[1].removeprefix("source="))
-        return docker_command(call.name, image, source, limits, program, arguments)
+        # Each container ends by itself after its share of the budget, plus the margin (B282);
+        # the fake clock serves as the host's time.
+        seconds = sandbox.container_seconds(call.timeout_s)
+        ends_by = math.ceil(call.at) + seconds + sandbox.START_SLACK_S
+        return docker_command(
+            call.name,
+            image,
+            source,
+            limits,
+            program,
+            arguments,
+            max_seconds=seconds,
+            ends_by=ends_by,
+        )
 
     assert check.arguments == expected(check, IMAGE, "ruff", RUFF_CHECK)
     assert form.arguments == expected(form, IMAGE, "ruff", RUFF_FORMAT)
@@ -375,6 +397,8 @@ def test_a_call_cut_too_soon_launches_no_container(example: Path, tmp_path: Path
     result = data(checks_with(allow_lists(example)["exemple"], docker, tmp_path, meta=meta))
     assert result["budget_seconds"] == 0.0
     assert docker.calls == []
+    # No time for the leftovers either.
+    assert docker.others == []
     for step in ("ruff_check", "ruff_format", "pytest"):
         assert result[step]["status"] == "non_lance"
 
@@ -410,6 +434,79 @@ def test_a_flooding_container_is_stopped(example: Path, tmp_path: Path) -> None:
         f"sortie de plus de {MAX_OUTPUT_BYTES} octets : conteneur arrêté"
     )
     assert result["ruff_format"]["status"] == "ok"
+
+
+@pytest.mark.parametrize(
+    ("reply", "note"),
+    [
+        (out(-9, timed_out=True, stopped=False), "délai de 25 s dépassé : "),
+        (out(-9, "[", truncated=True, stopped=False), "sortie de plus de 4000000 octets : "),
+        # A runner that does not say (another client of the protocol): not confirmed either.
+        (out(-9, timed_out=True), "délai de 25 s dépassé : "),
+    ],
+)
+def test_a_kill_docker_did_not_confirm_is_not_said_done(
+    reply: Bounded, note: str, example: Path, tmp_path: Path
+) -> None:
+    """B282: « conteneur arrêté » only when Docker confirmed it; its own limit ends it anyway."""
+    result, _ = scenario({**SCENARIOS["propre"], "check": reply}, example, tmp_path)
+    assert result["ruff_check"]["note"] == (
+        f"{note}arrêt du conteneur non confirmé par Docker : il s'arrête seul au bout de 27 s"
+    )
+    assert "conteneur arrêté" not in json.dumps(result, ensure_ascii=False)
+
+
+LATE, EARLY = "a" * 12, "b" * 12
+
+
+def test_each_call_first_kills_the_containers_left_past_their_end(
+    example: Path, tmp_path: Path
+) -> None:
+    """B282: a crashed call, or a kill that failed, left containers; another call's, still
+    within their time, are left alone. The fake clock is the host's time here (1000)."""
+    listed = out(0, f"{LATE} 999\n{EARLY} 1000\n")
+    docker = FakeDocker({**SCENARIOS["propre"], "ps": listed})
+    data(checks_with(allow_lists(example)["exemple"], docker, tmp_path / "runs"))
+    assert docker.others == [sandbox.leftover_command(), ["kill", LATE]]
+    assert [call.step for call in docker.calls] == ["check", "format", "pytest"]
+
+
+@pytest.mark.parametrize(
+    "listed",
+    [
+        out(0, ""),
+        out(0, f"{EARLY} 1000\n"),
+        # docker ps failed, did not answer or answered too much: nothing is killed.
+        out(125, f"{LATE} 999\n", "Cannot connect to the Docker daemon"),
+        out(-9, f"{LATE} 999\n", timed_out=True),
+        out(-9, f"{LATE} 999\n", truncated=True),
+    ],
+)
+def test_nothing_is_killed_without_a_container_past_its_end(
+    listed: Bounded, example: Path, tmp_path: Path
+) -> None:
+    docker = FakeDocker({**SCENARIOS["propre"], "ps": listed})
+    data(checks_with(allow_lists(example)["exemple"], docker, tmp_path / "runs"))
+    assert docker.others == [sandbox.leftover_command()]
+
+
+def test_each_call_removes_the_copies_crashed_calls_left(example: Path, tmp_path: Path) -> None:
+    """B283: a crash skips the removal of the copy; the next call removes it. A recent one may
+    be another call's, under way: left alone, like the folders of other programs."""
+    runs = tmp_path / "runs"
+    stale = server_module.private_folder(runs, "cerveau-checks-ancien")
+    (stale / "copie").mkdir()
+    (stale / "copie" / "conftest.py").write_text("x = 1\n", encoding="utf-8")
+    recent = server_module.private_folder(runs, "cerveau-checks-en-cours")
+    other = server_module.private_folder(runs, "autre-programme")
+    now = 2_000_000_000.0
+    old = now - sandbox.STALE_AFTER_S - 1
+    for folder in (stale, other):
+        os.utime(folder, (old, old))
+    os.utime(recent, (now, now))
+    docker = FakeDocker(SCENARIOS["propre"], clock=Clock(now))
+    data(checks_with(allow_lists(example)["exemple"], docker, runs))
+    assert sorted(path.name for path in runs.iterdir()) == [other.name, recent.name]
 
 
 # --- pytest -----------------------------------------------------------------------------------
@@ -504,6 +601,7 @@ def test_refusals_run_no_container(
     assert result.is_error
     assert message in text(result)
     assert docker.calls == []
+    assert docker.others == []
     assert not (tmp_path / "runs").exists()
 
 
@@ -515,7 +613,9 @@ def test_a_repository_too_big_is_not_copied(
     result = checks_with(allow_lists(example)["exemple"], docker, tmp_path / "runs")
     assert "dépôt trop gros pour les contrôles : 3 fichiers" in text(result)
     assert docker.calls == []
-    assert not (tmp_path / "runs").exists()
+    # Nothing written, and the call's private folder is gone (the folder of the copies is the
+    # system's temporary one, which exists anyway).
+    assert list((tmp_path / "runs").iterdir()) == []
 
 
 def test_the_settings_are_read_at_each_call(example: Path, tmp_path: Path) -> None:
@@ -591,7 +691,10 @@ def test_main_wires_the_configuration_docker_and_the_runs_folder(
     assert isinstance(reader, RepoReader)
     assert reader.cerveau == REPO_ROOT.resolve()
     assert isinstance(runner, DockerRunner)
-    assert runs == tmp_path / "var" / "code" / "runs"
+    # B283: the copies are written outside CERVEAU, in the system's temporary folder.
+    assert runs == Path(tempfile.gettempdir())
+    assert not runs.resolve().is_relative_to(REPO_ROOT.resolve())
+    assert not runs.resolve().is_relative_to(tmp_path.resolve())
     assert ran == "run"
 
 

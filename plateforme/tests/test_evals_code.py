@@ -11,6 +11,7 @@ from typing import Any
 import pytest
 
 from core.code.checks import parse_pytest, parse_ruff
+from core.code.sandbox import Limits, docker_command, leftover_command
 from core.config.loader import BlockedFeatureError
 from core.evals.cases import CodeChecksFixture, CodeFixture
 from core.evals.code_fixtures import (
@@ -90,7 +91,17 @@ def test_the_allow_list_is_the_case_repository_with_cerveau_when_asked(tmp_path:
 
 
 def _arguments(program: str, step: str) -> list[str]:
-    return ["run", "--rm", "--entrypoint", program, "sha256:image", step, "--output-format=json"]
+    """The command line run_checks gives Docker (core/code/sandbox.py)."""
+    return docker_command(
+        "n",
+        "sha256:image",
+        Path("/copie"),
+        Limits(1, 256, 64),
+        program,
+        [step, "--output-format=json"],
+        max_seconds=27,
+        ends_by=1,
+    )
 
 
 def test_the_step_is_read_from_the_entrypoint() -> None:
@@ -120,13 +131,25 @@ def test_the_fake_docker_answers_each_step_as_the_case_says() -> None:
     )
     (diagnostic,) = parse_ruff(_docker(checks, ("ruff", "check")).stdout)
     assert (diagnostic.path, diagnostic.code, diagnostic.line) == ("a.py", "F401", 1)
-    assert _docker(checks, ("ruff", "format")).timed_out
+    late = _docker(checks, ("ruff", "format"))
+    # Killed, the kill confirmed (B282): the case's note stays « conteneur arrêté ».
+    assert (late.timed_out, late.stopped) == (True, True)
     tests = _docker(checks, ("python", "-m"))
     assert tests.returncode == 1
     assert parse_pytest(tests.stdout).failed == ("t.py::test_x",)
     docker = FixtureDocker(checks.model_copy(update={"docker": 125}))
     assert docker.run(_arguments("ruff", "check"), name="n", timeout_s=1.0, max_bytes=9).returncode
     assert docker.steps == ["check"]
+
+
+def test_the_sweep_of_leftovers_finds_none_and_is_no_step() -> None:
+    """B282: run_checks first looks for containers left past their end, then kills them."""
+    docker = FixtureDocker(None)
+    for command in (leftover_command(), ["kill", "a" * 12]):
+        out = docker.run(command, name="", timeout_s=1.0, max_bytes=9)
+        assert (out.returncode, out.stdout) == (0, b"")
+    assert step_of(leftover_command()) == "sweep"
+    assert docker.steps == []
 
 
 def test_the_fake_github_lists_the_runs_newest_first_and_filters_a_branch() -> None:

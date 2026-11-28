@@ -24,3 +24,4 @@
 {"id": "cc-024", "arguments": {"repo": "exemple", "rev": "v1..HEAD"}, "expected": {"is_error": true, "contains": "révision « v1..HEAD » refusée"}}
 {"id": "cc-025", "arguments": {"repo": "exemple", "rev": "--all"}, "expected": {"is_error": true, "contains": "validation"}}
 {"id": "cc-026", "arguments": {"repo": "C:/Users/User/Documents/projet"}, "expected": {"is_error": true, "contains": "validation"}}
+{"id": "cc-027", "scenario": "lent_non_arrete", "arguments": {"repo": "exemple"}, "expected": {"is_error": false, "contains": "arrêt du conteneur non confirmé par Docker : il s'arrête seul au bout de 27 s", "absent": ["conteneur arrêté"]}}

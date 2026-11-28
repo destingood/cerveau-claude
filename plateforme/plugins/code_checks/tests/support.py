@@ -64,8 +64,9 @@ def out(
     *,
     truncated: bool = False,
     timed_out: bool = False,
+    stopped: bool | None = None,
 ) -> Bounded:
-    return Bounded(returncode, stdout.encode("utf-8"), stderr, truncated, timed_out)
+    return Bounded(returncode, stdout.encode("utf-8"), stderr, truncated, timed_out, stopped)
 
 
 def item(path: str, code: str | None, message: str, row: int = 1, column: int = 1) -> object:
@@ -126,8 +127,18 @@ SCENARIOS: dict[str, dict[str, Bounded]] = {
         ),
     },
     "moteur_arrete": {"check": DAEMON_DOWN, "format": DAEMON_DOWN, "pytest": DAEMON_DOWN},
-    "lent": {"check": out(-9, timed_out=True), "format": ruff(), "pytest": PASSED},
-    "inonde": {"check": out(-9, "[" * 100, truncated=True), "format": ruff(), "pytest": PASSED},
+    "lent": {"check": out(-9, timed_out=True, stopped=True), "format": ruff(), "pytest": PASSED},
+    "inonde": {
+        "check": out(-9, "[" * 100, truncated=True, stopped=True),
+        "format": ruff(),
+        "pytest": PASSED,
+    },
+    # Past the limit, Docker did not confirm the kill (B282).
+    "lent_non_arrete": {
+        "check": out(-9, timed_out=True, stopped=False),
+        "format": ruff(),
+        "pytest": PASSED,
+    },
     "illisible": {
         "check": out(1, "pas du JSON"),
         "format": out(2, stderr="ruff: erreur"),
@@ -153,9 +164,10 @@ SCENARIOS: dict[str, dict[str, Bounded]] = {
 
 
 def step_of(arguments: Sequence[str]) -> str:
-    """``check``, ``format`` or ``pytest``, from ``--entrypoint PROGRAM IMAGE ARGUMENTS``."""
+    """``check``, ``format`` or ``pytest``, from ``--entrypoint timeout IMAGE -s KILL SECONDS
+    PROGRAM ARGUMENTS``."""
     at = list(arguments).index("--entrypoint")
-    return "pytest" if arguments[at + 1] == "python" else arguments[at + 3]
+    return "pytest" if arguments[at + 6] == "python" else arguments[at + 7]
 
 
 @dataclass
@@ -175,6 +187,8 @@ class Call:
     max_bytes: int
     # The files of the copy the container would have seen, relative to its top.
     files: list[str]
+    # The clock when the container was started.
+    at: float
 
 
 @dataclass
@@ -184,16 +198,24 @@ class FakeDocker:
     # Seconds a container takes; a timed out one takes all the time it was given.
     takes: float = 1.0
     calls: list[Call] = field(default_factory=list)
+    # The commands that start no container (``docker ps`` and ``docker kill`` of the leftovers),
+    # answered by ``replies["ps"]`` and ``replies["kill"]``, by default an empty success.
+    others: list[list[str]] = field(default_factory=list)
 
     def run(
         self, arguments: Sequence[str], *, name: str, timeout_s: float, max_bytes: int
     ) -> Bounded:
+        if arguments[0] in ("ps", "kill"):
+            assert name == "" and 0 < timeout_s <= 5.0, (name, timeout_s)
+            self.others.append(list(arguments))
+            return self.replies.get(arguments[0], out(0))
         mount = arguments[list(arguments).index("--mount") + 1]
         source = Path(mount.split(",")[1].removeprefix("source="))
         files = sorted(p.relative_to(source).as_posix() for p in source.rglob("*") if p.is_file())
         reply = self.replies[step_of(arguments)]
+        at = self.clock.now
         self.clock.now += timeout_s if reply.timed_out else self.takes
         self.calls.append(
-            Call(step_of(arguments), list(arguments), name, timeout_s, max_bytes, files)
+            Call(step_of(arguments), list(arguments), name, timeout_s, max_bytes, files, at)
         )
         return reply

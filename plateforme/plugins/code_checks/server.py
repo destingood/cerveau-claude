@@ -1,17 +1,21 @@
 """MCP stdio server of the ``code_checks`` plugin: ``run_checks`` (ADR-048).
 
 The planner names a repository of the allow list (E2) and a revision. The files of that commit
-are copied, from git objects, into a throwaway folder under ``var/code/runs/``; ruff, then pytest
-when the user prepared the repository's environment (E3), run on that copy in networkless,
-read-only, unprivileged containers of images pinned by content and never pulled (E4), within the
-E5 limits and a time budget shared by the containers of the call. The copy is then deleted.
-Nothing is installed in a container and nothing of the repository runs on the host.
+are copied, from git objects, into a private throwaway folder of the system's temporary folder,
+outside CERVEAU (B283); ruff, then pytest when the user prepared the repository's environment
+(E3), run on that copy in networkless, read-only, unprivileged containers of images pinned by
+content and never pulled (E4), within the E5 limits and a time budget shared by the containers of
+the call; each container also ends by itself at the end of its share (B282). The copy is then
+deleted. Nothing is installed in a container and nothing of the repository runs on the host.
+Each call first removes what a crashed one left: its containers past their end, its copies.
 
 No ``from __future__ import annotations`` here: the MCP SDK reads the tool signatures at runtime.
 """
 
+import math
 import os
 import shutil
+import tempfile
 import time
 import uuid
 from collections.abc import Callable, Sequence
@@ -32,12 +36,18 @@ from core.code.process import Bounded
 from core.code.repos import REPO_ID, REVISION, RepoError, RepoReader, Repository
 from core.code.sandbox import (
     KILL_TIMEOUT_S,
+    START_SLACK_S,
     Copy,
     DockerRunner,
     Limits,
     SandboxError,
+    container_seconds,
     copy_tree,
     docker_command,
+    leftover_command,
+    leftovers,
+    overdue,
+    private_folder,
 )
 from core.code.text import visible
 from core.config.loader import (
@@ -71,6 +81,12 @@ RESERVE_S = KILL_TIMEOUT_S + 5.0
 BUDGET_S = 25.0
 # A container is not started with less time left.
 MIN_STEP_S = 2.0
+# Each of the two commands that remove the leftovers of a crashed call, within the budget.
+SWEEP_S = 5.0
+SWEEP_BYTES = 64_000
+# The private folder of one call, in the system's temporary folder (B283).
+RUN_PREFIX = "cerveau-checks-"
+COPY_DIR = "copie"
 MAX_COPY_FILES = 5_000
 MAX_COPY_BYTES = 50_000_000
 MAX_OUTPUT_BYTES = 4_000_000
@@ -154,10 +170,16 @@ class _Early:
 
 
 class Budget:
-    """Seconds left to the containers of one call."""
+    """Seconds left to the containers of one call; ``wall``, the host's time, labels them."""
 
-    def __init__(self, seconds: float, clock: Callable[[], float]) -> None:
+    def __init__(
+        self,
+        seconds: float,
+        clock: Callable[[], float],
+        wall: Callable[[], float] = time.time,
+    ) -> None:
         self.clock = clock
+        self.wall = wall
         self.end = clock() + seconds
 
     def left(self) -> float:
@@ -176,6 +198,25 @@ def _shown(values: Sequence[str]) -> tuple[list[str], int]:
     )
 
 
+def not_stopped(seconds: int) -> str:
+    return f"arrêt du conteneur non confirmé par Docker : il s'arrête seul au bout de {seconds} s"
+
+
+def sweep(runner: Runner, budget: Budget) -> None:
+    """Kills the check containers still running past their end: what a crashed call, or a kill
+    that failed, left behind (B282). Those of a call under way are within their time."""
+    listed = runner.run(
+        leftover_command(), name="", timeout_s=min(SWEEP_S, budget.left()), max_bytes=SWEEP_BYTES
+    )
+    if listed.returncode != 0 or listed.timed_out or listed.truncated:
+        return
+    late = overdue(listed.stdout, budget.wall())
+    if late:
+        runner.run(
+            ["kill", *late], name="", timeout_s=min(SWEEP_S, budget.left()), max_bytes=SWEEP_BYTES
+        )
+
+
 def _launch(
     runner: Runner,
     budget: Budget,
@@ -189,16 +230,22 @@ def _launch(
     if left < MIN_STEP_S:
         return _Early("non_lance", "budget de temps épuisé par les contrôles précédents")
     name = f"cerveau-check-{uuid.uuid4().hex[:12]}"
+    seconds = container_seconds(left)
+    ends_by = math.ceil(budget.wall()) + seconds + START_SLACK_S
     out = runner.run(
-        docker_command(name, image, source, limits, program, arguments),
+        docker_command(
+            name, image, source, limits, program, arguments, max_seconds=seconds, ends_by=ends_by
+        ),
         name=name,
         timeout_s=left,
         max_bytes=MAX_OUTPUT_BYTES,
     )
+    # Said stopped only when Docker confirmed it (B282); otherwise its own limit ends it.
+    stopped = "conteneur arrêté" if out.stopped else not_stopped(seconds)
     if out.timed_out:
-        return _Early("delai", f"délai de {left:.0f} s dépassé : conteneur arrêté")
+        return _Early("delai", f"délai de {left:.0f} s dépassé : {stopped}")
     if out.truncated:
-        return _Early("erreur", f"sortie de plus de {MAX_OUTPUT_BYTES} octets : conteneur arrêté")
+        return _Early("erreur", f"sortie de plus de {MAX_OUTPUT_BYTES} octets : {stopped}")
     if out.returncode in DOCKER_CODES:
         return _Early("erreur", DOCKER_CODES[out.returncode])
     return out
@@ -324,7 +371,9 @@ def build_server(
     runner: Runner,
     runs: Path,
     clock: Callable[[], float] = time.monotonic,
+    wall: Callable[[], float] = time.time,
 ) -> MCPServer:
+    """``runs``: the folder of the calls' private folders, the system's temporary one in use."""
     server = MCPServer("code_checks", version=__version__, instructions=INSTRUCTIONS)
 
     def checked(repo_id: str, rev: str, want_pytest: bool, limit_s: float | None) -> ChecksResult:
@@ -334,8 +383,13 @@ def build_server(
         share = BUDGET_S if limit_s is None else max(limit_s - RESERVE_S, 0.0)
         seconds = min(float(current.checks.timeout_seconds), share)
         # The copy counts too: the whole call has to end within the tool call's own time limit.
-        budget = Budget(seconds, clock)
-        folder = runs / uuid.uuid4().hex
+        budget = Budget(seconds, clock, wall)
+        if budget.left() >= MIN_STEP_S:
+            sweep(runner, budget)
+        private = private_folder(runs, f"{RUN_PREFIX}{uuid.uuid4().hex}")
+        for stale in leftovers(runs, RUN_PREFIX, private, wall()):
+            shutil.rmtree(stale, ignore_errors=True)
+        folder = private / COPY_DIR
         try:
             copy = copy_tree(
                 reader, repo, sha, folder, max_files=MAX_COPY_FILES, max_bytes=MAX_COPY_BYTES
@@ -344,12 +398,12 @@ def build_server(
                 runner, budget, current.checks, repo, folder, want_pytest
             )
         finally:
-            shutil.rmtree(folder, ignore_errors=True)
+            shutil.rmtree(private, ignore_errors=True)
         return ChecksResult(
             repo=repo_id,
             rev=rev,
             sha=sha,
-            source=_source(copy, not folder.exists()),
+            source=_source(copy, not private.exists()),
             ruff_check=ruff_check,
             ruff_format=ruff_format,
             pytest=pytest,
@@ -391,5 +445,5 @@ def main() -> None:
         lambda: load_settings(home / "config"),
         RepoReader(GitRunner()),
         DockerRunner(),
-        home / "var" / "code" / "runs",
+        Path(tempfile.gettempdir()),
     ).run()
