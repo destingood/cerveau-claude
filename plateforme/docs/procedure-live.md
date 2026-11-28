@@ -31,7 +31,7 @@ live relèvent d'une phase dédiée, avec ses revues.
 | 3 | Client de courtier réel livré et revu (`security-reviewer`, `risk-gate-auditor`) | délai par appel inférieur à la cible du kill switch, 5 s (B171) ; exécutions et relevé lus dans une même coupe (B169) ; seuls un code de refus et le nom du type d'exception journalisés (B197) |
 | 4 | Compte live séparé du compte paper ; clés distinctes, sans droit de retrait, permissions minimales, hors dépôt (§8.6) | interface du courtier : droits de la clé |
 | 5 | Utilisateur Windows dédié au service live (l'équivalent de l'utilisateur Unix du §8.6) ; Claude Code tourne sous un autre compte et ne lit pas ses clés | `whoami` dans chaque session |
-| 6 | Approbations opérationnelles : secret TOTP enrôlé, bot Discord et alertes ntfy configurés ; `CERVEAU_TOTP_SECRET` et `CERVEAU_API_TOKEN` posés dans l'environnement du compte de service du prérequis 5, qui seul lance le bot et l'API, jamais en variables du compte où tourne Claude Code (B228) | `cerveau approvals enroll` (terminal interactif, une fois, sous le compte de service) ; `config/interfaces.yaml` renseigné ; `cerveau config check` liste les canaux d'alerte ; `Test-Path env:CERVEAU_TOTP_SECRET` renvoie `False` dans une session du compte de Claude Code |
+| 6 | Approbations opérationnelles : secret TOTP enrôlé, bot Discord et alertes ntfy configurés ; `CERVEAU_TOTP_SECRET` et `CERVEAU_API_TOKEN` posés dans l'environnement du compte de service du prérequis 5, qui seul lance le bot et l'API, jamais en variables du compte où tourne Claude Code (B228) | `cerveau approvals enroll` (terminal interactif, une fois, sous le compte de service) ; `config/interfaces.yaml` renseigné ; `cerveau config check` liste les canaux d'alerte ; `Test-Path env:CERVEAU_TOTP_SECRET` renvoie `False` dans un PowerShell ordinaire du compte de Claude Code (hors de Claude Code, qui masque la variable de toute façon : clé `env` de `.claude/settings.json`, et dont le hook refuse d'en lire la valeur, B228) |
 | 7 | Période de rotation des clés fixée | `keys.rotation_days` dans `config/risk.yaml`, valeur décidée par toi |
 | 8 | Kill switch éprouvé en paper | `/kill` sur Discord, puis `cerveau kill` : ordres annulés, N0 forcé, approbations ouvertes refusées ; `cerveau rearm` ensuite |
 | 9 | Limites live décidées : ordre, position, perte du jour, ordres par jour (toutes > 0) et liste blanche | levier, vente à découvert et dérivés restent `false` |
@@ -107,7 +107,30 @@ avec les mêmes droits minimaux, la poser dans l'environnement du compte du serv
 la lecture du relevé, puis révoquer l'ancienne. Un nouvel enrôlement TOTP (`cerveau approvals
 enroll`) remplace l'ancien secret : les codes de l'ancien ne valent plus.
 
-## 6. Limites connues
+## 6. Secrets dans le Gestionnaire d'identification (proposé, ADR-073)
+
+Rien de ceci ne sert avant ta validation de l'ADR-073 et le code qui suivra (B228, partie C) : le
+code lit aujourd'hui les variables d'environnement. Les gestes prévus, tous sous le **compte de
+service** du prérequis 5, jamais sous le compte où tourne Claude Code :
+
+1. Ouvrir un PowerShell du compte de service (`runas /user:<compte-de-service> powershell`) et
+   vérifier `whoami`.
+2. Enrôler (`cerveau approvals enroll`), puis ranger le secret affiché comme identifiant générique :
+   `cmdkey /generic:CERVEAU/totp /user:cerveau /pass` (la commande demande la valeur ; syntaxe
+   A_VERIFIER sur la documentation de Microsoft). Faire de même pour le jeton de l'API
+   (`CERVEAU/api`) et celui du bot (`CERVEAU/discord`).
+3. Vérifier la présence sans afficher de valeur : `cmdkey /list:CERVEAU/*`.
+4. Retirer les anciennes variables du compte de service :
+   `[Environment]::SetEnvironmentVariable('CERVEAU_TOTP_SECRET', $null, 'User')`, de même pour
+   `CERVEAU_API_TOKEN` et `DISCORD_BOT_TOKEN`, puis rouvrir la session.
+5. Relancer l'API et le bot par leur lanceur ; un code d'essai doit être accepté (prérequis 8).
+6. Sous ton compte habituel, `cmdkey /list:CERVEAU/*` ne liste rien : le Gestionnaire est rangé par
+   compte Windows, c'est ce qui tient Claude Code à l'écart.
+
+Retour arrière : `cmdkey /delete:CERVEAU/totp` (et les autres), puis reposer les variables dans
+l'environnement du compte de service comme au prérequis 6.
+
+## 7. Limites connues
 
 - `cerveau status` affiche le niveau écrit, pas le niveau effectif ni les sept conditions : le
   contrôle passe par `cerveau config check` (B225).

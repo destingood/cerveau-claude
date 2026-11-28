@@ -6,9 +6,10 @@ step of delay; one step ahead covers a phone clock that runs fast), every candid
 constant time, and a step at or below the last accepted one is refused: a code never serves twice
 (RFC 6238 §5.2).
 
-The secret is base32, as the ``otpauth://`` URI carries it, and lives in the user's environment
-variable ``CERVEAU_TOTP_SECRET``; it never reaches the repository, a log or the journal (R6). A
-missing or malformed secret refuses every code.
+The secret is base32, as the ``otpauth://`` URI carries it, and lives in ``CERVEAU_TOTP_SECRET``,
+in the environment of the service account that runs the bot and the API, never in the account of
+Claude Code, whose settings blank it (B228); it never reaches the repository, a log or the journal
+(R6). A missing, empty or malformed secret refuses every code.
 """
 
 from __future__ import annotations

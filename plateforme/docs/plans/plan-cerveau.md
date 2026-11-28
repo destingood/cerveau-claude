@@ -584,6 +584,13 @@ hook au-dessus de 150 ms, premier démarrage après un changement compris ; `bra
     du tag ATT&CK v20.0 (même fichier, date de création corrigée, ADR-056).
 - **Une chaîne d'approbation** : B228 d'abord (le secret des codes à usage unique hors de portée de
   Claude), puis B353 (la porte du live lue depuis `live.yaml`).
+  - ✅ B228, parties A et B faites le 27/11 : `guard_shell` refuse toute lecture de la valeur des
+    secrets des interfaces (vidage de l'environnement, `$NOM`, `env:`, registre, `/proc/*/environ`,
+    code d'interpréteur), leur nom en clair reste permis ; les deux `.claude/settings.json`
+    mettent à vide `CERVEAU_TOTP_SECRET`, `CERVEAU_API_TOKEN` et `DISCORD_BOT_TOKEN` pour Claude
+    Code ; message d'`enroll` et commentaire de `interfaces.yaml` alignés.
+  - Reste : partie C, l'ADR-073 (Gestionnaire d'identification Windows, proposé) à valider, puis
+    son code ; tes gestes sur ton PC (B228 au backlog) ; puis B353.
 - **Mesurer pour de vrai à 0 €** : les jeux de cas passés dans Claude Code, un autre modèle juge ; le
   jeu de cas passe de 37 à 300 (B62). Le test Docker du pack Code (B270) est à toi ; le bac à sable
   n'a pas encore de limite de temps (B282).
@@ -1044,7 +1051,7 @@ il fait doublon avec le cerveau.
 | E12 | `brain.exe` (Rust 8.18.2) tant que son code source n'est pas dans le dépôt | **Tranché le 20/11 : Python partout, puis optimiser en Rust.** Fait : `brain.exe` ne tourne plus que sur demande (`BRAIN_IMPL=rust`), tous les correctifs valent sous Windows. Ensuite (D2) : tu ajoutes le code Rust au dépôt ; Claude y reporte les correctifs faits depuis la 8.18.2, l'optimise, et l'exe est construit en CI |
 | E13 | ADR-013 (« pas de yfinance ») contre l'étape 9 du plan v2 | **Tranché le 21/11 : l'ADR-013 fait foi**, le plan v2 corrigé (étape 9) |
 | E14 | Retraits de cas d'évaluation réservés par R9 | **Validés le 23/11** : ADR-021, 046, 050, 057, 060, 063 (le retrait) et 068 |
-| E15 | 37 ADR encore « proposé » | À relire dans `docs/adr/A-VALIDER.md` (ta réponse du 23/11 : relire d'abord) |
+| E15 | 39 ADR encore « proposé » (dont l'ADR-073, 27/11) | À relire dans `docs/adr/A-VALIDER.md` (ta réponse du 23/11 : relire d'abord) |
 | E16 | Graphiti, mem0 ou une base de graphe pour le cerveau en 4D | **Tranché le 24/11 : reprendre leurs idées, ne rien installer** (Bloc E) |
 | E17 | Recherche par embeddings | **Tranché le 24/11 : le rappel reste lexical**, avec un filtre par validité en plus (étape 12) |
 | E18 | Modèle qui exécute le Bloc E | **Tranché le 24/11 : Opus 5.5**, tu changes le modèle de la session toi-même |
@@ -1165,7 +1172,7 @@ encore facultatif) · G-10 faux refus (rep., ✅ 26/11) · G-11 deux plugins, m�
 (rep.) · G-12 `core/policy/engine.py:126-132` kill switch ouvert si son dossier est un fichier (rep.) · G-13 `server.py:215-248` `proposer_action` sans suite (rep.) ·
 G-14 1,2 à 1,6 s par appel (rep.) · G-15 `adapter.py:436-438, 462` chemins dans les erreurs (rep.).
 
-**Plateforme** — P-1 B228 · P-2 aucune mesure réelle (B60) · P-3 B353 · P-4 README et `cerveau ask` ·
+**Plateforme** — P-1 B228 (A et B ✅ 27/11, reste C) · P-2 aucune mesure réelle (B60) · P-3 B353 · P-4 README et `cerveau ask` ·
 P-5 `core/memory/` vide, B270 · P-6 42 fonctions bloquées · P-7 documents en retard · P-8 41 ADR
 « proposé » · P-9 code LangGraph · P-10 B282 · P-11 pas de contrôle des types · P-12 5 blocs
 dupliqués · P-13 fonctions complexes (`interfaces/api/app.py:96`) · P-14

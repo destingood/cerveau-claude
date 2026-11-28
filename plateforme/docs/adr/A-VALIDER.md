@@ -4,7 +4,7 @@ Liste préparée le 21/11/2026 (étape 9 du plan, `docs/plans/plan-cerveau.md`).
 toi de répondre, en une fois si tu veux (« tout validé », ou les numéros à refuser ou à revoir). Une fois ta
 réponse donnée, chaque ADR passe à « accepté » (ou « refusé ») avec la date, dans son propre fichier.
 
-## 1. Les 38 ADR encore « proposé »
+## 1. Les 39 ADR encore « proposé »
 
 41 le 21/11 ; le 23/11/2026, tu as validé les retraits R9 (section 2) : les ADR-021, 046, 050, 057, 060 et
 068 sont acceptés, l'ADR-063 reste ici pour le reste de sa décision.
@@ -93,6 +93,12 @@ Le détail de chaque décision est dans son fichier (`docs/adr/ADR-NNN-….md`).
 | 070 | Les règles de `verifier` (26/11) | Un nombre groupé se lit d'un bloc, un zéro demande un zéro, une mesure ne vient que de sa figure ; date du jour, « Étape 2 » et tes chiffres (`citations_utilisateur`, listés à part) acceptés ; chaque vérification au journal |
 | 071 | Le journal du pont en empreintes, et ses plafonds (26/11) | Chaque argument au journal par son nom et son SHA-256, jamais sa valeur (sauf les essais de `strategy_lab`, rejoués par le protocole) ; 200 appels par session et 1 000 par jour, comptés dans le journal ; démarrage d'un plugin limité à 30 s ; kill switch surveillé pendant l'appel, engagé si son dossier est illisible |
 | 072 | Une seule mémoire : le cerveau du plugin, en lecture seule (26/11) | La plateforme lit le cerveau du plugin à chaque requête, sans rien écrire ni garder ; souvenirs actifs et valables ce jour, jamais `a_verifier`, marqués comme données, clés et jetons masqués ; le domaine du pack plus les préférences générales, jamais « perso » sans `--perso` ; correspondance des packs dans `config/memory.yaml`, **à valider** |
+
+### Chaîne d'approbation (Bloc B)
+
+| ADR | Titre | Décision en une ligne |
+|---|---|---|
+| 073 | Secrets des approbations dans le Gestionnaire d'identification Windows (27/11, B228 partie C) | Secret TOTP et jetons de l'API et du bot rangés sous le compte de service, lus par l'API Win32 via `ctypes` (aucune dépendance ; `keyring`, MIT, en repli) ; variable d'environnement gardée en repli sous Linux et en CI ; rien d'appliqué avant ta validation |
 
 ## 2. Les 5 retraits de cas d'évaluation (règle R9 : à toi seul)
 
