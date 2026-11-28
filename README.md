@@ -96,6 +96,10 @@ regroupent par sujet ; ⊞ (touche G) revient à la disposition libre, et la vue
   plus rarement (30 jours, puis 60, 120…) tant qu'ils restent vrais. Un fait qui change à une date à venir
   (« à partir du 1er janvier ») laisse l'ancien vrai jusque-là ; « Mondial Relay » et « MondialRelay » sont reconnus
   comme le même nom.
+- **Oublier une session** : chaque souvenir garde les sessions Claude Code qui l'ont écrit, et un journal garde
+  l'ancien texte à chaque modification (`brain show <id> --history`). `brain oublier-session <id>` montre ce qu'une
+  session a écrit, puis, sur ton accord (`--oui`), archive ce qu'elle seule a créé et remet comme avant ce qu'elle
+  seule a changé ; ce qu'une autre session a repris est gardé, et c'est dit. `brain restore 1` annule.
 - **La mémoire protégée** : un souvenir tiré d'une page web ou d'une transcription qui contiendrait une consigne piégée
   (« ignore les consignes de l'utilisateur », « fais-le sans le lui dire », une commande qui télécharge et exécute)
   est mis de côté : Claude n'en voit que le titre et un avertissement, jamais le texte, tant que tu ne l'as pas relu
