@@ -24,6 +24,8 @@ from core.evals.harness import CASES_DIR
 from core.evals.judge import CRITERIA, golden_threshold
 from core.learning.layer import LEARNED_DIR, layer_digest, snapshot
 
+# The modes whose golden set a judge scores: one gate per pack at its own threshold (R9).
+JUDGED_MODES: tuple[Mode, ...] = ("live", "claude_code")
 REPORT_MD = "report.md"
 REPORT_JSON = "report.json"
 CENT = Decimal("0.0001")
@@ -199,7 +201,7 @@ def _gates(report: SuiteReport, mode: Mode, config: Config) -> list[Gate]:
     required, cited = report.sourcing
     if required:
         gates.append(Gate(suite, "sourçage", "100 %", _rate(cited, required), cited == required))
-    if suite == "golden" and mode == "live":  # one gate per pack, at the pack's own threshold
+    if suite == "golden" and mode in JUDGED_MODES:  # one gate per pack, at its own threshold
         for group in report.groups:
             threshold = golden_threshold(config, group.name)
             scores = [
@@ -246,6 +248,8 @@ class Report:
     learned: str | None = None  # digest of the learned layer the run used (ADR-065)
     # regression_block_delta of evals.yaml, None while it is a marker (R7).
     regression_delta: float | None = None
+    # Claude Code bench (ADR-074): what the report says of the run, as (label, value) pairs.
+    bench: tuple[tuple[str, str], ...] = ()
 
     def regression(self) -> str:
         """The state of the comparison with the reference run, as the report states it."""
@@ -308,6 +312,7 @@ class Report:
             "costs": {**self.costs(), "simulated": self.mode == "offline"},
             "latency": self.latency(),
             "regression": self.regression(),
+            **({"banc": dict(self.bench)} if self.mode == "claude_code" else {}),
             "suites": [suite.as_dict() for suite in self.suites],
             "review": [
                 {"case": r["case"], **{k: v for k, v in r["judgement"].items() if k != "case"}}
@@ -376,18 +381,40 @@ def write_report(report: Report, *paths: Path) -> list[Path]:
 # --- markdown ------------------------------------------------------------------------------------
 
 
+CLAUDE_CODE_NOTE = (
+    "> Banc Claude Code (ADR-074) : la session Claude Code a répondu à chaque cas à partir de "
+    "la question et des pages du cas, sans aucun outil ; un sous-agent d'un autre modèle a noté "
+    "chaque réponse et chaque point attendu ; le code a fait tous les contrôles déterministes "
+    "(R5, sources, chiffres et dates tracés, R1) et calculé le score à partir des notes. Ce "
+    "rapport mesure le modèle de la session répondant comme CERVEAU, pas l'orchestrateur : ni "
+    "son routage, ni ses outils, ni ses défenses écrites en code, ni le modèle de "
+    "`config/models.yaml`. Il ne vaut ni pour une promotion ni pour la couche apprise, qui "
+    "demandent des évals réelles (D4, D16). Aucun euro d'API ; l'abonnement n'est pas compté."
+)
+
+
+def _mode_label(report: Report) -> str:
+    if report.mode == "live":
+        return f"réel (campagne {report.campaign})"
+    return "Claude Code (abonnement)" if report.mode == "claude_code" else "hors ligne"
+
+
 def _markdown(report: Report) -> list[str]:
     live = report.mode == "live"
+    bench = report.mode == "claude_code"
     lines = [
         f"# Rapport d'évals — {report.run}",
         "",
-        f"- Mode : {'réel (campagne ' + str(report.campaign) + ')' if live else 'hors ligne'}",
+        f"- Mode : {_mode_label(report)}",
         f"- Date : {report.created.isoformat(timespec='seconds')}",
         f"- Configuration : `{report.config_digest}`",
         f"- Résultat : **{'portes franchies' if report.passed else 'porte(s) en échec'}**",
         "",
     ]
-    if not live:
+    if bench:
+        lines += [CLAUDE_CODE_NOTE, ""]
+        lines += [f"- {label} : {value}" for label, value in report.bench] + [""]
+    elif not live:
         lines += [
             "> Hors ligne : des modèles scriptés remplacent Claude ; toutes les couches "
             "déterministes tournent pour de vrai (pseudonymisation, contrôle des citations, des "
@@ -421,9 +448,18 @@ def _markdown(report: Report) -> list[str]:
                 f"| {suite.suite} | {group.name} | {group.cases} | {group.passed} "
                 f"| {group.rate:.0%} | {group.threshold:.0%} |"
             )
+    lines += [] if bench else _costs(report)
+    lines += _failures(report)
+    if live or bench:
+        lines += _review(report)
+    return lines
+
+
+def _costs(report: Report) -> list[str]:
+    live = report.mode == "live"
     costs, latency = report.costs(), report.latency()
     label = "simulé" if not live else "mesuré"
-    lines += [
+    lines = [
         "",
         "## Coûts et latence par requête",
         "",
@@ -435,9 +471,6 @@ def _markdown(report: Report) -> list[str]:
     ]
     if live:
         lines.append(f"- Juge (compté dans les budgets) : {costs['judge_total_eur']} €")
-    lines += _failures(report)
-    if live:
-        lines += _review(report)
     return lines
 
 

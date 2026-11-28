@@ -26,7 +26,7 @@ from decimal import Decimal, InvalidOperation
 from pathlib import Path
 from typing import Any
 
-from core.code.sandbox import CONTAINER_USER, WORKDIR, Limits, SandboxError
+from core.code.sandbox import CONTAINER_USER, WORKDIR, Limits, SandboxError, blank_proxies
 from core.config.loader import ModelPricing, PriceTier
 
 SCHEMA = 1  # task file, proxy settings and state (core/code/llm_proxy.py)
@@ -193,7 +193,8 @@ def agent_command(
     task: Names, image: str, work: Path, task_dir: Path, limits: Limits, max_seconds: int
 ) -> list[str]:
     """``docker run`` of the agent: the copy is its only writable mount (F1, F5); the runner
-    ends itself after ``max_seconds``, should nobody stop it."""
+    ends itself after ``max_seconds``, should nobody stop it. No proxy of the client's
+    configuration reaches the agent's code (B284): its only way out is the task's proxy."""
     return [
         "run",
         "--rm",
@@ -213,6 +214,7 @@ def agent_command(
         WORKDIR,
         "--env",
         "HOME=/tmp",
+        *blank_proxies(),
         image,
         "--task",
         f"{TASK_DIR}/{TASK_FILE}",

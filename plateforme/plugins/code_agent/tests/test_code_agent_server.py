@@ -10,6 +10,7 @@ import re
 import shutil
 import stat
 import threading
+import time
 from collections.abc import Awaitable, Callable, Mapping, Sequence
 from dataclasses import dataclass
 from decimal import Decimal
@@ -164,11 +165,15 @@ class Done:
     def patch(self) -> bytes:
         return (self.folder / self.data["task_id"] / PATCH_FILE).read_bytes()
 
+    @property
+    def runs(self) -> Path:
+        """The test's stand-in for the system's temporary folder (B283)."""
+        return self.folder.parents[2] / "temp"
+
     def nothing_left(self) -> bool:
-        """No copy under runs/ and no task folder: what a refusal leaves."""
-        runs = self.folder / "runs"
+        """No copy in the temporary folder and no task folder: what a refusal leaves."""
         entries = [path.name for path in self.folder.iterdir()] if self.folder.exists() else []
-        return entries in ([], ["runs"]) and not (runs.exists() and any(runs.iterdir()))
+        return entries == [] and not (self.runs.exists() and any(self.runs.iterdir()))
 
 
 def agent_task(
@@ -183,6 +188,8 @@ def agent_task(
     wrap: Callable[[FakeDocker], Any] | None = None,
     meta: Any = None,
     watch_s: float = QUIET_S,
+    wall: Callable[[], float] = time.time,
+    own_temp: bool = True,
     **limits: Any,
 ) -> Done:
     docker = FakeDocker(SCENARIOS_AGENT[scenario] if isinstance(scenario, str) else scenario)
@@ -199,6 +206,8 @@ def agent_task(
         clock=docker.clock,
         sleep=docker.clock.sleep,
         watch_s=watch_s,
+        runs=home / "temp" if own_temp else None,
+        wall=wall,
     )
     arguments = {"repo": "exemple", "task": TASK, **(arguments or {})}
     result = run(server, lambda c: c.call_tool("agent_task", arguments, meta=meta))
@@ -299,7 +308,10 @@ def test_a_task_runs_the_agent_and_returns_its_patch(example: Path, tmp_path: Pa
         200,
     )
     work = mounted(run_agent.arguments, "/work")
-    assert work == done.folder / "runs" / data["task_id"] / "work"
+    # In the task's private folder of the temporary folder, outside CERVEAU (B283).
+    assert work == done.runs / f"cerveau-agent-{data['task_id']}" / "work"
+    for kind, target in (("proxy", "/state"), ("proxy", "/config"), ("agent", "/task")):
+        assert mounted(done.call(kind).arguments, target).parent == work.parent
     assert "tests/test_more.py" in done.call("check").files
     assert mounted(done.call("check").arguments, "/work") == work
     assert not work.parent.exists()
@@ -842,14 +854,51 @@ class FixedId:
 def test_task_files_that_cannot_be_written(
     taken: str, example: Path, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    monkeypatch.setattr(server_module.uuid, "uuid4", FixedId)
-    run_folder = tmp_path / "var" / "code" / "agent" / "runs" / FixedId.hex[:12]
-    run_folder.mkdir(parents=True)
-    (run_folder / taken).write_text("un fichier à la place du dossier", encoding="utf-8")
+    real = server_module.private_folder
+
+    def taken_inside(parent: Path, name: str) -> Path:
+        folder = real(parent, name)
+        (folder / taken).write_text("un fichier à la place du dossier", encoding="utf-8")
+        return folder
+
+    monkeypatch.setattr(server_module, "private_folder", taken_inside)
     done = agent_task(example, tmp_path)
     assert UNWRITABLE in done.error
     assert done.docker.calls == []
     assert done.nothing_left()
+
+
+def test_a_task_folder_made_by_another_is_refused_and_left_as_is(
+    example: Path, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """B283: in a temporary folder other accounts share, a folder already there under the task's
+    name is never used, nor removed."""
+    monkeypatch.setattr(server_module.uuid, "uuid4", FixedId)
+    planted = tmp_path / "temp" / f"cerveau-agent-{FixedId.hex[:12]}"
+    planted.mkdir(parents=True)
+    (planted / "CLAUDE.md").write_text("consignes plantées\n", encoding="utf-8")
+    done = agent_task(example, tmp_path)
+    assert "dossier temporaire des contrôles impossible à créer" in done.error
+    assert done.docker.calls == []
+    assert (planted / "CLAUDE.md").exists()
+
+
+def test_each_task_removes_the_copies_crashed_tasks_left(example: Path, tmp_path: Path) -> None:
+    """B283: an agent's copy left by a crash (its conftest.py, its CLAUDE.md) goes at the next
+    task, read-only flags and all; a recent one may be another task's, under way."""
+    runs = tmp_path / "temp"
+    now = 2_000_000_000.0
+    stale = server_module.private_folder(runs, "cerveau-agent-ancien")
+    (stale / "work").mkdir()
+    (stale / "work" / "CLAUDE.md").write_text("consignes de l'agent\n", encoding="utf-8")
+    (stale / "work" / "CLAUDE.md").chmod(stat.S_IREAD)
+    (stale / "work").chmod(stat.S_IREAD | stat.S_IEXEC)
+    recent = server_module.private_folder(runs, "cerveau-agent-en-cours")
+    os.utime(stale, (now - 2 * 3_600, now - 2 * 3_600))
+    os.utime(recent, (now, now))
+    done = agent_task(example, tmp_path, wall=lambda: now)
+    assert done.data["cleanup"]["copy_removed"] is True
+    assert [path.name for path in runs.iterdir()] == [recent.name]
 
 
 # --- the patch --------------------------------------------------------------------------------
@@ -939,6 +988,20 @@ def test_a_copy_left_behind_is_reported(
     assert data["source"]["removed"] is False
     monkeypatch.undo()
     shutil.rmtree(tmp_path / "var")
+    shutil.rmtree(tmp_path / "temp")
+
+
+def test_the_copy_is_written_in_the_system_temporary_folder(
+    example: Path, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """B283: by default, outside CERVEAU; nothing of the copy goes under var/code/agent/."""
+    system = tmp_path / "systeme"
+    monkeypatch.setattr(server_module.tempfile, "gettempdir", lambda: str(system))
+    done = agent_task(example, tmp_path / "cerveau", own_temp=False)
+    work = mounted(done.call("agent").arguments, "/work")
+    assert work == system / f"cerveau-agent-{done.data['task_id']}" / "work"
+    assert not work.exists()
+    assert [path.name for path in done.folder.iterdir()] == [done.data["task_id"]]
 
 
 def test_unwritable_helpers_say_so(tmp_path: Path) -> None:

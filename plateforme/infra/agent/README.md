@@ -113,4 +113,7 @@ docker kill <identifiants listés>
 docker network prune --force --filter label=cerveau.code_agent=1
 ```
 
-La copie jetable reste sous `var/code/agent/runs/<id>/` (B283) : la supprimer à la main.
+La copie jetable reste dans le dossier temporaire du système, hors de CERVEAU, sous
+`cerveau-agent-<id>/` (B283) : la tâche suivante la retire une fois vieille d'une heure, ou la
+supprimer à la main. Les copies d'avant le 28/11/2026 (`var/code/agent/runs/`, `var/code/runs/`)
+ne sont plus écrites ni retirées : les supprimer à la main.

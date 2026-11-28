@@ -40,7 +40,8 @@ slo:
 # l'image des contrôles est construite par l'utilisateur : docs/licences.md.
 dependencies_licences: [MIT]
 # Démarrage (ADR-015) : aucune variable transmise, comme code_repo, pour lire le même
-# config/code.yaml ; la copie va sous var/code/runs/ du dépôt. git et docker sont lancés avec un
+# config/code.yaml ; la copie va dans le dossier temporaire du système, hors du dépôt (B283).
+# git et docker sont lancés avec un
 # environnement réduit (core/code/git.py, core/code/sandbox.py).
 runtime:
   module: plugins.code_checks

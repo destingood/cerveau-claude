@@ -32,6 +32,7 @@ from core.registry import validate_all, validate_plugin
 from interfaces.cli import evaluate
 from interfaces.cli.api import api_app
 from interfaces.cli.approvals import approvals_app
+from interfaces.cli.claude_code_evals import claude_code_app
 from interfaces.cli.committee import committee_app
 from interfaces.cli.common import (
     EXIT_BLOCKED,
@@ -78,6 +79,7 @@ app.add_typer(forecast_app, name="forecast")
 app.add_typer(learn_app, name="learn")
 app.add_typer(memory_app, name="memoire")
 app.add_typer(report_app, name="report")
+app.add_typer(claude_code_app, name="evals")
 app.add_typer(paper_app, name="paper")
 app.add_typer(approvals_app, name="approvals")
 app.add_typer(api_app, name="api")

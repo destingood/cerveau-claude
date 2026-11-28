@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import os
+import stat
 import sys
 from collections.abc import Sequence
 from pathlib import Path
@@ -14,20 +16,30 @@ from core.code.process import Bounded
 from core.code.repos import RepoReader, Repository, TreeItem
 from core.code.sandbox import (
     CONTAINER_USER,
+    KILL_TIMEOUT_S,
+    LABEL,
+    PROXY_VARIABLES,
+    STALE_AFTER_S,
     TMPFS,
     DockerRunner,
     Limits,
     SandboxError,
+    container_seconds,
     copy_tree,
     docker_command,
     docker_environment,
+    leftover_command,
+    leftovers,
+    overdue,
     plan_copy,
     portable,
+    private_folder,
 )
 from tests.code_support import add_entry, blob, git, listed, make_repo
 
 LIMITS = Limits(cpus=2, memory_mb=2048, pids=256)
 SHA = "a" * 40
+ENDS_BY = 1_764_300_000
 
 
 def option(command: list[str], name: str) -> list[str]:
@@ -43,6 +55,8 @@ def build(source: Path = Path("/var/runs/1"), **kwargs: object) -> list[str]:
         "limits": LIMITS,
         "program": "ruff",
         "arguments": ["check", "--no-cache", "--output-format=json", "."],
+        "max_seconds": 27,
+        "ends_by": ENDS_BY,
         **kwargs,
     }
     return docker_command(**arguments)  # type: ignore[arg-type]
@@ -91,20 +105,80 @@ def test_the_copy_is_mounted_read_only_and_is_the_only_mount() -> None:
 
 
 def test_the_environment_inside_is_fixed() -> None:
-    assert option(build(), "--env") == ["HOME=/tmp", "PYTHONDONTWRITEBYTECODE=1"]
+    assert option(build(), "--env") == [
+        "HOME=/tmp",
+        "PYTHONDONTWRITEBYTECODE=1",
+        *(f"{name}=" for name in PROXY_VARIABLES),
+    ]
 
 
-def test_the_program_and_its_arguments_follow_the_image() -> None:
-    command = build()
+def test_no_proxy_of_the_client_configuration_reaches_the_container() -> None:
+    """B284: the client fills only the proxy names the command does not set (docker/cli)."""
+    assert sorted(PROXY_VARIABLES) == sorted(
+        [
+            "HTTP_PROXY",
+            "http_proxy",
+            "HTTPS_PROXY",
+            "https_proxy",
+            "FTP_PROXY",
+            "ftp_proxy",
+            "NO_PROXY",
+            "no_proxy",
+            "ALL_PROXY",
+            "all_proxy",
+        ]
+    )
+    assert set(PROXY_VARIABLES) <= {value.removesuffix("=") for value in option(build(), "--env")}
+
+
+def test_the_program_runs_under_its_own_time_limit() -> None:
+    """B282: the container ends by itself even when nobody kills it."""
+    command = build(max_seconds=27)
     image = f"sha256:{'b' * 64}"
-    assert option(command, "--entrypoint") == ["ruff"]
+    assert option(command, "--entrypoint") == ["timeout"]
     assert command[command.index(image) :] == [
         image,
+        "-s",
+        "KILL",
+        "27",
+        "ruff",
         "check",
         "--no-cache",
         "--output-format=json",
         ".",
     ]
+
+
+def test_the_container_is_labelled_with_the_time_it_ends_by() -> None:
+    assert option(build(ends_by=ENDS_BY), "--label") == [f"cerveau.code_checks.ends_by={ENDS_BY}"]
+    assert LABEL == "cerveau.code_checks.ends_by"
+
+
+@pytest.mark.parametrize(("given", "own"), [(25.0, 27), (24.2, 27), (0.5, 3), (300.0, 302)])
+def test_the_container_limit_comes_after_the_clients(given: float, own: int) -> None:
+    assert container_seconds(given) == own
+
+
+def test_the_leftovers_are_listed_by_label_with_their_end() -> None:
+    assert leftover_command() == [
+        "ps",
+        "--filter",
+        f"label={LABEL}",
+        "--format",
+        '{{.ID}} {{.Label "cerveau.code_checks.ends_by"}}',
+    ]
+
+
+def test_only_containers_past_their_end_are_overdue() -> None:
+    late, early, now = "a" * 12, "b" * 12, 1_000.0
+    stdout = (
+        f"{late} 999\n{early} 1000\n{'c' * 64} 12\n"
+        # Not ours, or not readable: left alone.
+        f"{'d' * 12}\n{'e' * 12} demain\nZZZZZZZZZZZZ 5\n{'f' * 11} 5\n{'0' * 12} 5 x\n"
+        f"{'1' * 12} ٣\n\n"
+    ).encode()
+    assert overdue(stdout, now) == [late, "c" * 64]
+    assert overdue(b"", now) == []
 
 
 @pytest.mark.parametrize("folder", ["/var/a,b", "/var/a=b", '/var/a"b'])
@@ -182,6 +256,7 @@ def test_a_slow_container_is_killed_by_name(fake_docker: tuple[DockerRunner, Pat
     runner, killed = fake_docker
     out = runner.run(["run", "slow"], name="cerveau-check-7", timeout_s=0.5, max_bytes=1_000)
     assert out.timed_out
+    assert out.stopped is True
     assert killed.read_text(encoding="utf-8") == "cerveau-check-7"
 
 
@@ -189,8 +264,114 @@ def test_a_flooding_container_is_killed_by_name(fake_docker: tuple[DockerRunner,
     runner, killed = fake_docker
     out = runner.run(["run", "flood"], name="cerveau-check-8", timeout_s=10, max_bytes=1_000)
     assert out.truncated
+    assert out.stopped is True
     assert len(out.stdout) == 1_000
     assert killed.read_text(encoding="utf-8") == "cerveau-check-8"
+
+
+def test_a_container_within_its_limits_is_not_killed(
+    fake_docker: tuple[DockerRunner, Path],
+) -> None:
+    runner, killed = fake_docker
+    assert runner.run(["run", "ok"], name="c1", timeout_s=10, max_bytes=1_000).stopped is None
+    assert not killed.exists()
+
+
+class Steps:
+    """``run_bounded`` answering each command in turn; the clock moves as each one asks."""
+
+    def __init__(self, *answers: Bounded | OSError, takes: Sequence[float] = ()) -> None:
+        self.answers = list(answers)
+        self.takes = list(takes)
+        self.calls: list[list[str]] = []
+        self.timeouts: list[float] = []
+        self.now = 0.0
+
+    def clock(self) -> float:
+        return self.now
+
+    def __call__(self, command: Sequence[str], *, timeout_s: float, **_: object) -> Bounded:
+        self.calls.append(list(command))
+        self.timeouts.append(timeout_s)
+        self.now += self.takes.pop(0) if self.takes else 0.0
+        answer = self.answers.pop(0)
+        if isinstance(answer, OSError):
+            raise answer
+        return answer
+
+
+SLOW = Bounded(-9, b"", "", truncated=False, timed_out=True)
+DONE = Bounded(0, b"", "", truncated=False, timed_out=False)
+NOT_RUNNING = Bounded(1, b"", "Error: No such container", truncated=False, timed_out=False)
+NO_ANSWER = Bounded(-9, b"", "", truncated=False, timed_out=True)
+DOWN = Bounded(1, b"", "Cannot connect to the Docker daemon", truncated=False, timed_out=False)
+LISTED = Bounded(0, b"f00d\n", "", truncated=False, timed_out=False)
+KILL = ["docker", "kill", "c1"]
+PS = ["docker", "ps", "--quiet", "--filter", "name=c1"]
+
+
+@pytest.mark.parametrize(
+    ("answers", "stopped", "commands"),
+    [
+        # docker kill answered 0.
+        ((DONE,), True, [KILL]),
+        # Already gone (ended meanwhile, removed by --rm): docker ps no longer lists it.
+        ((NOT_RUNNING, DONE), True, [KILL, PS]),
+        # The kill failed and the container still runs: not stopped (B282).
+        ((NOT_RUNNING, LISTED), False, [KILL, PS]),
+        # The engine does not answer, or cannot be reached: nothing is confirmed.
+        ((NO_ANSWER,), False, [KILL]),
+        ((OSError("gone"),), False, [KILL]),
+        ((NOT_RUNNING, NO_ANSWER), False, [KILL, PS]),
+        ((NOT_RUNNING, DOWN), False, [KILL, PS]),
+        ((NOT_RUNNING, OSError("gone")), False, [KILL, PS]),
+    ],
+)
+def test_a_container_is_said_stopped_only_when_docker_confirms_it(
+    answers: tuple[Bounded | OSError, ...],
+    stopped: bool,
+    commands: list[list[str]],
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    steps = Steps(SLOW, *answers)
+    monkeypatch.setattr(sandbox, "run_bounded", steps)
+    out = DockerRunner(("docker",), clock=steps.clock).run(
+        ["run"], name="c1", timeout_s=1, max_bytes=10
+    )
+    assert (out.timed_out, out.stopped) == (True, stopped)
+    assert steps.calls == [["docker", "run"], *commands]
+
+
+def test_the_check_after_a_failed_kill_shares_its_time(monkeypatch: pytest.MonkeyPatch) -> None:
+    steps = Steps(SLOW, NOT_RUNNING, DONE, takes=[1.0, 4.0])
+    monkeypatch.setattr(sandbox, "run_bounded", steps)
+    out = DockerRunner(("docker",), clock=steps.clock).run(
+        ["run"], name="c1", timeout_s=1, max_bytes=10
+    )
+    assert out.stopped is True
+    assert steps.timeouts == [1, KILL_TIMEOUT_S, KILL_TIMEOUT_S - 4.0]
+
+
+def test_no_check_is_made_once_the_kill_took_all_its_time(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    steps = Steps(SLOW, NOT_RUNNING, takes=[1.0, KILL_TIMEOUT_S])
+    monkeypatch.setattr(sandbox, "run_bounded", steps)
+    out = DockerRunner(("docker",), clock=steps.clock).run(
+        ["run"], name="c1", timeout_s=1, max_bytes=10
+    )
+    assert out.stopped is False
+    assert steps.calls == [["docker", "run"], KILL]
+
+
+def test_a_command_without_container_is_never_followed_by_a_kill(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    steps = Steps(SLOW)
+    monkeypatch.setattr(sandbox, "run_bounded", steps)
+    out = DockerRunner(("docker",)).run(["ps"], name="", timeout_s=1, max_bytes=10)
+    assert (out.timed_out, out.stopped) == (True, None)
+    assert steps.calls == [["docker", "ps"]]
 
 
 def test_a_missing_docker_is_an_error(tmp_path: Path) -> None:
@@ -211,7 +392,9 @@ def test_a_kill_that_cannot_start_is_ignored(monkeypatch: pytest.MonkeyPatch) ->
 
     monkeypatch.setattr(sandbox, "run_bounded", fake)
     out = DockerRunner(("docker",)).run(["run"], name="c1", timeout_s=1, max_bytes=10)
-    assert out is slow
+    assert (out.returncode, out.timed_out) == (slow.returncode, True)
+    # Not confirmed: the kill never ran (B282).
+    assert out.stopped is False
     assert calls == [["docker", "run"], ["docker", "kill", "c1"]]
 
 
@@ -375,3 +558,82 @@ def test_a_file_named_like_a_folder_is_skipped() -> None:
     files, _, skipped = plan_copy([item("Pkg"), item("pkg/mod.py")])
     assert [entry.path for entry in files] == ["pkg/mod.py"]
     assert skipped == ["Pkg"]
+
+
+# --- the throwaway folders (B283) -------------------------------------------------------------
+
+
+def test_a_private_folder_is_new_and_closed_to_others(tmp_path: Path) -> None:
+    folder = private_folder(tmp_path / "temp", "cerveau-checks-1")
+    assert folder == tmp_path / "temp" / "cerveau-checks-1"
+    assert folder.is_dir() and list(folder.iterdir()) == []
+    if os.name == "posix":
+        assert stat.S_IMODE(folder.stat().st_mode) & 0o077 == 0
+
+
+def test_a_folder_that_already_exists_is_refused_and_left_as_is(tmp_path: Path) -> None:
+    taken = tmp_path / "cerveau-checks-1"
+    taken.mkdir()
+    (taken / "conftest.py").write_text("x = 1\n", encoding="utf-8")
+    with pytest.raises(SandboxError, match="dossier temporaire des contrôles impossible à créer"):
+        private_folder(tmp_path, "cerveau-checks-1")
+    assert (taken / "conftest.py").exists()
+
+
+def test_a_private_folder_under_a_file_is_refused(tmp_path: Path) -> None:
+    (tmp_path / "fichier").write_text("x", encoding="utf-8")
+    with pytest.raises(SandboxError, match="dossier temporaire des contrôles impossible à créer"):
+        private_folder(tmp_path / "fichier", "cerveau-checks-1")
+
+
+NOW = 2_000_000_000.0
+
+
+def aged(path: Path, seconds: float) -> Path:
+    os.utime(path, (NOW - seconds, NOW - seconds))
+    return path
+
+
+def test_the_folders_crashed_calls_left_are_found(tmp_path: Path) -> None:
+    current = private_folder(tmp_path, "cerveau-checks-courant")
+    old = aged(private_folder(tmp_path, "cerveau-checks-ancien"), STALE_AFTER_S + 1)
+    older = aged(private_folder(tmp_path, "cerveau-checks-0-plus-ancien"), 10 * STALE_AFTER_S)
+    # A call under way (recent), another plugin's folder, a file, the call's own folder.
+    aged(private_folder(tmp_path, "cerveau-checks-recent"), STALE_AFTER_S - 1)
+    aged(private_folder(tmp_path, "cerveau-agent-ancien"), 10 * STALE_AFTER_S)
+    aged(private_folder(tmp_path, "autre"), 10 * STALE_AFTER_S)
+    file = tmp_path / "cerveau-checks-fichier"
+    file.write_text("x", encoding="utf-8")
+    aged(file, 10 * STALE_AFTER_S)
+    aged(current, 10 * STALE_AFTER_S)
+    assert leftovers(tmp_path, "cerveau-checks-", current, NOW) == [older, old]
+
+
+def test_a_link_to_a_folder_is_never_a_leftover(tmp_path: Path) -> None:
+    current = private_folder(tmp_path / "temp", "cerveau-checks-courant")
+    target = aged(private_folder(tmp_path, "ailleurs"), 10 * STALE_AFTER_S)
+    link = tmp_path / "temp" / "cerveau-checks-lien"
+    try:
+        link.symlink_to(target, target_is_directory=True)
+    except OSError:
+        pytest.skip("pas de lien symbolique sur ce système (droits Windows)")
+    assert leftovers(tmp_path / "temp", "cerveau-checks-", current, NOW) == []
+
+
+class OtherOwner:
+    """The call's own folder, as another account would own it."""
+
+    name = "cerveau-checks-courant"
+
+    def stat(self) -> os.stat_result:
+        return os.stat_result((0, 0, 0, 0, -1, 0, 0, 0, 0, 0))
+
+
+def test_a_folder_of_another_account_is_never_a_leftover(tmp_path: Path) -> None:
+    aged(private_folder(tmp_path, "cerveau-checks-ancien"), 10 * STALE_AFTER_S)
+    assert leftovers(tmp_path, "cerveau-checks-", OtherOwner(), NOW) == []  # type: ignore[arg-type]
+
+
+def test_a_missing_temporary_folder_has_no_leftover(tmp_path: Path) -> None:
+    current = private_folder(tmp_path, "cerveau-checks-courant")
+    assert leftovers(tmp_path / "absent", "cerveau-checks-", current, NOW) == []

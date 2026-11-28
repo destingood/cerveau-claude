@@ -22,7 +22,8 @@ from core.orchestrator.state import MARKER, Answer
 from core.verification.citations import citation_numbers, units
 from core.verification.trace import FIGURE_ORIGIN, Evidence, ToolOutput, trace
 
-Mode = Literal["offline", "live"]
+# claude_code: the golden sets answered in Claude Code and judged by another model (ADR-074).
+Mode = Literal["offline", "live", "claude_code"]
 
 HEADINGS = (
     "## La Synthèse (Le « Quoi »)",

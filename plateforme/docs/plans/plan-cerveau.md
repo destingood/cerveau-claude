@@ -87,6 +87,7 @@ sauf les correctifs sûrs, faits tout de suite à ta demande.
 | 27/11 | Fusionner la PR #35 ; « continue le plan » | B2 fusionnée. Tes réponses : correspondance pack → domaines gardée telle que proposée, confiance minimale « moyenne », profil hors de la plateforme. Puis étape B3, les réglages bloqués : faits vérifiés, réglages techniques proposés, fiche de gouvernance (ton GO du 27/11) |
 | 28/11 | « Continue d'autres aspects du cerveau » | Étape 21 (8.44.0) : oublier une session, index des noms ; rappel plus varié mesuré, pas mis en service |
 | 28/11 | « Fusionne et continue le plan » | PR #39 fusionnée ; étape 22 (8.45.0) : le hook « retiens que… » sous ses 150 ms |
+| 28/11 | « Fusionne et continue le plan » (PR #40) | Bloc B, étape B4 : bac à sable borné (B282), 263 cas candidats à valider (B62), banc d'évals dans Claude Code (ADR-074). Tes réponses : les trois, B282 d'abord ; une page à cocher pour valider les cas ; un autre modèle Claude juge |
 
 ## 2. Comment l'audit a été fait, et ses limites
 
@@ -596,6 +597,22 @@ hook au-dessus de 150 ms, premier démarrage après un changement compris ; `bra
 - **Mesurer pour de vrai à 0 €** : les jeux de cas passés dans Claude Code, un autre modèle juge ; le
   jeu de cas passe de 37 à 300 (B62). Le test Docker du pack Code (B270) est à toi ; le bac à sable
   n'a pas encore de limite de temps (B282).
+  - ✅ B282 fait le 28/11 (avec B283 et B284, amendement de l'ADR-048, proposé). Chaque contrôle tourne sous
+    `timeout -s KILL` (sa part du budget plus 2 s) ; les conteneurs portent leur heure de fin et chaque appel tue
+    d'abord ceux qui l'ont passée ; « conteneur arrêté » seulement si Docker le confirme. Les copies de
+    `code_checks` et `code_agent` vont dans un dossier privé du dossier temporaire du système, hors de CERVEAU ;
+    celles d'un arrêt brutal partent à l'appel suivant. Les variables de proxy du client Docker sont mises à vide
+    dans les conteneurs. Reste B270 (ton essai réel, `tests/test_code_checks_docker.py`).
+  - B62 : 263 cas candidats écrits le 28/11 (`domain_packs/generaliste/evals/candidats.jsonl`, 16 catégories,
+    dont 25 injections et 25 « je ne sais pas ») ; `golden.jsonl` inchangé. À valider cas par cas sur ta page ;
+    seuls les cas gardés ou corrigés entreront, puis seront gelés (R9). 10 cas d'injection échouent hors ligne :
+    le détecteur rate leurs tournures (à corriger dans `core/guardrails/injection.py` avant de les geler).
+  - ✅ Banc « golden sets passés dans Claude Code » fait le 28/11 (ADR-074, proposé) : `cerveau evals exporter /
+    preparer-juge / noter`, skill `evals-claude-code`, sous-agents `repondant-evals` (modèle de la session) et
+    `juge-evals` (Sonnet). Le code contrôle ce qui se contrôle (R5, sources, chaque chiffre et date tracés, R1) ;
+    le juge note la grille et chaque point attendu ; seuils lus, jamais écrits (R9). Mode `claude_code` : ni
+    promotion ni couche apprise. Essai sur 3 cas : 2 réussis, 1 verdict de Haiku refusé (points manquants).
+    Suites : B366 à B368.
 
 ### Bloc C — Étendre (plan v2, étapes 9 à 14, inchangées)
 

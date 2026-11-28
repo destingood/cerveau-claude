@@ -45,8 +45,8 @@ slo:
 # d'Anthropic) et du proxy sont construites par l'utilisateur, jamais distribuées : docs/licences.md.
 dependencies_licences: [MIT]
 # Démarrage (ADR-015) : la clé de l'API passe au serveur par son nom, qui ne la lit jamais ; seul le
-# `docker run` du proxy la reçoit, par son nom (core/code/sandbox.py, `passed`). La copie va sous
-# var/code/agent/runs/ du dépôt, le patch sous var/code/agent/<id>/.
+# `docker run` du proxy la reçoit, par son nom (core/code/sandbox.py, `passed`). La copie va dans
+# le dossier temporaire du système, hors du dépôt (B283), le patch sous var/code/agent/<id>/.
 runtime:
   module: plugins.code_agent
   env: [ANTHROPIC_API_KEY]

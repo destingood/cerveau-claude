@@ -27,6 +27,9 @@ class Bounded:
     truncated: bool
     # The time limit expired: the program was stopped.
     timed_out: bool
+    # A container past one of these limits (core/code/sandbox.py, B282): whether it was seen
+    # stopped afterwards. ``None`` when no limit was passed or the program is not a container.
+    stopped: bool | None = None
 
 
 def _read_bounded(stream: IO[bytes], limit: int) -> tuple[bytes, bool]:

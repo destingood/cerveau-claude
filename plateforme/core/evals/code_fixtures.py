@@ -151,9 +151,12 @@ def _ruff(items: list[object]) -> Bounded:
 
 
 def step_of(arguments: Sequence[str]) -> str:
-    """``check``, ``format`` or ``pytest``, from ``--entrypoint PROGRAM IMAGE ARGUMENTS``."""
+    """``check``, ``format`` or ``pytest``, from ``--entrypoint timeout IMAGE -s KILL SECONDS
+    PROGRAM ARGUMENTS``; ``sweep`` for the commands that start no container (B282)."""
+    if arguments[0] in ("ps", "kill"):
+        return "sweep"
     at = list(arguments).index("--entrypoint")
-    return "pytest" if arguments[at + 1] == "python" else arguments[at + 3]
+    return "pytest" if arguments[at + 6] == "python" else arguments[at + 7]
 
 
 @dataclass
@@ -167,13 +170,17 @@ class FixtureDocker:
         self, arguments: Sequence[str], *, name: str, timeout_s: float, max_bytes: int
     ) -> Bounded:
         step = step_of(arguments)
-        self.steps.append(step)
         checks = self.checks
+        if step == "sweep":
+            # No container of an earlier call is left; the case's steps are the containers'.
+            return Bounded(0, b"", "", False, False)
+        self.steps.append(step)
         if checks is None or checks.docker is not None:
             code = NO_DOCKER if checks is None or checks.docker is None else checks.docker
             return Bounded(code, b"", "Cannot connect to the Docker daemon", False, False)
         if step in checks.timed_out:
-            return Bounded(-9, b"", "", False, True)
+            # Killed past its time, the kill confirmed by Docker.
+            return Bounded(-9, b"", "", False, True, True)
         if step == "check":
             return _ruff(
                 [_ruff_item(i.path, i.code, i.message, i.row, i.column) for i in checks.lint]

@@ -1,7 +1,10 @@
 """MCP stdio server of the ``code_agent`` plugin: ``agent_task`` (ADR-054, P3b, N0).
 
 The planner names a repository of the allow list (E2), a revision and a task. The files of that
-commit are copied, from git objects, into a throwaway folder under ``var/code/agent/runs/``.
+commit are copied, from git objects, into a private throwaway folder of the system's temporary
+folder, outside CERVEAU (B283): a ``conftest.py`` or a ``CLAUDE.md`` the agent writes there is
+never found by a tool searching CERVEAU, even when a crash leaves the copy behind; the next call
+removes such leftovers.
 Claude Code (Agent SDK) works on that copy in a Linux container, on a Docker network of the task
 with no way out; its model calls go through the task's API proxy, the only container that holds
 the key and reaches the API, within the task's dollars and requests (F5). Once the agent's
@@ -27,6 +30,7 @@ import math
 import os
 import shutil
 import stat
+import tempfile
 import threading
 import time
 import uuid
@@ -54,7 +58,9 @@ from core.code.sandbox import (
     Limits,
     SandboxError,
     copy_tree,
+    leftovers,
     plan_copy,
+    private_folder,
 )
 from core.code.text import visible
 from core.config.loader import (
@@ -120,13 +126,15 @@ MAX_WORK_BYTES = 500_000_000
 PATH_CHARS = 300
 NOTE_CHARS = 300
 REMOVALS = (os.unlink, os.remove, os.rmdir)
+# The private folder of one task, in the system's temporary folder (B283).
+RUN_PREFIX = "cerveau-agent-"
 PATCH_FILE = "patch.diff"
 REPORT_FILE = "rapport.json"
 KILLED = "kill switch engagé (R4) : aucune tâche lancée"
 STOPPED = "kill switch engagé (R4) : conteneurs arrêtés, rien d'autre lancé"
 NOT_RUN = "l'agent n'a pas fini seul : aucun patch calculé"
 NOT_STOPPED = "arrêt des conteneurs non confirmé : aucun patch calculé"
-UNWRITABLE = "fichiers de la tâche impossibles à écrire sous var/code/agent/"
+UNWRITABLE = "fichiers de la tâche impossibles à écrire dans son dossier temporaire"
 CHECKS_CHANGED = (
     "le patch modifie des fichiers qui règlent ou lancent les contrôles (conftest.py, "
     "pyproject.toml...) : leurs résultats ne prouvent rien"
@@ -202,9 +210,8 @@ class _Paths:
     out: Path
 
 
-def _paths(folder: Path, task_id: str) -> _Paths:
-    run = folder / "runs" / task_id
-    return _Paths(run, run / "work", run / "task", run / "config", run / "state", folder / task_id)
+def _paths(run: Path, out: Path) -> _Paths:
+    return _Paths(run, run / "work", run / "task", run / "config", run / "state", out)
 
 
 def _text(raw: str, limit: int) -> str:
@@ -494,11 +501,15 @@ def build_server(
     clock: Callable[[], float] = time.monotonic,
     sleep: Callable[[float], None] = time.sleep,
     watch_s: float = WATCH_S,
+    runs: Path | None = None,
+    wall: Callable[[], float] = time.time,
 ) -> MCPServer:
     """``docker`` runs every command but the proxy's ``docker run``, which ``proxy_docker`` runs:
-    the only one whose environment holds the key, handed to the proxy by name (R6)."""
+    the only one whose environment holds the key, handed to the proxy by name (R6). ``runs``:
+    the folder of the tasks' private folders, by default the system's temporary one (B283)."""
     server = MCPServer("code_agent", version=__version__, instructions=INSTRUCTIONS)
     folder = home / "var" / "code" / "agent"
+    parent = Path(tempfile.gettempdir()) if runs is None else runs
 
     def run_task(repo_id: str, rev: str, prompt: str, limit_s: float | None) -> AgentResult:
         current = settings()
@@ -513,7 +524,11 @@ def build_server(
         # The copy and the start count too: the whole call ends within its own time limit.
         budget = Budget((CALL_S if limit_s is None else limit_s) - RESERVE_S, clock)
         task_id = uuid.uuid4().hex[:12]
-        paths, task = _paths(folder, task_id), agent.names(task_id)
+        # Made before the try: a folder this call did not make is never removed.
+        run = private_folder(parent, f"{RUN_PREFIX}{task_id}")
+        for stale in leftovers(parent, RUN_PREFIX, run, wall()):
+            _remove(stale)
+        paths, task = _paths(run, folder / task_id), agent.names(task_id)
         settings_now = current.agent
         proxy = False
         networks: list[str] = []
