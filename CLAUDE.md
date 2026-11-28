@@ -7,7 +7,8 @@ projets de l'utilisateur. Plan unique, plugin compris : `plateforme/docs/plans/p
 ## Carte
 
 - `brain.py` : lanceur. `brainkit/` : le moteur — `store.py` (graphe des souvenirs), `search.py` (rappel),
-  `hooks*.py` (démarrage, message, fin), `mcp_server.py`, `viz.py` et `vue3d/` (vue 3D), `wiki*.py`, `dream.py`.
+  `hooks*.py` (démarrage, message, fin), `attente.py` (souvenirs en attente de graph.json), `mcp_server.py`,
+  `viz.py` et `vue3d/` (vue 3D), `wiki*.py`, `dream.py`.
 - Livré aux utilisateurs : `hooks/`, `skills/` (23), `agents/` (3), `output-styles/`, `.claude-plugin/`.
   Propre à ce dépôt, jamais livré : `.claude/` (interdits, hooks), `tests/`.
 
@@ -25,7 +26,7 @@ projets de l'utilisateur. Plan unique, plugin compris : `plateforme/docs/plans/p
   wiki `test_wiki`, `test_wiki_conflits` · vue 3D `test_vue3d` · réglages `test_page_reglages` ·
   skills `test_skills_regroupees`, `test_scripts_skills`, `test_declencheurs` · regrouper `test_regroupe` · pertes `test_pertes` ·
   partage `test_partage`, `test_echange`, `test_commun` · e-commerce `test_ecommerce`, `test_boutique` ·
-  temps `test_temps`, `test_justesse` · sessions et journal des textes `test_oubli_session` · protection `test_protection` · serveur MCP `test_serveur_mcp`.
+  temps `test_temps`, `test_justesse` · sessions et journal des textes `test_oubli_session` · « retiens que… » rapide `test_retiens_vite` · protection `test_protection` · serveur MCP `test_serveur_mcp`.
 
 ## Règles
 
