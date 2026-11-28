@@ -76,7 +76,9 @@ const { pathToFileURL } = require("url");
     out.legendDom = await page.evaluate(() => { const s = st.color; st.color = "dom"; const k = legendKey(cur.byId.get("ovh") || cur.nodes[0]); st.color = s; return k; });
     await page.click("#playBtn");
     await page.waitForTimeout(2600);
-    await page.click("#playBtn");
+    // l'arrêter s'il joue encore : un second clic sur une lecture déjà finie la relancerait (machine chargée)
+    if (await page.evaluate(() => $("#playBtn").textContent === "⏸")) await page.click("#playBtn");
+    await page.waitForFunction(() => $("#playBtn").textContent === "▶", null, { timeout: 10000 }).catch(() => {});
     out.afterPlay = await page.evaluate(() => ({ until: st.until, dying: cur.nodes.filter(n => n.__dying).length }));
     // retour en avant juste après une extinction : les souvenirs revenus sont rallumés tout de suite (pas après un minuteur)
     out.revived = await page.evaluate(() => { setUntil(0); setUntil(st.dates.length - 1);

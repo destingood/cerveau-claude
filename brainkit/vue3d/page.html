@@ -1293,7 +1293,9 @@ function setUntil(i){
 function setClusters(on){  // amas par projet ⇄ disposition libre ; la préférence est gardée
   st.clusters = !!on; store.set("brain3d-amas", st.clusters ? "on" : "off");
   $("#grpBtn").setAttribute("aria-pressed", String(st.clusters));
-  if (G && !cur.map){ forces(); G.d3ReheatSimulation(); setTimeout(() => { if (!st.userMoved) G.zoomToFit(900, 80); }, 1800); }
+  if (G && !cur.map){  // tout se réarrange : 15 s de simulation, pour qu'un PC lent aille aussi au bout
+    G.cooldownTime(15000); forces(); G.d3ReheatSimulation();
+    setTimeout(() => { if (!st.userMoved) G.zoomToFit(900, 80); }, 1800); }
 }
 function applyLayers(){  // couches : la hauteur d'un souvenir dit son niveau (vision en haut, détail en bas)
   for (const n of cur.nodes){
