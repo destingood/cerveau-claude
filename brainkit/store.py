@@ -309,6 +309,8 @@ class Brain:
     def save(self):
         from . import history
         history.snapshot("auto")  # état d'avant la modification (au plus un toutes les 30 min)
+        from . import provenance
+        provenance.on_save(self)  # session dans meta.sessions, ancien et nouveau texte au journal (history/textes.jsonl)
         self.data["updated"] = now_iso()
         counted = self._counted
         if counted and counted[2]:  # compteurs en attente appliqués à la lecture : ce graphe les contient désormais
@@ -368,6 +370,14 @@ class Brain:
             sys.stderr.write(f"🔒 secret masqué avant enregistrement : {', '.join(sorted(set(found)))} "
                              "(le cerveau ne garde jamais de clé, jeton ni mot de passe)\n")
         return text
+
+    def _wrote(self, nid, node):
+        """Provenance (provenance.py) : l'état d'un souvenir avant sa première modification par ce cerveau (None : il
+        vient d'être créé). Brain.save en tire la session qui l'a écrit et la ligne du journal des textes."""
+        seen = self.__dict__.setdefault("_avant", {})
+        if nid not in seen and not _foreign(nid):
+            from .provenance import snap
+            seen[nid] = None if node is None else snap(node)
 
     @property
     def nodes(self) -> dict:
@@ -574,6 +584,7 @@ class Brain:
             "meta": dict(meta or {}),
         }
         self.nodes[nid] = node
+        self._wrote(nid, None)
         self._poison_check(node)
         self.sync_wikilinks(nid)
         self.dirty = True
@@ -591,6 +602,7 @@ class Brain:
     def update(self, nid, **fields):
         self._writable(nid)
         n = self.nodes[nid]
+        self._wrote(nid, n)
         for key, val in fields.items():
             if key == "project":
                 if val is not None:
@@ -665,6 +677,7 @@ class Brain:
         self._writable(old_id)
         self.link(new_id, old_id, "supersedes")
         old = self.nodes[old_id]
+        self._wrote(old_id, old)
         meta = dict(old.get("meta") or {})
         from .temps import end_for
         # fin : la veille du début écrit du nouveau, sinon aujourd'hui ; une fin déjà passée reste la sienne ; un
@@ -691,6 +704,8 @@ class Brain:
         self._writable(keep_id)
         self._writable(drop_id)
         keep, drop = self.nodes[keep_id], self.nodes[drop_id]
+        self._wrote(keep_id, keep)
+        self._wrote(drop_id, drop)
         if drop.get("body") and fold(drop["body"]) not in fold(keep.get("body", "")):
             keep["body"] = f"{keep.get('body', '')}\n{drop['body']}".strip()
         if fold(drop.get("title", "")) != fold(keep.get("title", "")):
@@ -736,6 +751,8 @@ class Brain:
 
     def remove(self, nid, purge=False):
         self._writable(nid)
+        if nid in self.nodes:
+            self._wrote(nid, self.nodes[nid])
         if purge:
             self.nodes.pop(nid, None)
             # noté dans les écritures récentes, et effacé des lignes plus anciennes : une réparation ne le ramène pas

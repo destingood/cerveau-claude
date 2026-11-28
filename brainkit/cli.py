@@ -43,6 +43,7 @@ def _plus_tard(module, names):
     "cmd_skill cmd_outils cmd_pc")
 (cmd_echange, cmd_wiki, cmd_auto, cmd_boutique, cmd_commun, cmd_import) = _plus_tard("cli_partage",
     "cmd_echange cmd_wiki cmd_auto cmd_boutique cmd_commun cmd_import")
+(cmd_oublier_session,) = _plus_tard("oubli", "cmd_oublier_session")
 (cmd_config, cmd_hook, cmd_mcp, cmd_publish, cmd_selfupdate, cmd_install) = _plus_tard("cli_installation",
     "cmd_config cmd_hook cmd_mcp cmd_publish cmd_selfupdate cmd_install")
 # Autres noms d'avant le découpage (aides, fonctions internes), servis depuis leur nouveau module
@@ -165,7 +166,13 @@ def build_parser():
 
     s = cmd("show", cmd_show, "afficher un souvenir et ses liens (--history : ses versions)", ["voir"])
     s.add_argument("id")
-    s.add_argument("--history", action="store_true", help="versions successives (instantanés)")
+    s.add_argument("--history", action="store_true", help="versions successives (instantanés, journal des textes)")
+    s = cmd("oublier-session", cmd_oublier_session, "retirer ce qu'une session a écrit et qui ne reposait que sur elle "
+            "(montre d'abord ; --oui pour le faire)", ["forget-session"])
+    s.add_argument("id", nargs="?", help="id de la session (le début suffit, « . » = celle-ci) ; sans id : les sessions "
+                                         "qui ont écrit")
+    s.add_argument("--oui", action="store_true", help="faire ce qui est montré (accord de l'utilisateur donné)")
+    s.add_argument("--purge", action="store_true", help="supprimer définitivement au lieu d'archiver (instantané pris avant)")
     s = cmd("ls", cmd_ls, "lister", ["list"])
     s.add_argument("-t", "--type")
     s.add_argument("-p", "--project")

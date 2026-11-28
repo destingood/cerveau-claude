@@ -43,7 +43,8 @@ META_FM = {"resume": "resume", "domaine": "domaine", "niveau": "niveau", "source
            "done": "fait_le", "valid_from": "debut", "valid_to": "fin", "end_reason": "raison_fin", "superseded_by": "remplace_par", "merged_into": "fusionne_dans", "keys": "cles",
            "conf": "confiance", "path": "chemin", "aliases": "chemins_alt", "stack": "stack", "auto_body": "corps_auto",
            "format": "format", "url": "url", "auteur": "auteur", "date_source": "date_source", "brut": "brut",
-           "sha1": "sha1", "origin": "fichier_origine", "hash": "empreinte", "name": "nom", "alias": "aliases"}
+           "sha1": "sha1", "origin": "fichier_origine", "hash": "empreinte", "name": "nom", "alias": "aliases",
+           "sessions": "sessions"}  # sessions qui ont écrit le souvenir (provenance.py) : des ids, relus en texte
 FM_META = {v: k for k, v in META_FM.items()}
 LINK_META = ("superseded_by", "merged_into")  # un id de souvenir, écrit comme un lien
 # Liens terminés (temps.py) : dans la page d'où part le lien, une ligne « relation · id visé · créé → retiré », sans
@@ -349,6 +350,8 @@ def build(root, pages, old=None) -> dict:
             if v in ("", [], None):
                 continue
             meta[key] = v
+        if "sessions" in meta:  # un id tout en chiffres reste un texte (le même qu'avant l'aller-retour)
+            meta["sessions"] = _text_list(meta["sessions"])
         if "alias" in meta:
             meta["alias"] = [a for a in _text_list(meta["alias"]) if fold(a) != fold(title)]
             if not meta["alias"]:

@@ -437,6 +437,7 @@ def _run(event, data) -> int:
     t0 = time.time()
     from . import common
     outer, common.HOOK = common.HOOK, event  # dans le hook : l'analyse du graphe n'est jamais calculée sur place
+    outer_sid, common.SESSION = common.SESSION, data.get("session_id") if isinstance(data, dict) else None
     try:
         handler = HANDLERS.get(event)
         if handler:
@@ -456,6 +457,7 @@ def _run(event, data) -> int:
                 pass
     finally:
         common.HOOK = outer
+        common.SESSION = outer_sid
         elapsed = time.time() - t0
         if elapsed > 2:
             log(f"hook {event} lent : {elapsed:.2f}s")
