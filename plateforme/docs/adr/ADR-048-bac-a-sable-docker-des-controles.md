@@ -41,7 +41,8 @@ Faits vérifiés le 2026-10-22 :
 Option 1, avec ces règles, toutes testées (`tests/test_code_sandbox.py`, `tests/test_code_process.py`,
 `tests/test_code_checks.py`, `plugins/code_checks/tests/`) :
 - **Copie depuis les objets git** (`copy_tree`) : les fichiers d'un commit, lus par `ls-tree` puis
-  un seul `cat-file --batch`, écrits dans un dossier neuf `var/code/runs/<uuid>/`. Ni `checkout`,
+  un seul `cat-file --batch`, écrits dans un dossier neuf `var/code/runs/<uuid>/` (dossier temporaire du système depuis
+  l'amendement du 2026-11-28). Ni `checkout`,
   ni `archive` : aucun filtre du dépôt ne s'exécute (ADR-047). Fichiers sensibles jamais écrits,
   seulement nommés comme retenus ; liens symboliques, sous-modules, chemins non portables ou en
   collision de casse ignorés et nommés. Plafonds : 5 000 fichiers et 50 Mo, vérifiés avant toute
@@ -83,3 +84,42 @@ Option 1, avec ces règles, toutes testées (`tests/test_code_sandbox.py`, `test
 - Les résultats d'un dépôt hostile ne sont pas fiables (il peut fausser ruff ou pytest) ; seul le
   confinement l'est. Le mode exécutable des fichiers n'est pas conservé dans la copie.
 - Réversible : le plugin est isolé ; retirer `code_checks` du pack suffit.
+
+## Amendement — 2026-11-28 (B282, B283, B284 ; statut : proposé)
+Faits vérifiés le 2026-11-28 : `timeout` de GNU coreutils (manuel, « timeout invocation ») envoie
+le signal choisi au programme et à son groupe de processus, puis sort avec 137 sous `KILL` ; le
+paquet Debian `coreutils` (trixie, base de `python:3.12-slim` d'après le Dockerfile de
+docker-library) est essentiel et livre `/usr/bin/timeout`. `docker run --label` pose une étiquette
+invisible depuis le conteneur ; `docker ps` ne liste que les conteneurs en marche, filtre par
+`label=<clé>` et affiche `{{.ID}}` et `{{.Label "<clé>"}}` ; la documentation de `docker kill` ne
+donne aucun code de sortie. Le client Docker donne au conteneur les proxys de
+`~/.docker/config.json` (`HTTP_PROXY`, `HTTPS_PROXY`, `FTP_PROXY`, `NO_PROXY`, `ALL_PROXY`, en
+majuscules et en minuscules ; docs.docker.com, « Use a proxy server with the Docker CLI »), mais
+seulement les noms que la commande ne pose pas déjà (`ConfigFile.ParseProxyConfig` de docker/cli).
+- **Durée bornée dans le conteneur (B282)** : point d'entrée `timeout`, arguments `-s KILL <s>
+  <programme> …`, avec `<s>` = part du budget donnée au client, arrondie au-dessus, plus 2 s : le
+  délai du client vient d'abord (statut `delai`) ; le conteneur s'arrête seul si `docker kill`
+  échoue ou si le plugin a disparu ; une fois `--init` (PID 1) sorti, le noyau termine tout
+  processus restant. Une image sans `timeout` rend le code 127 : rien ne tourne sans limite.
+- **Étiquette et balayage (B282)** : chaque conteneur porte `cerveau.code_checks.ends_by=<heure
+  de fin>` (secondes Unix de l'hôte : sa limite plus 10 s de démarrage). Au début de chaque appel,
+  `docker ps --filter label=…`, puis `docker kill` des seuls conteneurs passés leur heure : ceux
+  d'un appel en cours, `code_agent` compris, ne sont jamais touchés.
+- **Arrêt confirmé (B282)** : « conteneur arrêté » seulement si `docker kill` répond 0, ou si,
+  après une autre réponse à temps, `docker ps --filter name=<nom>` ne le liste plus ; sinon « arrêt
+  du conteneur non confirmé par Docker : il s'arrête seul au bout de N s ». Le tout tient dans les
+  10 s de `KILL_TIMEOUT_S`, donc dans la réserve de l'appel.
+- **Copie hors de CERVEAU (B283)** : options pesées : (1) dossier temporaire du système ; (2)
+  garder `var/` avec `norecursedirs = var` et un balayage. (2) ne protège que pytest : un éditeur
+  ou Claude Code trouverait encore le `conftest.py` ou le `CLAUDE.md` d'une copie laissée par un
+  arrêt brutal, choisis par l'agent dans le cas de `code_agent`. Retenu : (1). Chaque appel crée
+  `cerveau-checks-<uuid>/` (`code_agent` : `cerveau-agent-<id>/`), droits 0700, jamais un dossier
+  existant, et y écrit la copie (`copie/`, ou `work/` et les dossiers de la tâche). Les dossiers à
+  ce préfixe, du même propriétaire, ni liens ni jonctions, inchangés depuis une heure (quatre fois
+  l'appel le plus long, 900 s), sont retirés au début de l'appel suivant.
+- **Proxys (B284)** : `--env NOM=` vide pour les dix noms, dans les conteneurs des contrôles et
+  dans celui de l'agent (`core/code/agent.py`), dont le code est aussi non fiable ; le proxy de
+  l'API (ADR-053), code de CERVEAU, garde le comportement du client.
+- `A_VERIFIER` (B270, sur le poste de l'utilisateur) : `timeout` présent dans l'image propre à
+  chaque dépôt ; montage d'un dossier de `%TEMP%` sous Docker Desktop ; code 137 et fin du
+  conteneur sous `timeout` (`tests/test_code_checks_docker.py`, deux tests).
