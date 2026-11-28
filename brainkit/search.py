@@ -623,8 +623,7 @@ def _fuse(brain, query, bm25, limit, project, types, include_archived, only_proj
       ou un lien typé (« coffret Hōjicha » → atelier Sato → « l'atelier Sato ferme en août ») ;
     - fiche de synthèse (façon Zep / MemOS) : une question large (« où en est la boutique ? ») reçoit d'abord la fiche de
       la communauté dominante, puis les souvenirs (la fiche ne prend pas de place dans la limite)."""
-    from . import dates
-    from .reconcile import entities
+    from . import dates, noms
 
     def eligible(n):
         if not include_archived and (n.get("status", "active") != "active" or not valid_today(n, today)):
@@ -679,20 +678,23 @@ def _fuse(brain, query, bm25, limit, project, types, include_archived, only_proj
         final.append(nid)
         if pos >= 2 or len(final) >= limit:
             continue
-        if ents is None:
-            ents = {n["id"]: entities(f"{n['title']}\n{n.get('body', '')}") for n in brain.nodes.values()
+        if ents is None:  # noms de chaque souvenir : l'index nom → souvenirs gardé (noms.py), pas tout relu
+            tab = noms.table(brain, use_cache)
+            ents = {n["id"]: tab.get(n["id"], noms.NONE)[1] for n in brain.nodes.values()
                     if eligible(n) or n["id"] in ranked}
-            for es in ents.values():
+            who = {}
+            for i, es in ents.items():
                 for e in es:
                     df[e] = df.get(e, 0) + 1
+                    who.setdefault(e, []).append(i)
         cands, strength = {}, {}
         for m, rel, _ in brain.neighbors(nid):
             if rel in TYPED and m["id"] in ents:
                 cands[m["id"]] = (2.0, rel.replace("_", " "))
         for e in sorted(ents.get(nid, ())):  # trié : un ensemble se parcourt dans un ordre qui change à chaque lancement
             if df.get(e, 0) in (2, 3):
-                for other, es in ents.items():
-                    if other != nid and e in es:
+                for other in who[e]:
+                    if other != nid:
                         sc = 1.5 if df[e] == 2 else 0.7
                         strength[other] = strength.get(other, 0.0) + sc
                         if sc > cands.get(other, (0, ""))[0]:

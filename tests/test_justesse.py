@@ -2,7 +2,9 @@
 un remplacement daté au début du nouveau fait (et un remplaçant futur qui laisse l'ancien vrai jusque-là) ; un « nouveau »
 qui commence avant l'ancien n'est pas son remplaçant ; deux périodes distinctes ne se contredisent pas ; les variantes
 d'un même nom réunies ; un nom propre rare partagé suggère un remplacement ; les règles d'écriture dans le rappel de fin
-de tâche ; un motif proposé par le rêve pour un gros sujet. Dans un dossier temporaire.
+de tâche ; un motif proposé par le rêve pour un gros sujet ; l'index nom → souvenirs gardé pour `q` et `add` (mêmes
+résultats, rien relu deux fois, refait s'il manque ou est abîmé, graphe ancien lu tel quel).
+Dans un dossier temporaire.
 
 Lancement : python tests/test_justesse.py   (sortie : « N vérifications OK, M échec(s) »)"""
 import datetime as dt
@@ -146,6 +148,76 @@ if m:
     c, out2 = brain("dream", "--no-apply")
     check(f"« {m.group(1)} »" not in out2.split("## Motif à écrire")[-1] if "## Motif à écrire" in out2 else True,
           "motif écrit : plus proposé au rêve suivant", out2[-500:])
+
+# ------------------------------------------------------------------ 7. index nom → souvenirs (point 5)
+from brainkit import noms, search  # noqa: E402
+from brainkit.common import STATE_DIR  # noqa: E402
+
+with Brain.edit() as b:
+    b.add("fact", "Fabrication du coffret Hōjicha", "Le coffret Hōjicha est fabriqué par l'atelier Sato à Uji.",
+          nid="hojicha")
+    b.add("fact", "Fermeture estivale de l'atelier Sato", "L'atelier Sato ferme tout le mois d'août pour congés.",
+          nid="sato")
+    for i in range(40):
+        b.add("fact", f"Note de stock numéro {i}", f"Le carton {i} part chez Kobe{i} Craft le lundi.", nid=f"stock{i}")
+NB, HOP = STATE_DIR / noms.FILE, "le coffret Hōjicha sera-t-il disponible cet été ?"
+SPANS, CALLS = reconcile._entity_spans, []
+
+
+def counted(text):
+    CALLS.append(1)
+    return SPANS(text)
+
+
+def hop(use_cache=True):
+    del CALLS[:]
+    noms._LOADED.clear()  # comme une nouvelle commande
+    r = search.search_memories(Brain.load(), HOP, limit=5, expand=False, fuse=True, use_cache=use_cache)
+    return [(x["node"]["id"], x.get("via")) for x in r], len(CALLS)
+
+
+reconcile._entity_spans = counted
+try:
+    NB.unlink(missing_ok=True)
+    first, n_first = hop()
+    again, n_again = hop()
+    plain, _ = hop(use_cache=False)
+    total = len(Brain.load().nodes)
+    check(("sato", "lien (sato)") in first and first == again == plain,
+          "`q` : deuxième saut par un nom rare (Hōjicha → atelier Sato), le même avec ou sans l'index des noms",
+          (first, again, plain))
+    check(NB.is_file() and n_first >= total and n_again == 0,
+          f"index nom → souvenirs gardé : la question suivante ne relit aucun des {total} souvenirs (avant : tous)",
+          (n_first, n_again, total))
+    with Brain.edit() as b:
+        b.update("stock3", body="Le carton 3 part chez Zorglub Craft le lundi.")
+    after, n_after = hop()
+    check(n_after == 1 and "zorglub" in noms.table(Brain.load())["stock3"][1] and after == first,
+          "un souvenir changé : lui seul est relu, ses nouveaux noms sont dans l'index", (n_after, after))
+    NB.write_bytes(b"pas un index")
+    broken, n_broken = hop()
+    check(broken == first and n_broken >= total and noms.table(Brain.load())["sato"][1] == ("sato",),
+          "index abîmé : refait sans erreur, mêmes résultats", (broken, n_broken))
+    del CALLS[:]
+    c, out = brain("add", "-t", "fact", "-T", "Congés de l'atelier Sato en 2027", "-b", "Fermé du 1er au 20 août.",
+                   "-p", "none", "--id", "sato-2027")
+    check(c == 0 and "sato" in out and "remplace peut-être" in out,
+          "`add` : le nom rare partagé (atelier Sato) se trouve par l'index des noms", out)
+finally:
+    reconcile._entity_spans = SPANS
+# Graphe d'une ancienne version (champs absents : contenu, étiquettes, méta, compteurs) : lu tel quel, jamais réécrit.
+GF = TMP / "brain" / "graph.json"
+saved = GF.read_bytes()
+oldg = {"version": 1, "edges": [], "nodes": {
+    "vieux": {"id": "vieux", "type": "fact", "title": "Transporteur Chronopost pour le Japon"},
+    "vieux2": {"id": "vieux2", "type": "fact", "title": "Tarif Chronopost", "body": "Chronopost facture 30 euros vers le Japon."}}}
+GF.write_text(json.dumps(oldg, ensure_ascii=False), encoding="utf-8")
+raw = GF.read_bytes()
+NB.unlink(missing_ok=True)
+c, out = brain("q", "Chronopost Japon")
+check(c == 0 and "vieux" in out and GF.read_bytes() == raw and NB.is_file(),
+      "graphe d'une ancienne version : `q` répond, graph.json inchangé, l'index des noms refait à côté", out)
+GF.write_bytes(saved)
 
 remove_tree(TMP, wait=30)
 print(f"\n{len(OK)} vérifications OK, {len(FAIL)} échec(s)")

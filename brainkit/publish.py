@@ -172,7 +172,8 @@ regroupent par sujet ; ⊞ (touche G) revient à la disposition libre, et la vue
   piliers). Et le rêve te ressort, trois au plus, les souvenirs importants qui ne servent plus, à revoir de plus en
   plus rarement (30 jours, puis 60, 120…) tant qu'ils restent vrais. Un fait qui change à une date à venir
   (« à partir du 1er janvier ») laisse l'ancien vrai jusque-là ; « Mondial Relay » et « MondialRelay » sont reconnus
-  comme le même nom.
+  comme le même nom. Les noms propres de chaque souvenir sont gardés à côté du graphe : sur un gros cerveau, `brain q`
+  et l'outil MCP de recherche répondent trois à quatre fois plus vite, et `brain add` ne relit plus toute la mémoire.
 - **Oublier une session** : chaque souvenir garde les sessions Claude Code qui l'ont écrit, et un journal garde
   l'ancien texte à chaque modification (`brain show <id> --history`). `brain oublier-session <id>` montre ce qu'une
   session a écrit, puis, sur ton accord (`--oui`), archive ce qu'elle seule a créé et remet comme avant ce qu'elle
